@@ -31,12 +31,6 @@ The framework generates professional, interactive security assessment reports wi
       <p align="center"><em>Interactive Findings Table with Filtering</em></p>
     </td>
   </tr>
-  <tr>
-    <td colspan="2">
-      <img src="sample-reports/multi-account-summary.png" alt="Multi-Account Summary"/>
-      <p align="center"><em>Multi-Account Consolidated View</em></p>
-    </td>
-  </tr>
 </table>
 
 ### Key Features
