@@ -60,6 +60,17 @@ phases:
       - echo "Build completed, checking build directory:"
       - ls -la .aws-sam/build/
       - |
+        # Set SAM deploy flags based on whether an existing bucket is provided
+        if [[ -n "$EXISTING_ASSESSMENT_BUCKET" ]]; then
+          SAM_S3_FLAG="--s3-bucket $EXISTING_ASSESSMENT_BUCKET"
+          SAM_PARAMS="--parameter-overrides ExistingBucketName=$EXISTING_ASSESSMENT_BUCKET"
+          echo "Using existing bucket: $EXISTING_ASSESSMENT_BUCKET"
+        else
+          SAM_S3_FLAG="--resolve-s3"
+          SAM_PARAMS=""
+          echo "Will create new assessment bucket"
+        fi
+      - |
         if [[ $MULTI_ACCOUNT_SCAN = 'true' ]]; then
           echo "Getting list of accounts to scan"
           if [[ $MULTI_ACCOUNT_LIST_OVERRIDE != '' ]]; then
@@ -115,7 +126,7 @@ phases:
             fi
 
             echo "Deploying to account $accountId"
-            if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-$accountId --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region $AWS_DEFAULT_REGION; then
+            if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-$accountId --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset $SAM_S3_FLAG $SAM_PARAMS --region $AWS_DEFAULT_REGION; then
               echo "ERROR: Deploy failed for account $accountId"
               failed_accounts+=($accountId)
               unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
@@ -146,7 +157,7 @@ phases:
             aws cloudformation delete-stack --stack-name aws-sam-cli-managed-default
             aws cloudformation wait stack-delete-complete --stack-name aws-sam-cli-managed-default 2>/dev/null || true
           fi
-          if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-mgmt --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region $AWS_DEFAULT_REGION; then
+          if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-mgmt --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset $SAM_S3_FLAG $SAM_PARAMS --region $AWS_DEFAULT_REGION; then
             echo "ERROR: Deploy failed for management account"
             failed_accounts+=($AWS_ACCOUNT_ID)
           else
@@ -171,7 +182,7 @@ phases:
         else
           echo "Single account deployment"
           STACK_NAME="aiml-sec-${AWS_ACCOUNT_ID}"
-          if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name $STACK_NAME --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3; then
+          if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name $STACK_NAME --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset $SAM_S3_FLAG $SAM_PARAMS; then
             echo "ERROR: SAM deploy failed for single account"
             exit 1
           fi

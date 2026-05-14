@@ -424,6 +424,9 @@ Resources:
           - Name: BUCKET_REPORT
             Value: !If [UseExistingBucket, !Ref ExistingBucketName, !Ref AssessmentBucket]
             Type: PLAINTEXT
+          - Name: EXISTING_ASSESSMENT_BUCKET
+            Value: !If [UseExistingBucket, !Ref ExistingBucketName, ""]
+            Type: PLAINTEXT
           - Name: GITHUB_REPO_URL
             Value: !Ref GitHubRepoUrl
             Type: PLAINTEXT
