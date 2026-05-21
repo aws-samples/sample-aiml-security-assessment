@@ -57,6 +57,7 @@ The framework generates professional, interactive security assessment reports wi
 - [Prerequisites](#prerequisites)
 - [Single-Account Deployment](#single-account-deployment)
 - [Multi-Account Deployment](#multi-account-deployment)
+- [Using an Existing S3 Bucket](#using-an-existing-s3-bucket)
 - [How It Works](#how-it-works)
 - [Permissions Required](#permissions-required)
 - [Viewing Assessment Results](#viewing-assessment-results)
@@ -247,6 +248,43 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 6. Navigate to the next page, read and acknowledge the notice, and click **Next**.
 7. Review the information and click **Submit**.
 8. Stack creation automatically triggers AWS CodeBuild, which deploys the assessment to each account and runs it.
+
+## Using an Existing S3 Bucket
+
+By default, the solution creates a new Amazon S3 bucket to store assessment results. If you need to use a pre-existing bucket (for example, if your environment has SCPs that restrict S3 bucket creation), you can specify the bucket name using the `ExistingBucketName` parameter.
+
+When `ExistingBucketName` is provided:
+- No new Amazon S3 buckets are created (neither the results bucket nor the SAM artifacts bucket)
+- All assessment results are uploaded to the specified bucket
+- The existing bucket is used for SAM deployment artifacts and Lambda assessment results
+
+### AWS CloudShell (Single-Account)
+
+```bash
+aws cloudformation create-stack \
+  --stack-name aiml-security-single-account \
+  --template-body file://aiml-security-single-account.yaml \
+  --parameters ParameterKey=ExistingBucketName,ParameterValue=my-existing-bucket \
+  --capabilities CAPABILITY_NAMED_IAM
+```
+
+### AWS CloudShell (Multi-Account)
+
+```bash
+aws cloudformation create-stack \
+  --stack-name aiml-security-multi-account \
+  --template-body file://2-aiml-security-codebuild.yaml \
+  --parameters \
+    ParameterKey=MultiAccountScan,ParameterValue=true \
+    ParameterKey=ExistingBucketName,ParameterValue=my-existing-bucket \
+  --capabilities CAPABILITY_NAMED_IAM
+```
+
+### AWS Console
+
+When deploying via the Console, enter your bucket name in the **ExistingBucketName** parameter field. Leave it empty to create a new bucket (default behavior).
+
+---
 
 ## How It Works
 
