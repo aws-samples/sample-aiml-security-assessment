@@ -2,9 +2,8 @@
 Schema module for FinServ security findings.
 Mirrors the schema used in bedrock_assessments/schema.py.
 """
-
 from enum import Enum
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field, validator
 import re
 
@@ -40,6 +39,14 @@ class Finding(BaseModel):
     Reference: str = Field(..., description="Documentation reference URL")
     Severity: SeverityEnum = Field(..., description="Severity level of the finding")
     Status: StatusEnum = Field(..., description="Current status of the finding")
+    Compliance_Frameworks: str = Field(
+        default="",
+        description=(
+            "Pipe-separated list of FinServ regulatory frameworks this control maps to "
+            "(e.g., 'FFIEC CAT | SR 11-7 | NYDFS 500'). Preliminary; validate with your "
+            "MRM/Legal/Compliance teams before using as audit evidence."
+        ),
+    )
 
     @validator("Check_ID")
     def validate_check_id(cls, v):
@@ -66,8 +73,16 @@ def create_finding(
     reference: str,
     severity: SeverityEnum,
     status: StatusEnum,
+    compliance_frameworks: Optional[str] = "",
 ) -> Dict[str, Any]:
-    """Create a validated finding dict."""
+    """Create a validated finding dict.
+
+    Args:
+        compliance_frameworks: Pipe-separated FinServ regulatory framework identifiers
+            (e.g., "FFIEC CAT | SR 11-7 | NYDFS 500"). Populated from COMPLIANCE_MAP
+            in app.py. Preliminary mappings — validate with MRM/Legal/Compliance before
+            using as audit evidence.
+    """
     finding = Finding(
         Check_ID=check_id,
         Finding=finding_name,
@@ -76,5 +91,6 @@ def create_finding(
         Reference=reference,
         Severity=severity,
         Status=status,
+        Compliance_Frameworks=compliance_frameworks or "",
     )
     return dict(finding.model_dump())

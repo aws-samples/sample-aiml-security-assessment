@@ -46,6 +46,7 @@ Pre-commit quality gates (run every edit):
 
 import boto3
 import csv
+import functools
 import json
 import logging
 import os
@@ -54,7 +55,7 @@ from io import StringIO
 from typing import Any, Dict, List, Optional
 
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ParamValidationError
 
 from schema import create_finding
 
@@ -64,7 +65,7 @@ from schema import create_finding
 boto3_config = Config(retries=dict(max_attempts=10, mode="adaptive"))
 
 logger = logging.getLogger()
-logger.setLevel(logging.ERROR)
+logger.setLevel(logging.WARNING)
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +99,142 @@ def _error_findings(check_name: str, err: Exception) -> Dict[str, Any]:
         "details": str(err),
         "csv_data": [],
     }
+
+
+# Findings whose name starts with this prefix were emitted because the check
+# could not run (e.g., missing IAM permission). They are visible in the report
+# (Status="N/A") so a failed/permission-denied check does not silently vanish.
+COULD_NOT_ASSESS_PREFIX = "COULD NOT ASSESS: "
+
+# ---------------------------------------------------------------------------
+# COMPLIANCE_MAP — per-check regulatory framework mappings
+#
+# Each value is a pipe-separated string of FinServ framework identifiers that
+# travel with every finding row in the CSV report (Compliance_Frameworks column).
+# This mirrors the ASFF Compliance.RelatedRequirements pattern used by AWS
+# Security Hub: compliance metadata is embedded in the finding itself, not kept
+# in a separate sidecar document.
+#
+# Disclaimer: mappings are PRELIMINARY and ILLUSTRATIVE. They have not been
+# reviewed by AWS Security Assurance Services, external auditors, or the
+# regulators named. Each firm should have its own MRM, Legal, and Compliance
+# teams validate these mappings against their specific interpretation of each
+# framework before relying on them as audit evidence.
+# ---------------------------------------------------------------------------
+COMPLIANCE_MAP: Dict[str, str] = {
+    # Category 1: Unbounded Consumption
+    "FS-01": "FFIEC CAT | DORA Art.6",
+    "FS-02": "FFIEC CAT | DORA Art.6 | PCI-DSS 12.3.2",
+    "FS-03": "FFIEC CAT | SR 11-7",
+    "FS-04": "FFIEC CAT | SR 11-7",
+    "FS-05": "FFIEC CAT | DORA Art.6",
+    "FS-06": "FFIEC CAT | SR 11-7",
+    # Category 2: Excessive Agency
+    "FS-07": "SR 11-7 | FFIEC CAT",
+    "FS-08": "SR 11-7 | MAS TRM 9.1",
+    "FS-09": "FFIEC CAT | SR 11-7",
+    "FS-10": "SR 11-7 | FFIEC CAT | MAS TRM 9.2",
+    "FS-11": "FFIEC CAT | DORA Art.6",
+    # Category 3: Supply Chain Vulnerabilities
+    "FS-12": "SR 11-7 | FFIEC CAT | ISO 27001 A.15.2",
+    "FS-13": "SR 11-7 | ISO 27001 A.12.5 | FFIEC CAT",
+    "FS-14": "SR 11-7 | FFIEC CAT | ISO 27001 A.15.1",
+    "FS-15": "SR 11-7 | FFIEC CAT | MAS TRM 9.3",
+    "FS-16": "ISO 27001 A.12.6 | FFIEC CAT | DORA Art.6",
+    # Category 4: Training Data & Model Poisoning
+    "FS-20": "SR 11-7 | FFIEC CAT",
+    "FS-21": "SR 11-7 | ISO 27001 A.12.3 | FFIEC CAT",
+    # Category 5: Vector & Embedding Weaknesses
+    "FS-22": "NYDFS 500 | FFIEC CAT | PCI-DSS 12.3.2",
+    "FS-24": "NYDFS 500 | FFIEC CAT | PCI-DSS 12.3.2",
+    "FS-25": "NYDFS 500 | PCI-DSS 3.5 | FFIEC CAT",
+    "FS-26": "NYDFS 500 | FFIEC CAT | PCI-DSS 1.3",
+    # Category 6: Non-Compliant Output
+    "FS-27": "SR 11-7 | FFIEC CAT | MAS TRM 9.2",
+    "FS-28": "SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2",
+    "FS-29": "SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2",
+    "FS-30": "SR 11-7 | FFIEC CAT | NYDFS 500",
+    # Category 7: Misinformation
+    "FS-31": "SR 11-7 | FFIEC CAT",
+    "FS-32": "SR 11-7 | FFIEC CAT | MAS TRM 9.2",
+    "FS-33": "SR 11-7 | FFIEC CAT | ISO 27001 A.12",
+    "FS-34": "SR 11-7 | FFIEC CAT",
+    # Category 8: Abusive or Harmful Output
+    "FS-35": "SR 11-7 | FFIEC CAT",
+    "FS-36": "SR 11-7 | FFIEC CAT",
+    "FS-37": "SR 11-7 | FFIEC CAT | MAS TRM 9.2",
+    "FS-38": "SR 11-7 | FFIEC CAT",
+    # Category 9: Biased Output
+    "FS-39": "SR 11-7 | FFIEC CAT | ECOA/Fair Housing",
+    "FS-40": "SR 11-7 | FFIEC CAT | ECOA/Fair Housing",
+    "FS-41": "SR 11-7 | FFIEC CAT",
+    "FS-42": "SR 11-7 | FFIEC CAT",
+    # Category 10: Sensitive Information Disclosure
+    "FS-43": "NYDFS 500 | FFIEC CAT | PCI-DSS",
+    "FS-44": "NYDFS 500 | FFIEC CAT | PCI-DSS",
+    "FS-45": "NYDFS 500 | FFIEC CAT | PCI-DSS",
+    "FS-46": "NYDFS 500 | FFIEC CAT | ISO 27001 A.12 | PCI-DSS",
+    # Category 11: Hallucination
+    "FS-47": "SR 11-7 | FFIEC CAT",
+    "FS-48": "SR 11-7 | FFIEC CAT",
+    "FS-49": "SR 11-7 | FFIEC CAT | MAS TRM 9.2",
+    "FS-50": "SR 11-7 | FFIEC CAT",
+    # Category 12: Prompt Injection
+    "FS-51": "NYDFS 500 | FFIEC CAT | OWASP LLM Top 10",
+    "FS-52": "NYDFS 500 | FFIEC CAT | ISO 27001 A.12 | OWASP LLM Top 10",
+    "FS-53": "NYDFS 500 | PCI-DSS | FFIEC CAT | OWASP LLM Top 10",
+    "FS-54": "NYDFS 500 | FFIEC CAT | OWASP LLM Top 10",
+    # Category 13: Improper Output Handling
+    "FS-55": "FFIEC CAT | OWASP LLM Top 10",
+    "FS-56": "NYDFS 500 | PCI-DSS | OWASP LLM Top 10",
+    "FS-57": "NYDFS 500.06 | FFIEC CAT | OWASP LLM Top 10",
+    "FS-58": "FFIEC CAT | OWASP LLM Top 10",
+    # Category 14: Off-Topic & Inappropriate Output
+    "FS-59": "SR 11-7 | FFIEC CAT",
+    "FS-60": "SR 11-7 | FFIEC CAT",
+    # Category 15: Out-of-Date Training Data
+    "FS-61": "SR 11-7 | FFIEC CAT",
+    "FS-62": "SR 11-7 | FFIEC CAT | MAS TRM 9.2",
+    "FS-63": "SR 11-7 | FFIEC CAT | ISO 27001 A.12",
+    # Material Gap Checks
+    "FS-65": "FFIEC CAT | DORA Art.6 | ISO 27001 A.12",
+    "FS-66": "NYDFS 500 | SR 11-7 | MAS TRM 9 | PCI-DSS",
+    "FS-67": "SR 11-7 | FFIEC CAT | MAS TRM 9 | PCI-DSS",
+    "FS-68": "DORA Art.6 | FFIEC CAT | PCI-DSS | OWASP LLM Top 10",
+    "FS-69": "NYDFS 500 | FFIEC CAT | OWASP LLM Top 10",
+}
+
+
+def _could_not_assess_row(
+    check_id: str, check_name: str, err: Any
+) -> Dict[str, Any]:
+    """
+    Synthesize one visible finding row for a check that errored out and produced
+    no rows. Uses the existing schema (Status="N/A", Severity="Medium") so the
+    gap surfaces in the report without inflating the Failed count.
+    """
+    return create_finding(
+        check_id=check_id,
+        finding_name=f"{COULD_NOT_ASSESS_PREFIX}{check_name}",
+        finding_details=(
+            f"This check could not be completed (error: {err}). The most common cause "
+            "is a missing IAM permission for the assessment role; it may also indicate "
+            "an unsupported region or an outdated botocore. This control was NOT assessed "
+            "— verify the role's permissions and re-run, and assess this control manually "
+            "until resolved."
+        ),
+        resolution=(
+            "1. Confirm the assessment role grants the actions this check requires "
+            "(see the documented IAM permission set in the README).\n"
+            "2. Confirm the service/feature is supported in the assessed region.\n"
+            "3. Ensure botocore meets the version floor in requirements.txt.\n"
+            "4. Re-run the assessment; assess this control manually until it succeeds."
+        ),
+        reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/troubleshoot_access-denied.html",
+        severity="Medium",
+        status="N/A",
+        compliance_frameworks=COMPLIANCE_MAP.get(check_id, ""),
+    )
 
 
 # ===========================================================================
@@ -150,6 +287,7 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/shield-chapter.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-01"],
                 )
             )
         else:
@@ -162,6 +300,7 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/shield-chapter.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-01"],
                 )
             )
 
@@ -183,6 +322,7 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-01"],
                 )
             )
         else:
@@ -195,6 +335,7 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-01"],
                 )
             )
     except Exception as e:
@@ -231,6 +372,7 @@ def check_api_gateway_rate_limiting() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-request-throttling.html",
                     severity="Medium",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-02"],
                 )
             )
         elif plans_without_throttle:
@@ -250,6 +392,7 @@ def check_api_gateway_rate_limiting() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-request-throttling.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-02"],
                 )
             )
         else:
@@ -262,6 +405,7 @@ def check_api_gateway_rate_limiting() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-request-throttling.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-02"],
                 )
             )
     except Exception as e:
@@ -272,39 +416,150 @@ def check_api_gateway_rate_limiting() -> Dict[str, Any]:
 def check_bedrock_token_quotas() -> Dict[str, Any]:
     """
     FS-03 — Check whether Bedrock service quotas for tokens-per-minute (TPM)
-    and requests-per-minute (RPM) have been reviewed and set appropriately.
+    have been reviewed and raised above AWS defaults.
+
+    Token-based quotas are the only signal: Amazon Bedrock no longer enforces
+    requests-per-minute (RPM) quotas on the bedrock-runtime endpoint (throttling
+    is token-based only), so an absent RPM quota must never drive a verdict.
+
+    Verdict logic (value-based, not adjustability-based):
+      - at least one applied token-quota Value > its AWS default  → customized → PASS/Passed
+      - all applied token-quota Values == their defaults          → at default → WARN/N-A (soft)
+      - no applied token quotas returned                          → WARN/Failed + explanation
+      - AWS default quotas could not be retrieved                 → WARN/Failed + "undetermined"
     COMPLIANCE_PLACEHOLDER: [FFIEC CAT, SR 11-7]
     """
     findings = _empty_findings("Bedrock Token Quota Review")
     try:
         sq = boto3.client("service-quotas", config=boto3_config)
-        quotas = sq.list_service_quotas(ServiceCode="bedrock").get("Quotas", [])
 
-        tpm_quotas = [q for q in quotas if "token" in q.get("QuotaName", "").lower()]
-        rpm_quotas = [q for q in quotas if "request" in q.get("QuotaName", "").lower()]
+        # Applied quotas (paginated). Token-based quotas are the only signal.
+        applied = []
+        for page in sq.get_paginator("list_service_quotas").paginate(
+            ServiceCode="bedrock"
+        ):
+            applied.extend(page.get("Quotas", []))
+        token_quotas = [
+            q for q in applied if "token" in q.get("QuotaName", "").lower()
+        ]
 
-        # Flag if no custom quota increases have been requested (still at default)
-        default_only = all(not q.get("Adjustable") for q in tpm_quotas + rpm_quotas)
-
-        details = (
-            f"Found {len(tpm_quotas)} token-based and {len(rpm_quotas)} request-based Bedrock quotas."
-        )
-        findings["csv_data"].append(
-            create_finding(
-                check_id="FS-03",
-                finding_name="Bedrock Token and Request Quota Review",
-                finding_details=details,
-                resolution=(
-                    "1. Review current Bedrock TPM/RPM quotas in Service Quotas console.\n"
-                    "2. Request increases aligned with expected peak load.\n"
-                    "3. Implement client-side token counting and pre-flight quota checks.\n"
-                    "4. Use Bedrock cross-region inference profiles to distribute load."
-                ),
-                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
-                severity="Medium",
-                status="Passed" if not default_only else "Failed",
+        # Empty-applied-list branch: no token quotas found at all.
+        if not token_quotas:
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-03",
+                    finding_name="No Bedrock Token Quotas Returned",
+                    finding_details=(
+                        "No Bedrock token-based service quotas were returned. This may indicate "
+                        "a permissions issue (servicequotas:ListServiceQuotas), an unsupported "
+                        "region, or that no Bedrock-specific quotas exist for this account. "
+                        "Verify manually in the Service Quotas console."
+                    ),
+                    resolution=(
+                        "1. Confirm the assessment role has servicequotas:ListServiceQuotas.\n"
+                        "2. Verify Bedrock is available in the assessed region.\n"
+                        "3. Review Bedrock token quotas in the Service Quotas console."
+                    ),
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                    severity="Medium",
+                    status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-03"],
+                )
             )
+            return findings
+
+        # AWS default quotas for comparison (paginated).
+        default_values = {}
+        for page in sq.get_paginator("list_aws_default_service_quotas").paginate(
+            ServiceCode="bedrock"
+        ):
+            for q in page.get("Quotas", []):
+                if q.get("QuotaCode") is not None:
+                    default_values[q["QuotaCode"]] = q.get("Value")
+
+        # Default-lookup-fail branch: cannot compare without defaults. Do NOT
+        # silently compare a value against itself (which would always Fail).
+        if not default_values:
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-03",
+                    finding_name="Bedrock Default Quotas Unavailable — Customization Undetermined",
+                    finding_details=(
+                        "AWS default service quotas for Bedrock could not be retrieved "
+                        "(list_aws_default_service_quotas returned nothing), so whether the "
+                        "applied quotas have been customized cannot be determined. This is "
+                        "commonly a permissions issue (servicequotas:ListAWSDefaultServiceQuotas) "
+                        "or an unsupported region."
+                    ),
+                    resolution=(
+                        "1. Confirm the assessment role has servicequotas:ListAWSDefaultServiceQuotas.\n"
+                        "2. Re-run the assessment once defaults are retrievable.\n"
+                        "3. Until then, verify Bedrock token quotas manually in the Service Quotas console."
+                    ),
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                    severity="Medium",
+                    status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-03"],
+                )
+            )
+            return findings
+
+        # Value-based comparison. An applied Value == default Value is the
+        # expected, non-customized state (ListServiceQuotas may return only
+        # default values for some quotas) — this is NOT an error. At-default is
+        # reported as a soft warning (WARN/N-A), not a failure, since it is a
+        # legitimate verified posture.
+        any_customized = any(
+            q.get("QuotaCode") in default_values
+            and default_values[q["QuotaCode"]] is not None
+            and q.get("Value", 0) > default_values[q["QuotaCode"]]
+            for q in token_quotas
         )
+
+        if any_customized:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-03",
+                    finding_name="Bedrock Token Quotas Customized",
+                    finding_details=(
+                        f"Found {len(token_quotas)} Bedrock token-based quota(s); at least one "
+                        "applied value exceeds the AWS default, indicating quotas have been "
+                        "reviewed and raised."
+                    ),
+                    resolution="No action required. Periodically re-review quotas against expected peak load.",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                    severity="Informational",
+                    status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-03"],
+                )
+            )
+        else:
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-03",
+                    finding_name="Bedrock Token Quotas At Default",
+                    finding_details=(
+                        f"All {len(token_quotas)} Bedrock token-based quota(s) are at their AWS "
+                        "default values — no quota increase has been applied. Running at default "
+                        "is a legitimate posture, but it should be a reviewed decision aligned "
+                        "with expected peak load rather than an oversight."
+                    ),
+                    resolution=(
+                        "1. Review current Bedrock TPM/TPD quotas in the Service Quotas console.\n"
+                        "2. Request increases aligned with expected peak load, or document a "
+                        "deliberate decision to remain at default after review.\n"
+                        "3. Implement client-side token counting and pre-flight quota checks.\n"
+                        "4. Use Bedrock cross-region inference profiles to distribute load."
+                    ),
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                    severity="Medium",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-03"],
+                )
+            )
     except Exception as e:
         return _error_findings("Bedrock Token Quota Review", e)
     return findings
@@ -321,10 +576,19 @@ def check_cost_anomaly_detection() -> Dict[str, Any]:
         ce = boto3.client("ce", config=boto3_config)
         monitors = ce.get_anomaly_monitors().get("AnomalyMonitors", [])
 
+        # A monitor provides Bedrock/SageMaker service-level coverage if its
+        # spec mentions bedrock (rarely populated for DIMENSIONAL+SERVICE
+        # monitors, kept for completeness) OR it is a DIMENSIONAL monitor scoped
+        # to the SERVICE dimension. DIMENSIONAL+SERVICE is the operative signal;
+        # a DIMENSIONAL monitor on LINKED_ACCOUNT/TAG/COST_CATEGORY does NOT
+        # provide service-level Bedrock coverage and must not count.
         bedrock_monitors = [
             m for m in monitors
             if "bedrock" in json.dumps(m.get("MonitorSpecification", {})).lower()
-            or m.get("MonitorType") == "DIMENSIONAL"
+            or (
+                m.get("MonitorType") == "DIMENSIONAL"
+                and m.get("MonitorDimension") == "SERVICE"
+            )
         ]
 
         if not monitors:
@@ -345,6 +609,34 @@ def check_cost_anomaly_detection() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/cost-management/latest/userguide/getting-started-ad.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-04"],
+                )
+            )
+        elif not bedrock_monitors:
+            # Monitors exist, but none provide Bedrock/SageMaker service-level
+            # coverage. This is the previously-masked false positive: the old
+            # code passed whenever ANY monitor existed.
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-04",
+                    finding_name="Cost Anomaly Monitors Do Not Cover Bedrock/SageMaker",
+                    finding_details=(
+                        f"Found {len(monitors)} anomaly monitor(s), but none provide service-level "
+                        "coverage for Bedrock/SageMaker (no DIMENSIONAL monitor scoped to the SERVICE "
+                        "dimension, and no monitor specification referencing Bedrock). A generic or "
+                        "linked-account monitor does not detect GenAI cost anomalies."
+                    ),
+                    resolution=(
+                        "1. Create a DIMENSIONAL Cost Anomaly Detection monitor scoped to the SERVICE "
+                        "dimension so AWS/Bedrock and AWS/SageMaker are covered.\n"
+                        "2. Configure alert subscriptions (SNS/email) for anomalies above threshold.\n"
+                        "3. Set daily spend budgets with AWS Budgets as a secondary control."
+                    ),
+                    reference="https://docs.aws.amazon.com/cost-management/latest/userguide/getting-started-ad.html",
+                    severity="Medium",
+                    status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-04"],
                 )
             )
         else:
@@ -352,11 +644,12 @@ def check_cost_anomaly_detection() -> Dict[str, Any]:
                 create_finding(
                     check_id="FS-04",
                     finding_name="Cost Anomaly Detection Configured",
-                    finding_details=f"Found {len(monitors)} anomaly monitor(s); {len(bedrock_monitors)} appear Bedrock-related.",
+                    finding_details=f"Found {len(monitors)} anomaly monitor(s); {len(bedrock_monitors)} provide Bedrock/SageMaker service-level coverage.",
                     resolution="Verify monitors cover Bedrock and SageMaker service dimensions.",
                     reference="https://docs.aws.amazon.com/cost-management/latest/userguide/getting-started-ad.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-04"],
                 )
             )
     except Exception as e:
@@ -409,6 +702,7 @@ def check_cloudwatch_token_alarms() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-05"],
                 )
             )
         else:
@@ -424,6 +718,7 @@ def check_cloudwatch_token_alarms() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-05"],
                 )
             )
     except Exception as e:
@@ -442,13 +737,38 @@ def check_aws_budgets_for_aiml() -> Dict[str, Any]:
         sts = boto3.client("sts", config=boto3_config)
         account_id = sts.get_caller_identity()["Account"]
 
-        all_budgets = budgets_client.describe_budgets(AccountId=account_id).get(
-            "Budgets", []
-        )
+        def _paginate_budgets(show_filter_expression: bool):
+            kwargs = {"AccountId": account_id}
+            if show_filter_expression:
+                kwargs["ShowFilterExpression"] = True
+            pages = []
+            for page in budgets_client.get_paginator("describe_budgets").paginate(
+                **kwargs
+            ):
+                pages.extend(page.get("Budgets", []))
+            return pages
+
+        # FilterExpression is opt-in: DescribeBudgets only returns it when
+        # ShowFilterExpression=True. Modern budgets use the structured
+        # FilterExpression instead of the deprecated flat CostFilters map.
+        # On an old botocore that does not accept ShowFilterExpression, the call
+        # raises ParamValidationError (NOT a ClientError) — degrade gracefully
+        # to a CostFilters-only check rather than letting the check vanish.
+        try:
+            all_budgets = _paginate_budgets(show_filter_expression=True)
+        except ParamValidationError:
+            logger.warning(
+                "describe_budgets does not accept ShowFilterExpression on this "
+                "botocore; falling back to CostFilters-only budget detection. "
+                "Upgrade botocore to check new-style FilterExpression budgets."
+            )
+            all_budgets = _paginate_budgets(show_filter_expression=False)
+
         aiml_budgets = [
             b for b in all_budgets
             if any(
                 svc in json.dumps(b.get("CostFilters", {})).lower()
+                or svc in json.dumps(b.get("FilterExpression", {})).lower()
                 for svc in ["bedrock", "sagemaker"]
             )
         ]
@@ -471,6 +791,7 @@ def check_aws_budgets_for_aiml() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-06"],
                 )
             )
         else:
@@ -483,6 +804,7 @@ def check_aws_budgets_for_aiml() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-06"],
                 )
             )
     except Exception as e:
@@ -517,6 +839,7 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-permissions.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-07"],
                 )
             )
             return findings
@@ -572,6 +895,7 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-permissions.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-07"],
                 )
             )
         else:
@@ -584,6 +908,7 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-permissions.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-07"],
                 )
             )
     except Exception as e:
@@ -616,6 +941,7 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
                         severity="Low",
                         status="N/A",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-08"],
                     )
                 )
                 return findings
@@ -631,6 +957,7 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-08"],
                 )
             )
         else:
@@ -657,6 +984,7 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
                         severity="High",
                         status="Failed",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-08"],
                     )
                 )
             else:
@@ -669,6 +997,7 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
                         severity="Informational",
                         status="Passed",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-08"],
                     )
                 )
     except Exception as e:
@@ -724,6 +1053,7 @@ def check_agent_transaction_limits() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-09"],
                 )
             )
         else:
@@ -736,6 +1066,7 @@ def check_agent_transaction_limits() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html",
                     severity="Informational",
                     status="Passed" if agent_lambdas else "N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-09"],
                 )
             )
     except Exception as e:
@@ -784,6 +1115,7 @@ def check_human_in_the_loop_for_high_risk_actions() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html#connect-wait-token",
                     severity="Medium",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-10"],
                 )
             )
         elif machines_with_wait:
@@ -796,6 +1128,7 @@ def check_human_in_the_loop_for_high_risk_actions() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html#connect-wait-token",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-10"],
                 )
             )
         else:
@@ -815,6 +1148,7 @@ def check_human_in_the_loop_for_high_risk_actions() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html#connect-wait-token",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-10"],
                 )
             )
     except Exception as e:
@@ -861,6 +1195,7 @@ def check_agent_rate_alarms() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-11"],
                 )
             )
         else:
@@ -873,6 +1208,7 @@ def check_agent_rate_alarms() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-11"],
                 )
             )
     except Exception as e:
@@ -910,6 +1246,7 @@ def check_scp_model_access_restrictions() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html",
                         severity="Low",
                         status="N/A",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-12"],
                     )
                 )
                 return findings
@@ -941,6 +1278,7 @@ def check_scp_model_access_restrictions() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-12"],
                 )
             )
         else:
@@ -953,6 +1291,7 @@ def check_scp_model_access_restrictions() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-12"],
                 )
             )
     except Exception as e:
@@ -1012,6 +1351,7 @@ def check_model_inventory_tagging() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/tagging.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-13"],
                 )
             )
         else:
@@ -1024,6 +1364,7 @@ def check_model_inventory_tagging() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/tagging.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-13"],
                 )
             )
     except Exception as e:
@@ -1066,6 +1407,7 @@ def check_model_onboarding_governance() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/config/latest/developerguide/evaluate-config.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-14"],
                 )
             )
         else:
@@ -1078,6 +1420,7 @@ def check_model_onboarding_governance() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/config/latest/developerguide/evaluate-config.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-14"],
                 )
             )
     except Exception as e:
@@ -1113,6 +1456,7 @@ def check_bedrock_model_evaluation_adversarial() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
                     severity="Medium",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-15"],
                 )
             )
         else:
@@ -1125,6 +1469,7 @@ def check_bedrock_model_evaluation_adversarial() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-15"],
                 )
             )
     except Exception as e:
@@ -1153,6 +1498,7 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-16"],
                 )
             )
             return findings
@@ -1180,6 +1526,7 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-16"],
                 )
             )
         else:
@@ -1192,6 +1539,7 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-16"],
                 )
             )
     except Exception as e:
@@ -1231,6 +1579,7 @@ def check_feature_store_rollback_capability() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-20"],
                 )
             )
             return findings
@@ -1260,6 +1609,7 @@ def check_feature_store_rollback_capability() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-offline.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-20"],
                 )
             )
         else:
@@ -1272,6 +1622,7 @@ def check_feature_store_rollback_capability() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-offline.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-20"],
                 )
             )
     except Exception as e:
@@ -1305,6 +1656,7 @@ def check_training_data_s3_versioning() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-21"],
                 )
             )
             return findings
@@ -1332,6 +1684,7 @@ def check_training_data_s3_versioning() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-21"],
                 )
             )
         else:
@@ -1344,6 +1697,7 @@ def check_training_data_s3_versioning() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-21"],
                 )
             )
     except Exception as e:
@@ -1399,6 +1753,7 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-22"],
                 )
             )
         else:
@@ -1411,6 +1766,7 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-22"],
                 )
             )
     except Exception as e:
@@ -1442,6 +1798,7 @@ def check_knowledge_base_metadata_filtering() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-config.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-24"],
                 )
             )
             return findings
@@ -1464,6 +1821,7 @@ def check_knowledge_base_metadata_filtering() -> Dict[str, Any]:
                 reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-config.html",
                 severity="Medium",
                 status="Passed",
+                compliance_frameworks=COMPLIANCE_MAP["FS-24"],
             )
         )
     except Exception as e:
@@ -1500,6 +1858,7 @@ def check_opensearch_serverless_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html",
                     severity="High",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-25"],
                 )
             )
         else:
@@ -1522,6 +1881,7 @@ def check_opensearch_serverless_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-25"],
                 )
             )
     except Exception as e:
@@ -1559,6 +1919,7 @@ def check_knowledge_base_vpc_access() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-network.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-26"],
                 )
             )
         else:
@@ -1585,6 +1946,7 @@ def check_knowledge_base_vpc_access() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-network.html",
                         severity="High",
                         status="Failed",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-26"],
                     )
                 )
             else:
@@ -1597,6 +1959,7 @@ def check_knowledge_base_vpc_access() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-network.html",
                         severity="Informational",
                         status="Passed",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-26"],
                     )
                 )
     except Exception as e:
@@ -1631,6 +1994,7 @@ def check_automated_reasoning_checks() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
                     severity="Medium",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-27"],
                 )
             )
             return findings
@@ -1661,6 +2025,7 @@ def check_automated_reasoning_checks() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-27"],
                 )
             )
         else:
@@ -1673,6 +2038,7 @@ def check_automated_reasoning_checks() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-27"],
                 )
             )
     except Exception as e:
@@ -1701,6 +2067,7 @@ def check_guardrail_denied_topics_financial() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="Medium",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-28"],
                 )
             )
             return findings
@@ -1728,11 +2095,15 @@ def check_guardrail_denied_topics_financial() -> Dict[str, Any]:
                         "- Specific investment advice (securities recommendations)\n"
                         "- Credit/lending decisions\n"
                         "- Insurance underwriting advice\n"
-                        "- Tax advice beyond general information"
+                        "- Tax advice beyond general information\n"
+                        "When authoring denied-topic policies, use existing compliance materials "
+                        "as the source: employee policies, training materials, procedure documents, "
+                        "and incident reports (as recommended in PDF \u00a71.2.1 Practical guidance)."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-28"],
                 )
             )
         else:
@@ -1741,10 +2112,16 @@ def check_guardrail_denied_topics_financial() -> Dict[str, Any]:
                     check_id="FS-28",
                     finding_name="Guardrails With Topic Policies Found",
                     finding_details=f"Guardrails with topic policies: {', '.join(guardrails_with_topics)}.",
-                    resolution="Verify topics cover regulated financial advice categories.",
+                    resolution=(
+                        "Verify topics cover regulated financial advice categories. "
+                        "When authoring or updating denied-topic policies, use existing compliance "
+                        "materials as the source: employee policies, training materials, procedure "
+                        "documents, and incident reports (as recommended in PDF \u00a71.2.1 Practical guidance)."
+                    ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-28"],
                 )
             )
     except Exception as e:
@@ -1763,7 +2140,7 @@ def check_compliance_disclaimer_in_outputs() -> Dict[str, Any]:
     findings["csv_data"].append(
         create_finding(
             check_id="FS-29",
-            finding_name="Compliance Disclaimer — Manual Review Required",
+            finding_name="ADVISORY: Compliance Disclaimer — Manual Review Required",
             finding_details=(
                 "Application-level compliance disclaimers cannot be verified via AWS APIs. "
                 "Manual review required to confirm GenAI outputs include required regulatory disclosures."
@@ -1775,8 +2152,9 @@ def check_compliance_disclaimer_in_outputs() -> Dict[str, Any]:
                 "4. Test disclaimer presence in QA/UAT before production deployment."
             ),
             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
-            severity="Medium",
-            status="Passed",
+            severity="Informational",
+            status="N/A",
+            compliance_frameworks=COMPLIANCE_MAP["FS-29"],
         )
     )
     return findings
@@ -1808,6 +2186,7 @@ def check_bedrock_evaluation_compliance_datasets() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
                     severity="Medium",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-30"],
                 )
             )
         else:
@@ -1820,6 +2199,7 @@ def check_bedrock_evaluation_compliance_datasets() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-30"],
                 )
             )
     except Exception as e:
@@ -1857,6 +2237,7 @@ def check_knowledge_base_data_source_sync() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-31"],
                 )
             )
             return findings
@@ -1895,6 +2276,7 @@ def check_knowledge_base_data_source_sync() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-31"],
                 )
             )
         else:
@@ -1907,6 +2289,7 @@ def check_knowledge_base_data_source_sync() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-31"],
                 )
             )
     except Exception as e:
@@ -1924,7 +2307,7 @@ def check_source_attribution_in_guardrails() -> Dict[str, Any]:
     findings["csv_data"].append(
         create_finding(
             check_id="FS-32",
-            finding_name="Source Attribution — Manual Review Required",
+            finding_name="ADVISORY: Source Attribution — Manual Review Required",
             finding_details=(
                 "Source attribution in GenAI responses cannot be verified via AWS APIs. "
                 "Manual review required to confirm responses include citations."
@@ -1936,8 +2319,9 @@ def check_source_attribution_in_guardrails() -> Dict[str, Any]:
                 "4. Consider Bedrock Guardrails grounding checks to validate response accuracy."
             ),
             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-config.html",
-            severity="Medium",
-            status="Passed",
+            severity="Informational",
+            status="N/A",
+            compliance_frameworks=COMPLIANCE_MAP["FS-32"],
         )
     )
     return findings
@@ -1969,6 +2353,7 @@ def check_knowledge_base_integrity_monitoring() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-33"],
                 )
             )
             return findings
@@ -2015,6 +2400,7 @@ def check_knowledge_base_integrity_monitoring() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-33"],
                 )
             )
         else:
@@ -2027,6 +2413,7 @@ def check_knowledge_base_integrity_monitoring() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-33"],
                 )
             )
     except Exception as e:
@@ -2070,6 +2457,7 @@ def check_fm_version_currency() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-34"],
                 )
             )
         else:
@@ -2082,6 +2470,7 @@ def check_fm_version_currency() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-34"],
                 )
             )
     except Exception as e:
@@ -2121,6 +2510,7 @@ def check_fmeval_harmful_content() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
                     severity="Medium",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-35"],
                 )
             )
         else:
@@ -2133,6 +2523,7 @@ def check_fmeval_harmful_content() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-35"],
                 )
             )
     except Exception as e:
@@ -2161,6 +2552,7 @@ def check_guardrail_content_filters() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html",
                     severity="High",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-36"],
                 )
             )
             return findings
@@ -2190,6 +2582,7 @@ def check_guardrail_content_filters() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-36"],
                 )
             )
         else:
@@ -2202,6 +2595,7 @@ def check_guardrail_content_filters() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-36"],
                 )
             )
     except Exception as e:
@@ -2219,7 +2613,7 @@ def check_user_feedback_mechanism() -> Dict[str, Any]:
     findings["csv_data"].append(
         create_finding(
             check_id="FS-37",
-            finding_name="User Feedback Mechanism — Manual Review Required",
+            finding_name="ADVISORY: User Feedback Mechanism — Manual Review Required",
             finding_details=(
                 "User feedback mechanisms for harmful outputs cannot be verified via AWS APIs. "
                 "Manual review required."
@@ -2231,8 +2625,9 @@ def check_user_feedback_mechanism() -> Dict[str, Any]:
                 "4. Define SLAs for reviewing flagged content."
             ),
             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
-            severity="Medium",
-            status="Passed",
+            severity="Informational",
+            status="N/A",
+            compliance_frameworks=COMPLIANCE_MAP["FS-37"],
         )
     )
     return findings
@@ -2259,6 +2654,7 @@ def check_guardrail_word_filters() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="Medium",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-38"],
                 )
             )
             return findings
@@ -2290,6 +2686,7 @@ def check_guardrail_word_filters() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-38"],
                 )
             )
         else:
@@ -2302,6 +2699,7 @@ def check_guardrail_word_filters() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-38"],
                 )
             )
     except Exception as e:
@@ -2346,6 +2744,7 @@ def check_sagemaker_clarify_bias() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-monitor-bias-drift.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-39"],
                 )
             )
         else:
@@ -2358,6 +2757,7 @@ def check_sagemaker_clarify_bias() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-monitor-bias-drift.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-39"],
                 )
             )
     except Exception as e:
@@ -2391,6 +2791,7 @@ def check_bedrock_evaluation_bias_datasets() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
                     severity="Medium",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-40"],
                 )
             )
         else:
@@ -2403,6 +2804,7 @@ def check_bedrock_evaluation_bias_datasets() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-40"],
                 )
             )
     except Exception as e:
@@ -2446,6 +2848,7 @@ def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-41"],
                 )
             )
         else:
@@ -2458,6 +2861,7 @@ def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-41"],
                 )
             )
     except Exception as e:
@@ -2495,6 +2899,7 @@ def check_ai_service_cards_documentation() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-cards.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-42"],
                 )
             )
         else:
@@ -2507,6 +2912,7 @@ def check_ai_service_cards_documentation() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-cards.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-42"],
                 )
             )
     except Exception as e:
@@ -2556,6 +2962,7 @@ def check_cloudwatch_log_pii_masking() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/mask-sensitive-log-data.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-43"],
                 )
             )
         else:
@@ -2568,6 +2975,7 @@ def check_cloudwatch_log_pii_masking() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/mask-sensitive-log-data.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-43"],
                 )
             )
     except Exception as e:
@@ -2609,6 +3017,7 @@ def check_macie_on_training_data_buckets() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-44"],
                 )
             )
         else:
@@ -2621,6 +3030,7 @@ def check_macie_on_training_data_buckets() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-44"],
                 )
             )
     except Exception as e:
@@ -2649,6 +3059,7 @@ def check_guardrail_pii_filters() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-sensitive-filters.html",
                     severity="High",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-45"],
                 )
             )
             return findings
@@ -2682,6 +3093,7 @@ def check_guardrail_pii_filters() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-sensitive-filters.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-45"],
                 )
             )
         else:
@@ -2694,6 +3106,7 @@ def check_guardrail_pii_filters() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-sensitive-filters.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-45"],
                 )
             )
     except Exception as e:
@@ -2727,6 +3140,7 @@ def check_data_classification_tagging() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-46"],
                 )
             )
             return findings
@@ -2759,6 +3173,7 @@ def check_data_classification_tagging() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-46"],
                 )
             )
         else:
@@ -2771,6 +3186,7 @@ def check_data_classification_tagging() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-46"],
                 )
             )
     except Exception as e:
@@ -2805,6 +3221,7 @@ def check_guardrail_grounding_threshold() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
                     severity="High",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-47"],
                 )
             )
             return findings
@@ -2838,6 +3255,7 @@ def check_guardrail_grounding_threshold() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-47"],
                 )
             )
         else:
@@ -2850,6 +3268,7 @@ def check_guardrail_grounding_threshold() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-47"],
                 )
             )
     except Exception as e:
@@ -2892,6 +3311,7 @@ def check_rag_knowledge_base_configured() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-48"],
                 )
             )
         else:
@@ -2904,6 +3324,7 @@ def check_rag_knowledge_base_configured() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-48"],
                 )
             )
     except Exception as e:
@@ -2921,7 +3342,7 @@ def check_hallucination_disclaimer_advisory() -> Dict[str, Any]:
     findings["csv_data"].append(
         create_finding(
             check_id="FS-49",
-            finding_name="Hallucination Disclaimer — Manual Review Required",
+            finding_name="ADVISORY: Hallucination Disclaimer — Manual Review Required",
             finding_details=(
                 "Application-level hallucination disclaimers cannot be verified via AWS APIs. "
                 "Manual review required."
@@ -2933,8 +3354,9 @@ def check_hallucination_disclaimer_advisory() -> Dict[str, Any]:
                 "3. Test disclaimer presence in QA before production."
             ),
             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
-            severity="Medium",
-            status="Passed",
+            severity="Informational",
+            status="N/A",
+            compliance_frameworks=COMPLIANCE_MAP["FS-49"],
         )
     )
     return findings
@@ -2979,6 +3401,7 @@ def check_automated_reasoning_checks_hallucination() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-50"],
                 )
             )
         else:
@@ -2991,6 +3414,7 @@ def check_automated_reasoning_checks_hallucination() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-50"],
                 )
             )
     except Exception as e:
@@ -3019,6 +3443,7 @@ def check_prompt_injection_input_validation() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="High",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-51"],
                 )
             )
             return findings
@@ -3052,6 +3477,7 @@ def check_prompt_injection_input_validation() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-51"],
                 )
             )
         else:
@@ -3064,6 +3490,7 @@ def check_prompt_injection_input_validation() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-51"],
                 )
             )
     except Exception as e:
@@ -3097,6 +3524,7 @@ def check_bedrock_sdk_version_currency() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/lambda/latest/dg/runtimes-update.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-52"],
                 )
             )
             return findings
@@ -3127,6 +3555,7 @@ def check_bedrock_sdk_version_currency() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/lambda/latest/dg/runtimes-update.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-52"],
                 )
             )
         else:
@@ -3139,6 +3568,7 @@ def check_bedrock_sdk_version_currency() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/lambda/latest/dg/runtimes-update.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-52"],
                 )
             )
     except Exception as e:
@@ -3167,6 +3597,7 @@ def check_waf_sql_injection_rules() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
                     severity="High",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-53"],
                 )
             )
             return findings
@@ -3210,6 +3641,7 @@ def check_waf_sql_injection_rules() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-53"],
                 )
             )
         else:
@@ -3222,6 +3654,7 @@ def check_waf_sql_injection_rules() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-53"],
                 )
             )
     except Exception as e:
@@ -3239,7 +3672,7 @@ def check_penetration_testing_evidence() -> Dict[str, Any]:
     findings["csv_data"].append(
         create_finding(
             check_id="FS-54",
-            finding_name="Penetration Testing — Manual Review Required",
+            finding_name="ADVISORY: Penetration Testing — Manual Review Required",
             finding_details=(
                 "Penetration testing evidence cannot be verified via AWS APIs. "
                 "Manual review required to confirm GenAI applications have been tested."
@@ -3252,8 +3685,9 @@ def check_penetration_testing_evidence() -> Dict[str, Any]:
                 "5. For DORA compliance, include GenAI in TLPT (Threat-Led Penetration Testing) scope."
             ),
             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-            severity="Medium",
-            status="Passed",
+            severity="Informational",
+            status="N/A",
+            compliance_frameworks=COMPLIANCE_MAP["FS-54"],
         )
     )
     return findings
@@ -3301,6 +3735,7 @@ def check_output_validation_lambda() -> Dict[str, Any]:
                     reference="https://owasp.org/www-project-top-10-for-large-language-model-applications/",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-55"],
                 )
             )
         else:
@@ -3313,6 +3748,7 @@ def check_output_validation_lambda() -> Dict[str, Any]:
                     reference="https://owasp.org/www-project-top-10-for-large-language-model-applications/",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-55"],
                 )
             )
     except Exception as e:
@@ -3340,6 +3776,7 @@ def check_xss_prevention_waf() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
                     severity="High",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-56"],
                 )
             )
             return findings
@@ -3361,6 +3798,7 @@ def check_xss_prevention_waf() -> Dict[str, Any]:
                 reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
                 severity="Medium",
                 status="Passed",
+                compliance_frameworks=COMPLIANCE_MAP["FS-56"],
             )
         )
     except Exception as e:
@@ -3378,7 +3816,7 @@ def check_output_encoding_advisory() -> Dict[str, Any]:
     findings["csv_data"].append(
         create_finding(
             check_id="FS-57",
-            finding_name="Output Encoding — Manual Review Required",
+            finding_name="ADVISORY: Output Encoding — Manual Review Required",
             finding_details=(
                 "Output encoding practices cannot be verified via AWS APIs. "
                 "Manual code review required."
@@ -3390,8 +3828,9 @@ def check_output_encoding_advisory() -> Dict[str, Any]:
                 "4. Validate output length and format before passing to downstream APIs."
             ),
             reference="https://owasp.org/www-project-top-10-for-large-language-model-applications/",
-            severity="Medium",
-            status="Passed",
+            severity="Informational",
+            status="N/A",
+            compliance_frameworks=COMPLIANCE_MAP["FS-57"],
         )
     )
     return findings
@@ -3431,6 +3870,7 @@ def check_output_schema_validation() -> Dict[str, Any]:
                 reference="https://docs.aws.amazon.com/bedrock/latest/userguide/inference-parameters.html",
                 severity="Medium",
                 status="Passed",
+                compliance_frameworks=COMPLIANCE_MAP["FS-58"],
             )
         )
     except Exception as e:
@@ -3459,6 +3899,7 @@ def check_guardrail_topic_allowlist() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="Medium",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-59"],
                 )
             )
             return findings
@@ -3491,6 +3932,7 @@ def check_guardrail_topic_allowlist() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-59"],
                 )
             )
         else:
@@ -3503,6 +3945,7 @@ def check_guardrail_topic_allowlist() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-59"],
                 )
             )
     except Exception as e:
@@ -3521,7 +3964,7 @@ def check_contextual_grounding_for_offtopic() -> Dict[str, Any]:
     findings["csv_data"].append(
         create_finding(
             check_id="FS-60",
-            finding_name="Contextual Grounding for Off-Topic Prevention",
+            finding_name="ADVISORY: Contextual Grounding for Off-Topic Prevention",
             finding_details=(
                 "Contextual grounding for off-topic prevention is covered by guardrail "
                 "grounding checks (FS-47) and RAG configuration (FS-48). "
@@ -3533,8 +3976,9 @@ def check_contextual_grounding_for_offtopic() -> Dict[str, Any]:
                 "3. Test with off-topic prompts in QA to verify rejection behavior."
             ),
             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
-            severity="Low",
-            status="Passed",
+            severity="Informational",
+            status="N/A",
+            compliance_frameworks=COMPLIANCE_MAP["FS-60"],
         )
     )
     return findings
@@ -3567,6 +4011,7 @@ def check_knowledge_base_sync_schedule() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-61"],
                 )
             )
             return findings
@@ -3596,6 +4041,7 @@ def check_knowledge_base_sync_schedule() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-61"],
                 )
             )
         else:
@@ -3608,6 +4054,7 @@ def check_knowledge_base_sync_schedule() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-61"],
                 )
             )
     except Exception as e:
@@ -3625,7 +4072,7 @@ def check_data_currency_disclaimer_advisory() -> Dict[str, Any]:
     findings["csv_data"].append(
         create_finding(
             check_id="FS-62",
-            finding_name="Data Currency Disclaimer — Manual Review Required",
+            finding_name="ADVISORY: Data Currency Disclaimer — Manual Review Required",
             finding_details=(
                 "Data currency disclaimers cannot be verified via AWS APIs. "
                 "Manual review required."
@@ -3637,8 +4084,9 @@ def check_data_currency_disclaimer_advisory() -> Dict[str, Any]:
                 "3. Alert users when KB data is older than defined threshold."
             ),
             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
-            severity="Low",
-            status="Passed",
+            severity="Informational",
+            status="N/A",
+            compliance_frameworks=COMPLIANCE_MAP["FS-62"],
         )
     )
     return findings
@@ -3691,6 +4139,7 @@ def check_foundation_model_lifecycle_policy() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-63"],
                 )
             )
         else:
@@ -3706,6 +4155,7 @@ def check_foundation_model_lifecycle_policy() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-63"],
                 )
             )
     except Exception as e:
@@ -3745,6 +4195,7 @@ def check_kb_datasource_s3_event_notifications() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/NotificationHowTo.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-65"],
                 )
             )
             return findings
@@ -3801,6 +4252,7 @@ def check_kb_datasource_s3_event_notifications() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/EventBridge.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-65"],
                 )
             )
         else:
@@ -3813,6 +4265,7 @@ def check_kb_datasource_s3_event_notifications() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/EventBridge.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-65"],
                 )
             )
     except Exception as e:
@@ -3843,6 +4296,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
                         severity="Low",
                         status="N/A",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-66"],
                     )
                 )
                 return findings
@@ -3861,6 +4315,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
                     severity="Informational",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-66"],
                 )
             )
             return findings
@@ -3893,6 +4348,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
                     severity="High",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-66"],
                 )
             )
         else:
@@ -3905,6 +4361,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-66"],
                 )
             )
     except Exception as e:
@@ -3952,6 +4409,7 @@ def check_agent_financial_transaction_thresholds() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-engine.html",
                     severity="High",
                     status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-67"],
                 )
             )
         else:
@@ -3987,6 +4445,7 @@ def check_agent_financial_transaction_thresholds() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-engine.html",
                         severity="High",
                         status="Failed",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-67"],
                     )
                 )
             else:
@@ -4002,6 +4461,7 @@ def check_agent_financial_transaction_thresholds() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-engine.html",
                         severity="Informational",
                         status="Passed",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-67"],
                     )
                 )
     except Exception as e:
@@ -4019,7 +4479,6 @@ def check_api_gateway_request_body_size_limits() -> Dict[str, Any]:
     findings = _empty_findings("API Gateway Request Body Size Limits Check")
     try:
         apigw = boto3.client("apigateway", config=boto3_config)
-        apigwv2 = boto3.client("apigatewayv2", config=boto3_config)
         wafv2 = boto3.client("wafv2", config=boto3_config)
 
         # Check REST APIs for request validators
@@ -4074,6 +4533,7 @@ def check_api_gateway_request_body_size_limits() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-68"],
                 )
             )
         else:
@@ -4089,6 +4549,7 @@ def check_api_gateway_request_body_size_limits() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-68"],
                 )
             )
     except Exception as e:
@@ -4144,6 +4605,7 @@ def check_prompt_input_validation_function() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-injection.html",
                     severity="Medium",
                     status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-69"],
                 )
             )
         else:
@@ -4163,6 +4625,7 @@ def check_prompt_input_validation_function() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-injection.html",
                     severity="Informational",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-69"],
                 )
             )
     except Exception as e:
@@ -4185,6 +4648,7 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
         "Reference",
         "Severity",
         "Status",
+        "Compliance_Frameworks",
     ]
     writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
     writer.writeheader()
@@ -4204,8 +4668,103 @@ def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
     return f"https://{bucket_name}.s3.amazonaws.com/{file_name}"
 
 
+def build_finserv_checks(permission_cache):
+    """
+    Single source of truth: ordered (check_id, zero-arg callable) registry of
+    all FinServ checks, in execution order (FS-01 → FS-69, skipping the ids
+    merged into upstream: FS-17/18/19/23/64). The two permission-cache checks
+    are bound with functools.partial so every entry is uniformly zero-arg.
+
+    Driving the handler from this registry lets us attach the correct Check_ID
+    to a synthesized "could not assess" row when a check errors out, instead of
+    silently dropping the check from the report.
+    """
+    return [
+        # --- Category 1: Unbounded Consumption ---
+        ("FS-01", check_waf_shield_on_bedrock_endpoints),
+        ("FS-02", check_api_gateway_rate_limiting),
+        ("FS-03", check_bedrock_token_quotas),
+        ("FS-04", check_cost_anomaly_detection),
+        ("FS-05", check_cloudwatch_token_alarms),
+        ("FS-06", check_aws_budgets_for_aiml),
+        # --- Category 2: Excessive Agency ---
+        ("FS-07", functools.partial(check_bedrock_agent_action_boundaries, permission_cache)),
+        ("FS-08", check_agentcore_policy_engine),
+        ("FS-09", check_agent_transaction_limits),
+        ("FS-10", check_human_in_the_loop_for_high_risk_actions),
+        ("FS-11", check_agent_rate_alarms),
+        # --- Category 3: Supply Chain Vulnerabilities ---
+        ("FS-12", check_scp_model_access_restrictions),
+        ("FS-13", check_model_inventory_tagging),
+        ("FS-14", check_model_onboarding_governance),
+        ("FS-15", check_bedrock_model_evaluation_adversarial),
+        ("FS-16", check_ecr_image_scanning),
+        # --- Category 4: Training Data & Model Poisoning ---
+        ("FS-20", check_feature_store_rollback_capability),
+        ("FS-21", check_training_data_s3_versioning),
+        # --- Category 5: Vector & Embedding Weaknesses ---
+        ("FS-22", functools.partial(check_knowledge_base_iam_least_privilege, permission_cache)),
+        ("FS-24", check_knowledge_base_metadata_filtering),
+        ("FS-25", check_opensearch_serverless_encryption),
+        ("FS-26", check_knowledge_base_vpc_access),
+        # --- Category 6: Non-Compliant Output ---
+        ("FS-27", check_automated_reasoning_checks),
+        ("FS-28", check_guardrail_denied_topics_financial),
+        ("FS-29", check_compliance_disclaimer_in_outputs),
+        ("FS-30", check_bedrock_evaluation_compliance_datasets),
+        # --- Category 7: Misinformation ---
+        ("FS-31", check_knowledge_base_data_source_sync),
+        ("FS-32", check_source_attribution_in_guardrails),
+        ("FS-33", check_knowledge_base_integrity_monitoring),
+        ("FS-34", check_fm_version_currency),
+        # --- Category 8: Abusive or Harmful Output ---
+        ("FS-35", check_fmeval_harmful_content),
+        ("FS-36", check_guardrail_content_filters),
+        ("FS-37", check_user_feedback_mechanism),
+        ("FS-38", check_guardrail_word_filters),
+        # --- Category 9: Biased Output ---
+        ("FS-39", check_sagemaker_clarify_bias),
+        ("FS-40", check_bedrock_evaluation_bias_datasets),
+        ("FS-41", check_sagemaker_clarify_explainability),
+        ("FS-42", check_ai_service_cards_documentation),
+        # --- Category 10: Sensitive Information Disclosure ---
+        ("FS-43", check_cloudwatch_log_pii_masking),
+        ("FS-44", check_macie_on_training_data_buckets),
+        ("FS-45", check_guardrail_pii_filters),
+        ("FS-46", check_data_classification_tagging),
+        # --- Category 11: Hallucination ---
+        ("FS-47", check_guardrail_grounding_threshold),
+        ("FS-48", check_rag_knowledge_base_configured),
+        ("FS-49", check_hallucination_disclaimer_advisory),
+        ("FS-50", check_automated_reasoning_checks_hallucination),
+        # --- Category 12: Prompt Injection ---
+        ("FS-51", check_prompt_injection_input_validation),
+        ("FS-52", check_bedrock_sdk_version_currency),
+        ("FS-53", check_waf_sql_injection_rules),
+        ("FS-54", check_penetration_testing_evidence),
+        # --- Category 13: Improper Output Handling ---
+        ("FS-55", check_output_validation_lambda),
+        ("FS-56", check_xss_prevention_waf),
+        ("FS-57", check_output_encoding_advisory),
+        ("FS-58", check_output_schema_validation),
+        # --- Category 14: Off-Topic & Inappropriate Output ---
+        ("FS-59", check_guardrail_topic_allowlist),
+        ("FS-60", check_contextual_grounding_for_offtopic),
+        # --- Category 15: Out-of-Date Training Data ---
+        ("FS-61", check_knowledge_base_sync_schedule),
+        ("FS-62", check_data_currency_disclaimer_advisory),
+        ("FS-63", check_foundation_model_lifecycle_policy),
+        # --- Material Gap Checks (FS-65 to FS-69) ---
+        ("FS-65", check_kb_datasource_s3_event_notifications),
+        ("FS-66", check_agentcore_end_user_identity_propagation),
+        ("FS-67", check_agent_financial_transaction_thresholds),
+        ("FS-68", check_api_gateway_request_body_size_limits),
+        ("FS-69", check_prompt_input_validation_function),
+    ]
+
+
 def lambda_handler(event, context):
-    """Main Lambda handler — runs all 69 FinServ security checks."""
+    """Main Lambda handler — runs all 64 FinServ security checks."""
     logger.info("Starting FinServ GenAI security assessment")
     all_findings = []
 
@@ -4215,108 +4774,20 @@ def lambda_handler(event, context):
         "user_permissions": {},
     }
 
-    # --- Category 1: Unbounded Consumption ---
-    all_findings.append(check_waf_shield_on_bedrock_endpoints())
-    all_findings.append(check_api_gateway_rate_limiting())
-    all_findings.append(check_bedrock_token_quotas())
-    all_findings.append(check_cost_anomaly_detection())
-    all_findings.append(check_cloudwatch_token_alarms())
-    all_findings.append(check_aws_budgets_for_aiml())
-
-    # --- Category 2: Excessive Agency ---
-    all_findings.append(check_bedrock_agent_action_boundaries(permission_cache))
-    all_findings.append(check_agentcore_policy_engine())
-    all_findings.append(check_agent_transaction_limits())
-    all_findings.append(check_human_in_the_loop_for_high_risk_actions())
-    all_findings.append(check_agent_rate_alarms())
-
-    # --- Category 3: Supply Chain Vulnerabilities ---
-    all_findings.append(check_scp_model_access_restrictions())
-    all_findings.append(check_model_inventory_tagging())
-    all_findings.append(check_model_onboarding_governance())
-    all_findings.append(check_bedrock_model_evaluation_adversarial())
-    all_findings.append(check_ecr_image_scanning())
-
-    # --- Category 4: Training Data & Model Poisoning ---
-    # NOTE: FS-17 (check_sagemaker_model_monitor_data_quality), FS-18 (check_sagemaker_model_monitor_drift),
-    # and FS-19 (check_sagemaker_model_registry_approval) are merged into upstream SM-07, SM-23, SM-22
-    # respectively — see extension notes in SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md.
-    all_findings.append(check_feature_store_rollback_capability())
-    all_findings.append(check_training_data_s3_versioning())
-
-    # --- Category 5: Vector & Embedding Weaknesses ---
-    all_findings.append(check_knowledge_base_iam_least_privilege(permission_cache))
-    # NOTE: FS-23 (check_knowledge_base_cloudtrail_logging) is merged into upstream BR-06
-    # — see extension note in SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md.
-    all_findings.append(check_knowledge_base_metadata_filtering())
-    all_findings.append(check_opensearch_serverless_encryption())
-    all_findings.append(check_knowledge_base_vpc_access())
-
-    # --- Category 6: Non-Compliant Output ---
-    all_findings.append(check_automated_reasoning_checks())
-    all_findings.append(check_guardrail_denied_topics_financial())
-    all_findings.append(check_compliance_disclaimer_in_outputs())
-    all_findings.append(check_bedrock_evaluation_compliance_datasets())
-
-    # --- Category 7: Misinformation ---
-    all_findings.append(check_knowledge_base_data_source_sync())
-    all_findings.append(check_source_attribution_in_guardrails())
-    all_findings.append(check_knowledge_base_integrity_monitoring())
-    all_findings.append(check_fm_version_currency())
-
-    # --- Category 8: Abusive or Harmful Output ---
-    all_findings.append(check_fmeval_harmful_content())
-    all_findings.append(check_guardrail_content_filters())
-    all_findings.append(check_user_feedback_mechanism())
-    all_findings.append(check_guardrail_word_filters())
-
-    # --- Category 9: Biased Output ---
-    all_findings.append(check_sagemaker_clarify_bias())
-    all_findings.append(check_bedrock_evaluation_bias_datasets())
-    all_findings.append(check_sagemaker_clarify_explainability())
-    all_findings.append(check_ai_service_cards_documentation())
-
-    # --- Category 10: Sensitive Information Disclosure ---
-    all_findings.append(check_cloudwatch_log_pii_masking())
-    all_findings.append(check_macie_on_training_data_buckets())
-    all_findings.append(check_guardrail_pii_filters())
-    all_findings.append(check_data_classification_tagging())
-
-    # --- Category 11: Hallucination ---
-    all_findings.append(check_guardrail_grounding_threshold())
-    all_findings.append(check_rag_knowledge_base_configured())
-    all_findings.append(check_hallucination_disclaimer_advisory())
-    all_findings.append(check_automated_reasoning_checks_hallucination())
-
-    # --- Category 12: Prompt Injection ---
-    all_findings.append(check_prompt_injection_input_validation())
-    all_findings.append(check_bedrock_sdk_version_currency())
-    all_findings.append(check_waf_sql_injection_rules())
-    all_findings.append(check_penetration_testing_evidence())
-
-    # --- Category 13: Improper Output Handling ---
-    all_findings.append(check_output_validation_lambda())
-    all_findings.append(check_xss_prevention_waf())
-    all_findings.append(check_output_encoding_advisory())
-    all_findings.append(check_output_schema_validation())
-
-    # --- Category 14: Off-Topic & Inappropriate Output ---
-    all_findings.append(check_guardrail_topic_allowlist())
-    all_findings.append(check_contextual_grounding_for_offtopic())
-
-    # --- Category 15: Out-of-Date Training Data ---
-    all_findings.append(check_knowledge_base_sync_schedule())
-    all_findings.append(check_data_currency_disclaimer_advisory())
-    all_findings.append(check_foundation_model_lifecycle_policy())
-
-    # --- Material Gap Checks (FS-65 to FS-69) ---
-    # NOTE: FS-64 (check_guardrail_trace_logging) is merged into upstream BR-04
-    # — see extension note in SECURITY_CHECKS_FINSERV_PART3_APP_LAYER_AND_GAPS.md.
-    all_findings.append(check_kb_datasource_s3_event_notifications())
-    all_findings.append(check_agentcore_end_user_identity_propagation())
-    all_findings.append(check_agent_financial_transaction_thresholds())
-    all_findings.append(check_api_gateway_request_body_size_limits())
-    all_findings.append(check_prompt_input_validation_function())
+    # Run every check from the registry. If a check errors out and produces no
+    # rows, synthesize a visible "could not assess" row (keyed by its Check_ID)
+    # so the gap surfaces in the report instead of the check silently vanishing.
+    for check_id, check_fn in build_finserv_checks(permission_cache):
+        result = check_fn()
+        if result.get("status") == "ERROR" and not result.get("csv_data"):
+            result["csv_data"].append(
+                _could_not_assess_row(
+                    check_id,
+                    result.get("check_name", check_id),
+                    result.get("details", ""),
+                )
+            )
+        all_findings.append(result)
 
     # Generate and upload report
     csv_content = generate_csv_report(all_findings)
