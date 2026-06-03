@@ -204,9 +204,10 @@ Resources:
                   - guardduty:GetUsageStatistics
                 Resource: "*"
               # FinServ GenAI Risk Assessment Permissions (FS-01 to FS-69)
-              # These read-only actions are required by the 64 FinServ security checks.
-              # All are list/describe/get variants; Resource: "*" is required for
-              # inventory-style checks where resource ARNs are not known in advance.
+              # Read-only list/describe/get actions required by the 64 FinServ
+              # security checks. Resource: "*" is required for inventory-style
+              # checks where resource ARNs are not known in advance. Validated
+              # with cfn-lint (no unrecognized actions).
               - Effect: Allow
                 Sid: FinServGenAIRiskAssessmentPermissions
                 Action:
@@ -216,40 +217,63 @@ Resources:
                   - shield:DescribeSubscription
                   # API Gateway (FS-02, FS-68, FS-69)
                   - apigateway:GET
+                  # Service Quotas (FS-03)
+                  - servicequotas:ListServiceQuotas
+                  - servicequotas:ListAWSDefaultServiceQuotas
                   # Cost Explorer / Budgets (FS-04, FS-06)
                   - ce:GetAnomalyMonitors
-                  - budgets:DescribeBudgets
-                  # CloudWatch (FS-05, FS-11)
+                  - budgets:ViewBudget
+                  # CloudWatch / Logs (FS-05, FS-11, FS-43)
                   - cloudwatch:DescribeAlarms
-                  # CloudWatch Logs — account-level data protection policies (FS-43)
                   - logs:DescribeAccountPolicies
-                  # Lambda — concurrency limits for agent transaction checks (FS-09, FS-67, FS-69)
+                  # Bedrock — guardrails, models, evaluation (FS-15, FS-27..50, FS-59..63)
+                  - bedrock:ListGuardrails
+                  - bedrock:GetGuardrail
+                  - bedrock:ListFoundationModels
+                  - bedrock:ListCustomModels
+                  - bedrock:ListEvaluationJobs
+                  # Bedrock — agents and knowledge bases (FS-07, FS-24, FS-31, FS-33, FS-48, FS-61, FS-65)
+                  - bedrock:ListAgents
+                  - bedrock:GetAgent
+                  - bedrock:ListKnowledgeBases
+                  - bedrock:GetKnowledgeBase
+                  - bedrock:ListDataSources
+                  - bedrock:GetDataSource
+                  # Bedrock AgentCore (FS-08, FS-66)
+                  - bedrock-agentcore:ListAgentRuntimes
+                  - bedrock-agentcore:GetAgentRuntime
+                  - bedrock-agentcore:ListGateways
+                  - bedrock-agentcore:GetGateway
+                  # Lambda — concurrency / agent transaction checks (FS-09, FS-67, FS-69)
+                  - lambda:ListFunctions
                   - lambda:GetFunctionConcurrency
-                  # Step Functions — human-in-the-loop and agent rate checks (FS-10, FS-11)
+                  # Step Functions — human-in-the-loop / rate checks (FS-10, FS-11)
                   - states:ListStateMachines
                   - states:DescribeStateMachine
                   # Organizations — SCP model access restrictions (FS-12)
                   - organizations:ListPolicies
                   - organizations:DescribePolicy
-                  # SageMaker — model cards documentation (FS-42)
+                  # SageMaker — inventory / monitoring / bias / cards (FS-13, FS-20, FS-39..42, FS-61, FS-63)
+                  - sagemaker:ListMonitoringSchedules
+                  - sagemaker:ListFeatureGroups
+                  - sagemaker:ListModels
                   - sagemaker:ListModelCards
-                  # Bedrock — evaluation jobs, foundation models (FS-15, FS-30, FS-34, FS-40)
-                  - bedrock:ListEvaluationJobs
-                  - bedrock:ListFoundationModels
-                  # Bedrock — model package groups (supply chain / FS-13, FS-14)
-                  - bedrock:ListModelPackageGroups
-                  # Macie — PII detection on training data buckets (FS-44)
-                  - macie2:GetMacieSession
-                  # OpenSearch Serverless — KB vector store encryption/VPC (FS-25, FS-26)
+                  - sagemaker:ListTags
+                  # S3 — bucket metadata (FS-20, FS-21, FS-46, FS-65)
+                  - s3:ListAllMyBuckets
+                  - s3:GetBucketVersioning
+                  - s3:GetBucketTagging
+                  - s3:GetBucketNotification
+                  # ECR — image scanning (FS-16)
+                  - ecr:DescribeRepositories
+                  # OpenSearch Serverless — KB vector store (FS-25, FS-26)
                   - aoss:ListSecurityPolicies
+                  # Macie — PII detection on training data (FS-44)
+                  - macie2:GetMacieSession
                   # EventBridge — KB integrity monitoring (FS-33, FS-65)
                   - events:ListRules
                   # Config — model onboarding governance (FS-14)
                   - config:DescribeConfigRules
-                  # S3 — list all buckets for training data versioning checks (FS-21, FS-44)
-                  - s3:ListAllMyBuckets
-                  # SageMaker — list tags for model inventory provenance checks (FS-13)
-                  - sagemaker:ListTags
                 Resource: "*"
               # Allow access to central assessment bucket
               - Effect: Allow
@@ -366,52 +390,6 @@ Resources:
                   - "arn:aws:s3:::aws-sam-cli-managed-default-*"
                   - "arn:aws:s3:::aws-sam-cli-managed-default-*/*"
 
-              # FinServ GenAI Risk Assessment Permissions (FS-01 to FS-69)
-              - Effect: Allow
-                Action:
-                  # WAF / Shield (FS-01, FS-51..54)
-                  - wafv2:ListWebACLs
-                  - wafv2:GetWebACL
-                  - shield:DescribeSubscription
-                  # API Gateway (FS-02, FS-68)
-                  - apigateway:GET
-                  # Service Quotas (FS-03)
-                  - servicequotas:ListServiceQuotas
-                  - servicequotas:ListAWSDefaultServiceQuotas
-                  # Cost / Budgets (FS-04, FS-06)
-                  - ce:GetAnomalyMonitors
-                  - budgets:ViewBudget
-                  # CloudWatch (FS-05, FS-11, FS-21, FS-33, FS-46)
-                  - cloudwatch:DescribeAlarms
-                  - cloudwatch:ListMetrics
-                  # CloudWatch Logs (FS-43, FS-64)
-                  - logs:DescribeAccountPolicies
-                  # Bedrock — guardrail and evaluation (FS-27..30, FS-36..38, FS-43..45, FS-47..50, FS-59..60)
-                  - bedrock:ListEvaluationJobs
-                  - bedrock:GetEvaluationJob
-                  - bedrock:ListFoundationModels
-                  # Bedrock Agent — runtimes and data sources (FS-31, FS-65)
-                  - bedrock-agent:ListDataSources
-                  - bedrock-agent:GetDataSource
-                  # SageMaker — additional inventory (FS-42, FS-61, FS-63)
-                  - sagemaker:ListModelCards
-                  - sagemaker:ListTags
-                  # S3 — additional bucket metadata (FS-20, FS-46, FS-65)
-                  - s3:ListAllMyBuckets
-                  - s3:GetBucketNotification
-                  # ECR — image-scan findings (FS-16)
-                  - ecr:DescribeImageScanFindings
-                  # OpenSearch Serverless (FS-25, FS-26)
-                  - aoss:ListSecurityPolicies
-                  # Macie — PII protection (FS-44)
-                  - macie2:GetMacieSession
-                  # EventBridge / Config (FS-32, FS-34)
-                  - events:ListRules
-                  - config:DescribeConfigRules
-                  # Organizations — SCPs (FS-12)
-                  - organizations:ListPolicies
-                  - organizations:DescribePolicy
-                Resource: "*"
 
 Outputs:
   MemberRoleArn:

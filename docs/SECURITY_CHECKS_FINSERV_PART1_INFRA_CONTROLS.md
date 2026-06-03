@@ -319,8 +319,8 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 |-------|--------|
 | Severity | High |
 | PDF ref | [PDF §1.2.14] — "Use trusted data sources for your training data. Implement audit controls that let you track and review changes, including who made them and when they occurred." |
-| Description | Verifies S3 buckets with training data have versioning enabled and CloudTrail data-event logging active to record who modified training data and when. |
-| Detection | Identifies training-data S3 buckets by tag (`data-classification=training` or `ml-purpose=training`) or by naming convention. Calls `s3:GetBucketVersioning` to verify `Status=Enabled`. Calls `cloudtrail:GetEventSelectors` on active trails to verify S3 data events are logged for these buckets. |
+| Description | Verifies S3 buckets used for training data have versioning enabled so poisoned datasets can be rolled back. Recommends CloudTrail data-event logging as remediation to record who modified training data and when. |
+| Detection | Identifies training-data S3 buckets by naming convention (`train`/`dataset`/`model`/`sagemaker`/`bedrock`). Calls `s3:GetBucketVersioning` to verify `Status=Enabled`. (CloudTrail data-event logging is recommended in remediation but is not asserted by this check — verifying it is covered by the upstream BR-06 CloudTrail control and the FS-23 extension.) |
 | Remediation | 1. Enable versioning: `aws s3api put-bucket-versioning --bucket <name> --versioning-configuration Status=Enabled`. 2. Enable CloudTrail S3 data events for the training-data buckets to capture PutObject/DeleteObject with caller identity. 3. Enable MFA Delete for critical training datasets. 4. Apply S3 Object Lock for immutable baselines. |
 | Reference | [S3 Versioning](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html), [CloudTrail Data Events](https://docs.aws.amazon.com/awscloudtrail/latest/userguide/logging-data-events-with-cloudtrail.html) |
 

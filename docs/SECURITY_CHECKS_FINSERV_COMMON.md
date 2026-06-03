@@ -61,7 +61,6 @@ availability of new features (Automated Reasoning, AgentCore Policy, AWS Securit
 cross-account guardrails) evolves rapidly — region lists in Parts 1-3 reflect the state at the
 cited announcement date and should be re-verified before audit reliance.
 
-
 ## Contribution workflow
 
 The FS checks are contributed upstream as a single pull request via a personal GitHub fork
@@ -132,7 +131,6 @@ whether the FS check adds FinServ-specific regulatory specificity, (3) severity 
 - **Keep separate (64 FS checks):** All other FS checks ship as standalone entries. This includes FS-20, FS-22, FS-25, FS-26, FS-39, FS-41, all Guardrail-policy-level checks (FS-27, FS-28, FS-36, FS-38, FS-45, FS-47, FS-50, FS-51, FS-59), and all FS checks that have no upstream overlap at all.
 
 After consolidation the combined framework contains **52 upstream + 64 FS = 116 distinct checks** (down from 52 + 69 = 121 before merging). The consolidation reduces duplication without losing FinServ-specific regulatory depth.
-
 
 
 ---

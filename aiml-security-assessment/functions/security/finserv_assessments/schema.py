@@ -4,7 +4,7 @@ Mirrors the schema used in bedrock_assessments/schema.py.
 """
 from enum import Enum
 from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 import re
 
 
@@ -48,7 +48,8 @@ class Finding(BaseModel):
         ),
     )
 
-    @validator("Check_ID")
+    @field_validator("Check_ID")
+    @classmethod
     def validate_check_id(cls, v):
         # Allow FS-NN pattern for FinServ checks
         pattern = r"^[A-Z]{2,3}-\d{2}$"
@@ -58,7 +59,8 @@ class Finding(BaseModel):
             )
         return v
 
-    @validator("Reference")
+    @field_validator("Reference")
+    @classmethod
     def validate_reference_url(cls, v):
         if not str(v).startswith("https://"):
             raise ValueError("Reference URL must start with https://")

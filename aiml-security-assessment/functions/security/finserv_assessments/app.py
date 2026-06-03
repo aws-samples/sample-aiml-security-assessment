@@ -20,9 +20,9 @@ Part 1 and Part 3 markdown files.
 
 These checks complement the existing BR/SM/AC checks in the AIML Security Assessment.
 
-COMPLIANCE_PLACEHOLDER: Each check includes a comment listing the FinServ regulatory
-frameworks it maps to. The prototype report owner should wire these into the compliance
-standards column of the HTML report template.
+COMPLIANCE_PLACEHOLDER: Each check maps to FinServ regulatory frameworks via the
+COMPLIANCE_MAP dict below. These mappings now travel with every finding row in the
+CSV report (the Compliance_Frameworks column) — see COMPLIANCE_MAP and create_finding.
 Frameworks referenced: FFIEC CAT, SR 11-7, NYDFS 500.06, PCI-DSS 12.3.2, SOC 2 CC6,
 ISO 27001 A.12, DORA Art.6, MAS TRM 9.
 
@@ -92,6 +92,63 @@ def _empty_findings(check_name: str) -> Dict[str, Any]:
     return {"check_name": check_name, "status": "PASS", "details": "", "csv_data": []}
 
 
+def _bucket_name_from_arn(bucket_arn: str) -> str:
+    """Extract the bucket name from an S3 bucket ARN (arn:aws:s3:::name).
+
+    Returns "" when the value is empty or is not a well-formed S3 bucket ARN, so
+    a malformed/unexpected value is skipped rather than mistakenly used as a
+    bucket name (which would then fail the subsequent S3 API call)."""
+    if not bucket_arn or ":::" not in bucket_arn:
+        return ""
+    return bucket_arn.split(":::", 1)[1]
+
+
+def _paginate(client, operation_name: str, result_key: str, **kwargs) -> List[Dict[str, Any]]:
+    """Collect all items across pages for a paginated list/describe operation by
+    calling the operation directly and following its continuation token.
+
+    Calling the bound method directly (rather than via get_paginator) keeps this
+    uniform across services and unit-test mocks. The AWS APIs this Lambda uses
+    employ three continuation-token conventions, all handled here:
+      - NextToken / NextToken            (organizations, sagemaker, config, events, ...)
+      - nextToken / nextToken            (bedrock, bedrock-agent, ecr, ...)
+      - Marker / NextMarker              (lambda)
+      - position / position              (apigateway)
+
+    A single-page response (no continuation token) yields exactly one call, so
+    this is a safe drop-in for previously non-paginated reads and for mocks that
+    stub the operation with a single return value.
+    """
+    # (output token field in response, input token kwarg on request)
+    token_conventions = [
+        ("NextToken", "NextToken"),
+        ("nextToken", "nextToken"),
+        ("NextMarker", "Marker"),
+        ("position", "position"),
+    ]
+    method = getattr(client, operation_name)
+    items: List[Dict[str, Any]] = []
+    call_kwargs = dict(kwargs)
+    seen_tokens = set()
+    while True:
+        resp = method(**call_kwargs)
+        items.extend(resp.get(result_key, []) or [])
+        next_token = None
+        input_field = None
+        for out_field, in_field in token_conventions:
+            if resp.get(out_field):
+                next_token = resp[out_field]
+                input_field = in_field
+                break
+        # Stop when there is no token, or if a token repeats (guards against a
+        # mock that returns the same token every call → infinite loop).
+        if not next_token or next_token in seen_tokens:
+            break
+        seen_tokens.add(next_token)
+        call_kwargs[input_field] = next_token
+    return items
+
+
 def _error_findings(check_name: str, err: Exception) -> Dict[str, Any]:
     return {
         "check_name": check_name,
@@ -99,6 +156,31 @@ def _error_findings(check_name: str, err: Exception) -> Dict[str, Any]:
         "details": str(err),
         "csv_data": [],
     }
+
+
+# Error codes that mean "we were not allowed to read this resource" rather than
+# "the control is absent." Treating an access error as a compliance failure
+# produces a false non-compliant finding caused purely by a missing permission
+# (the credibility problem a compliance tool must avoid).
+_ACCESS_ERROR_CODES = frozenset(
+    {
+        "AccessDenied",
+        "AccessDeniedException",
+        "UnauthorizedOperation",
+        "AuthorizationError",
+        "Forbidden",
+    }
+)
+
+
+def _is_access_error(err: "ClientError") -> bool:
+    """True if a ClientError is a permission/authorization error (not a real
+    'control absent' signal). Used so a missing IAM permission surfaces as a
+    could-not-assess condition instead of a false non-compliant finding."""
+    try:
+        return err.response.get("Error", {}).get("Code", "") in _ACCESS_ERROR_CODES
+    except AttributeError:
+        return False
 
 
 # Findings whose name starts with this prefix were emitted because the check
@@ -351,7 +433,7 @@ def check_api_gateway_rate_limiting() -> Dict[str, Any]:
     findings = _empty_findings("API Gateway Rate Limiting Check")
     try:
         apigw = boto3.client("apigateway", config=boto3_config)
-        plans = apigw.get_usage_plans().get("items", [])
+        plans = _paginate(apigw, "get_usage_plans", "items")
 
         plans_without_throttle = [
             p["name"]
@@ -574,7 +656,18 @@ def check_cost_anomaly_detection() -> Dict[str, Any]:
     findings = _empty_findings("Cost Anomaly Detection Check")
     try:
         ce = boto3.client("ce", config=boto3_config)
-        monitors = ce.get_anomaly_monitors().get("AnomalyMonitors", [])
+        # get_anomaly_monitors is paginated (NextPageToken). Read every page so a
+        # Bedrock-covering monitor beyond the first page is not missed (which would
+        # otherwise produce a false "no coverage" finding).
+        monitors = []
+        next_token = None
+        while True:
+            kwargs = {"NextPageToken": next_token} if next_token else {}
+            resp = ce.get_anomaly_monitors(**kwargs)
+            monitors.extend(resp.get("AnomalyMonitors", []))
+            next_token = resp.get("NextPageToken")
+            if not next_token:
+                break
 
         # A monitor provides Bedrock/SageMaker service-level coverage if its
         # spec mentions bedrock (rarely populated for DIMENSIONAL+SERVICE
@@ -1014,7 +1107,7 @@ def check_agent_transaction_limits() -> Dict[str, Any]:
     findings = _empty_findings("Agent Transaction Limits Check")
     try:
         lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = lambda_client.list_functions().get("Functions", [])
+        functions = _paginate(lambda_client, "list_functions", "Functions")
 
         # Look for agent-related Lambda functions without reserved concurrency
         agent_lambdas = [
@@ -1232,8 +1325,8 @@ def check_scp_model_access_restrictions() -> Dict[str, Any]:
     try:
         orgs = boto3.client("organizations", config=boto3_config)
         try:
-            policies = orgs.list_policies(Filter="SERVICE_CONTROL_POLICY").get(
-                "Policies", []
+            policies = _paginate(
+                orgs, "list_policies", "Policies", Filter="SERVICE_CONTROL_POLICY"
             )
         except ClientError as e:
             if "AccessDenied" in str(e) or "AWSOrganizationsNotInUseException" in str(e):
@@ -1314,7 +1407,7 @@ def check_model_inventory_tagging() -> Dict[str, Any]:
         untagged_models = []
 
         # Check Bedrock custom models
-        for model in bedrock.list_custom_models().get("modelSummaries", []):
+        for model in _paginate(bedrock, "list_custom_models", "modelSummaries"):
             tags_response = bedrock.list_tags_for_resource(resourceARN=model["modelArn"])
             tag_keys = {t["key"].lower() for t in tags_response.get("tags", [])}
             missing = REQUIRED_TAGS - tag_keys
@@ -1324,7 +1417,7 @@ def check_model_inventory_tagging() -> Dict[str, Any]:
                 )
 
         # Check SageMaker registered models
-        for model in sm.list_models().get("Models", []):
+        for model in _paginate(sm, "list_models", "Models"):
             tags_response = sm.list_tags(ResourceArn=model["ModelArn"])
             tag_keys = {t["Key"].lower() for t in tags_response.get("Tags", [])}
             missing = REQUIRED_TAGS - tag_keys
@@ -1381,7 +1474,7 @@ def check_model_onboarding_governance() -> Dict[str, Any]:
     findings = _empty_findings("Model Onboarding Governance Check")
     try:
         config = boto3.client("config", config=boto3_config)
-        rules = config.describe_config_rules().get("ConfigRules", [])
+        rules = _paginate(config, "describe_config_rules", "ConfigRules")
 
         bedrock_rules = [
             r for r in rules
@@ -1437,7 +1530,7 @@ def check_bedrock_model_evaluation_adversarial() -> Dict[str, Any]:
     findings = _empty_findings("Adversarial Model Evaluation Check")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        evals = bedrock.list_evaluation_jobs().get("jobSummaries", [])
+        evals = _paginate(bedrock, "list_evaluation_jobs", "jobSummaries")
 
         if not evals:
             findings["csv_data"].append(
@@ -1486,7 +1579,7 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
     findings = _empty_findings("ECR Image Scanning Check")
     try:
         ecr = boto3.client("ecr", config=boto3_config)
-        repos = ecr.describe_repositories().get("repositories", [])
+        repos = _paginate(ecr, "describe_repositories", "repositories")
 
         if not repos:
             findings["csv_data"].append(
@@ -1567,7 +1660,7 @@ def check_feature_store_rollback_capability() -> Dict[str, Any]:
     findings = _empty_findings("Feature Store Rollback Check")
     try:
         sm = boto3.client("sagemaker", config=boto3_config)
-        groups = sm.list_feature_groups().get("FeatureGroupSummaries", [])
+        groups = _paginate(sm, "list_feature_groups", "FeatureGroupSummaries")
 
         if not groups:
             findings["csv_data"].append(
@@ -1663,7 +1756,19 @@ def check_training_data_s3_versioning() -> Dict[str, Any]:
 
         unversioned = []
         for bucket in training_buckets:
-            versioning = s3.get_bucket_versioning(Bucket=bucket["Name"])
+            try:
+                versioning = s3.get_bucket_versioning(Bucket=bucket["Name"])
+            except ClientError as e:
+                # An access error means we could not read versioning; re-raise so
+                # it surfaces as could-not-assess rather than a false finding, and
+                # so one inaccessible bucket does not abort the whole check.
+                if _is_access_error(e):
+                    raise
+                logger.warning(
+                    f"Could not check versioning for bucket {bucket['Name']}: {e}"
+                )
+                unversioned.append(f"{bucket['Name']} (error)")
+                continue
             if versioning.get("Status") != "Enabled":
                 unversioned.append(bucket["Name"])
 
@@ -1848,42 +1953,71 @@ def check_opensearch_serverless_encryption() -> Dict[str, Any]:
                     check_id="FS-25",
                     finding_name="No OpenSearch Serverless Encryption Policies",
                     finding_details=(
-                        "No OpenSearch Serverless encryption policies found. "
-                        "Vector embeddings may be stored without customer-managed encryption."
+                        "No OpenSearch Serverless encryption policies found, which indicates "
+                        "no OpenSearch Serverless vector-store collections exist in this region. "
+                        "If Bedrock Knowledge Bases use a different vector store (e.g., Aurora, "
+                        "Pinecone), verify its encryption separately."
                     ),
                     resolution=(
-                        "Create encryption security policies for OpenSearch Serverless collections "
-                        "used as Bedrock KB vector stores, specifying a customer-managed KMS key."
+                        "If using OpenSearch Serverless as a Bedrock KB vector store, create an "
+                        "encryption security policy specifying a customer-managed KMS key."
                     ),
                     reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html",
-                    severity="High",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-25"],
                 )
             )
         else:
-            # Check for CMK usage
+            # Check for CMK usage. A policy that does not reference AWSOwnedKey is
+            # treated as customer-managed (CMK).
             cmk_policies = []
             for policy in policies:
                 doc = json.loads(policy.get("policy", "{}"))
                 if "AWSOwnedKey" not in json.dumps(doc):
                     cmk_policies.append(policy["name"])
 
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="FS-25",
-                    finding_name="OpenSearch Serverless Encryption Policies Present",
-                    finding_details=(
-                        f"Found {len(policies)} encryption policy(ies); "
-                        f"{len(cmk_policies)} appear to use CMK."
-                    ),
-                    resolution="Verify all vector store collections use customer-managed KMS keys.",
-                    reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html",
-                    severity="Informational",
-                    status="Passed",
-                    compliance_frameworks=COMPLIANCE_MAP["FS-25"],
+            if not cmk_policies:
+                # Encryption policies exist but all use AWS-owned keys — the
+                # control (customer-managed encryption) the check verifies is
+                # absent, so this is a real finding, not a pass.
+                findings["status"] = "WARN"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="FS-25",
+                        finding_name="OpenSearch Serverless Encryption Not Using Customer-Managed Keys",
+                        finding_details=(
+                            f"Found {len(policies)} encryption policy(ies), but none use a "
+                            "customer-managed KMS key (CMK) — all rely on AWS-owned keys. "
+                            "FinServ data-protection controls typically require CMKs for "
+                            "key lifecycle control and auditability."
+                        ),
+                        resolution=(
+                            "Update OpenSearch Serverless encryption policies to specify a "
+                            "customer-managed KMS key (KmsARN) instead of AWS-owned keys."
+                        ),
+                        reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html",
+                        severity="High",
+                        status="Failed",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-25"],
+                    )
                 )
-            )
+            else:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="FS-25",
+                        finding_name="OpenSearch Serverless Encryption Policies Present",
+                        finding_details=(
+                            f"Found {len(policies)} encryption policy(ies); "
+                            f"{len(cmk_policies)} use a customer-managed KMS key."
+                        ),
+                        resolution="Verify all vector store collections use customer-managed KMS keys.",
+                        reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html",
+                        severity="Informational",
+                        status="Passed",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-25"],
+                    )
+                )
     except Exception as e:
         return _error_findings("OpenSearch Serverless Encryption Check", e)
     return findings
@@ -1982,7 +2116,7 @@ def check_automated_reasoning_checks() -> Dict[str, Any]:
     findings = _empty_findings("Automated Reasoning Checks")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = bedrock.list_guardrails().get("guardrails", [])
+        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
 
         if not guardrails:
             findings["csv_data"].append(
@@ -2055,7 +2189,7 @@ def check_guardrail_denied_topics_financial() -> Dict[str, Any]:
     findings = _empty_findings("Financial Denied Topics Check")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = bedrock.list_guardrails().get("guardrails", [])
+        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
 
         if not guardrails:
             findings["csv_data"].append(
@@ -2169,7 +2303,7 @@ def check_bedrock_evaluation_compliance_datasets() -> Dict[str, Any]:
     findings = _empty_findings("Compliance Evaluation Datasets Check")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        evals = bedrock.list_evaluation_jobs().get("jobSummaries", [])
+        evals = _paginate(bedrock, "list_evaluation_jobs", "jobSummaries")
 
         if not evals:
             findings["csv_data"].append(
@@ -2246,8 +2380,9 @@ def check_knowledge_base_data_source_sync() -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
         for kb in kbs:
             kb_id = kb["knowledgeBaseId"]
-            sources = bedrock_agent.list_data_sources(knowledgeBaseId=kb_id).get(
-                "dataSourceSummaries", []
+            sources = _paginate(
+                bedrock_agent, "list_data_sources", "dataSourceSummaries",
+                knowledgeBaseId=kb_id,
             )
             for source in sources:
                 last_updated = source.get("updatedAt")
@@ -2359,10 +2494,11 @@ def check_knowledge_base_integrity_monitoring() -> Dict[str, Any]:
             return findings
 
         buckets_without_versioning = []
-        for kb in kbs[:10]:
-            sources = bedrock_agent.list_data_sources(
-                knowledgeBaseId=kb["knowledgeBaseId"]
-            ).get("dataSourceSummaries", [])
+        for kb in kbs:
+            sources = _paginate(
+                bedrock_agent, "list_data_sources", "dataSourceSummaries",
+                knowledgeBaseId=kb["knowledgeBaseId"],
+            )
             for source in sources:
                 source_detail = bedrock_agent.get_data_source(
                     knowledgeBaseId=kb["knowledgeBaseId"],
@@ -2373,15 +2509,22 @@ def check_knowledge_base_integrity_monitoring() -> Dict[str, Any]:
                     .get("dataSourceConfiguration", {})
                     .get("s3Configuration", {})
                 )
-                bucket = s3_config.get("bucketArn", "").split(":::")[-1]
+                bucket = _bucket_name_from_arn(s3_config.get("bucketArn", ""))
                 if bucket:
                     try:
                         versioning = s3.get_bucket_versioning(Bucket=bucket)
                         if versioning.get("Status") != "Enabled":
                             buckets_without_versioning.append(bucket)
                     except ClientError as e:
-                        logger.warning(f"Could not check versioning for bucket {bucket}: {e}")
-                        buckets_without_versioning.append(f"{bucket} (access error)")
+                        # An access error means we could not read versioning; do
+                        # not mislabel the bucket as non-versioned. Re-raise so it
+                        # surfaces as could-not-assess instead of a false finding.
+                        if _is_access_error(e):
+                            raise
+                        logger.warning(
+                            f"Could not check versioning for bucket {bucket}: {e}"
+                        )
+                        buckets_without_versioning.append(f"{bucket} (error)")
 
         if buckets_without_versioning:
             findings["status"] = "WARN"
@@ -2444,19 +2587,24 @@ def check_fm_version_currency() -> Dict[str, Any]:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-34",
-                    finding_name="Legacy Foundation Models in Use",
+                    finding_name="Legacy Foundation Models Available in Region",
                     finding_details=(
-                        f"Legacy/deprecated foundation models available: {', '.join(deprecated[:10])}. "
-                        "These models have older training data cutoffs and may produce outdated information."
+                        f"Legacy/deprecated foundation models are available in this account/region: "
+                        f"{', '.join(deprecated[:10])}. This API reports model *availability*, not "
+                        "actual usage — it cannot determine which models your applications invoke. "
+                        "Legacy models have older training-data cutoffs and may produce outdated "
+                        "information if used. Review whether any are in active use."
                     ),
                     resolution=(
-                        "1. Migrate to current model versions.\n"
-                        "2. Document training data cutoff dates for all models in use.\n"
-                        "3. Add data currency disclaimers to outputs from models with old cutoffs."
+                        "1. Identify which (if any) of these legacy models your applications invoke "
+                        "(e.g., via CloudTrail InvokeModel events or application config).\n"
+                        "2. Migrate active usage to current model versions.\n"
+                        "3. Document training-data cutoff dates for all models in use.\n"
+                        "4. Add data-currency disclaimers to outputs from models with old cutoffs."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html",
                     severity="Medium",
-                    status="Failed",
+                    status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-34"],
                 )
             )
@@ -2493,7 +2641,7 @@ def check_fmeval_harmful_content() -> Dict[str, Any]:
     findings = _empty_findings("FMEval Harmful Content Check")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        evals = bedrock.list_evaluation_jobs().get("jobSummaries", [])
+        evals = _paginate(bedrock, "list_evaluation_jobs", "jobSummaries")
 
         if not evals:
             findings["csv_data"].append(
@@ -2540,7 +2688,7 @@ def check_guardrail_content_filters() -> Dict[str, Any]:
     findings = _empty_findings("Guardrail Content Filters Check")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = bedrock.list_guardrails().get("guardrails", [])
+        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
 
         if not guardrails:
             findings["csv_data"].append(
@@ -2642,7 +2790,7 @@ def check_guardrail_word_filters() -> Dict[str, Any]:
     findings = _empty_findings("Guardrail Word Filters Check")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = bedrock.list_guardrails().get("guardrails", [])
+        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
 
         if not guardrails:
             findings["csv_data"].append(
@@ -2716,7 +2864,7 @@ def check_sagemaker_clarify_bias() -> Dict[str, Any]:
     findings = _empty_findings("SageMaker Clarify Bias Check")
     try:
         sm = boto3.client("sagemaker", config=boto3_config)
-        schedules = sm.list_monitoring_schedules().get("MonitoringScheduleSummaries", [])
+        schedules = _paginate(sm, "list_monitoring_schedules", "MonitoringScheduleSummaries")
 
         bias_schedules = [
             s for s in schedules
@@ -2774,7 +2922,7 @@ def check_bedrock_evaluation_bias_datasets() -> Dict[str, Any]:
     findings = _empty_findings("Bedrock Bias Evaluation Datasets Check")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        evals = bedrock.list_evaluation_jobs().get("jobSummaries", [])
+        evals = _paginate(bedrock, "list_evaluation_jobs", "jobSummaries")
 
         if not evals:
             findings["csv_data"].append(
@@ -2821,7 +2969,7 @@ def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
     findings = _empty_findings("SageMaker Clarify Explainability Check")
     try:
         sm = boto3.client("sagemaker", config=boto3_config)
-        schedules = sm.list_monitoring_schedules().get("MonitoringScheduleSummaries", [])
+        schedules = _paginate(sm, "list_monitoring_schedules", "MonitoringScheduleSummaries")
 
         explainability_schedules = [
             s for s in schedules
@@ -2878,7 +3026,7 @@ def check_ai_service_cards_documentation() -> Dict[str, Any]:
     findings = _empty_findings("AI Service Cards Documentation Check")
     try:
         sm = boto3.client("sagemaker", config=boto3_config)
-        model_cards = sm.list_model_cards().get("ModelCardSummaryList", [])
+        model_cards = _paginate(sm, "list_model_cards", "ModelCardSummaryList")
 
         if not model_cards:
             findings["status"] = "WARN"
@@ -3047,7 +3195,7 @@ def check_guardrail_pii_filters() -> Dict[str, Any]:
     findings = _empty_findings("Guardrail PII Filters Check")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = bedrock.list_guardrails().get("guardrails", [])
+        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
 
         if not guardrails:
             findings["csv_data"].append(
@@ -3152,7 +3300,13 @@ def check_data_classification_tagging() -> Dict[str, Any]:
                 tag_keys = {t["Key"].lower() for t in tags}
                 if "data-classification" not in tag_keys and "classification" not in tag_keys:
                     unclassified.append(bucket["Name"])
-            except ClientError:
+            except ClientError as e:
+                # A genuine "no tags" response (NoSuchTagSet) means the bucket is
+                # unclassified — a real finding. An access error means we could
+                # not read the tags; re-raise so it surfaces as could-not-assess
+                # rather than a false "unclassified" finding.
+                if _is_access_error(e):
+                    raise
                 unclassified.append(bucket["Name"])
 
         if unclassified:
@@ -3209,7 +3363,7 @@ def check_guardrail_grounding_threshold() -> Dict[str, Any]:
     findings = _empty_findings("Guardrail Grounding Threshold Check")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = bedrock.list_guardrails().get("guardrails", [])
+        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
 
         if not guardrails:
             findings["csv_data"].append(
@@ -3372,7 +3526,7 @@ def check_automated_reasoning_checks_hallucination() -> Dict[str, Any]:
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
         # ARC is part of guardrails contextual grounding — check for RELEVANCE filter
-        guardrails = bedrock.list_guardrails().get("guardrails", [])
+        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
 
         arc_guardrails = []
         for g in guardrails:
@@ -3431,7 +3585,7 @@ def check_prompt_injection_input_validation() -> Dict[str, Any]:
     findings = _empty_findings("Prompt Injection Input Validation Check")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = bedrock.list_guardrails().get("guardrails", [])
+        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
 
         if not guardrails:
             findings["csv_data"].append(
@@ -3507,7 +3661,7 @@ def check_bedrock_sdk_version_currency() -> Dict[str, Any]:
     findings = _empty_findings("Bedrock SDK Version Currency Check")
     try:
         lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = lambda_client.list_functions().get("Functions", [])
+        functions = _paginate(lambda_client, "list_functions", "Functions")
 
         bedrock_functions = [
             f for f in functions
@@ -3709,7 +3863,7 @@ def check_output_validation_lambda() -> Dict[str, Any]:
     findings = _empty_findings("Output Validation Lambda Check")
     try:
         lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = lambda_client.list_functions().get("Functions", [])
+        functions = _paginate(lambda_client, "list_functions", "Functions")
 
         validation_functions = [
             f for f in functions
@@ -3846,7 +4000,7 @@ def check_output_schema_validation() -> Dict[str, Any]:
     try:
         # Check for EventBridge Pipes or Lambda destinations that could validate outputs
         lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = lambda_client.list_functions().get("Functions", [])
+        functions = _paginate(lambda_client, "list_functions", "Functions")
 
         schema_functions = [
             f for f in functions
@@ -3887,7 +4041,7 @@ def check_guardrail_topic_allowlist() -> Dict[str, Any]:
     findings = _empty_findings("Guardrail Topic Allowlist Check")
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = bedrock.list_guardrails().get("guardrails", [])
+        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
 
         if not guardrails:
             findings["csv_data"].append(
@@ -4017,7 +4171,7 @@ def check_knowledge_base_sync_schedule() -> Dict[str, Any]:
             return findings
 
         # Check for EventBridge rules that trigger KB sync
-        rules = events.list_rules().get("Rules", [])
+        rules = _paginate(events, "list_rules", "Rules")
         kb_sync_rules = [
             r for r in rules
             if "bedrock" in r.get("Name", "").lower() or "knowledge" in r.get("Name", "").lower()
@@ -4113,7 +4267,7 @@ def check_foundation_model_lifecycle_policy() -> Dict[str, Any]:
 
         # Check for Config rules or SSM documents related to model lifecycle
         config_client = boto3.client("config", config=boto3_config)
-        rules = config_client.describe_config_rules().get("ConfigRules", [])
+        rules = _paginate(config_client, "describe_config_rules", "ConfigRules")
         lifecycle_rules = [
             r for r in rules
             if "lifecycle" in r.get("ConfigRuleName", "").lower()
@@ -4184,7 +4338,10 @@ def check_kb_datasource_s3_event_notifications() -> Dict[str, Any]:
         bedrock_agent = boto3.client("bedrock-agent", config=boto3_config)
         s3_client = boto3.client("s3", config=boto3_config)
 
-        kbs = bedrock_agent.list_knowledge_bases().get("knowledgeBaseSummaries", [])
+        paginator = bedrock_agent.get_paginator("list_knowledge_bases")
+        kbs = []
+        for page in paginator.paginate():
+            kbs.extend(page.get("knowledgeBaseSummaries", []))
         if not kbs:
             findings["csv_data"].append(
                 create_finding(
@@ -4203,9 +4360,10 @@ def check_kb_datasource_s3_event_notifications() -> Dict[str, Any]:
         buckets_without_notifications = []
         for kb in kbs:
             kb_id = kb["knowledgeBaseId"]
-            data_sources = bedrock_agent.list_data_sources(
-                knowledgeBaseId=kb_id
-            ).get("dataSourceSummaries", [])
+            data_sources = _paginate(
+                bedrock_agent, "list_data_sources", "dataSourceSummaries",
+                knowledgeBaseId=kb_id,
+            )
             for ds in data_sources:
                 ds_detail = bedrock_agent.get_data_source(
                     knowledgeBaseId=kb_id,
@@ -4216,7 +4374,7 @@ def check_kb_datasource_s3_event_notifications() -> Dict[str, Any]:
                     .get("dataSourceConfiguration", {})
                     .get("s3Configuration", {})
                 )
-                bucket = s3_config.get("bucketArn", "").split(":::")[-1]
+                bucket = _bucket_name_from_arn(s3_config.get("bucketArn", ""))
                 if not bucket:
                     continue
                 try:
@@ -4229,8 +4387,13 @@ def check_kb_datasource_s3_event_notifications() -> Dict[str, Any]:
                     ])
                     if not has_notif:
                         buckets_without_notifications.append(bucket)
-                except ClientError:
-                    buckets_without_notifications.append(f"{bucket} (access error)")
+                except ClientError as e:
+                    # An access error means we could not read the notification
+                    # config; re-raise so it surfaces as could-not-assess rather
+                    # than a false "missing notifications" finding.
+                    if _is_access_error(e):
+                        raise
+                    buckets_without_notifications.append(f"{bucket} (error)")
 
         if buckets_without_notifications:
             findings["status"] = "WARN"
@@ -4379,7 +4542,7 @@ def check_agent_financial_transaction_thresholds() -> Dict[str, Any]:
     findings = _empty_findings("Agent Financial Transaction Value Thresholds Check")
     try:
         lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = lambda_client.list_functions().get("Functions", [])
+        functions = _paginate(lambda_client, "list_functions", "Functions")
 
         # Look for agent action-group Lambda functions
         action_group_lambdas = [
@@ -4431,7 +4594,10 @@ def check_agent_financial_transaction_thresholds() -> Dict[str, Any]:
                         finding_name="Agent Action-Group Lambdas May Lack Transaction Thresholds",
                         finding_details=(
                             "The following agent action-group Lambda functions have no environment "
-                            "variables indicating transaction-value threshold configuration. "
+                            "variables whose names suggest transaction-value threshold configuration "
+                            "(this is a best-effort heuristic — a threshold enforced in code or in an "
+                            "AgentCore Policy Engine rule would not be detected here, so treat this as "
+                            "a prompt for manual verification rather than a definitive gap). "
                             "Without explicit limits, agents could initiate unbounded financial transactions:\n"
                             + "\n".join(f"- {n}" for n in lambdas_without_threshold_config[:10])
                         ),
@@ -4482,7 +4648,7 @@ def check_api_gateway_request_body_size_limits() -> Dict[str, Any]:
         wafv2 = boto3.client("wafv2", config=boto3_config)
 
         # Check REST APIs for request validators
-        rest_apis = apigw.get_rest_apis().get("items", [])
+        rest_apis = _paginate(apigw, "get_rest_apis", "items")
         apis_without_validators = []
         for api in rest_apis:
             validators = apigw.get_request_validators(restApiId=api["id"]).get("items", [])
@@ -4567,7 +4733,7 @@ def check_prompt_input_validation_function() -> Dict[str, Any]:
     findings = _empty_findings("Prompt Input Validation Function Check")
     try:
         lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = lambda_client.list_functions().get("Functions", [])
+        functions = _paginate(lambda_client, "list_functions", "Functions")
 
         # Look for Lambda functions with input validation / sanitization naming patterns
         VALIDATION_KEYWORDS = [
@@ -4774,17 +4940,24 @@ def lambda_handler(event, context):
         "user_permissions": {},
     }
 
-    # Run every check from the registry. If a check errors out and produces no
-    # rows, synthesize a visible "could not assess" row (keyed by its Check_ID)
-    # so the gap surfaces in the report instead of the check silently vanishing.
+    # Run every check from the registry. If a check produces no rows for ANY
+    # reason (an ERROR envelope, or an unexpected empty non-error result),
+    # synthesize a visible "could not assess" row (keyed by its Check_ID) so the
+    # gap surfaces in the report instead of the check silently vanishing. The
+    # guard intentionally keys off empty csv_data (not just status=="ERROR") so
+    # the no-silent-drop invariant holds structurally, not by data coincidence.
     for check_id, check_fn in build_finserv_checks(permission_cache):
         result = check_fn()
-        if result.get("status") == "ERROR" and not result.get("csv_data"):
-            result["csv_data"].append(
+        if not result.get("csv_data"):
+            details = result.get("details", "") or (
+                f"check returned status={result.get('status', 'UNKNOWN')!r} "
+                "with no findings"
+            )
+            result.setdefault("csv_data", []).append(
                 _could_not_assess_row(
                     check_id,
                     result.get("check_name", check_id),
-                    result.get("details", ""),
+                    details,
                 )
             )
         all_findings.append(result)
