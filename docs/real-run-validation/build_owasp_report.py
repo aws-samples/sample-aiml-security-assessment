@@ -332,8 +332,8 @@ HTML = f'''<!DOCTYPE html>
                 <h3>Navigation</h3>
                 <a href="#overview" class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>Overview</a>
                 <a href="#findings" class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>Security Findings<span class="count">{total_findings}</span></a>
-                <a href="#compliance" class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>Compliance<span class="count">{len(OWASP_TOP10)}</span></a>
                 <a href="#risk" class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>Risk Distribution</a>
+                <a href="#compliance" class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>Compliance Dashboard</a>
                 <a href="#methodology" class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>Methodology</a>
             </nav>
             <nav class="nav-section">
@@ -341,6 +341,13 @@ HTML = f'''<!DOCTYPE html>
                 <a href="#bedrock" class="nav-item"><span class="service-icon">{SERVICE_ICONS["bedrock"]}</span>Bedrock<span class="count">{len(BEDROCK)}</span></a>
                 <a href="#sagemaker" class="nav-item"><span class="service-icon">{SERVICE_ICONS["sagemaker"]}</span>SageMaker<span class="count">{len(SAGEMAKER)}</span></a>
                 <a href="#agentcore" class="nav-item"><span class="service-icon">{SERVICE_ICONS["agentcore"]}</span>AgentCore<span class="count">{len(AGENTCORE)}</span></a>
+            </nav>
+            <nav class="nav-section">
+                <h3>Compliance Frameworks</h3>
+                <a href="#compliance" class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 8v4"></path><circle cx="12" cy="16" r="1"></circle></svg>OWASP Top 10 LLM<span class="count">{len(OWASP_TOP10)}</span></a>
+                <a href="#compliance" class="nav-item" style="opacity:0.5;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><path d="M9 21V9"></path></svg>NIST AI RMF 1.0<span class="count">—</span></a>
+                <a href="#compliance" class="nav-item" style="opacity:0.5;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20"></path></svg>MITRE ATLAS<span class="count">—</span></a>
+                <a href="#compliance" class="nav-item" style="opacity:0.5;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>HIPAA<span class="count">—</span></a>
             </nav>
             <div class="sidebar-footer">
                 <p>Generated: {GENERATED_AT}</p>
