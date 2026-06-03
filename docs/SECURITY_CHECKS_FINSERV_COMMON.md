@@ -61,7 +61,6 @@ availability of new features (Automated Reasoning, AgentCore Policy, AWS Securit
 cross-account guardrails) evolves rapidly — region lists in Parts 1-3 reflect the state at the
 cited announcement date and should be re-verified before audit reliance.
 
-Add this content to `docs/SECURITY_CHECKS.md` in the forked repository.
 
 ## Contribution workflow
 
@@ -134,7 +133,6 @@ whether the FS check adds FinServ-specific regulatory specificity, (3) severity 
 
 After consolidation the combined framework contains **52 upstream + 64 FS = 116 distinct checks** (down from 52 + 69 = 121 before merging). The consolidation reduces duplication without losing FinServ-specific regulatory depth.
 
-Add this content to `docs/SECURITY_CHECKS.md` in the forked repository.
 
 
 ---
