@@ -2,7 +2,7 @@
 
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](https://opensource.org/licenses/MIT-0) [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/downloads/) [![AWS SAM](https://img.shields.io/badge/AWS-SAM-orange.svg)](https://aws.amazon.com/serverless/sam/) [![Serverless](https://img.shields.io/badge/Architecture-Serverless-green.svg)](https://aws.amazon.com/serverless/)
 
-**Open-source automated security scanner for Amazon Bedrock, SageMaker AI, and Bedrock AgentCore** — Built on [AWS Well-Architected Framework (Generative AI Lens)](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
+**Open-source automated security scanner for Amazon Bedrock, SageMaker AI, Bedrock AgentCore, and Financial Services GenAI Risk** — Built on [AWS Well-Architected Framework (Generative AI Lens)](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
 
 Cloud security automation with **[116 security checks](docs/SECURITY_CHECKS.md)** for your generative AI and machine learning workloads. Identify IAM misconfigurations, encryption gaps, network isolation issues, and compliance violations with interactive HTML reports and actionable remediation guidance.
 
@@ -353,6 +353,16 @@ You can check the AWS CodeBuild console to ensure that the assessment has comple
   - `sagemaker_security_report_{execution_id}.csv` - Amazon SageMaker security assessment results
   - `agentcore_security_report_{execution_id}.csv` - Amazon Bedrock AgentCore security assessment results
   - `finserv_security_report_{execution_id}.csv` - Financial Services GenAI risk assessment results (64 FS-XX checks)
+
+> **⚠️ Known Limitation — FinServ findings appear in CSV only, not in the HTML report**
+>
+> The HTML report (`security_assessment_*.html`) currently renders findings from Amazon Bedrock,
+> Amazon SageMaker, and Amazon Bedrock AgentCore assessments only. The Financial Services GenAI
+> risk checks write results to `finserv_security_report_{execution_id}.csv`, which is consolidated
+> into the multi-account CSV, but **FinServ findings are not yet visible in the interactive HTML
+> dashboard**. HTML rendering for the FinServ section is tracked as a follow-up enhancement.
+> To review FinServ findings, open the CSV file directly from the Amazon S3 assessment bucket.
+
   - `permissions_cache_{execution_id}.json` - IAM permissions cache
   - `security_assessment_{timestamp}_{execution_id}.html` - Consolidated HTML report (same features as multi-account report)
 
@@ -495,6 +505,11 @@ For a clean removal, delete resources in this order:
 | Document | Description |
 |----------|-------------|
 | [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 116 security checks with severity levels |
+| [FinServ GenAI Risk Checks — Common](docs/SECURITY_CHECKS_FINSERV_COMMON.md) | Shared introduction, severity rubric, upstream-overlap table, and compliance framework mapping for FS-01..69 |
+| [FinServ Part 1 — Infrastructure Controls](docs/SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md) | FS-01..26: Unbounded consumption, excessive agency, supply chain, training data poisoning, vector & embedding weaknesses |
+| [FinServ Part 2 — Guardrails & Content Safety](docs/SECURITY_CHECKS_FINSERV_PART2_GUARDRAILS_CONTENT_SAFETY.md) | FS-27..46: Non-compliant output, misinformation, abusive/harmful output, biased output, PII disclosure |
+| [FinServ Part 3 — App Layer & Gaps](docs/SECURITY_CHECKS_FINSERV_PART3_APP_LAYER_AND_GAPS.md) | FS-47..69: Hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data, cross-category gap checks |
+| [FinServ Compliance Mappings](docs/AIMLSecurityAssessment-MappingsTable.csv) | Machine-readable mapping of FS checks to SR 11-7, FFIEC CAT, NYDFS 500.06, PCI-DSS, DORA, MAS TRM, ISO 27001, OWASP LLM Top 10 |
 | [Troubleshooting Guide](docs/TROUBLESHOOTING.md) | Common issues, debugging tips, and FAQ |
 | [Developer Guide](docs/DEVELOPER_GUIDE.md) | Architecture details, adding custom checks, and contributing |
 
