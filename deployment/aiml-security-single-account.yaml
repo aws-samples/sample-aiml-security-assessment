@@ -298,6 +298,12 @@ Resources:
                   - macie2:GetMacieSession
                   # EventBridge — KB integrity monitoring (FS-33, FS-65)
                   - events:ListRules
+                  # EventBridge Scheduler (KB sync schedules - FS-61).
+                  # AWS-recommended scheduling approach; classic EventBridge rules are legacy.
+                  - scheduler:ListSchedules
+                  # Bedrock Automated Reasoning (GA August 2025).
+                  # Required for check_automated_reasoning_policies() (FS-27).
+                  - bedrock:ListAutomatedReasoningPolicies
                   # Config — model onboarding governance (FS-14)
                   - config:DescribeConfigRules
                 Resource: "*"

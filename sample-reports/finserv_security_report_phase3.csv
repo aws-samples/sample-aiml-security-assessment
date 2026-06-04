@@ -1,0 +1,190 @@
+Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Compliance_Frameworks
+FS-01,AWS Shield Advanced Not Enabled,AWS Shield Advanced is not subscribed. GenAI API endpoints are vulnerable to volumetric DDoS attacks that can exhaust token quotas and inflate costs.,"1. Subscribe to AWS Shield Advanced for DDoS protection.
+2. After subscribing, explicitly add resource protections in the Shield Advanced console for each Bedrock-facing resource (API Gateway stages, ALBs, CloudFront distributions, Route 53 hosted zones). Shield Advanced subscription alone does NOT automatically protect resources — each resource must be individually added to receive protection.
+3. Enable Shield Response Team (SRT) access and configure proactive engagement.
+4. Alternatively, use AWS Firewall Manager with a Shield Advanced policy to automate resource protection based on tags or resource types.",https://docs.aws.amazon.com/waf/latest/developerguide/shield-chapter.html,High,Failed,FFIEC CAT | DORA Art.6
+FS-01,Regional WAF Web ACLs Present,Found 1 regional WAF Web ACL(s).,Verify ACLs are associated with Bedrock-facing endpoints.,https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html,Informational,Passed,FFIEC CAT | DORA Art.6
+FS-02,API Gateway Rate Limiting Configured,All 1 usage plan(s) have throttle settings.,No action required.,https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-request-throttling.html,Informational,Passed,FFIEC CAT | DORA Art.6 | PCI-DSS 12.3.2
+FS-03,Bedrock Token Quotas At Default,"All 224 Bedrock token-based quota(s) are at their AWS default values — no quota increase has been applied. Running at default is a legitimate posture, but it should be a reviewed decision aligned with expected peak load rather than an oversight.","1. Review current Bedrock TPM/TPD quotas in the Service Quotas console.
+2. Request increases aligned with expected peak load, or document a deliberate decision to remain at default after review.
+3. Implement client-side token counting and pre-flight quota checks.
+4. Use Bedrock cross-region inference profiles to distribute load.",https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html,Medium,N/A,FFIEC CAT | SR 11-7
+FS-04,No Cost Anomaly Detection Monitors,"No AWS Cost Anomaly Detection monitors found. Unexpected spikes in Bedrock/SageMaker usage (e.g., from prompt injection loops) will go undetected.","1. Create a Cost Anomaly Detection monitor scoped to AWS/Bedrock and AWS/SageMaker.
+2. Configure alert subscriptions (SNS/email) for anomalies above threshold.
+3. Set daily spend budgets with AWS Budgets as a secondary control.",https://docs.aws.amazon.com/cost-management/latest/userguide/getting-started-ad.html,Medium,Failed,FFIEC CAT | SR 11-7
+FS-05,No Bedrock CloudWatch Alarms Found,No CloudWatch alarms found for Bedrock metrics. Token exhaustion and throttling events will not trigger operational alerts.,"Create CloudWatch alarms for:
+- AWS/Bedrock InvocationThrottles (threshold > 0)
+- AWS/Bedrock TokensProcessed (threshold based on quota)
+- Custom application-level token counters via EMF",https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html,Medium,Failed,FFIEC CAT | DORA Art.6
+FS-06,No AI/ML Service Budgets Configured,No AWS Budgets found scoped to Bedrock or SageMaker. Unbounded GenAI spend can go undetected until the monthly bill.,"1. Create cost budgets for AWS Bedrock and SageMaker with 80%/100% alert thresholds.
+2. Add SNS notifications to on-call channels.
+3. Consider budget actions to apply IAM deny policies when thresholds are breached.",https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html,Medium,Failed,FFIEC CAT | SR 11-7
+FS-07,Agent Action Boundaries Look Appropriate,Reviewed 4 agent(s); no wildcard sensitive actions found.,No action required.,https://docs.aws.amazon.com/bedrock/latest/userguide/agents-permissions.html,Informational,Passed,SR 11-7 | FFIEC CAT
+FS-08,AgentCore Runtimes Missing Policy Engine,"Runtimes without authorizer configuration: vendoriq_vendoriq, test_minimal, strands_claude_short_timeout, strands_claude_getting_started, proposal_drafter, harness_harness_ctuux, executive_summary_writer, document_generation, datetimemcp_Agent. Without a policy engine, agents can invoke any registered tool without authorization checks.",Configure an authorizer (Lambda or Cedar policy store) on each AgentCore runtime to enforce fine-grained tool-call authorization.,https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html,High,Failed,SR 11-7 | MAS TRM 9.1
+FS-09,Agent Lambda Functions Without Concurrency Limits,"Agent-related Lambda functions without reserved concurrency: Dev-DashboardStack-DashboardApiLayerAgentSessionsF-EnQLRGDeLRkn, fedpoint-kms-poc-create-bedrock-index, Dev-DashboardStack-DashboardApiLayerAgentInvokeFn3-r3fQdrJuboTX. Unlimited concurrency allows runaway agent loops to exhaust account limits.","1. Set reserved concurrency on agent Lambda functions.
+2. Implement maximum iteration counts in agent orchestration logic.
+3. Use Step Functions with MaxConcurrency and timeout states.
+4. Add circuit-breaker patterns to agent tool invocations.",https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html,Medium,Failed,FFIEC CAT | SR 11-7
+FS-10,Human-in-the-Loop Check — No Agent Workflows Found,"No Step Functions state machines with agent/approval naming found. Verify that high-risk agent actions (e.g., fund transfers, account changes) have human approval gates.",Implement Step Functions .waitForTaskToken patterns for high-risk agent actions. Route approval requests to human reviewers via SNS/SES/Slack.,https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html#connect-wait-token,Medium,N/A,SR 11-7 | FFIEC CAT | MAS TRM 9.2
+FS-11,No Agent Rate Alarms Found,No CloudWatch alarms found for agent invocation rates. Looping or runaway agents will not trigger operational alerts.,"Create CloudWatch alarms on:
+- Bedrock agent invocation counts (threshold based on expected max)
+- Lambda invocation errors for agent functions
+- Step Functions execution failures and timeouts",https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html,Medium,Failed,FFIEC CAT | DORA Art.6
+FS-12,Bedrock SCPs Found,SCPs referencing Bedrock: InnovationSandboxAwsNukeSupportedServicesScp.,Verify SCPs use bedrock:ModelId conditions to allowlist approved models.,https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html,Informational,Passed,SR 11-7 | FFIEC CAT | ISO 27001 A.15.2
+FS-13,Model Provenance Tags Present,All reviewed models have required provenance tags.,No action required.,https://docs.aws.amazon.com/bedrock/latest/userguide/tagging.html,Informational,Passed,SR 11-7 | ISO 27001 A.12.5 | FFIEC CAT
+FS-14,No Model Governance Config Rules Found,No AWS Config rules found for Bedrock model governance. Unapproved models may be deployed without detection.,"1. Create custom AWS Config rules to detect use of non-approved Bedrock models.
+2. Use AWS Service Catalog to publish approved model configurations.
+3. Implement a model risk management (MRM) process per SR 11-7.",https://docs.aws.amazon.com/config/latest/developerguide/evaluate-config.html,Medium,Failed,SR 11-7 | FFIEC CAT | ISO 27001 A.15.1
+FS-15,No Bedrock Evaluation Jobs Found,No Bedrock Model Evaluation jobs found. Models have not been evaluated for adversarial robustness.,"1. Run Bedrock Model Evaluation with adversarial/red-team datasets.
+2. Use FMEval library for automated robustness testing.
+3. Schedule periodic re-evaluation after model updates.",https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html,Medium,N/A,SR 11-7 | FFIEC CAT | MAS TRM 9.3
+FS-16,ECR Repositories Without Image Scanning,"5 ECR repo(s) without scan-on-push: bedrock-agentcore-strands_claude_getting_started, bedrock-agentcore-strands_claude_short_timeout, cdk-hnb659fds-container-assets-469898429403-us-east-1, bracket-predictor, vendor-iq-dashboard.",Enable scan-on-push for all ECR repositories containing model containers. Consider enabling Enhanced Scanning (Inspector) for CVE detection.,https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html,High,Failed,ISO 27001 A.12.6 | FFIEC CAT | DORA Art.6
+FS-20,No SageMaker Feature Groups Found,No SageMaker Feature Store groups found.,No action required.,https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store.html,Informational,N/A,SR 11-7 | FFIEC CAT
+FS-21,Training Data Buckets Without Versioning,"4 training data bucket(s) without versioning: bedrock-agentcore-codebuild-sources-469898429403-us-east-1, bedrock-agentcore-runtime-469898429403-us-east-1-2h09526czr, sagemaker-studio-469898429403-vs7m9hvz7np, sagemaker-us-east-1-469898429403.",Enable S3 versioning on all training data buckets. Consider enabling MFA Delete for additional protection against poisoning.,https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html,High,Failed,SR 11-7 | ISO 27001 A.12.3 | FFIEC CAT
+FS-22,Knowledge Base IAM Permissions Look Appropriate,No wildcard KB permissions found in reviewed roles.,No action required.,https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html,Informational,Passed,NYDFS 500 | FFIEC CAT | PCI-DSS 12.3.2
+FS-24,Knowledge Base Metadata Filtering — Manual Review Required,"Found 2 Knowledge Base(s). Verify that metadata attributes (e.g., tenantId, classification) are indexed and that Retrieve calls include RetrievalFilter conditions for tenant isolation.","1. Add metadata fields (tenantId, dataClassification) to KB data sources.
+2. Pass RetrievalFilter in all Retrieve/RetrieveAndGenerate calls.
+3. Validate filters in integration tests to prevent cross-tenant data leakage.",https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-config.html,Medium,Passed,NYDFS 500 | FFIEC CAT | PCI-DSS 12.3.2
+FS-25,OpenSearch Serverless Encryption Policies Present,Found 5 encryption policy(ies); 5 use a customer-managed KMS key.,Verify all vector store collections use customer-managed KMS keys.,https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html,Informational,Passed,NYDFS 500 | PCI-DSS 3.5 | FFIEC CAT
+FS-26,OpenSearch Serverless Collections Not VPC-Restricted,Found 5 network policy(ies) but none restrict to VPC. Vector stores may be accessible from the public internet.,Update network policies to allow access only from VPC endpoints. Create an OpenSearch Serverless VPC endpoint in your VPC.,https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-network.html,High,Failed,NYDFS 500 | FFIEC CAT | PCI-DSS 1.3
+FS-27,No Guardrails — Contextual Grounding Not Applicable,No Bedrock Guardrails configured. Configure guardrails first (see BR-05).,Configure Bedrock Guardrails with contextual grounding checks (grounding threshold ≥0.7 and relevance threshold ≥0.7 for FinServ use cases).,https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html,Medium,N/A,SR 11-7 | FFIEC CAT | MAS TRM 9.2
+FS-27,No Automated Reasoning Policies Found,"No Bedrock Automated Reasoning policies have been created. ARC (GA August 2025) uses formal verification to guarantee that GenAI outputs comply with authored business rules — e.g., loan criteria, regulatory thresholds, policy constraints. Without ARC policies, factual accuracy of outputs is not formally verified, only heuristically filtered by contextual grounding thresholds.","1. In the Amazon Bedrock console → Guardrails → Automated Reasoning, create a policy document encoding your FinServ business rules (e.g., eligibility criteria, rate limits, regulatory thresholds).
+2. Associate the ARC policy with your guardrail (automatedReasoningPolicy.policies field in CreateGuardrail/UpdateGuardrail).
+3. Set confidenceThreshold on the policy to control strictness.
+4. ARC requires cross-Region inference — ensure your guardrail has a guardrailProfileArn configured (crossRegionDetails in GetGuardrail response).
+5. Reference: AWS Announcement — Automated Reasoning checks GA (August 2025).",https://docs.aws.amazon.com/bedrock/latest/userguide/automated-reasoning.html,Medium,Failed,SR 11-7 | FFIEC CAT | MAS TRM 9.2
+FS-28,No Guardrails — Denied Topics Not Applicable,No Bedrock Guardrails configured.,Configure guardrails with denied topics for regulated financial content.,https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html,Medium,N/A,SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2
+FS-29,ADVISORY: Compliance Disclaimer — Manual Review Required,Application-level compliance disclaimers cannot be verified via AWS APIs. Manual review required to confirm GenAI outputs include required regulatory disclosures.,"1. Implement post-processing to append required disclaimers to GenAI outputs.
+2. Use Bedrock Guardrails word filters to block outputs that omit required disclosures.
+3. Document disclaimer requirements in the AI use case register.
+4. Test disclaimer presence in QA/UAT before production deployment.",https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html,Informational,N/A,SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2
+FS-30,No Bedrock Evaluation Jobs — Compliance Datasets Not Verified,No Bedrock Model Evaluation jobs found.,"Run Bedrock Model Evaluation with compliance-specific datasets:
+- Fair lending test cases (ECOA, Fair Housing Act)
+- UDAP/UDAAP unfair/deceptive practice scenarios
+- AML/KYC edge cases",https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html,Medium,N/A,SR 11-7 | FFIEC CAT | NYDFS 500
+FS-31,Knowledge Base Data Sources Past Review Threshold,"1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):
+- KB 'fedpoint-kms-poc-knowledge-base' source 'fedpoint-kms-poc-content-data-source' last synced 194 days ago
+Confirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.","1. Define the maximum acceptable data age per use case (e.g., intraday for market data, daily for product terms, weekly/monthly for regulatory guidance) and adjust the review threshold to match.
+2. Configure automated sync (EventBridge Scheduler → StartIngestionJob) at that cadence — see FS-61.
+3. Set CloudWatch alarms on sync job failures.",https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html,Medium,Failed,SR 11-7 | FFIEC CAT
+FS-32,ADVISORY: Source Attribution — Manual Review Required,Source attribution in GenAI responses cannot be verified via AWS APIs. Manual review required to confirm responses include citations.,"1. Use Bedrock RetrieveAndGenerate with citations enabled.
+2. Include source document references in response post-processing.
+3. Test citation accuracy in QA before production deployment.
+4. Consider Bedrock Guardrails grounding checks to validate response accuracy.",https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-config.html,Informational,N/A,SR 11-7 | FFIEC CAT | MAS TRM 9.2
+FS-33,KB Data Source References a Deleted S3 Bucket,"One or more Knowledge Base data sources point to S3 buckets that no longer exist (NoSuchBucket). Retrieval will silently return no results for these sources, and the integrity of the KB's grounding data cannot be verified:
+- fedpoint-kms-poc-content-469898429403 (KB 'fedpoint-kms-poc-knowledge-base', source 'fedpoint-kms-poc-content-data-source')","1. Investigate why the data-source bucket was deleted (accidental deletion, environment teardown, or a stale KB configuration).
+2. Recreate/restore the bucket with versioning enabled, or remove the orphaned data source from the Knowledge Base.
+3. Re-run a KB ingestion job after restoring the data source.
+4. Enable S3 versioning and MFA Delete on KB data-source buckets to reduce the risk of unrecoverable deletion.",https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html,High,Failed,SR 11-7 | FFIEC CAT | ISO 27001 A.12
+FS-34,Legacy Foundation Models Available in Region,"Legacy/deprecated foundation models are available in this account/region: anthropic.claude-sonnet-4-20250514-v1:0, amazon.titan-image-generator-v2:0, amazon.nova-premier-v1:0:8k, amazon.nova-premier-v1:0:20k, amazon.nova-premier-v1:0:1000k, amazon.nova-premier-v1:0:mm, amazon.nova-premier-v1:0, amazon.nova-canvas-v1:0, amazon.nova-reel-v1:0, amazon.nova-reel-v1:1. This API reports model *availability*, not actual usage — it cannot determine which models your applications invoke. Legacy models have older training-data cutoffs and may produce outdated information if used. Review whether any are in active use.","1. Identify which (if any) of these legacy models your applications invoke (e.g., via CloudTrail InvokeModel events or application config).
+2. Migrate active usage to current model versions.
+3. Document training-data cutoff dates for all models in use.
+4. Add data-currency disclaimers to outputs from models with old cutoffs.",https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html,Medium,N/A,SR 11-7 | FFIEC CAT
+FS-35,No Evaluation Jobs — Harmful Content Testing Not Verified,No Bedrock Model Evaluation jobs found.,"Run Bedrock Model Evaluation or FMEval with harmful content datasets:
+- Toxicity detection
+- Hate speech classification
+- Violence/self-harm content",https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html,Medium,N/A,SR 11-7 | FFIEC CAT
+FS-36,No Guardrails — Content Filters Not Applicable,No Bedrock Guardrails configured.,Configure guardrails with content filters.,https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html,High,N/A,SR 11-7 | FFIEC CAT
+FS-37,ADVISORY: User Feedback Mechanism — Manual Review Required,User feedback mechanisms for harmful outputs cannot be verified via AWS APIs. Manual review required.,"1. Implement thumbs-up/down or flag-for-review UI in GenAI applications.
+2. Route flagged outputs to human reviewers via SQS/SNS.
+3. Log feedback to DynamoDB/S3 for model improvement.
+4. Define SLAs for reviewing flagged content.",https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html,Informational,N/A,SR 11-7 | FFIEC CAT | MAS TRM 9.2
+FS-38,No Guardrails — Word Filters Not Applicable,No Bedrock Guardrails configured.,Configure guardrails with word filters.,https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html,Medium,N/A,SR 11-7 | FFIEC CAT
+FS-39,No SageMaker Clarify Bias Monitoring,"No SageMaker Clarify model bias monitoring schedules found. Models making financial decisions (credit, insurance) may exhibit discriminatory bias without detection.","1. Configure SageMaker Clarify bias detection for all models making credit, insurance, or employment decisions.
+2. Define protected attributes (age, gender, race proxies).
+3. Set bias metric thresholds and alert on violations.
+4. Document bias testing results for regulatory examination.",https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-monitor-bias-drift.html,High,Failed,SR 11-7 | FFIEC CAT | ECOA/Fair Housing
+FS-40,No Evaluation Jobs — Bias Datasets Not Verified,No Bedrock Model Evaluation jobs found.,"Run Bedrock Model Evaluation with bias test datasets:
+- Demographic parity test cases
+- Equal opportunity scenarios
+- Counterfactual fairness tests",https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html,Medium,N/A,SR 11-7 | FFIEC CAT | ECOA/Fair Housing
+FS-41,No SageMaker Clarify Explainability Monitoring,No SageMaker Clarify explainability monitoring found. Models making adverse financial decisions may not provide required explanations (ECOA adverse action notices).,"1. Configure SageMaker Clarify explainability for credit/lending models.
+2. Generate SHAP values for feature importance.
+3. Map top features to human-readable adverse action reason codes.
+4. Store explanations for regulatory examination.",https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability.html,High,Failed,SR 11-7 | FFIEC CAT
+FS-42,No SageMaker Model Cards Found,"No SageMaker Model Cards found. Production AI models lack documented intended use, limitations, and bias evaluations.","1. Create SageMaker Model Cards for all production models.
+2. Document: intended use, out-of-scope uses, training data, bias evaluations.
+3. Include regulatory compliance attestations.
+4. Review and update cards at each model version release.",https://docs.aws.amazon.com/sagemaker/latest/dg/model-cards.html,Medium,Failed,SR 11-7 | FFIEC CAT
+FS-43,No CloudWatch Logs Data Protection Policies,"No CloudWatch Logs data protection policies found. PII (SSN, account numbers, credit card numbers) in Bedrock invocation logs may be stored in plaintext.","1. Create CloudWatch Logs data protection policies to mask PII.
+2. Enable masking for: SSN, credit card numbers, bank account numbers, email.
+3. Apply policies to Bedrock invocation log groups.
+4. Test masking with synthetic PII before production deployment.",https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/mask-sensitive-log-data.html,High,Failed,NYDFS 500 | FFIEC CAT | PCI-DSS
+FS-44,Amazon Macie Not Enabled,Amazon Macie is not enabled. S3 buckets containing training data and KB data sources are not being scanned for PII/sensitive data.,"1. Enable Amazon Macie in all regions where AI/ML data is stored.
+2. Create Macie classification jobs for training data and KB buckets.
+3. Configure Macie findings to route to Security Hub and SNS.
+4. Remediate PII findings before using data for model training.",https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html,High,Failed,NYDFS 500 | FFIEC CAT | PCI-DSS
+FS-45,No Guardrails — PII Filters Not Applicable,No Bedrock Guardrails configured.,Configure guardrails with PII/sensitive information filters.,https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-sensitive-filters.html,High,N/A,NYDFS 500 | FFIEC CAT | PCI-DSS
+FS-46,AI/ML Buckets Without Data Classification Tags,"12 AI/ML bucket(s) without data-classification tags: bedrock-agentcore-codebuild-sources-469898429403-us-east-1, bedrock-agentcore-runtime-469898429403-us-east-1-2h09526czr, bedrock-usage-intel-failed-records-469898429403-us-east-1, bedrock-usage-intel-processed-data-469898429403-us-east-1, bedrock-usage-intel-raw-logs-469898429403-us-east-1, dev-vendorcommandcenterst-knowledgebasekbbucket1bf-bfoajiinsr4n, dev-vendorcommandcenterst-knowledgebasekbbucket1bf-dttwp5qrbqyq, dev-vendorcommandcenterst-knowledgebasekbbucket1bf-mure4ntcjmmf, dev-vendorcommandcenterst-knowledgebasekbbucket1bf-pivy5zfs0whp, fedpoint-quick-kb.","Tag all AI/ML data buckets with 'data-classification' key. Values: Public, Internal, Confidential, Restricted. Enforce via SCP or AWS Config rule.",https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html,Medium,Failed,NYDFS 500 | FFIEC CAT | ISO 27001 A.12 | PCI-DSS
+FS-47,No Guardrails — Grounding Threshold Not Applicable,No Bedrock Guardrails configured.,Configure guardrails with contextual grounding checks.,https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html,High,N/A,SR 11-7 | FFIEC CAT
+FS-48,Active Knowledge Bases for RAG Present,Found 2 active Knowledge Base(s) for RAG grounding.,No action required.,https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html,Informational,Passed,SR 11-7 | FFIEC CAT
+FS-49,ADVISORY: Hallucination Disclaimer — Manual Review Required,Application-level hallucination disclaimers cannot be verified via AWS APIs. Manual review required.,"1. Add disclaimers to GenAI outputs: 'AI-generated content may contain errors. Verify with authoritative sources before acting.'
+2. Implement post-processing to append disclaimers.
+3. Test disclaimer presence in QA before production.",https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html,Informational,N/A,SR 11-7 | FFIEC CAT | MAS TRM 9.2
+FS-50,No Guardrails With Relevance Grounding Filters,"No guardrails have RELEVANCE contextual grounding filters. Without relevance filters, responses that are off-topic or unrelated to the user query will not be blocked, increasing hallucination risk in RAG-based FinServ applications.",Enable the RELEVANCE contextual grounding filter in Bedrock Guardrails with a threshold of ≥0.7 to block responses that are not relevant to the user query. Also enable the GROUNDING filter (≥0.7) to block responses not supported by the retrieved source context.,https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html,Medium,Failed,SR 11-7 | FFIEC CAT
+FS-51,No Guardrails — Prompt Attack Filters Not Applicable,No Bedrock Guardrails configured.,Configure guardrails with prompt attack filters.,https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html,High,N/A,NYDFS 500 | FFIEC CAT | OWASP LLM Top 10
+FS-52,Bedrock Lambda Functions on Current Runtimes,All 3 Bedrock Lambda function(s) use current runtimes.,No action required.,https://docs.aws.amazon.com/lambda/latest/dg/runtimes-update.html,Informational,Passed,NYDFS 500 | FFIEC CAT | ISO 27001 A.12 | OWASP LLM Top 10
+FS-53,WAF Injection Protection Rules Present,All 1 WAF ACL(s) have injection protection rules.,No action required.,https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html,Informational,Passed,NYDFS 500 | PCI-DSS | FFIEC CAT | OWASP LLM Top 10
+FS-54,ADVISORY: Penetration Testing — Manual Review Required,Penetration testing evidence cannot be verified via AWS APIs. Manual review required to confirm GenAI applications have been tested.,"1. Conduct penetration testing of GenAI applications at least annually and before major releases.
+2. Include AI-specific test cases: prompt injection, jailbreak, indirect (cross-domain) injection, system-prompt leakage, and data-extraction attempts.
+3. Consider AWS Security Agent for on-demand, AI-driven penetration testing (GA March 2026; available in US East N. Virginia, US West Oregon, Europe Ireland, Europe Frankfurt, Asia Pacific Sydney, Asia Pacific Tokyo, with cross-account shared-VPC testing via AWS RAM). Open-source tools such as Garak or PyRIT and manual red-teaming are complementary options. Verify current regional availability on the AWS Security Agent page before relying on it.
+4. Document findings and remediation for regulatory examination, and tag tested resources with a last-pentest-date for audit trail.
+5. For DORA compliance, include GenAI in TLPT (Threat-Led Penetration Testing) scope.",https://aws.amazon.com/security/penetration-testing/,Informational,N/A,NYDFS 500 | FFIEC CAT | OWASP LLM Top 10
+FS-55,No Output Validation Functions Found,No Lambda functions with output validation/sanitization naming found. GenAI outputs may be passed directly to downstream systems without validation.,"1. Implement output validation Lambda functions in GenAI pipelines.
+2. Validate output schema, length, and content before downstream use.
+3. Sanitize outputs before rendering in web UIs (XSS prevention).
+4. Encode outputs appropriately for the target context (HTML, SQL, JSON).",https://genai.owasp.org/llm-top-10/,Medium,Failed,FFIEC CAT | OWASP LLM Top 10
+FS-56,XSS Prevention — Review WAF Common Rule Set,Found 1 WAF ACL(s). Verify AWSManagedRulesCommonRuleSet is enabled for XSS prevention (see FS-53).,"Ensure AWSManagedRulesCommonRuleSet is enabled on all WAF ACLs protecting GenAI web applications. Additionally, implement Content Security Policy (CSP) headers.",https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html,Medium,Passed,NYDFS 500 | PCI-DSS | OWASP LLM Top 10
+FS-57,ADVISORY: Output Encoding — Manual Review Required,Output encoding practices cannot be verified via AWS APIs. Manual code review required.,"1. HTML-encode GenAI outputs before rendering in web UIs.
+2. Use parameterized queries when GenAI output is used in database operations.
+3. JSON-encode outputs before embedding in JavaScript contexts.
+4. Validate output length and format before passing to downstream APIs.",https://genai.owasp.org/llm-top-10/,Informational,N/A,NYDFS 500.06 | FFIEC CAT | OWASP LLM Top 10
+FS-58,Output Schema Validation — Review Required,Found 1 potential schema validation function(s). Verify structured output validation is implemented for all GenAI responses.,"1. Use Bedrock structured output (response schemas) where supported.
+2. Implement JSON schema validation on Lambda output processors.
+3. Reject malformed outputs and return safe error responses.
+4. Log schema validation failures to CloudWatch for monitoring.",https://docs.aws.amazon.com/bedrock/latest/userguide/inference-parameters.html,Medium,Passed,FFIEC CAT | OWASP LLM Top 10
+FS-59,No Guardrails — Topic Allowlist Not Applicable,No Bedrock Guardrails configured.,Configure guardrails with topic policies to restrict off-topic responses.,https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html,Medium,N/A,SR 11-7 | FFIEC CAT
+FS-60,ADVISORY: Contextual Grounding for Off-Topic Prevention,Contextual grounding for off-topic prevention is covered by guardrail grounding checks (FS-47) and RAG configuration (FS-48). Additionally verify system prompts explicitly scope the assistant's role.,"1. Include explicit scope instructions in system prompts.
+2. Use Bedrock Guardrails relevance grounding filter.
+3. Test with off-topic prompts in QA to verify rejection behavior.",https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html,Informational,N/A,SR 11-7 | FFIEC CAT
+FS-61,No Automated KB Sync Schedules Detected,"Found 2 Knowledge Base(s) but no EventBridge Scheduler schedules or EventBridge rules with 'bedrock'/'knowledge' naming were found. Note: this check uses a name/target heuristic — sync automation with other naming conventions, AWS Step Functions-based orchestration, or native Bedrock API-triggered syncs (StartIngestionJob called directly) will not be detected. Verify sync automation manually if applicable.","1. Use EventBridge Scheduler (the AWS-recommended approach) to create a recurring schedule (e.g., rate(1 day) or a cron expression) that triggers a Lambda function calling the Bedrock StartIngestionJob API for each data source. Classic EventBridge scheduled rules also work but are a legacy feature.
+2. As of December 2024, Bedrock Knowledge Bases supports custom connectors and streaming data ingestion — use direct document ingestion (KnowledgeBaseDocuments API) for real-time updates without a full S3 sync.
+3. Set sync frequency based on data currency requirements (e.g., hourly for market data, daily for regulatory guidance).
+4. Configure CloudWatch alarms or SNS notifications on IngestionJob FAILED status for sync failure alerting.",https://docs.aws.amazon.com/scheduler/latest/UserGuide/what-is-scheduler.html,Medium,Failed,SR 11-7 | FFIEC CAT
+FS-62,ADVISORY: Data Currency Disclaimer — Manual Review Required,Data currency disclaimers cannot be verified via AWS APIs. Manual review required.,"1. Add data currency disclaimers to GenAI outputs: 'Information based on data current as of [KB last sync date].'
+2. Expose KB last sync timestamp in application responses.
+3. Alert users when KB data is older than defined threshold.",https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html,Informational,N/A,SR 11-7 | FFIEC CAT | MAS TRM 9.2
+FS-63,Legacy Models Without Lifecycle Management,"Legacy foundation models available: anthropic.claude-sonnet-4-20250514-v1:0, amazon.titan-image-generator-v2:0, amazon.nova-premier-v1:0:8k, amazon.nova-premier-v1:0:20k, amazon.nova-premier-v1:0:1000k. No Config rules found for model lifecycle management.","1. Create a model lifecycle management process.
+2. Subscribe to AWS Bedrock model deprecation notifications.
+3. Test and migrate to new model versions before deprecation dates.
+4. Document training data cutoff dates in model inventory.",https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html,Medium,Failed,SR 11-7 | FFIEC CAT | ISO 27001 A.12
+FS-65,KB Data Source References a Deleted S3 Bucket,"One or more Knowledge Base data sources point to S3 buckets that no longer exist (NoSuchBucket). Document-change monitoring cannot be assessed and KB grounding data is missing for these sources:
+- fedpoint-kms-poc-content-469898429403 (KB 'fedpoint-kms-poc-knowledge-base', source 'fedpoint-kms-poc-content-data-source')","1. Investigate why the data-source bucket was deleted (accidental deletion, environment teardown, or stale KB configuration).
+2. Recreate/restore the bucket (with event notifications and versioning enabled), or remove the orphaned data source from the Knowledge Base.
+3. Re-run a KB ingestion job after restoring the data source.",https://docs.aws.amazon.com/AmazonS3/latest/userguide/EventBridge.html,High,Failed,FFIEC CAT | DORA Art.6 | ISO 27001 A.12
+FS-66,AgentCore Runtimes Missing End-User Identity Propagation,"The following runtimes have no JWT or IAM authorizer configured for end-user identity propagation. Tool calls are authorized only by the agent execution role, not the originating user:
+- vendoriq_vendoriq
+- test_minimal
+- strands_claude_short_timeout
+- strands_claude_getting_started
+- proposal_drafter
+- harness_harness_ctuux
+- executive_summary_writer
+- document_generation
+- datetimemcp_Agent","1. Configure a custom JWT authorizer or IAM authorizer on each AgentCore runtime.
+2. Propagate the end-user's identity token to downstream tool services.
+3. Ensure tool services validate the propagated identity before executing actions.
+4. Do not expose propagated identity tokens to unauthorized third parties.",https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html,High,Failed,NYDFS 500 | SR 11-7 | MAS TRM 9 | PCI-DSS
+FS-67,Agent Action-Group Lambdas May Lack Transaction Thresholds,"The following agent action-group Lambda functions have no environment variables whose names suggest transaction-value threshold configuration (this is a best-effort heuristic — a threshold enforced in code or in an AgentCore Policy Engine rule would not be detected here, so treat this as a prompt for manual verification rather than a definitive gap). Without explicit limits, agents could initiate unbounded financial transactions:
+- Dev-DashboardStack-DashboardApiLayerAgentSessionsF-EnQLRGDeLRkn
+- fedpoint-kms-poc-create-bedrock-index
+- Dev-DashboardStack-DashboardApiLayerAgentInvokeFn3-r3fQdrJuboTX","1. Add transaction-value threshold environment variables (e.g., MAX_TRANSACTION_AMOUNT) to each agent action-group Lambda.
+2. Implement threshold enforcement logic in the Lambda handler.
+3. Configure AgentCore Policy Engine rules to cap financial transaction amounts.
+4. Route transactions exceeding thresholds to a human-in-the-loop approval step.",https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-engine.html,High,Failed,SR 11-7 | FFIEC CAT | MAS TRM 9 | PCI-DSS
+FS-68,API Gateway Request Body Size Limits Not Enforced,"Input payload size limits are not fully enforced on GenAI API endpoints. Oversized prompts can exhaust Bedrock token quotas and inflate costs:
+- REST APIs without request validators: VendorIQ MuleSoft API, VendorIQ Dashboard API, IsbRestApi","1. Add API Gateway request validators to enforce maximum body size on all Bedrock-facing REST API methods.
+2. Add a WAF SizeConstraintStatement rule to block requests with body size exceeding your maximum prompt length (e.g., 32 KB).
+3. Set the max_tokens parameter in Bedrock API calls to cap output length.
+4. Implement client-side token counting before submitting requests.",https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint.html,Medium,Failed,DORA Art.6 | FFIEC CAT | PCI-DSS | OWASP LLM Top 10
+FS-69,Prompt Input Validation Functions Present,"Found 3 Lambda function(s) with input validation/sanitization naming patterns: ISB-InitializeCleanupLambda-myisb, fedpoint-kms-poc-user-api-clean, fedpoint-compliance-validation.","Review these functions to confirm they cover: special-character stripping, format validation, size limits, and injection-sequence detection.",https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-injection.html,Informational,Passed,NYDFS 500 | FFIEC CAT | OWASP LLM Top 10

@@ -2,6 +2,7 @@
 Schema module for FinServ security findings.
 Mirrors the schema used in bedrock_assessments/schema.py.
 """
+
 from enum import Enum
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field, field_validator
