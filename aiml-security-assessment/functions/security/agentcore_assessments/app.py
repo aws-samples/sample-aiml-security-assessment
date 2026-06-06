@@ -15,7 +15,7 @@ from io import StringIO
 from datetime import datetime, timezone
 from typing import Dict, List, Any
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 from schema import create_finding, SeverityEnum, StatusEnum
 
@@ -26,22 +26,17 @@ logger.setLevel(logging.INFO)
 # Configure boto3 with adaptive retry mode
 boto3_config = Config(retries=dict(max_attempts=10, mode="adaptive"))
 
-# Initialize AWS clients
+# Initialize S3 client (always uses Lambda's region for bucket operations)
 s3_client = boto3.client("s3", config=boto3_config)
-iam_client = boto3.client("iam", config=boto3_config)
-ec2_client = boto3.client("ec2", config=boto3_config)
-ecr_client = boto3.client("ecr", config=boto3_config)
-logs_client = boto3.client("logs", config=boto3_config)
-xray_client = boto3.client("xray", config=boto3_config)
-cloudwatch_client = boto3.client("cloudwatch", config=boto3_config)
 
-# Initialize AgentCore client
-try:
-    agentcore_client = boto3.client("bedrock-agentcore-control", config=boto3_config)
-    logger.info("Successfully initialized bedrock-agentcore-control client")
-except Exception as e:
-    logger.warning(f"Failed to initialize bedrock-agentcore-control client: {e}")
-    agentcore_client = None
+# Regional clients — initialized in lambda_handler with target region
+iam_client = None
+ec2_client = None
+ecr_client = None
+logs_client = None
+xray_client = None
+cloudwatch_client = None
+agentcore_client = None
 
 # Environment variables
 BUCKET_NAME = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
@@ -137,6 +132,7 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
                 "Reference",
                 "Severity",
                 "Status",
+                "Region",
             ],
         )
         writer.writeheader()
@@ -153,6 +149,7 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
             "Reference",
             "Severity",
             "Status",
+            "Region",
         ],
     )
     writer.writeheader()
@@ -166,7 +163,7 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
     return csv_content
 
 
-def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
+def write_to_s3(execution_id: str, csv_content: str, bucket_name: str, region: str = "") -> str:
     """
     Upload CSV report to S3.
 
@@ -174,6 +171,7 @@ def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
         execution_id: Unique execution identifier
         csv_content: CSV content to upload
         bucket_name: S3 bucket name
+        region: AWS region identifier for the report filename
 
     Returns:
         S3 URL of uploaded file
@@ -182,7 +180,10 @@ def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
         Exception: If upload fails
     """
     try:
-        key = f"agentcore_security_report_{execution_id}.csv"
+        if region:
+            key = f"agentcore_security_report_{execution_id}_{region}.csv"
+        else:
+            key = f"agentcore_security_report_{execution_id}.csv"
 
         s3_client.put_object(
             Bucket=bucket_name,
@@ -2243,16 +2244,76 @@ def lambda_handler(event, context):
     Lambda handler for AgentCore security assessment.
 
     Args:
-        event: Lambda event containing execution_id
+        event: Lambda event containing execution_id and Region
         context: Lambda context
 
     Returns:
         Response with status and S3 URL
     """
-    global start_time
+    global start_time, iam_client, ec2_client, ecr_client, logs_client
+    global xray_client, cloudwatch_client, agentcore_client
     start_time = time.time()
 
     try:
+        # Extract target region from Step Functions Map state
+        region = event.get("Region", os.environ.get("AWS_REGION", "us-east-1"))
+        logger.info(f"Scanning region: {region}")
+
+        # Initialize regional clients
+        iam_client = boto3.client("iam", config=boto3_config)
+        ec2_client = boto3.client("ec2", config=boto3_config, region_name=region)
+        ecr_client = boto3.client("ecr", config=boto3_config, region_name=region)
+        logs_client = boto3.client("logs", config=boto3_config, region_name=region)
+        xray_client = boto3.client("xray", config=boto3_config, region_name=region)
+        cloudwatch_client = boto3.client("cloudwatch", config=boto3_config, region_name=region)
+
+        try:
+            agentcore_client = boto3.client("bedrock-agentcore-control", config=boto3_config, region_name=region)
+            # Test service availability with a lightweight call
+            agentcore_client.list_agent_runtimes(maxResults=1)
+            logger.info("Successfully initialized bedrock-agentcore-control client")
+        except EndpointConnectionError:
+            logger.info(f"AgentCore service not available in region {region}, skipping")
+            agentcore_client = None
+        except ClientError as e:
+            if "Could not connect" in str(e):
+                logger.info(f"AgentCore service not available in region {region}, skipping")
+                agentcore_client = None
+            else:
+                # Service is available but returned an API error (e.g., access denied) — proceed
+                logger.info("AgentCore client initialized (API accessible)")
+        except Exception as e:
+            if "Could not connect to the endpoint URL" in str(e):
+                logger.info(f"AgentCore service not available in region {region}, skipping")
+                agentcore_client = None
+            else:
+                logger.warning(f"Failed to initialize bedrock-agentcore-control client: {e}")
+                agentcore_client = None
+
+        # If AgentCore not available, produce a single N/A report and exit early
+        if agentcore_client is None:
+            execution_id = event.get("Execution", {}).get("Name", "unknown")
+            na_findings = [
+                create_finding(
+                    check_id="AC-00",
+                    finding_name="AgentCore Service Availability",
+                    finding_details=f"Amazon Bedrock AgentCore is not available in region {region}. No checks performed.",
+                    resolution="No action required. AgentCore is not deployed in this region.",
+                    reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/",
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                    region=region,
+                )
+            ]
+            for finding in na_findings:
+                finding["Region"] = region
+            csv_content = generate_csv_report(na_findings)
+            s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
+            return {
+                "statusCode": 200,
+                "body": json.dumps({"message": f"AgentCore not available in {region}", "s3_url": s3_url}),
+            }
+
         # Extract execution ID
         execution_id = event.get("Execution", {}).get("Name", "unknown")
         logger.info(
@@ -2310,7 +2371,6 @@ def lambda_handler(event, context):
 
             except Exception as e:
                 logger.error(f"Error in check '{check_name}': {e}")
-                # Add error finding
                 all_findings.append(
                     create_finding(
                         check_id="AC-00",
@@ -2320,15 +2380,21 @@ def lambda_handler(event, context):
                         reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/",
                         severity=SeverityEnum.HIGH,
                         status=StatusEnum.FAILED,
+                        region=region,
                     )
                 )
+
+        # Inject region into all findings that don't have it set
+        for finding in all_findings:
+            if not finding.get("Region"):
+                finding["Region"] = region
 
         # Generate CSV report
         logger.info(f"Generating CSV report with {len(all_findings)} total findings")
         csv_content = generate_csv_report(all_findings)
 
         # Upload to S3
-        s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME)
+        s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
 
         # Calculate execution metrics
         total_duration = time.time() - start_time

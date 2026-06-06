@@ -27,6 +27,7 @@ class Finding(BaseModel):
     Reference: str = Field(..., description="Documentation reference URL")
     Severity: SeverityEnum = Field(..., description="Severity level of the finding")
     Status: StatusEnum = Field(..., description="Current status of the finding")
+    Region: str = Field(default="", description="AWS region where the finding was identified")
 
     @validator('Check_ID')
     def validate_check_id(cls, v):
@@ -64,7 +65,8 @@ def create_finding(
     resolution: str,
     reference: str,
     severity: SeverityEnum,
-    status: StatusEnum
+    status: StatusEnum,
+    region: str = ""
 ) -> Dict[str, Any]:
     """
     Create a validated finding object
@@ -77,6 +79,7 @@ def create_finding(
         reference: Documentation URL
         severity: Severity level
         status: Current status
+        region: AWS region where the finding was identified
 
     Returns:
         Dict[str, Any]: Validated finding as dictionary
@@ -91,6 +94,7 @@ def create_finding(
         Resolution=resolution,
         Reference=reference,
         Severity=severity,
-        Status=status
+        Status=status,
+        Region=region
     )
     return dict(finding.model_dump())  # Convert to regular dictionary

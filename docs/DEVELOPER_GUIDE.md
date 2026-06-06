@@ -44,7 +44,7 @@
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 52 security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 51 security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, generating interactive HTML reports with findings and remediation guidance.
 
 ### Security Design Principles
 
@@ -101,6 +101,7 @@ sample-aiml-security-assessment/
 │   │   ├── agentcore_assessments/    # AgentCore security checks (13)
 │   │   ├── iam_permission_caching/   # AWS IAM permissions cache
 │   │   ├── cleanup_bucket/           # Amazon S3 cleanup
+│   │   ├── resolve_regions/          # Multi-region resolution Lambda
 │   │   └── generate_consolidated_report/  # HTML/CSV report generation
 │   ├── statemachine/                 # AWS Step Functions definition
 │   ├── images/                       # SAM application images
@@ -120,6 +121,7 @@ sample-aiml-security-assessment/
 │   ├── scripts/                      # Screenshot capture scripts
 │   ├── *.html                        # Sample HTML reports
 │   └── *.png                         # Report screenshots
+├── tests/                            # Unit tests for assessment functions
 ├── buildspec.yml                     # AWS CodeBuild orchestration
 ├── buildspec-modular-example.yml     # Modular buildspec example
 └── consolidate_html_reports.py       # Multi-account report consolidation
@@ -148,30 +150,44 @@ sample-aiml-security-assessment/
 ```json
 {
   "Comment": "AI/ML Assessment Module",
-  "StartAt": "Cleanup Amazon S3 Bucket",
+  "StartAt": "Cleanup S3 Bucket",
   "States": {
-    "Cleanup Amazon S3 Bucket": {
+    "Cleanup S3 Bucket": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Next": "AWS IAM Permission Caching"
+      "Next": "IAM Permission Caching"
     },
-    "AWS IAM Permission Caching": {
+    "IAM Permission Caching": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Next": "Parallel Service Assessments"
+      "Next": "Resolve Target Regions"
     },
-    "Parallel Service Assessments": {
-      "Type": "Parallel",
-      "Branches": [
-        {"StartAt": "Amazon Bedrock Assessment", "States": {...}},
-        {"StartAt": "Amazon SageMaker AI Assessment", "States": {...}},
-        {"StartAt": "Amazon Bedrock AgentCore Assessment", "States": {...}}
-      ],
+    "Resolve Target Regions": {
+      "Type": "Task",
+      "Comment": "Resolves target regions from TARGET_REGIONS env var",
+      "Next": "Scan Regions"
+    },
+    "Scan Regions": {
+      "Type": "Map",
+      "ItemsPath": "$.ResolvedRegions.regions",
+      "MaxConcurrency": 0,
+      "ItemProcessor": {
+        "ProcessorConfig": {"Mode": "INLINE"},
+        "StartAt": "Run Security Assessments",
+        "States": {
+          "Run Security Assessments": {
+            "Type": "Parallel",
+            "Branches": [
+              {"StartAt": "Bedrock Security Assessment", "States": {...}},
+              {"StartAt": "Sagemaker Security Assessment", "States": {...}},
+              {"StartAt": "AgentCore Security Assessment", "States": {...}}
+            ],
+            "End": true
+          }
+        }
+      },
       "Next": "Generate Consolidated Report"
     },
     "Generate Consolidated Report": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
       "End": true
     }
   }
@@ -180,22 +196,25 @@ sample-aiml-security-assessment/
 
 ## Assessment Structure
 
-The framework includes **52 security checks** across three AI/ML services. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **51 security checks** across three AI/ML services. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
 Each assessment AWS Lambda function:
-1. Receives execution context from AWS Step Functions
-2. Reads cached AWS IAM permissions from Amazon S3
-3. Performs security checks against AWS APIs
-4. Generates CSV report with findings
-5. Uploads results to Amazon S3
-6. Returns findings summary to AWS Step Functions
+1. Receives execution context and target region from AWS Step Functions (via the Map state)
+2. Verifies the service is available in the target region (returns N/A finding if not)
+3. Reads cached AWS IAM permissions from Amazon S3
+4. Creates regional boto3 clients with explicit `region_name` parameter
+5. Performs security checks against AWS APIs in the target region
+6. Generates CSV report with findings (includes `Region` column)
+7. Uploads results to Amazon S3 with region-suffixed filename
+8. Returns findings summary to AWS Step Functions
 
 **Additional Functions:**
-- **AWS IAM Permission Caching**: Pre-fetches AWS IAM policies to optimize assessment
+- **AWS IAM Permission Caching**: Pre-fetches AWS IAM policies to optimize assessment (global, runs once)
 - **Cleanup Bucket**: Removes old assessment data
-- **Generate Consolidated Report**: Creates HTML report from CSV findings
+- **Resolve Regions**: Resolves target regions from `TargetRegions` parameter for the Map state
+- **Generate Consolidated Report**: Creates HTML report from CSV findings with region filtering
 
 ## Adding New AI/ML Service Assessments
 
@@ -214,26 +233,44 @@ cd aiml-security-assessment/functions/security/comprehend_assessments
 ```python
 # app.py
 import boto3
+import os
 import json
+from botocore.config import Config
+from botocore.exceptions import ClientError, EndpointConnectionError
 from schema import create_finding
+
+boto3_config = Config(retries=dict(max_attempts=10, mode="adaptive"))
 
 
 def lambda_handler(event, context):
     """Main assessment handler for new service"""
     all_findings = []
 
+    # Extract target region from Step Functions Map state
+    region = event.get("Region", os.environ.get("AWS_REGION", "us-east-1"))
+
+    # Verify service availability in this region
+    try:
+        test_client = boto3.client("comprehend", config=boto3_config, region_name=region)
+        test_client.list_endpoints(MaxResults=1)
+    except (EndpointConnectionError, Exception) as e:
+        if "Could not connect to the endpoint URL" in str(e):
+            # Service not available — return N/A finding
+            ...
+            return {"statusCode": 200, "body": {"message": f"Service not available in {region}"}}
+
     # Get cached permissions
     execution_id = event["Execution"]["Name"]
     permission_cache = get_permissions_cache(execution_id)
 
-    # Run assessment checks
-    findings = check_new_service_security(permission_cache)
+    # Run assessment checks (pass region to each)
+    findings = check_new_service_security(permission_cache, region=region)
     all_findings.append(findings)
 
-    # Generate and upload report
+    # Generate and upload report (include region in S3 key)
     csv_content = generate_csv_report(all_findings)
     bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
-    s3_url = write_to_s3(execution_id, csv_content, bucket_name)
+    s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
 
     return {
         "statusCode": 200,
@@ -245,7 +282,7 @@ def lambda_handler(event, context):
     }
 
 
-def check_new_service_security(permission_cache):
+def check_new_service_security(permission_cache, region: str = ""):
     """Implement your security checks here"""
     findings = {
         "check_name": "New Service Security Check",
@@ -254,9 +291,11 @@ def check_new_service_security(permission_cache):
         "csv_data": [],
     }
 
+    # Create regional client
+    client = boto3.client("comprehend", config=boto3_config, region_name=region)
+
     # Your assessment logic here
-    # Use permission_cache to check IAM permissions
-    # Use AWS SDK to check service configurations
+    # Pass region= to all create_finding() calls
 
     return findings
 ```
@@ -279,7 +318,6 @@ class SeverityEnum(str, Enum):
     MEDIUM = "Medium"
     LOW = "Low"
     INFORMATIONAL = "Informational"
-    NA = "N/A"
 
 
 class StatusEnum(str, Enum):
@@ -289,7 +327,7 @@ class StatusEnum(str, Enum):
 
 
 def create_finding(
-    check_id, finding_name, finding_details, resolution, reference, severity, status
+    check_id, finding_name, finding_details, resolution, reference, severity, status, region=""
 ):
     """Create standardized finding format
 
@@ -301,6 +339,7 @@ def create_finding(
         reference: Documentation URL
         severity: SeverityEnum value
         status: StatusEnum value (Failed, Passed, or N/A)
+        region: AWS region where the finding was identified
     """
     return {
         "Check_ID": check_id,
@@ -310,6 +349,7 @@ def create_finding(
         "Reference": reference,
         "Severity": severity,
         "Status": status,
+        "Region": region,
     }
 ```
 
@@ -330,6 +370,7 @@ Add your new function to `aiml-security-assessment/template.yaml`:
       Environment:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+          TARGET_REGIONS: !Ref TargetRegions
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
@@ -490,7 +531,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 ## Development Roadmap
 
 ### Current Status
-- **AI/ML Assessment**: 52 security checks across three services (see [Security Checks Reference](SECURITY_CHECKS.md))
+- **AI/ML Assessment**: 51 security checks across three services (see [Security Checks Reference](SECURITY_CHECKS.md))
 
 ### Potential Additions
 - **Amazon Comprehend**: Data privacy, access controls, entity recognition security

@@ -110,6 +110,38 @@ aws s3 rb s3://<bucket-name>
 3. **Wrong prefix**: Look under `{account_id}/` for single-account, `consolidated-reports/` for multi-account
 4. **Permissions**: Check CloudWatch Logs for Lambda execution errors
 
+### 8. Confused by Multiple CloudFormation Stacks
+
+**Symptoms:** You see multiple stacks and aren't sure which one has your results.
+
+**Explanation:** The deployment creates TWO stacks. Only the infrastructure stack has the `AssessmentBucket` output.
+
+| Stack Type | How to Identify | What to Do |
+|------------|-----------------|------------|
+| **Infrastructure Stack** (yours) | The name you chose (for example, `aiml-security-single-account`) | Use this — go to Outputs tab, copy `AssessmentBucket` |
+| **Assessment Stack** (auto-generated) | `aiml-sec-{account_id}` (single) or `aiml-security-{account_id}` (multi) | Ignore — internal operations only |
+
+**Quick Check**: If a stack name starts with `aiml-sec-` or `aiml-security-` followed by numbers (or `aiml-security-mgmt`), it's auto-generated. Look for the name you chose during deployment.
+
+### 9. Upgrading an Existing Deployment to Multi-Region
+
+**Symptoms:** You have an existing single-region deployment and want to enable multi-region scanning.
+
+**Solution:** Update your existing CloudFormation stack — no teardown required.
+
+1. Navigate to **AWS CloudFormation** > **Stacks**
+2. Select your infrastructure stack (for example, `aiml-security-single-account` or `aiml-security-multi-account`)
+3. Click **Update** > **Use current template**
+4. Set the `TargetRegions` parameter (for example, `us-east-1,us-west-2,eu-west-1` or `all`)
+5. Click through to **Submit**
+6. The next assessment run will scan the specified regions in parallel
+
+**What happens during the upgrade:**
+- CloudFormation updates the `TARGET_REGIONS` environment variable on the existing Lambdas (the `ResolveRegionsFunction`, state machine, and assessment Lambdas already exist in all deployments — when `TargetRegions` is empty they simply scan a single region)
+- No new resources are created — the value of the environment variable changes from empty to your specified regions
+- No data is lost — the S3 bucket retains all previous reports
+- Fully backward compatible — leaving `TargetRegions` empty preserves single-region behavior
+
 ---
 
 ## Debugging

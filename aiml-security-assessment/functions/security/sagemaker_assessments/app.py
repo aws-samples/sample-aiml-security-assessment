@@ -7,7 +7,7 @@ import time
 from typing import Dict, List, Any, Optional
 from io import StringIO
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 import random
 import json
 
@@ -80,7 +80,7 @@ def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def check_sagemaker_internet_access() -> Dict[str, Any]:
+def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker notebook instances and domains have direct internet access
     """
@@ -93,7 +93,7 @@ def check_sagemaker_internet_access() -> Dict[str, Any]:
         total_resources_checked = 0
 
         # Create SageMaker client
-        sagemaker_client = boto3.client("sagemaker")
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         # Check Notebook Instances
         try:
@@ -167,6 +167,7 @@ def check_sagemaker_internet_access() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
                         severity="High",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -181,6 +182,7 @@ def check_sagemaker_internet_access() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
                         severity="High",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -197,6 +199,7 @@ def check_sagemaker_internet_access() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
                         severity="High",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -209,6 +212,7 @@ def check_sagemaker_internet_access() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -228,12 +232,13 @@ def check_sagemaker_internet_access() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_guardduty_enabled() -> Dict[str, Any]:
+def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
     """
     Check if GuardDuty is enabled in the account to monitor SageMaker security issues
 
@@ -248,7 +253,7 @@ def check_guardduty_enabled() -> Dict[str, Any]:
     }
 
     try:
-        guardduty_client = boto3.client("guardduty")
+        guardduty_client = boto3.client("guardduty", config=boto3_config, region_name=region)
 
         # Get list of detectors in the current region
         detectors = guardduty_client.list_detectors()
@@ -263,6 +268,7 @@ def check_guardduty_enabled() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/guardduty/latest/ug/ai-protection.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             )
         else:
@@ -275,6 +281,7 @@ def check_guardduty_enabled() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/guardduty/latest/ug/ai-protection.html",
                     severity="Medium",
                     status="Passed",
+                    region=region,
                 )
             )
     except ClientError as e:
@@ -289,6 +296,7 @@ def check_guardduty_enabled() -> Dict[str, Any]:
                 reference="https://docs.aws.amazon.com/guardduty/latest/ug/security-iam.html",
                 severity="High",
                 status="Failed",
+                region=region,
             )
         )
     except Exception as e:
@@ -301,13 +309,14 @@ def check_guardduty_enabled() -> Dict[str, Any]:
                 reference="https://docs.aws.amazon.com/guardduty/latest/ug/what-is-guardduty.html",
                 severity="High",
                 status="Failed",
+                region=region,
             )
         )
 
     return findings
 
 
-def check_sagemaker_iam_permissions(permission_cache) -> Dict[str, Any]:
+def check_sagemaker_iam_permissions(permission_cache, region: str = "") -> Dict[str, Any]:
     """
     Check SageMaker IAM permissions, SSO configuration, and stale access
     """
@@ -325,7 +334,7 @@ def check_sagemaker_iam_permissions(permission_cache) -> Dict[str, Any]:
 
         # Check for stale access
         stale_users = []
-        iam_client = boto3.client("iam")
+        iam_client = boto3.client("iam", config=boto3_config, region_name=region)
         two_months_ago = datetime.now(timezone.utc) - timedelta(days=60)
 
         # Check users' last access to SageMaker
@@ -373,7 +382,7 @@ def check_sagemaker_iam_permissions(permission_cache) -> Dict[str, Any]:
         # Check SSO configuration
         domains_without_sso = []
         try:
-            sagemaker_client = boto3.client("sagemaker")
+            sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
             paginator = sagemaker_client.get_paginator("list_domains")
 
             for page in paginator.paginate():
@@ -442,6 +451,7 @@ def check_sagemaker_iam_permissions(permission_cache) -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/sagemaker-unified-studio/latest/adminguide/security-iam.html",
                             severity="High",
                             status="Failed",
+                            region=region,
                         )
                     )
 
@@ -457,6 +467,7 @@ def check_sagemaker_iam_permissions(permission_cache) -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/sagemaker-unified-studio/latest/adminguide/security-iam.html",
                             severity="Medium",
                             status="Failed",
+                            region=region,
                         )
                     )
 
@@ -478,6 +489,7 @@ def check_sagemaker_iam_permissions(permission_cache) -> Dict[str, Any]:
                             reference="https://aws.amazon.com/blogs/machine-learning/team-and-user-management-with-amazon-sagemaker-and-aws-sso/",
                             severity="Medium",
                             status="Failed",
+                            region=region,
                         )
                     )
         else:
@@ -490,6 +502,7 @@ def check_sagemaker_iam_permissions(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker-unified-studio/latest/adminguide/security-iam.html",
                     severity="High",
                     status="Passed",
+                    region=region,
                 )
             )
 
@@ -546,7 +559,7 @@ def get_account_id() -> str:
         raise
 
 
-def check_sagemaker_data_protection() -> Dict[str, Any]:
+def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
     """
     Check SageMaker data protection configurations including encryption at rest and in transit
     """
@@ -554,7 +567,7 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker")
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         # Track resources with encryption issues
         resources_with_aws_managed_keys = []
@@ -705,6 +718,7 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/key-management.html",
                         severity="High",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -719,6 +733,7 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/key-management.html",
                         severity="Low",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -733,6 +748,7 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/encryption-in-transit.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -747,6 +763,7 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                         severity="High",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -759,6 +776,7 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -778,12 +796,13 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_mlops_utilization(permission_cache) -> Dict[str, Any]:
+def check_sagemaker_mlops_utilization(permission_cache, region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker MLOps features (Model Registry, Feature Store, and Pipelines)
     are being utilized properly
@@ -792,7 +811,7 @@ def check_sagemaker_mlops_utilization(permission_cache) -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
         issues_found = []
 
         # Check Model Registry Usage
@@ -948,6 +967,7 @@ def check_sagemaker_mlops_utilization(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/mlops.html",
                         severity=issue["severity"],
                         status=issue["status"],
+                        region=region,
                     )
                 )
         else:
@@ -961,6 +981,7 @@ def check_sagemaker_mlops_utilization(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/mlops.html",
                     severity="Low",
                     status="Passed",
+                    region=region,
                 )
             )
 
@@ -1001,7 +1022,7 @@ def get_resolution_for_component(component: str) -> str:
     )
 
 
-def check_sagemaker_clarify_usage(permission_cache) -> Dict[str, Any]:
+def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker Clarify is being used for bias detection and model explainability
     """
@@ -1009,7 +1030,7 @@ def check_sagemaker_clarify_usage(permission_cache) -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
         issues_found = []
 
         try:
@@ -1075,6 +1096,7 @@ def check_sagemaker_clarify_usage(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-configure-processing-jobs.html",
                         severity=issue["severity"],
                         status=issue["status"],
+                        region=region,
                     )
                 )
         else:
@@ -1088,6 +1110,7 @@ def check_sagemaker_clarify_usage(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-configure-processing-jobs.html",
                     severity="Low",
                     status="Passed",
+                    region=region,
                 )
             )
 
@@ -1103,7 +1126,7 @@ def check_sagemaker_clarify_usage(permission_cache) -> Dict[str, Any]:
         }
 
 
-def check_sagemaker_model_monitor_usage(permission_cache) -> Dict[str, Any]:
+def check_sagemaker_model_monitor_usage(permission_cache, region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker Model Monitor is configured and actively monitoring models
     """
@@ -1111,7 +1134,7 @@ def check_sagemaker_model_monitor_usage(permission_cache) -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
         issues_found = []
 
         try:
@@ -1170,6 +1193,7 @@ def check_sagemaker_model_monitor_usage(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
                         severity=issue["severity"],
                         status=issue["status"],
+                        region=region,
                     )
                 )
         else:
@@ -1182,6 +1206,7 @@ def check_sagemaker_model_monitor_usage(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
                     severity="Medium",
                     status="Passed",
+                    region=region,
                 )
             )
 
@@ -1199,7 +1224,7 @@ def check_sagemaker_model_monitor_usage(permission_cache) -> Dict[str, Any]:
         }
 
 
-def check_sagemaker_notebook_root_access() -> Dict[str, Any]:
+def check_sagemaker_notebook_root_access(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker notebook instances have root access disabled.
     Root access enables privilege escalation and should be disabled for security.
@@ -1209,7 +1234,7 @@ def check_sagemaker_notebook_root_access() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         notebooks_with_root = []
         notebooks_without_root = []
@@ -1252,6 +1277,7 @@ def check_sagemaker_notebook_root_access() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/nbi-root-access.html",
                         severity="High",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -1266,6 +1292,7 @@ def check_sagemaker_notebook_root_access() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/nbi-root-access.html",
                         severity="High",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -1279,6 +1306,7 @@ def check_sagemaker_notebook_root_access() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/nbi-root-access.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -1298,12 +1326,13 @@ def check_sagemaker_notebook_root_access() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_notebook_vpc_deployment() -> Dict[str, Any]:
+def check_sagemaker_notebook_vpc_deployment(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker notebook instances are deployed within a custom VPC.
     Notebooks outside VPC use shared infrastructure with less isolation.
@@ -1313,7 +1342,7 @@ def check_sagemaker_notebook_vpc_deployment() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         notebooks_without_vpc = []
         notebooks_with_vpc = []
@@ -1362,6 +1391,7 @@ def check_sagemaker_notebook_vpc_deployment() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/appendix-notebook-and-internet-access.html",
                         severity="High",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -1376,6 +1406,7 @@ def check_sagemaker_notebook_vpc_deployment() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/appendix-notebook-and-internet-access.html",
                         severity="High",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -1389,6 +1420,7 @@ def check_sagemaker_notebook_vpc_deployment() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/appendix-notebook-and-internet-access.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -1408,12 +1440,13 @@ def check_sagemaker_notebook_vpc_deployment() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_model_network_isolation() -> Dict[str, Any]:
+def check_sagemaker_model_network_isolation(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker hosted models have network isolation enabled.
     Without isolation, model containers can make outbound calls and exfiltrate data.
@@ -1423,7 +1456,7 @@ def check_sagemaker_model_network_isolation() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         models_without_isolation = []
         models_with_isolation = []
@@ -1475,6 +1508,7 @@ def check_sagemaker_model_network_isolation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/mkt-algo-model-internet-free.html",
                         severity="High",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -1488,6 +1522,7 @@ def check_sagemaker_model_network_isolation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/mkt-algo-model-internet-free.html",
                         severity="High",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -1502,6 +1537,7 @@ def check_sagemaker_model_network_isolation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/mkt-algo-model-internet-free.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -1515,6 +1551,7 @@ def check_sagemaker_model_network_isolation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/mkt-algo-model-internet-free.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -1534,12 +1571,13 @@ def check_sagemaker_model_network_isolation() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_endpoint_instance_count() -> Dict[str, Any]:
+def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker endpoints have more than one instance for availability.
     Single instance creates availability risk and single point of compromise.
@@ -1549,7 +1587,7 @@ def check_sagemaker_endpoint_instance_count() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         endpoints_single_instance = []
         endpoints_multi_instance = []
@@ -1613,6 +1651,7 @@ def check_sagemaker_endpoint_instance_count() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -1627,6 +1666,7 @@ def check_sagemaker_endpoint_instance_count() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -1640,6 +1680,7 @@ def check_sagemaker_endpoint_instance_count() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -1659,12 +1700,13 @@ def check_sagemaker_endpoint_instance_count() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_monitoring_network_isolation() -> Dict[str, Any]:
+def check_sagemaker_monitoring_network_isolation(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker monitoring schedules have network isolation enabled.
     Aligns with AWS Security Hub control SageMaker.14
@@ -1673,7 +1715,7 @@ def check_sagemaker_monitoring_network_isolation() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         schedules_without_isolation = []
         schedules_with_isolation = []
@@ -1730,6 +1772,7 @@ def check_sagemaker_monitoring_network_isolation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-network-isolation.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -1744,6 +1787,7 @@ def check_sagemaker_monitoring_network_isolation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-network-isolation.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -1757,6 +1801,7 @@ def check_sagemaker_monitoring_network_isolation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-network-isolation.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -1777,12 +1822,13 @@ def check_sagemaker_monitoring_network_isolation() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_model_container_repository() -> Dict[str, Any]:
+def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker models pull container images from private ECR in VPC.
     Using Platform mode exposes supply chain risks.
@@ -1792,7 +1838,7 @@ def check_sagemaker_model_container_repository() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         models_platform_mode = []
         models_vpc_mode = []
@@ -1873,6 +1919,7 @@ def check_sagemaker_model_container_repository() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -1886,6 +1933,7 @@ def check_sagemaker_model_container_repository() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -1900,6 +1948,7 @@ def check_sagemaker_model_container_repository() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -1913,6 +1962,7 @@ def check_sagemaker_model_container_repository() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -1933,12 +1983,13 @@ def check_sagemaker_model_container_repository() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_feature_store_encryption() -> Dict[str, Any]:
+def check_sagemaker_feature_store_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker Feature Store offline stores have KMS encryption.
     Aligns with AWS Security Hub control SageMaker.17
@@ -1947,7 +1998,7 @@ def check_sagemaker_feature_store_encryption() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         feature_groups_without_encryption = []
         feature_groups_with_encryption = []
@@ -2004,6 +2055,7 @@ def check_sagemaker_feature_store_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-security.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -2017,6 +2069,7 @@ def check_sagemaker_feature_store_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-security.html",
                         severity="High",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -2030,6 +2083,7 @@ def check_sagemaker_feature_store_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-security.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -2050,12 +2104,13 @@ def check_sagemaker_feature_store_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_data_quality_encryption() -> Dict[str, Any]:
+def check_sagemaker_data_quality_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker data quality job definitions have inter-container traffic encryption.
     Aligns with AWS Security Hub control SageMaker.9
@@ -2064,7 +2119,7 @@ def check_sagemaker_data_quality_encryption() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         jobs_without_encryption = []
         jobs_with_encryption = []
@@ -2114,6 +2169,7 @@ def check_sagemaker_data_quality_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -2128,6 +2184,7 @@ def check_sagemaker_data_quality_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -2141,6 +2198,7 @@ def check_sagemaker_data_quality_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -2160,12 +2218,13 @@ def check_sagemaker_data_quality_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_processing_job_encryption() -> Dict[str, Any]:
+def check_sagemaker_processing_job_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker processing jobs have volume encryption enabled.
     Aligns with AWS Security Hub control SageMaker.10
@@ -2174,7 +2233,7 @@ def check_sagemaker_processing_job_encryption() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         jobs_without_encryption = []
         jobs_with_encryption = []
@@ -2226,6 +2285,7 @@ def check_sagemaker_processing_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/processing-job.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -2239,6 +2299,7 @@ def check_sagemaker_processing_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/processing-job.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -2253,6 +2314,7 @@ def check_sagemaker_processing_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/processing-job.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -2266,6 +2328,7 @@ def check_sagemaker_processing_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/processing-job.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -2286,12 +2349,13 @@ def check_sagemaker_processing_job_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_transform_job_encryption() -> Dict[str, Any]:
+def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker transform jobs have volume encryption enabled.
     Aligns with AWS Security Hub control SageMaker.11
@@ -2300,7 +2364,7 @@ def check_sagemaker_transform_job_encryption() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         jobs_without_encryption = []
         jobs_with_encryption = []
@@ -2349,6 +2413,7 @@ def check_sagemaker_transform_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -2362,6 +2427,7 @@ def check_sagemaker_transform_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -2376,6 +2442,7 @@ def check_sagemaker_transform_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -2389,6 +2456,7 @@ def check_sagemaker_transform_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -2409,12 +2477,13 @@ def check_sagemaker_transform_job_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_hyperparameter_tuning_encryption() -> Dict[str, Any]:
+def check_sagemaker_hyperparameter_tuning_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker hyperparameter tuning jobs have volume encryption enabled.
     Aligns with AWS Security Hub control SageMaker.12
@@ -2423,7 +2492,7 @@ def check_sagemaker_hyperparameter_tuning_encryption() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         jobs_without_encryption = []
         jobs_with_encryption = []
@@ -2479,6 +2548,7 @@ def check_sagemaker_hyperparameter_tuning_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/automatic-model-tuning.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -2492,6 +2562,7 @@ def check_sagemaker_hyperparameter_tuning_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/automatic-model-tuning.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -2506,6 +2577,7 @@ def check_sagemaker_hyperparameter_tuning_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/automatic-model-tuning.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -2519,6 +2591,7 @@ def check_sagemaker_hyperparameter_tuning_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/automatic-model-tuning.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -2539,12 +2612,13 @@ def check_sagemaker_hyperparameter_tuning_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_compilation_job_encryption() -> Dict[str, Any]:
+def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker compilation jobs have volume encryption enabled.
     Aligns with AWS Security Hub control SageMaker.13
@@ -2553,7 +2627,7 @@ def check_sagemaker_compilation_job_encryption() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         jobs_without_encryption = []
         jobs_with_encryption = []
@@ -2600,6 +2674,7 @@ def check_sagemaker_compilation_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/neo.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -2613,6 +2688,7 @@ def check_sagemaker_compilation_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/neo.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -2627,6 +2703,7 @@ def check_sagemaker_compilation_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/neo.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -2640,6 +2717,7 @@ def check_sagemaker_compilation_job_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/neo.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -2660,12 +2738,13 @@ def check_sagemaker_compilation_job_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_sagemaker_automl_network_isolation() -> Dict[str, Any]:
+def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker AutoML (Autopilot) jobs have network isolation enabled.
     Aligns with AWS Security Hub control SageMaker.15
@@ -2674,7 +2753,7 @@ def check_sagemaker_automl_network_isolation() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         jobs_without_isolation = []
         jobs_with_isolation = []
@@ -2725,6 +2804,7 @@ def check_sagemaker_automl_network_isolation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/autopilot-security.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -2738,6 +2818,7 @@ def check_sagemaker_automl_network_isolation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/autopilot-security.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -2752,6 +2833,7 @@ def check_sagemaker_automl_network_isolation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/autopilot-security.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -2765,6 +2847,7 @@ def check_sagemaker_automl_network_isolation() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/autopilot-security.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -2785,6 +2868,7 @@ def check_sagemaker_automl_network_isolation() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
@@ -2795,7 +2879,7 @@ def check_sagemaker_automl_network_isolation() -> Dict[str, Any]:
 # ============================================================================
 
 
-def check_model_approval_workflow() -> Dict[str, Any]:
+def check_model_approval_workflow(region: str = "") -> Dict[str, Any]:
     """
     Check if Model Registry has proper approval workflows configured.
     Validates that models go through approval process before production deployment.
@@ -2804,7 +2888,7 @@ def check_model_approval_workflow() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         issues_found = []
         groups_checked = 0
@@ -2889,6 +2973,7 @@ def check_model_approval_workflow() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry-approve.html",
                     severity="Informational",
                     status="N/A",
+                    region=region,
                 )
             )
         elif issues_found:
@@ -2902,6 +2987,7 @@ def check_model_approval_workflow() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry-approve.html",
                         severity=issue["severity"],
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -2914,6 +3000,7 @@ def check_model_approval_workflow() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry-approve.html",
                     severity="Medium",
                     status="Passed",
+                    region=region,
                 )
             )
 
@@ -2931,12 +3018,13 @@ def check_model_approval_workflow() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_model_drift_detection() -> Dict[str, Any]:
+def check_model_drift_detection(region: str = "") -> Dict[str, Any]:
     """
     Check if Model Monitor is configured for drift detection with proper baselines.
     Validates that models have data quality and model quality monitoring configured.
@@ -2945,7 +3033,7 @@ def check_model_drift_detection() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         endpoints_without_monitoring = []
         endpoints_with_monitoring = []
@@ -3038,6 +3126,7 @@ def check_model_drift_detection() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -3051,6 +3140,7 @@ def check_model_drift_detection() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -3065,6 +3155,7 @@ def check_model_drift_detection() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
                         severity="Low",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -3079,6 +3170,7 @@ def check_model_drift_detection() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -3091,6 +3183,7 @@ def check_model_drift_detection() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
 
@@ -3108,12 +3201,13 @@ def check_model_drift_detection() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_ab_testing_shadow_deployment() -> Dict[str, Any]:
+def check_ab_testing_shadow_deployment(region: str = "") -> Dict[str, Any]:
     """
     Check if endpoints are configured with proper A/B testing or shadow deployment patterns.
     Validates production variant configurations for safe model deployment.
@@ -3122,7 +3216,7 @@ def check_ab_testing_shadow_deployment() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         single_variant_endpoints = []
         multi_variant_endpoints = []
@@ -3200,6 +3294,7 @@ def check_ab_testing_shadow_deployment() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-ab-testing.html",
                     severity="Low",
                     status="Passed",
+                    region=region,
                 )
             )
         else:
@@ -3214,6 +3309,7 @@ def check_ab_testing_shadow_deployment() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-shadow-deployment.html",
                         severity="Low",
                         status="Passed",
+                        region=region,
                     )
                 )
 
@@ -3228,6 +3324,7 @@ def check_ab_testing_shadow_deployment() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-ab-testing.html",
                         severity="Low",
                         status="Passed",
+                        region=region,
                     )
                 )
 
@@ -3242,6 +3339,7 @@ def check_ab_testing_shadow_deployment() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-ab-testing.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
             elif not shadow_endpoints and not multi_variant_endpoints:
@@ -3254,6 +3352,7 @@ def check_ab_testing_shadow_deployment() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-ab-testing.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
             else:
@@ -3266,6 +3365,7 @@ def check_ab_testing_shadow_deployment() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-ab-testing.html",
                         severity="Low",
                         status="Passed",
+                        region=region,
                     )
                 )
 
@@ -3285,12 +3385,13 @@ def check_ab_testing_shadow_deployment() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_ml_lineage_tracking() -> Dict[str, Any]:
+def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
     """
     Check if ML Lineage Tracking is being used to track model artifacts and experiments.
     Validates that experiments, trials, and artifact associations are configured.
@@ -3299,7 +3400,7 @@ def check_ml_lineage_tracking() -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
 
         experiments_found = False
         trials_found = False
@@ -3388,6 +3489,7 @@ def check_ml_lineage_tracking() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/experiments.html",
                     severity="Informational",
                     status="N/A",
+                    region=region,
                 )
             )
         elif not trials_found:
@@ -3400,6 +3502,7 @@ def check_ml_lineage_tracking() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/experiments.html",
                     severity="Low",
                     status="Failed",
+                    region=region,
                 )
             )
         else:
@@ -3412,6 +3515,7 @@ def check_ml_lineage_tracking() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/experiments.html",
                     severity="Low",
                     status="Passed",
+                    region=region,
                 )
             )
 
@@ -3426,6 +3530,7 @@ def check_ml_lineage_tracking() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/lineage-tracking.html",
                     severity="Informational",
                     status="N/A",
+                    region=region,
                 )
             )
 
@@ -3443,12 +3548,13 @@ def check_ml_lineage_tracking() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ]
         }
 
 
-def check_model_registry_usage(permission_cache) -> Dict[str, Any]:
+def check_model_registry_usage(permission_cache, region: str = "") -> Dict[str, Any]:
     """
     Check if Amazon Model Registry is being used effectively for model management
     """
@@ -3456,7 +3562,7 @@ def check_model_registry_usage(permission_cache) -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config)
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
         issues_found = []
 
         try:
@@ -3546,6 +3652,7 @@ def check_model_registry_usage(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry.html",
                         severity=issue["severity"],
                         status=issue["status"],
+                        region=region,
                     )
                 )
         else:
@@ -3558,6 +3665,7 @@ def check_model_registry_usage(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry.html",
                     severity="Medium",
                     status="Passed",
+                    region=region,
                 )
             )
 
@@ -3646,6 +3754,7 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
         "Reference",
         "Severity",
         "Status",
+        "Region",
     ]
     writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
 
@@ -3662,7 +3771,7 @@ def get_current_utc_date():
     return datetime.now(timezone.utc).strftime("%Y/%m/%d")
 
 
-def write_to_s3(execution_id, csv_content: str, bucket_name: str) -> Dict[str, str]:
+def write_to_s3(execution_id, csv_content: str, bucket_name: str, region: str = "") -> Dict[str, str]:
     """
     Write CSV reports to S3 bucket
     """
@@ -3670,8 +3779,10 @@ def write_to_s3(execution_id, csv_content: str, bucket_name: str) -> Dict[str, s
     try:
         s3_client = boto3.client("s3", config=boto3_config)
 
-        # Upload CSV file
-        csv_file_name = f"sagemaker_security_report_{execution_id}.csv"
+        if region:
+            csv_file_name = f"sagemaker_security_report_{execution_id}_{region}.csv"
+        else:
+            csv_file_name = f"sagemaker_security_report_{execution_id}.csv"
         s3_client.put_object(
             Bucket=bucket_name,
             Key=csv_file_name,
@@ -3695,6 +3806,41 @@ def lambda_handler(event, context):
     all_findings = []
 
     try:
+        # Extract target region from Step Functions Map state
+        region = event.get("Region", os.environ.get("AWS_REGION", "us-east-1"))
+        logger.info(f"Scanning region: {region}")
+
+        # Verify SageMaker is available in this region
+        try:
+            test_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+            test_client.list_notebook_instances(MaxResults=1)
+        except (EndpointConnectionError, Exception) as e:
+            error_msg = str(e)
+            if "Could not connect to the endpoint URL" in error_msg or "EndpointConnectionError" in type(e).__name__:
+                logger.info(f"SageMaker service not available in region {region}, skipping")
+                all_findings.append({
+                    "check_name": "SageMaker Service Availability",
+                    "status": "N/A",
+                    "details": f"SageMaker is not available in region {region}",
+                    "csv_data": [
+                        create_finding(
+                            check_id="SM-00",
+                            finding_name="SageMaker Service Availability",
+                            finding_details=f"Amazon SageMaker is not available in region {region}. No checks performed.",
+                            resolution="No action required. SageMaker is not deployed in this region.",
+                            reference="https://docs.aws.amazon.com/general/latest/gr/sagemaker.html",
+                            severity="Informational",
+                            status="N/A",
+                            region=region,
+                        )
+                    ],
+                })
+                execution_id = event["Execution"]["Name"]
+                csv_content = generate_csv_report(all_findings)
+                bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
+                s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
+                return {"statusCode": 200, "body": {"message": f"SageMaker not available in {region}", "report_url": s3_url}}
+
         # Initialize permission cache
         logger.info("Initializing IAM permission cache")
         execution_id = event["Execution"]["Name"]
@@ -3707,113 +3853,113 @@ def lambda_handler(event, context):
             permission_cache = {"role_permissions": {}, "user_permissions": {}}
 
         logger.info("Running SageMaker internet access check")
-        sagemaker_internet_access_findings = check_sagemaker_internet_access()
+        sagemaker_internet_access_findings = check_sagemaker_internet_access(region=region)
         all_findings.append(sagemaker_internet_access_findings)
 
         logger.info("Running SageMaker IAM permissions check")
-        sagemaker_iam_findings = check_sagemaker_iam_permissions(permission_cache)
+        sagemaker_iam_findings = check_sagemaker_iam_permissions(permission_cache, region=region)
         all_findings.append(sagemaker_iam_findings)
 
         logger.info("Running SageMaker data protection check")
-        sagemaker_data_protection_findings = check_sagemaker_data_protection()
+        sagemaker_data_protection_findings = check_sagemaker_data_protection(region=region)
         all_findings.append(sagemaker_data_protection_findings)
 
         logger.info("Running GuardDuty SageMaker monitoring check")
-        guardduty_findings = check_guardduty_enabled()
+        guardduty_findings = check_guardduty_enabled(region=region)
         all_findings.append(guardduty_findings)
 
         logger.info("Running SageMaker MLOps features utilization check")
-        mlops_findings = check_sagemaker_mlops_utilization(permission_cache)
+        mlops_findings = check_sagemaker_mlops_utilization(permission_cache, region=region)
         all_findings.append(mlops_findings)
 
         logger.info("Running SageMaker Clarify usage check")
-        clarify_findings = check_sagemaker_clarify_usage(permission_cache)
+        clarify_findings = check_sagemaker_clarify_usage(permission_cache, region=region)
         all_findings.append(clarify_findings)
 
         logger.info("Running SageMaker Model Monitor usage check")
-        monitor_findings = check_sagemaker_model_monitor_usage(permission_cache)
+        monitor_findings = check_sagemaker_model_monitor_usage(permission_cache, region=region)
         all_findings.append(monitor_findings)
 
         logger.info("Running Model Registry usage check")
-        registry_findings = check_model_registry_usage(permission_cache)
+        registry_findings = check_model_registry_usage(permission_cache, region=region)
         all_findings.append(registry_findings)
 
         logger.info("Running SageMaker notebook root access check")
-        notebook_root_findings = check_sagemaker_notebook_root_access()
+        notebook_root_findings = check_sagemaker_notebook_root_access(region=region)
         all_findings.append(notebook_root_findings)
 
         logger.info("Running SageMaker notebook VPC deployment check")
-        notebook_vpc_findings = check_sagemaker_notebook_vpc_deployment()
+        notebook_vpc_findings = check_sagemaker_notebook_vpc_deployment(region=region)
         all_findings.append(notebook_vpc_findings)
 
         logger.info("Running SageMaker model network isolation check")
-        model_isolation_findings = check_sagemaker_model_network_isolation()
+        model_isolation_findings = check_sagemaker_model_network_isolation(region=region)
         all_findings.append(model_isolation_findings)
 
         logger.info("Running SageMaker endpoint instance count check")
-        endpoint_instance_findings = check_sagemaker_endpoint_instance_count()
+        endpoint_instance_findings = check_sagemaker_endpoint_instance_count(region=region)
         all_findings.append(endpoint_instance_findings)
 
         logger.info("Running SageMaker monitoring network isolation check")
-        monitoring_isolation_findings = check_sagemaker_monitoring_network_isolation()
+        monitoring_isolation_findings = check_sagemaker_monitoring_network_isolation(region=region)
         all_findings.append(monitoring_isolation_findings)
 
         logger.info("Running SageMaker model container repository check")
-        model_repository_findings = check_sagemaker_model_container_repository()
+        model_repository_findings = check_sagemaker_model_container_repository(region=region)
         all_findings.append(model_repository_findings)
 
         logger.info("Running SageMaker Feature Store encryption check")
-        feature_store_encryption_findings = check_sagemaker_feature_store_encryption()
+        feature_store_encryption_findings = check_sagemaker_feature_store_encryption(region=region)
         all_findings.append(feature_store_encryption_findings)
 
         logger.info("Running SageMaker data quality job encryption check")
-        data_quality_encryption_findings = check_sagemaker_data_quality_encryption()
+        data_quality_encryption_findings = check_sagemaker_data_quality_encryption(region=region)
         all_findings.append(data_quality_encryption_findings)
 
         # Additional AWS Security Hub Controls
         logger.info("Running SageMaker processing job encryption check (SageMaker.10)")
-        processing_job_encryption_findings = check_sagemaker_processing_job_encryption()
+        processing_job_encryption_findings = check_sagemaker_processing_job_encryption(region=region)
         all_findings.append(processing_job_encryption_findings)
 
         logger.info("Running SageMaker transform job encryption check (SageMaker.11)")
-        transform_job_encryption_findings = check_sagemaker_transform_job_encryption()
+        transform_job_encryption_findings = check_sagemaker_transform_job_encryption(region=region)
         all_findings.append(transform_job_encryption_findings)
 
         logger.info(
             "Running SageMaker hyperparameter tuning job encryption check (SageMaker.12)"
         )
         hyperparameter_tuning_encryption_findings = (
-            check_sagemaker_hyperparameter_tuning_encryption()
+            check_sagemaker_hyperparameter_tuning_encryption(region=region)
         )
         all_findings.append(hyperparameter_tuning_encryption_findings)
 
         logger.info("Running SageMaker compilation job encryption check (SageMaker.13)")
         compilation_job_encryption_findings = (
-            check_sagemaker_compilation_job_encryption()
+            check_sagemaker_compilation_job_encryption(region=region)
         )
         all_findings.append(compilation_job_encryption_findings)
 
         logger.info(
             "Running SageMaker AutoML job network isolation check (SageMaker.15)"
         )
-        automl_network_isolation_findings = check_sagemaker_automl_network_isolation()
+        automl_network_isolation_findings = check_sagemaker_automl_network_isolation(region=region)
         all_findings.append(automl_network_isolation_findings)
 
         # Model Governance Checks
         logger.info("Running model approval workflow check")
-        model_approval_workflow_findings = check_model_approval_workflow()
+        model_approval_workflow_findings = check_model_approval_workflow(region=region)
         all_findings.append(model_approval_workflow_findings)
 
         logger.info("Running model drift detection check")
-        model_drift_detection_findings = check_model_drift_detection()
+        model_drift_detection_findings = check_model_drift_detection(region=region)
         all_findings.append(model_drift_detection_findings)
 
         logger.info("Running A/B testing and shadow deployment check")
-        ab_testing_findings = check_ab_testing_shadow_deployment()
+        ab_testing_findings = check_ab_testing_shadow_deployment(region=region)
         all_findings.append(ab_testing_findings)
 
         logger.info("Running ML lineage tracking check")
-        ml_lineage_tracking_findings = check_ml_lineage_tracking()
+        ml_lineage_tracking_findings = check_ml_lineage_tracking(region=region)
         all_findings.append(ml_lineage_tracking_findings)
 
         # Generate and upload report
@@ -3827,7 +3973,7 @@ def lambda_handler(event, context):
             )
 
         logger.info("Writing reports to S3")
-        s3_url = write_to_s3(execution_id, csv_content, bucket_name)
+        s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
 
         return {
             "statusCode": 200,

@@ -8,6 +8,7 @@ Metadata:
           default: Assessment Options
         Parameters:
           - EmailAddress
+          - TargetRegions
       - Label:
           default: Advanced Options
         Parameters:
@@ -34,6 +35,14 @@ Parameters:
     Default: ""
     AllowedPattern: ^$|^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
     ConstraintDescription: Must be a valid email address or leave empty
+
+  TargetRegions:
+    Type: String
+    Description: >
+      Comma-separated list of AWS regions to scan (e.g., us-east-1,us-west-2,eu-west-1).
+      Use 'all' to scan all regions where the service is available.
+      Leave empty to scan only the deployment region.
+    Default: ""
 
   CodeBuildTimeout:
     Description: "Timeout for the CodeBuild job in minutes"
@@ -424,6 +433,9 @@ Resources:
             Type: PLAINTEXT
           - Name: AWS_ACCOUNT_ID
             Value: !Sub ${AWS::AccountId}
+            Type: PLAINTEXT
+          - Name: TARGET_REGIONS
+            Value: !Ref TargetRegions
             Type: PLAINTEXT
       Description: Run AIML Security single-account assessment
       ServiceRole: !GetAtt CodeBuildRole.Arn

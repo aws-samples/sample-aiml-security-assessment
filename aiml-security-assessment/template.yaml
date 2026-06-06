@@ -5,6 +5,15 @@ Description: >
 
   SAM Template for aiml-security-assessment
 
+Parameters:
+  TargetRegions:
+    Type: String
+    Default: ""
+    Description: >
+      Comma-separated list of AWS regions to scan (e.g., us-east-1,us-west-2,eu-west-1).
+      Use 'all' to scan all regions where the service is available.
+      Leave empty to scan only the deployment region.
+
 Resources:
   AIMLAssessmentStateMachine:
     Type: AWS::Serverless::StateMachine # More info about State Machine Resource: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-statemachine.html
@@ -13,28 +22,44 @@ Resources:
       DefinitionSubstitutions:
         CleanupBucketFunction: !GetAtt CleanupBucketFunction.Arn
         IAMPermissionCachingFunction: !GetAtt IAMPermissionCachingFunction.Arn
+        ResolveRegionsFunction: !GetAtt ResolveRegionsFunction.Arn
         BedrockSecurityAssessmentFunction: !GetAtt BedrockSecurityAssessmentFunction.Arn
         SagemakerSecurityAssessmentFunction: !GetAtt SagemakerSecurityAssessmentFunction.Arn
         AgentCoreSecurityAssessmentFunction: !GetAtt AgentCoreSecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
       Policies:
-        # Find out more about SAM policy templates: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
         - LambdaInvokePolicy:
             FunctionName: !Ref CleanupBucketFunction
         - LambdaInvokePolicy:
-            FunctionName: !Ref BedrockSecurityAssessmentFunction
-        - LambdaInvokePolicy:
             FunctionName: !Ref IAMPermissionCachingFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref ResolveRegionsFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref BedrockSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref SagemakerSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref AgentCoreSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref GenerateConsolidatedReportFunction
-        #Add S3 Read Write policy
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
+
+  ResolveRegionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-ResolveRegions'
+      CodeUri: functions/security/resolve_regions/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          TARGET_REGIONS: !Ref TargetRegions
 
   CleanupBucketFunction:
     Type: AWS::Serverless::Function
@@ -115,12 +140,12 @@ Resources:
       Runtime: python3.12
       Architectures:
         - x86_64
-      # Add S3 Read Write policy
       Timeout: 600 # 10 minutes
       MemorySize: 1024
       Environment:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+          TARGET_REGIONS: !Ref TargetRegions
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
@@ -206,12 +231,12 @@ Resources:
       Runtime: python3.12
       Architectures:
         - x86_64
-      # Add S3 Read Write policy
       Timeout: 600 # 10 minutes
       MemorySize: 1024
       Environment:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+          TARGET_REGIONS: !Ref TargetRegions
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
@@ -305,6 +330,7 @@ Resources:
       Environment:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+          TARGET_REGIONS: !Ref TargetRegions
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket

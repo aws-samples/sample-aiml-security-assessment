@@ -9,6 +9,7 @@ Metadata:
         Parameters:
           - MultiAccountScan
           - MultiAccountListOverride
+          - TargetRegions
           - EmailAddress
       - Label:
           default: Advanced Options
@@ -69,6 +70,14 @@ Parameters:
       - "Six"
       - "Twelve"
     Default: "Three"
+
+  TargetRegions:
+    Type: String
+    Description: >
+      Comma-separated list of AWS regions to scan (e.g., us-east-1,us-west-2,eu-west-1).
+      Use 'all' to scan all regions where the service is available.
+      Leave empty to scan only the deployment region.
+    Default: ""
 
   CodeBuildTimeout:
     Description: "Set the timeout for the CodeBuild job. The default is 300 minutes
@@ -514,6 +523,9 @@ Resources:
                 !Ref ConcurrentAccountScans,
                 "ParallelAccounts",
               ]
+            Type: PLAINTEXT
+          - Name: TARGET_REGIONS
+            Value: !Ref TargetRegions
             Type: PLAINTEXT
       Description: Run AIML Security multi-account assessment
       ServiceRole: !GetAtt MultiAccountCodeBuildRole.Arn

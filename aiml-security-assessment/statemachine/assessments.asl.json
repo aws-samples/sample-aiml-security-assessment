@@ -1,5 +1,5 @@
 {
-    "Comment": "A state machine that performs AI/ML security assessments.",
+    "Comment": "A state machine that performs AI/ML security assessments across multiple regions.",
     "StartAt": "Cleanup S3 Bucket",
     "States": {
         "Cleanup S3 Bucket": {
@@ -54,105 +54,158 @@
                 }
             ],
             "ResultPath": null,
-            "Next": "Run Security Assessments"
+            "Next": "Resolve Target Regions"
         },
-        "Run Security Assessments": {
-            "Type": "Parallel",
-            "Branches": [
+        "Resolve Target Regions": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": "${ResolveRegionsFunction}",
+                "Payload": {
+                    "Execution.$": "$$.Execution",
+                    "StateMachine.$": "$$.StateMachine"
+                }
+            },
+            "Retry": [
                 {
-                    "StartAt": "Bedrock Security Assessment",
-                    "States": {
-                        "Bedrock Security Assessment": {
-                            "Type": "Task",
-                            "Resource": "arn:aws:states:::lambda:invoke",
-                            "Parameters": {
-                                "FunctionName": "${BedrockSecurityAssessmentFunction}",
-                                "Payload": {
-                                    "Execution.$": "$$.Execution",
-                                    "StateMachine.$": "$$.StateMachine"
-                                }
-                            },
-                            "Retry": [
-                                {
-                                    "ErrorEquals": [
-                                        "Lambda.ServiceException",
-                                        "Lambda.AWSLambdaException",
-                                        "Lambda.SdkClientException",
-                                        "Lambda.TooManyRequestsException"
-                                    ],
-                                    "IntervalSeconds": 1,
-                                    "MaxAttempts": 3,
-                                    "BackoffRate": 2,
-                                    "JitterStrategy": "FULL"
-                                }
-                            ],
-                            "End": true
-                        }
-                    }
-                },
-                {
-                    "StartAt": "Sagemaker Security Assessment",
-                    "States": {
-                        "Sagemaker Security Assessment": {
-                            "Type": "Task",
-                            "Resource": "arn:aws:states:::lambda:invoke",
-                            "Parameters": {
-                                "FunctionName": "${SagemakerSecurityAssessmentFunction}",
-                                "Payload": {
-                                    "Execution.$": "$$.Execution",
-                                    "StateMachine.$": "$$.StateMachine"
-                                }
-                            },
-                            "Retry": [
-                                {
-                                    "ErrorEquals": [
-                                        "Lambda.ServiceException",
-                                        "Lambda.AWSLambdaException",
-                                        "Lambda.SdkClientException",
-                                        "Lambda.TooManyRequestsException"
-                                    ],
-                                    "IntervalSeconds": 1,
-                                    "MaxAttempts": 3,
-                                    "BackoffRate": 2,
-                                    "JitterStrategy": "FULL"
-                                }
-                            ],
-                            "End": true
-                        }
-                    }
-                },
-                {
-                    "StartAt": "AgentCore Security Assessment",
-                    "States": {
-                        "AgentCore Security Assessment": {
-                            "Type": "Task",
-                            "Resource": "arn:aws:states:::lambda:invoke",
-                            "Parameters": {
-                                "FunctionName": "${AgentCoreSecurityAssessmentFunction}",
-                                "Payload": {
-                                    "Execution.$": "$$.Execution",
-                                    "StateMachine.$": "$$.StateMachine"
-                                }
-                            },
-                            "Retry": [
-                                {
-                                    "ErrorEquals": [
-                                        "Lambda.ServiceException",
-                                        "Lambda.AWSLambdaException",
-                                        "Lambda.SdkClientException",
-                                        "Lambda.TooManyRequestsException"
-                                    ],
-                                    "IntervalSeconds": 1,
-                                    "MaxAttempts": 3,
-                                    "BackoffRate": 2,
-                                    "JitterStrategy": "FULL"
-                                }
-                            ],
-                            "End": true
-                        }
-                    }
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2,
+                    "JitterStrategy": "FULL"
                 }
             ],
+            "ResultPath": "$.ResolvedRegions",
+            "ResultSelector": {
+                "regions.$": "$.Payload.regions"
+            },
+            "Next": "Scan Regions"
+        },
+        "Scan Regions": {
+            "Type": "Map",
+            "ItemsPath": "$.ResolvedRegions.regions",
+            "ItemSelector": {
+                "Region.$": "$$.Map.Item.Value",
+                "Execution.$": "$$.Execution",
+                "StateMachine.$": "$$.StateMachine"
+            },
+            "MaxConcurrency": 0,
+            "ItemProcessor": {
+                "ProcessorConfig": {
+                    "Mode": "INLINE"
+                },
+                "StartAt": "Run Security Assessments",
+                "States": {
+                    "Run Security Assessments": {
+                        "Type": "Parallel",
+                        "Branches": [
+                            {
+                                "StartAt": "Bedrock Security Assessment",
+                                "States": {
+                                    "Bedrock Security Assessment": {
+                                        "Type": "Task",
+                                        "Resource": "arn:aws:states:::lambda:invoke",
+                                        "Parameters": {
+                                            "FunctionName": "${BedrockSecurityAssessmentFunction}",
+                                            "Payload": {
+                                                "Execution.$": "$.Execution",
+                                                "StateMachine.$": "$.StateMachine",
+                                                "Region.$": "$.Region"
+                                            }
+                                        },
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "Lambda.ServiceException",
+                                                    "Lambda.AWSLambdaException",
+                                                    "Lambda.SdkClientException",
+                                                    "Lambda.TooManyRequestsException"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 3,
+                                                "BackoffRate": 2,
+                                                "JitterStrategy": "FULL"
+                                            }
+                                        ],
+                                        "End": true
+                                    }
+                                }
+                            },
+                            {
+                                "StartAt": "Sagemaker Security Assessment",
+                                "States": {
+                                    "Sagemaker Security Assessment": {
+                                        "Type": "Task",
+                                        "Resource": "arn:aws:states:::lambda:invoke",
+                                        "Parameters": {
+                                            "FunctionName": "${SagemakerSecurityAssessmentFunction}",
+                                            "Payload": {
+                                                "Execution.$": "$.Execution",
+                                                "StateMachine.$": "$.StateMachine",
+                                                "Region.$": "$.Region"
+                                            }
+                                        },
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "Lambda.ServiceException",
+                                                    "Lambda.AWSLambdaException",
+                                                    "Lambda.SdkClientException",
+                                                    "Lambda.TooManyRequestsException"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 3,
+                                                "BackoffRate": 2,
+                                                "JitterStrategy": "FULL"
+                                            }
+                                        ],
+                                        "End": true
+                                    }
+                                }
+                            },
+                            {
+                                "StartAt": "AgentCore Security Assessment",
+                                "States": {
+                                    "AgentCore Security Assessment": {
+                                        "Type": "Task",
+                                        "Resource": "arn:aws:states:::lambda:invoke",
+                                        "Parameters": {
+                                            "FunctionName": "${AgentCoreSecurityAssessmentFunction}",
+                                            "Payload": {
+                                                "Execution.$": "$.Execution",
+                                                "StateMachine.$": "$.StateMachine",
+                                                "Region.$": "$.Region"
+                                            }
+                                        },
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "Lambda.ServiceException",
+                                                    "Lambda.AWSLambdaException",
+                                                    "Lambda.SdkClientException",
+                                                    "Lambda.TooManyRequestsException"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 3,
+                                                "BackoffRate": 2,
+                                                "JitterStrategy": "FULL"
+                                            }
+                                        ],
+                                        "End": true
+                                    }
+                                }
+                            }
+                        ],
+                        "End": true
+                    }
+                }
+            },
+            "ResultPath": null,
             "Next": "Generate Consolidated Report"
         },
         "Generate Consolidated Report": {

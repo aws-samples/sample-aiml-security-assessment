@@ -56,6 +56,7 @@ def consolidate_html_reports():
 
     all_findings = []
     account_ids = set()
+    regions = set()
     service_stats = {
         "bedrock": {"passed": 0, "failed": 0, "na": 0},
         "sagemaker": {"passed": 0, "failed": 0, "na": 0},
@@ -83,6 +84,9 @@ def consolidate_html_reports():
                         reader = csv.DictReader(f)
                         for row in reader:
                             # Map CSV columns to finding structure
+                            region = row.get("Region", "")
+                            if region:
+                                regions.add(region)
                             finding = {
                                 "account_id": account_id,
                                 "check_id": row.get("Check_ID", ""),
@@ -92,6 +96,7 @@ def consolidate_html_reports():
                                 "reference": row.get("Reference", ""),
                                 "severity": row.get("Severity", "N/A"),
                                 "status": row.get("Status", ""),
+                                "region": region,
                             }
 
                             # Determine service from Check_ID prefix
@@ -151,6 +156,7 @@ def consolidate_html_reports():
             mode="multi",
             account_ids=list(account_ids),
             timestamp=timestamp_display,
+            regions=sorted(regions) if regions else None,
         )
 
         timestamp_file = datetime.now().strftime("%Y%m%d_%H%M%S")

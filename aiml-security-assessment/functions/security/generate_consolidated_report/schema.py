@@ -22,6 +22,7 @@ class Finding(BaseModel):
     Reference: str = Field(..., description="Documentation reference URL")
     Severity: SeverityEnum = Field(..., description="Severity level of the finding")
     Status: StatusEnum = Field(..., description="Current status of the finding")
+    Region: str = Field(default="", description="AWS region where the finding was identified")
 
     @validator('Reference')
     def validate_reference_url(cls, v):
@@ -42,18 +43,18 @@ class Finding(BaseModel):
             raise ValueError('Status must be one of the allowed values')
         return v
 
-# Example usage:
 def create_finding(
     finding_name: str,
     finding_details: str,
     resolution: str,
     reference: str,
     severity: SeverityEnum,
-    status: StatusEnum
-) -> Finding:
+    status: StatusEnum,
+    region: str = ""
+) -> dict:
     """
     Create a validated finding object
-    
+
     Args:
         finding_name: Name of the finding
         finding_details: Detailed description
@@ -61,10 +62,11 @@ def create_finding(
         reference: Documentation URL
         severity: Severity level
         status: Current status
-    
+        region: AWS region where the finding was identified
+
     Returns:
-        Finding: Validated finding object
-    
+        Dict: Validated finding as dictionary
+
     Raises:
         ValidationError: If any field fails validation
     """
@@ -74,6 +76,7 @@ def create_finding(
         Resolution=resolution,
         Reference=reference,
         Severity=severity,
-        Status=status
+        Status=status,
+        Region=region
     )
     return dict(finding.model_dump())  # Convert to regular dictionary

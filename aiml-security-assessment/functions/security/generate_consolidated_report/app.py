@@ -198,6 +198,7 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
         "agentcore": {"passed": 0, "failed": 0, "na": 0},
     }
     service_findings = {"bedrock": [], "sagemaker": [], "agentcore": []}
+    regions = set()
 
     for service in ["bedrock", "sagemaker", "agentcore"]:
         if service in assessment_results:
@@ -213,6 +214,9 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
                         service_stats[service]["failed"] += 1
                     elif status == "n/a":
                         service_stats[service]["na"] += 1
+                    region = finding.get("Region", "")
+                    if region:
+                        regions.add(region)
 
     account_id = assessment_results.get("account_id", "Unknown")
     timestamp = assessment_results.get(
@@ -227,6 +231,7 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
             mode="single",
             account_id=account_id,
             timestamp=timestamp,
+            regions=sorted(regions) if regions else None,
         )
     except Exception as e:
         logger.error(f"Error generating HTML report: {str(e)}", exc_info=True)

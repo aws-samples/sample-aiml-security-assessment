@@ -7,7 +7,7 @@ import time
 from typing import Dict, List, Any, Optional
 from io import StringIO
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 import random
 import json
 from schema import create_finding
@@ -79,7 +79,7 @@ def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def check_marketplace_subscription_access(permission_cache) -> Dict[str, Any]:
+def check_marketplace_subscription_access(permission_cache, region: str = "") -> Dict[str, Any]:
     logger.debug("Starting check for overly permissive Marketplace subscription access")
     try:
         findings = {
@@ -165,6 +165,7 @@ def check_marketplace_subscription_access(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-bedrock-marketplace",
                         severity="High",
                         status="Failed",
+                        region=region,
                     )
                 )
         else:
@@ -180,6 +181,7 @@ def check_marketplace_subscription_access(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-bedrock-marketplace",
                     severity="Medium",
                     status="Passed",
+                    region=region,
                 )
             )
 
@@ -202,6 +204,7 @@ def check_marketplace_subscription_access(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
@@ -443,7 +446,7 @@ def check_stale_bedrock_access(permission_cache) -> Dict[str, Any]:
         }
 
 
-def check_bedrock_full_access_roles(permission_cache) -> Dict[str, Any]:
+def check_bedrock_full_access_roles(permission_cache, region: str = "") -> Dict[str, Any]:
     """
     Check for roles with AmazonBedrockFullAccess policy using cached permissions
     """
@@ -478,6 +481,7 @@ def check_bedrock_full_access_roles(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples-agent.html#iam-agents-ex-all\nhttps://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples-br-studio.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             )
     else:
@@ -491,6 +495,7 @@ def check_bedrock_full_access_roles(permission_cache) -> Dict[str, Any]:
                 reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples-agent.html#iam-agents-ex-all\nhttps://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples-br-studio.html",
                 severity="High",
                 status="Passed",
+                region=region,
             )
         )
 
@@ -535,13 +540,13 @@ def get_role_usage(role_name: str) -> str:
     return result
 
 
-def check_bedrock_vpc_endpoints() -> Dict[str, bool]:
+def check_bedrock_vpc_endpoints(region: str = "") -> Dict[str, bool]:
     """
     Check if any VPC has Bedrock VPC endpoints
     """
     logger.debug("Checking for Bedrock VPC endpoints")
     try:
-        ec2_client = boto3.client("ec2", config=boto3_config)
+        ec2_client = boto3.client("ec2", config=boto3_config, region_name=region)
 
         bedrock_endpoints = [
             "com.amazonaws.region.bedrock",
@@ -551,8 +556,7 @@ def check_bedrock_vpc_endpoints() -> Dict[str, bool]:
         ]
 
         # Get current region
-        session = boto3.session.Session()
-        current_region = session.region_name
+        current_region = region
         logger.debug(f"Current region: {current_region}")
 
         # Get list of all VPCs
@@ -661,7 +665,7 @@ def handle_aws_throttling(func, *args, **kwargs):
                 raise
 
 
-def check_bedrock_access_and_vpc_endpoints(permission_cache) -> Dict[str, Any]:
+def check_bedrock_access_and_vpc_endpoints(permission_cache, region: str = "") -> Dict[str, Any]:
     logger.debug("Starting check for Bedrock access and VPC endpoints")
     try:
         findings = {
@@ -686,7 +690,7 @@ def check_bedrock_access_and_vpc_endpoints(permission_cache) -> Dict[str, Any]:
                     break
 
         if bedrock_access_found:
-            vpc_endpoint_check = check_bedrock_vpc_endpoints()
+            vpc_endpoint_check = check_bedrock_vpc_endpoints(region=region)
 
             if not vpc_endpoint_check["has_endpoints"]:
                 findings["status"] = "WARN"
@@ -708,6 +712,7 @@ def check_bedrock_access_and_vpc_endpoints(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
             else:
@@ -728,6 +733,7 @@ def check_bedrock_access_and_vpc_endpoints(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html",
                         severity="High",
                         status="Passed",
+                        region=region,
                     )
                 )
         else:
@@ -752,12 +758,13 @@ def check_bedrock_access_and_vpc_endpoints(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
 
 
-def check_bedrock_guardrails() -> Dict[str, Any]:
+def check_bedrock_guardrails(region: str = "") -> Dict[str, Any]:
     """
     Check if Amazon Bedrock Guardrails are configured and being used
     """
@@ -770,7 +777,7 @@ def check_bedrock_guardrails() -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock", config=boto3_config)
+        bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
 
         try:
             # List all guardrails
@@ -792,6 +799,7 @@ def check_bedrock_guardrails() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
                         severity="High",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -806,6 +814,7 @@ def check_bedrock_guardrails() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -821,6 +830,7 @@ def check_bedrock_guardrails() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             )
 
@@ -841,12 +851,13 @@ def check_bedrock_guardrails() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
 
 
-def check_bedrock_logging_configuration() -> Dict[str, Any]:
+def check_bedrock_logging_configuration(region: str = "") -> Dict[str, Any]:
     """
     Check if model invocation logging is enabled for Amazon Bedrock
     """
@@ -859,7 +870,7 @@ def check_bedrock_logging_configuration() -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock", config=boto3_config)
+        bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
 
         try:
             # Get current logging configuration
@@ -895,6 +906,7 @@ def check_bedrock_logging_configuration() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -909,6 +921,7 @@ def check_bedrock_logging_configuration() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -924,6 +937,7 @@ def check_bedrock_logging_configuration() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
                     severity="Medium",
                     status="Failed",
+                    region=region,
                 )
             )
 
@@ -946,12 +960,13 @@ def check_bedrock_logging_configuration() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
 
 
-def check_bedrock_cloudtrail_logging() -> Dict[str, Any]:
+def check_bedrock_cloudtrail_logging(region: str = "") -> Dict[str, Any]:
     """
     Check if CloudTrail is configured to log Amazon Bedrock API calls
     """
@@ -964,7 +979,7 @@ def check_bedrock_cloudtrail_logging() -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        cloudtrail_client = boto3.client("cloudtrail", config=boto3_config)
+        cloudtrail_client = boto3.client("cloudtrail", config=boto3_config, region_name=region)
 
         try:
             # Get all trails
@@ -1034,6 +1049,7 @@ def check_bedrock_cloudtrail_logging() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
             else:
@@ -1052,6 +1068,7 @@ def check_bedrock_cloudtrail_logging() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html",
                         severity="High",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -1067,6 +1084,7 @@ def check_bedrock_cloudtrail_logging() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             )
 
@@ -1089,12 +1107,13 @@ def check_bedrock_cloudtrail_logging() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
 
 
-def check_bedrock_prompt_management() -> Dict[str, Any]:
+def check_bedrock_prompt_management(region: str = "") -> Dict[str, Any]:
     """
     Check if Amazon Bedrock Prompt Management feature is being used
     """
@@ -1107,7 +1126,7 @@ def check_bedrock_prompt_management() -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock-agent", config=boto3_config)
+        bedrock_client = boto3.client("bedrock-agent", config=boto3_config, region_name=region)
 
         try:
             # List all prompts
@@ -1131,6 +1150,7 @@ def check_bedrock_prompt_management() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management.html",
                         severity="Low",
                         status="Passed",
+                        region=region,
                     )
                 )
 
@@ -1159,6 +1179,7 @@ def check_bedrock_prompt_management() -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management.html",
                             severity="Low",
                             status="Failed",
+                            region=region,
                         )
                     )
             else:
@@ -1177,6 +1198,7 @@ def check_bedrock_prompt_management() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
 
@@ -1192,6 +1214,7 @@ def check_bedrock_prompt_management() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             )
 
@@ -1214,12 +1237,13 @@ def check_bedrock_prompt_management() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
 
 
-def check_bedrock_knowledge_base_encryption() -> Dict[str, Any]:
+def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if Amazon Bedrock Knowledge Bases have proper encryption configured
     including customer-managed KMS keys for data at rest
@@ -1233,7 +1257,7 @@ def check_bedrock_knowledge_base_encryption() -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_agent_client = boto3.client("bedrock-agent", config=boto3_config)
+        bedrock_agent_client = boto3.client("bedrock-agent", config=boto3_config, region_name=region)
 
         try:
             # List all knowledge bases
@@ -1253,6 +1277,7 @@ def check_bedrock_knowledge_base_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
                 return findings
@@ -1299,6 +1324,7 @@ def check_bedrock_knowledge_base_encryption() -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
                             severity="Informational",
                             status="N/A",
+                            region=region,
                         )
                     )
             else:
@@ -1311,6 +1337,7 @@ def check_bedrock_knowledge_base_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
                         severity="High",
                         status="Passed",
+                        region=region,
                     )
                 )
 
@@ -1328,6 +1355,7 @@ def check_bedrock_knowledge_base_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             )
 
@@ -1350,12 +1378,13 @@ def check_bedrock_knowledge_base_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
 
 
-def check_bedrock_guardrail_iam_enforcement(permission_cache) -> Dict[str, Any]:
+def check_bedrock_guardrail_iam_enforcement(permission_cache, region: str = "") -> Dict[str, Any]:
     """
     Check if IAM policies enforce the use of specific guardrails via
     the bedrock:GuardrailIdentifier condition key
@@ -1369,7 +1398,7 @@ def check_bedrock_guardrail_iam_enforcement(permission_cache) -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock", config=boto3_config)
+        bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
 
         # First check if any guardrails exist
         try:
@@ -1386,6 +1415,7 @@ def check_bedrock_guardrail_iam_enforcement(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions-id.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
                 return findings
@@ -1485,6 +1515,7 @@ def check_bedrock_guardrail_iam_enforcement(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions-id.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             )
         else:
@@ -1499,6 +1530,7 @@ def check_bedrock_guardrail_iam_enforcement(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions-id.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
             else:
@@ -1512,6 +1544,7 @@ def check_bedrock_guardrail_iam_enforcement(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions-id.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
 
@@ -1534,12 +1567,13 @@ def check_bedrock_guardrail_iam_enforcement(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
 
 
-def check_bedrock_custom_model_encryption() -> Dict[str, Any]:
+def check_bedrock_custom_model_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if custom/fine-tuned Bedrock models have proper encryption configured
     """
@@ -1552,7 +1586,7 @@ def check_bedrock_custom_model_encryption() -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock", config=boto3_config)
+        bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
 
         try:
             # List custom models
@@ -1572,6 +1606,7 @@ def check_bedrock_custom_model_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
                 return findings
@@ -1639,6 +1674,7 @@ def check_bedrock_custom_model_encryption() -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
                             severity="Medium",
                             status="Failed",
+                            region=region,
                         )
                     )
             else:
@@ -1651,6 +1687,7 @@ def check_bedrock_custom_model_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
                         severity="High",
                         status="Passed",
+                        region=region,
                     )
                 )
 
@@ -1665,6 +1702,7 @@ def check_bedrock_custom_model_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-iam-role.html",
                     severity="Low",
                     status="N/A",
+                    region=region,
                 )
             )
 
@@ -1687,12 +1725,13 @@ def check_bedrock_custom_model_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
 
 
-def check_bedrock_invocation_log_encryption() -> Dict[str, Any]:
+def check_bedrock_invocation_log_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if S3 buckets used for model invocation logging have proper encryption
     """
@@ -1705,8 +1744,8 @@ def check_bedrock_invocation_log_encryption() -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock", config=boto3_config)
-        s3_client = boto3.client("s3", config=boto3_config)
+        bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
+        s3_client = boto3.client("s3", config=boto3_config, region_name=region)
 
         try:
             # Get logging configuration
@@ -1725,6 +1764,7 @@ def check_bedrock_invocation_log_encryption() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
                 return findings
@@ -1768,6 +1808,7 @@ def check_bedrock_invocation_log_encryption() -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
                             severity="Medium",
                             status="Passed",
+                            region=region,
                         )
                     )
                 else:
@@ -1781,6 +1822,7 @@ def check_bedrock_invocation_log_encryption() -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
                             severity="Medium",
                             status="Failed",
+                            region=region,
                         )
                     )
 
@@ -1799,6 +1841,7 @@ def check_bedrock_invocation_log_encryption() -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
                             severity="High",
                             status="Failed",
+                            region=region,
                         )
                     )
                 elif e.response["Error"]["Code"] == "AccessDenied":
@@ -1811,6 +1854,7 @@ def check_bedrock_invocation_log_encryption() -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
                             severity="Medium",
                             status="Failed",
+                            region=region,
                         )
                     )
                 else:
@@ -1826,6 +1870,7 @@ def check_bedrock_invocation_log_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
                     severity="Informational",
                     status="N/A",
+                    region=region,
                 )
             )
 
@@ -1848,12 +1893,13 @@ def check_bedrock_invocation_log_encryption() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
 
 
-def check_bedrock_flows_guardrails() -> Dict[str, Any]:
+def check_bedrock_flows_guardrails(region: str = "") -> Dict[str, Any]:
     """
     Check if Bedrock Flows have guardrails configured on prompt and knowledge base nodes
     """
@@ -1866,7 +1912,7 @@ def check_bedrock_flows_guardrails() -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_agent_client = boto3.client("bedrock-agent", config=boto3_config)
+        bedrock_agent_client = boto3.client("bedrock-agent", config=boto3_config, region_name=region)
 
         try:
             # List all flows
@@ -1886,6 +1932,7 @@ def check_bedrock_flows_guardrails() -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows-guardrails.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
                 return findings
@@ -1970,6 +2017,7 @@ def check_bedrock_flows_guardrails() -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows-guardrails.html",
                             severity="High",
                             status="Failed",
+                            region=region,
                         )
                     )
             else:
@@ -1984,6 +2032,7 @@ def check_bedrock_flows_guardrails() -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows-guardrails.html",
                             severity="Medium",
                             status="Passed",
+                            region=region,
                         )
                     )
                 else:
@@ -1997,6 +2046,7 @@ def check_bedrock_flows_guardrails() -> Dict[str, Any]:
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows-guardrails.html",
                             severity="Informational",
                             status="N/A",
+                            region=region,
                         )
                     )
 
@@ -2011,6 +2061,7 @@ def check_bedrock_flows_guardrails() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows-guardrails.html",
                     severity="Low",
                     status="N/A",
+                    region=region,
                 )
             )
 
@@ -2033,12 +2084,13 @@ def check_bedrock_flows_guardrails() -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
 
 
-def check_bedrock_agent_roles(permission_cache) -> Dict[str, Any]:
+def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, Any]:
     """
     Check IAM roles associated with Bedrock agents for least privilege access
     """
@@ -2051,7 +2103,7 @@ def check_bedrock_agent_roles(permission_cache) -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock-agent", config=boto3_config)
+        bedrock_client = boto3.client("bedrock-agent", config=boto3_config, region_name=region)
 
         try:
             # Get all Bedrock agents
@@ -2069,6 +2121,7 @@ def check_bedrock_agent_roles(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_service-with-iam.html",
                         severity="Informational",
                         status="N/A",
+                        region=region,
                     )
                 )
                 return findings
@@ -2169,6 +2222,7 @@ def check_bedrock_agent_roles(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/gensec05-bp01.html",
                         severity="High",
                         status="Failed",
+                        region=region,
                     )
                 )
             else:
@@ -2184,6 +2238,7 @@ def check_bedrock_agent_roles(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/gensec05-bp01.html",
                         severity="Medium",
                         status="Passed",
+                        region=region,
                     )
                 )
 
@@ -2199,6 +2254,7 @@ def check_bedrock_agent_roles(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/gensec05-bp01.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             )
 
@@ -2219,6 +2275,7 @@ def check_bedrock_agent_roles(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
@@ -2238,6 +2295,7 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
         "Reference",
         "Severity",
         "Status",
+        "Region",
     ]
     writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
 
@@ -2254,14 +2312,17 @@ def get_current_utc_date():
     return datetime.now(timezone.utc).strftime("%Y/%m/%d")
 
 
-def write_to_s3(execution_id, csv_content: str, bucket_name: str) -> str:
+def write_to_s3(execution_id, csv_content: str, bucket_name: str, region: str = "") -> str:
     """
     Write CSV report to S3 bucket
     """
     logger.debug(f"Writing CSV report to S3 bucket: {bucket_name}")
     try:
         s3_client = boto3.client("s3", config=boto3_config)
-        file_name = f"bedrock_security_report_{execution_id}.csv"
+        if region:
+            file_name = f"bedrock_security_report_{execution_id}_{region}.csv"
+        else:
+            file_name = f"bedrock_security_report_{execution_id}.csv"
 
         s3_client.put_object(
             Bucket=bucket_name, Key=file_name, Body=csv_content, ContentType="text/csv"
@@ -2283,6 +2344,41 @@ def lambda_handler(event, context):
     all_findings = []
 
     try:
+        # Extract target region from Step Functions Map state
+        region = event.get("Region", os.environ.get("AWS_REGION", "us-east-1"))
+        logger.info(f"Scanning region: {region}")
+
+        # Verify Bedrock is available in this region
+        try:
+            test_client = boto3.client("bedrock", config=boto3_config, region_name=region)
+            test_client.get_model_invocation_logging_configuration()
+        except (EndpointConnectionError, Exception) as e:
+            error_msg = str(e)
+            if "Could not connect to the endpoint URL" in error_msg or "EndpointConnectionError" in type(e).__name__:
+                logger.info(f"Bedrock service not available in region {region}, skipping")
+                all_findings.append({
+                    "check_name": "Bedrock Service Availability",
+                    "status": "N/A",
+                    "details": f"Bedrock is not available in region {region}",
+                    "csv_data": [
+                        create_finding(
+                            check_id="BR-00",
+                            finding_name="Bedrock Service Availability",
+                            finding_details=f"Amazon Bedrock is not available in region {region}. No checks performed.",
+                            resolution="No action required. Bedrock is not deployed in this region.",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-regions.html",
+                            severity="Informational",
+                            status="N/A",
+                            region=region,
+                        )
+                    ],
+                })
+                execution_id = event["Execution"]["Name"]
+                csv_content = generate_csv_report(all_findings)
+                bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
+                s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
+                return {"statusCode": 200, "body": {"message": f"Bedrock not available in {region}", "report_url": s3_url}}
+
         # Initialize permission cache
         logger.info("Initializing IAM permission cache")
         execution_id = event["Execution"]["Name"]
@@ -2296,65 +2392,61 @@ def lambda_handler(event, context):
 
         # Run all checks using the cached permissions
         logger.info("Running AmazonBedrockFullAccess check")
-        bedrock_full_access_findings = check_bedrock_full_access_roles(permission_cache)
+        bedrock_full_access_findings = check_bedrock_full_access_roles(permission_cache, region=region)
         all_findings.append(bedrock_full_access_findings)
 
         logger.info("Running Bedrock access and VPC endpoints check")
         bedrock_access_vpc_findings = check_bedrock_access_and_vpc_endpoints(
-            permission_cache
+            permission_cache, region=region
         )
         all_findings.append(bedrock_access_vpc_findings)
 
-        # logger.info("Running stale access check")
-        # stale_access_findings = check_stale_bedrock_access(permission_cache)
-        # all_findings.append(stale_access_findings)
-
         logger.info("Running marketplace subscription access check")
         marketplace_access_findings = check_marketplace_subscription_access(
-            permission_cache
+            permission_cache, region=region
         )
         all_findings.append(marketplace_access_findings)
 
         logger.info("Running Bedrock logging findings check")
-        bedrock_logging_findings = check_bedrock_logging_configuration()
+        bedrock_logging_findings = check_bedrock_logging_configuration(region=region)
         all_findings.append(bedrock_logging_findings)
 
         logger.info("Running Bedrock Guardrails check")
-        bedrock_guardrails_findings = check_bedrock_guardrails()
+        bedrock_guardrails_findings = check_bedrock_guardrails(region=region)
         all_findings.append(bedrock_guardrails_findings)
 
         logger.info("Running Bedrock CloudTrail logging check")
-        bedrock_cloudtrail_findings = check_bedrock_cloudtrail_logging()
+        bedrock_cloudtrail_findings = check_bedrock_cloudtrail_logging(region=region)
         all_findings.append(bedrock_cloudtrail_findings)
 
         logger.info("Running Bedrock Prompt Management check")
-        bedrock_prompt_management_findings = check_bedrock_prompt_management()
+        bedrock_prompt_management_findings = check_bedrock_prompt_management(region=region)
         all_findings.append(bedrock_prompt_management_findings)
 
         logger.info("Running Bedrock agent IAM roles check")
-        bedrock_agent_roles_findings = check_bedrock_agent_roles(permission_cache)
+        bedrock_agent_roles_findings = check_bedrock_agent_roles(permission_cache, region=region)
         all_findings.append(bedrock_agent_roles_findings)
 
         logger.info("Running Bedrock Knowledge Base encryption check")
-        kb_encryption_findings = check_bedrock_knowledge_base_encryption()
+        kb_encryption_findings = check_bedrock_knowledge_base_encryption(region=region)
         all_findings.append(kb_encryption_findings)
 
         logger.info("Running Bedrock Guardrail IAM enforcement check")
         guardrail_iam_findings = check_bedrock_guardrail_iam_enforcement(
-            permission_cache
+            permission_cache, region=region
         )
         all_findings.append(guardrail_iam_findings)
 
         logger.info("Running Bedrock custom model encryption check")
-        custom_model_encryption_findings = check_bedrock_custom_model_encryption()
+        custom_model_encryption_findings = check_bedrock_custom_model_encryption(region=region)
         all_findings.append(custom_model_encryption_findings)
 
         logger.info("Running Bedrock invocation log encryption check")
-        invocation_log_encryption_findings = check_bedrock_invocation_log_encryption()
+        invocation_log_encryption_findings = check_bedrock_invocation_log_encryption(region=region)
         all_findings.append(invocation_log_encryption_findings)
 
         logger.info("Running Bedrock Flows guardrails check")
-        flows_guardrails_findings = check_bedrock_flows_guardrails()
+        flows_guardrails_findings = check_bedrock_flows_guardrails(region=region)
         all_findings.append(flows_guardrails_findings)
 
         # Generate and upload report
@@ -2368,7 +2460,7 @@ def lambda_handler(event, context):
             )
 
         logger.info("Writing report to S3")
-        s3_url = write_to_s3(execution_id, csv_content, bucket_name)
+        s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
 
         return {
             "statusCode": 200,
