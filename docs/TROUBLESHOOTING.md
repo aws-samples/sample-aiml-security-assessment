@@ -24,7 +24,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 **Solutions:**
 - Check that service-linked roles exist for AWS CloudFormation StackSets
 - Verify the management account has AWS Organizations permissions
-- Ensure target OUs contain active accounts
+- Verify target OUs contain active accounts
 - Review the StackSet operation history for specific error messages
 
 ### 2. Cross-Account Role Assumption Failures
@@ -35,7 +35,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 - Verify the `AIMLSecurityMemberRole` exists in target accounts
 - Check the trust relationship allows the central CodeBuild role
 - Confirm the `ManagementAccountID` parameter matches your management account
-- Ensure the StackSet deployment completed successfully in all accounts
+- Verify the StackSet deployment completed successfully in all accounts
 
 ### 3. AWS SAM Deployment Failures
 
@@ -49,13 +49,13 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 
 ### 4. AWS Step Functions Execution Failures
 
-**Symptoms:** Step Functions show failed state or timeout.
+**Symptoms:** AWS Step Functions show failed state or timeout.
 
 **Solutions:**
 - Monitor state machine executions in each account
 - Check Lambda function logs for errors
 - Verify Lambda has sufficient timeout (default 10 minutes)
-- Ensure IAM permissions allow Lambda to access required services
+- Verify AWS IAM permissions allow Lambda to access required services
 
 ### 5. EarlyValidation::ResourceExistenceCheck Error
 
@@ -117,7 +117,7 @@ aws s3 rb s3://<bucket-name>
 ### Check CodeBuild Logs
 
 1. Navigate to **AWS CodeBuild** > **Build projects**
-2. Select your project (e.g., `AIMLSecurityCodeBuild` or `AIMLSecurityMultiAccountCodeBuild`)
+2. Select your project (for example, `AIMLSecurityCodeBuild` or `AIMLSecurityMultiAccountCodeBuild`)
 3. Click on the latest build
 4. Review the **Build logs** tab for errors
 
@@ -146,13 +146,13 @@ The trust policy should allow the central CodeBuild role:
 
 ### Check S3 Bucket Permissions
 
-Ensure the bucket policy allows cross-account writes for multi-account deployments:
+Verify the bucket policy allows cross-account writes for multi-account deployments:
 
 ```bash
 aws s3api get-bucket-policy --bucket <assessment-bucket-name>
 ```
 
-### Monitor Step Functions Executions
+### Monitor AWS Step Functions Executions
 
 1. Navigate to **AWS Step Functions** in the target account
 2. Find the `AIMLAssessmentStateMachine`
@@ -194,7 +194,7 @@ A: The framework supports all standard AWS commercial regions where Amazon Bedro
 
 **Q: Does this work if I don't have any AI/ML resources deployed yet?**
 
-A: Yes. The assessment will run successfully and report findings with status "N/A" (Not Applicable) for checks where no resources exist to assess. This is useful for establishing a security baseline before deploying AI/ML workloads.
+A: Yes. The assessment runs successfully and reports findings with status "N/A" (Not Applicable) for checks where no resources exist to assess. This is useful for establishing a security baseline before deploying AI/ML workloads.
 
 ---
 
@@ -210,7 +210,7 @@ Cost breakdown:
 - **Amazon S3**: $0.01 - $0.10 (report storage, negligible for most use cases)
 - **AWS CodeBuild**: $0.10 - $0.50 (execution time, billed per minute)
 
-**Multi-account deployments**: Lambda and Step Functions costs scale with the number of accounts. AWS Organizations API calls are free. CodeBuild cost depends on the `ConcurrentAccountScans` setting, which determines the instance size:
+**Multi-account deployments**: AWS Lambda and AWS Step Functions costs scale with the number of accounts. AWS Organizations API calls are free. AWS CodeBuild cost depends on the `ConcurrentAccountScans` setting, which determines the instance size:
 
 | ConcurrentAccountScans | CodeBuild Compute Type | Approximate Cost per Build Minute |
 |------------------------|------------------------|-----------------------------------|
@@ -244,7 +244,7 @@ A: Yes! See the [Developer Guide](DEVELOPER_GUIDE.md#adding-new-aiml-service-ass
 A: Yes. The framework generates:
 - **CSV files** for each service (available in the Amazon S3 bucket per account)
 - **HTML reports** for interactive viewing
-- **JSON** (available via the permissions cache and raw Lambda outputs)
+- **JSON** (available through the permissions cache and raw Lambda outputs)
 
 You can integrate with SIEM tools by processing the CSV or JSON outputs from the Amazon S3 bucket.
 
@@ -277,7 +277,7 @@ A: Common causes:
 **Q: I see "Access Denied" errors in the AWS CodeBuild logs.**
 
 A: This usually indicates:
-1. **Multi-account**: The member role (`AIMLSecurityMemberRole`) is not deployed in target accounts via AWS CloudFormation StackSets
+1. **Multi-account**: The member role (`AIMLSecurityMemberRole`) is not deployed in target accounts through AWS CloudFormation StackSets
 2. **Trust relationship**: The role trust policy doesn't allow the central AWS CodeBuild role to assume it
 3. **Permissions**: The role lacks necessary read permissions for AI/ML services
 
@@ -288,7 +288,7 @@ Solution: Verify AWS CloudFormation StackSet deployment in Step 1 completed succ
 A: Performance factors:
 - **Number of resources**: Accounts with hundreds of Amazon SageMaker notebooks or Amazon Bedrock models take longer
 - **API throttling**: AWS API rate limits may slow down assessments in large environments
-- **Concurrent executions**: Multi-account assessments run in parallel (configurable via `ConcurrentAccountScans` parameter)
+- **Concurrent executions**: Multi-account assessments run in parallel (configurable through the `ConcurrentAccountScans` parameter)
 
 If assessments consistently timeout, increase the AWS Lambda timeout in the AWS SAM template or reduce concurrent account scans.
 
@@ -312,7 +312,7 @@ A: The framework uses **read-only permissions** only:
 
 See the main [README](../README.md#permissions-required) for the complete permission list.
 
-**Q: Is this assessment sufficient for compliance requirements (SOC 2, HIPAA, etc.)?**
+**Q: Is this assessment sufficient for compliance requirements (SOC 2, HIPAA, and similar)?**
 
 A: This assessment provides **a security evaluation against AWS best practices** and can support compliance efforts. However:
 - Useful for demonstrating security controls and continuous monitoring

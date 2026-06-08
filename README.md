@@ -1,8 +1,8 @@
-# AWS AI/ML Security Assessment — Amazon Bedrock, SageMaker, AgentCore & Financial Services GenAI Risk.
+# AWS AI/ML Security Assessment — Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore & Financial Services GenAI Risk
 
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](https://opensource.org/licenses/MIT-0) [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/downloads/) [![AWS SAM](https://img.shields.io/badge/AWS-SAM-orange.svg)](https://aws.amazon.com/serverless/sam/) [![Serverless](https://img.shields.io/badge/Architecture-Serverless-green.svg)](https://aws.amazon.com/serverless/)
 
-**Open-source automated security scanner for Amazon Bedrock, SageMaker AI, Bedrock AgentCore, and Financial Services GenAI Risk** — Built on [AWS Well-Architected Framework (Generative AI Lens)](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
+**Open-source automated security scanner for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Financial Services GenAI Risk** — Built on [AWS Well-Architected Framework (Generative AI Lens)](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
 
 Cloud security automation with **[116 security checks](docs/SECURITY_CHECKS.md)** for your generative AI and machine learning workloads. Identify IAM misconfigurations, encryption gaps, network isolation issues, and compliance violations with interactive HTML reports and actionable remediation guidance.
 
@@ -17,11 +17,11 @@ The framework generates professional, interactive security assessment reports wi
 <table>
   <tr>
     <td width="50%">
-      <img src="sample-reports/dashboard-overview-light.png" alt="AWS AI/ML security assessment dashboard showing Bedrock, SageMaker, and AgentCore findings by severity"/>
+      <img src="sample-reports/dashboard-overview-light.png" alt="AWS AI/ML security assessment dashboard showing Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore findings by severity"/>
       <p align="center"><em>Executive Dashboard (Light Mode)</em></p>
     </td>
     <td width="50%">
-      <img src="sample-reports/dashboard-overview-dark.png" alt="AWS AI/ML security assessment dashboard showing Bedrock, SageMaker, and AgentCore findings by severity"/>
+      <img src="sample-reports/dashboard-overview-dark.png" alt="AWS AI/ML security assessment dashboard showing Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore findings by severity"/>
       <p align="center"><em>Executive Dashboard (Dark Mode)</em></p>
     </td>
   </tr>
@@ -31,25 +31,19 @@ The framework generates professional, interactive security assessment reports wi
       <p align="center"><em>Interactive Findings Table with Filtering</em></p>
     </td>
   </tr>
-  <tr>
-    <td colspan="2">
-      <img src="sample-reports/multi-account-summary.png" alt="Multi-Account Summary"/>
-      <p align="center"><em>Multi-Account Consolidated View</em></p>
-    </td>
-  </tr>
 </table>
 
 ### Key Features
 
 - **Executive Summary** with severity counts and service breakdown
 - **Priority Recommendations** highlighting critical issues requiring immediate attention
-- **[116 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, SageMaker AI, Bedrock AgentCore, and Financial Services GenAI Risk
+- **[116 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Financial Services GenAI Risk
 - **Interactive Filtering** by account, service, severity, and status
 - **Light/Dark Mode Toggle** with persistent user preference
 - **Text Search** across all findings with real-time results
 - **Direct AWS Documentation Links** for each finding with remediation guidance
 - **Multi-Account Support** with consolidated reporting across your organization
-- **Fully Automated** deployment and execution via AWS CloudFormation and AWS CodeBuild
+- **Fully Automated** deployment and execution through AWS CloudFormation and AWS CodeBuild
 
 ---
 
@@ -57,6 +51,7 @@ The framework generates professional, interactive security assessment reports wi
 
 - [What It Does](#what-it-does)
 - [Why Use This Framework?](#why-use-this-framework)
+- [Scope and Limitations](#scope-and-limitations)
 - [Quick Start](#quick-start)
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
@@ -88,12 +83,12 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 | **Inconsistent security checks across teams** | Standardized 116-check assessment based on AWS Well-Architected best practices and AWS FinServ GenAI Risk guidance |
 | **Difficulty tracking AI/ML security posture** | Interactive HTML dashboards with severity breakdown and per-account visibility |
 | **Multi-account complexity** | Consolidated reporting across AWS Organizations with cross-account role assumption |
-| **Compliance and audit requirements** | Exportable reports with remediation guidance linked to AWS documentation |
+| **Compliance and audit support** | Exportable reports to supplement your compliance program, with remediation guidance linked to AWS documentation |
 | **Generative AI security gaps** | Purpose-built checks for LLM guardrails, model access controls, and prompt injection prevention |
 
 **Services Covered:**
 - **[Amazon Bedrock](docs/SECURITY_CHECKS.md#amazon-bedrock-security-checks-14)** (14 checks) - Guardrails, encryption, Amazon VPC endpoints, AWS IAM permissions, model invocation logging
-- **[Amazon SageMaker AI](docs/SECURITY_CHECKS.md#amazon-sagemaker-ai-security-checks-25)** (25 checks) - Security Hub controls (SageMaker.1-5), encryption, network isolation, AWS IAM, MLOps
+- **[Amazon SageMaker AI](docs/SECURITY_CHECKS.md#amazon-sagemaker-ai-security-checks-25)** (25 checks) - AWS Security Hub controls (SageMaker.1-5), encryption, network isolation, AWS IAM, MLOps
 - **[Amazon Bedrock AgentCore](docs/SECURITY_CHECKS.md#amazon-bedrock-agentcore-security-checks-13)** (13 checks) - Amazon VPC configuration, encryption, observability, resource policies
 - **[Financial Services GenAI Risk](docs/SECURITY_CHECKS.md#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)** (64 checks) - Unbounded consumption, excessive agency, supply chain, training data poisoning, hallucination, prompt injection, PII disclosure, and 8 more FinServ-specific risk categories derived from the [AWS FinServ GenAI Risk Guide](https://d1.awsstatic.com/onedam/marketing-channels/website/public/global-FinServ-ComplianceGuide-GenAIRisks-public.pdf)
 
@@ -102,10 +97,22 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 - **Multi-Account**: Scan entire AWS Organizations with consolidated reporting
 
 **How It Works:**
-1. Deploy via AWS CloudFormation (one-click deployment)
+1. Deploy through AWS CloudFormation (one-click deployment)
 2. Framework automatically scans your AI/ML resources
 3. Generates interactive HTML reports stored in your Amazon S3 bucket
 4. All data stays in your AWS account - no external dependencies
+
+---
+
+## Scope and Limitations
+
+This tool operates within the [AWS Shared Responsibility Model](https://aws.amazon.com/compliance/shared-responsibility-model/). It assesses **your configuration responsibilities** (IAM policies, encryption settings, network isolation, logging) for AI/ML services. It does not assess AWS-managed infrastructure, physical security, or the underlying service platform.
+
+**Point-in-time assessment.** Each run captures your security posture at the moment of execution. Resource configurations can change immediately after an assessment completes. Run assessments regularly and after significant changes to maintain visibility.
+
+**No guarantee of security or compliance.** This framework identifies common misconfigurations based on AWS best practices and the AWS Well-Architected Framework. It does not cover all possible security risks, does not replace formal compliance audits (SOC 2, HIPAA, and similar), and does not guarantee that your workloads are secure. Use the results as one input into your broader security program.
+
+**52 checks across three services.** The assessment covers Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore. Other AI/ML services (Amazon Comprehend, Amazon Rekognition, Amazon Textract, and others) are not currently assessed.
 
 ---
 
@@ -137,7 +144,7 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 9. Once complete, AWS CodeBuild automatically deploys the assessment stack and runs the assessment.
 10. To view results:
     - Navigate to the AWS CloudFormation console
-    - Open the stack you deployed (e.g., `aiml-security-single-account` or your custom name)
+    - Open the stack you deployed (for example, `aiml-security-single-account` or your custom name)
     - Go to the **Outputs** tab
     - Copy the `AssessmentBucket` value
     - Navigate to that Amazon S3 bucket and open the `{account_id}/security_assessment_*.html` file
@@ -218,7 +225,7 @@ Deploy [1-aiml-security-member-roles.yaml](deployment/1-aiml-security-member-rol
 1. Navigate to **AWS CloudFormation** > **StackSets** in the management account
 2. Click **Create StackSet**
 3. Select **Upload a template file** and upload [1-aiml-security-member-roles.yaml](deployment/1-aiml-security-member-roles.yaml)
-4. Enter a StackSet name (e.g., `aiml-security-member-roles`)
+4. Enter a StackSet name (for example, `aiml-security-member-roles`)
 5. Set the `ManagementAccountID` parameter to your management account ID
 6. Under **Permissions**, select **Service-managed permissions**
 7. Under **Deployment targets**, select the Organizational Units (OUs) containing your target accounts
@@ -271,7 +278,7 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 2. **Role Assumption**: Assumes `AIMLSecurityMemberRole` in each target account
 3. **Module Deployment**: Deploys the AI/ML assessment module:
    - Amazon Bedrock Assessment AWS Lambda
-   - Amazon SageMaker Assessment AWS Lambda
+   - Amazon SageMaker AI Assessment AWS Lambda
    - Amazon Bedrock AgentCore Assessment AWS Lambda
    - Financial Services GenAI Risk Assessment AWS Lambda
    - AWS IAM Permission Caching AWS Lambda
@@ -280,7 +287,7 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 5. **Results Collection**: Individual AWS Lambda functions store results in local Amazon S3 buckets
 6. **Consolidation**: AWS CodeBuild collects and consolidates results from all accounts
 7. **Reporting**: Generates multi-account HTML and CSV reports
-8. **Notification**: Sends completion notification via Amazon SNS (if configured)
+8. **Notification**: Sends completion notification through Amazon SNS (if configured)
 
 ## Permissions Required
 
@@ -298,7 +305,7 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 - AWS IAM read permissions for security assessment
 - AWS CloudTrail, Amazon GuardDuty, and AWS Lambda read permissions
 - Amazon VPC and Amazon EC2 read permissions
-- Amazon ECR, Amazon CloudWatch Logs, and AWS X-Ray read permissions (for AgentCore)
+- Amazon ECR, Amazon CloudWatch Logs, and AWS X-Ray read permissions (for Amazon Bedrock AgentCore)
 
 ## Monitoring and Results
 
@@ -309,18 +316,18 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 
 ## Viewing Assessment Results
 
-You can check the AWS CodeBuild console to ensure that the assessment has completed successfully before accessing the results.
+You can check the AWS CodeBuild console to confirm the assessment completed successfully before accessing the results.
 
 ### Accessing Results
 
 1. **Find the Amazon S3 Bucket Name**:
    - Navigate to **AWS CloudFormation** > **Stacks** in the AWS Console
-   - For single-account deployments using the standalone template (`aiml-security-single-account.yaml`), select the stack you deployed (e.g., `aiml-security-single-account`) and find the `AssessmentBucket` output. Results are synced to this bucket under the `{account_id}/` prefix.
+   - For single-account deployments using the standalone template (`aiml-security-single-account.yaml`), select the stack you deployed (for example, `aiml-security-single-account`) and find the `AssessmentBucket` output. Results are synced to this bucket under the `{account_id}/` prefix.
    - For multi-account deployments, select the `aiml-security-multi-account` stack created in [Step 2: Deploy Central Infrastructure](#step-2-deploy-central-infrastructure) and find the `AssessmentBucket` output
    - Go to the **Outputs** tab
    - Copy the Amazon S3 bucket name
 
-   > **Note**: The deployment creates multiple Amazon S3 buckets. Only use the bucket from the `AssessmentBucket` output above. Other buckets (e.g., `aiml-sec-*-aimlassessmentbucket-*` from nested stacks or `aws-sam-cli-managed-*` for deployment artifacts) are for internal use and can be ignored.
+   > **Note**: The deployment creates multiple Amazon S3 buckets. Only use the bucket from the `AssessmentBucket` output above. Other buckets (such as `aiml-sec-*-aimlassessmentbucket-*` from nested stacks or `aws-sam-cli-managed-*` for deployment artifacts) are for internal use and can be ignored.
 
 2. **Navigate to the Amazon S3 Bucket**:
    - Go to **Amazon S3** in the AWS Console
@@ -337,20 +344,20 @@ You can check the AWS CodeBuild console to ensure that the assessment has comple
 - **File Format**: `multi_account_report_YYYYMMDD_HHMMSS.html`
 - **Features**:
   - Executive summary with metrics (Total, High, Medium, Low severity counts)
-  - Service breakdown (Amazon Bedrock, Amazon SageMaker, Amazon Bedrock AgentCore, Financial Services GenAI Risk)
+  - Service breakdown (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, Financial Services GenAI Risk)
   - Priority recommendations
-  - Light/dark mode toggle (persists via localStorage)
+  - Light/dark mode toggle (persists through localStorage)
   - Dropdown filters for Account ID, Severity, Status
   - Text search filter for findings
   - "View Docs" buttons for reference links
 
 #### Individual Account Reports
 
-- **Location**: Folders named with account IDs (e.g., `123456789012/`)
+- **Location**: Folders named with account IDs (for example, `123456789012/`)
 - **Content**: Account-specific CSV and HTML files for AI/ML assessments
 - **Files Include**:
   - `bedrock_security_report_{execution_id}.csv` - Amazon Bedrock security assessment results
-  - `sagemaker_security_report_{execution_id}.csv` - Amazon SageMaker security assessment results
+  - `sagemaker_security_report_{execution_id}.csv` - Amazon SageMaker AI security assessment results
   - `agentcore_security_report_{execution_id}.csv` - Amazon Bedrock AgentCore security assessment results
   - `finserv_security_report_{execution_id}.csv` - Financial Services GenAI risk assessment results (64 FS-XX checks)
 
@@ -379,8 +386,8 @@ You can check the AWS CodeBuild console to ensure that the assessment has comple
 | Status | Description |
 |--------|-------------|
 | **Failed** | Security issue identified that requires remediation |
-| **Passed** | Resources were checked and found compliant |
-| **N/A** | No resources exist to check (e.g., no notebooks, no guardrails configured) |
+| **Passed** | Checked resources met the assessed best practice at time of scan |
+| **N/A** | No resources exist to check (for example, no notebooks, no guardrails configured) |
 
 ## Customization
 
@@ -412,7 +419,7 @@ To remove all resources deployed for single-account assessment:
 
 1. **Delete the AWS SAM-deployed assessment stack**:
    - Navigate to **AWS CloudFormation** > **Stacks**
-   - Select the `aiml-sec-{account_id}` stack (e.g., `aiml-sec-123456789012`)
+   - Select the `aiml-sec-{account_id}` stack (for example, `aiml-sec-123456789012`)
    - Click **Delete**
    - Wait for stack deletion to complete
 
@@ -441,7 +448,7 @@ To remove all resources deployed for multi-account assessment:
 
 1. **Delete AWS SAM-deployed stacks in each member account**:
    - For each account that was scanned, navigate to **AWS CloudFormation** > **Stacks**
-   - Select the `aiml-security-{account_id}` stack (e.g., `aiml-security-123456789012`)
+   - Select the `aiml-security-{account_id}` stack (for example, `aiml-security-123456789012`)
    - For the management account, select `aiml-security-mgmt`
    - Click **Delete**
    - Alternatively, use the AWS CLI to delete across accounts:
@@ -487,11 +494,11 @@ To remove all resources deployed for multi-account assessment:
 For a clean removal, delete resources in this order:
 
 1. **Assessment stacks** (auto-created by SAM):
-   - Single-account: `aiml-sec-{account_id}` (e.g., `aiml-sec-123456789012`)
+   - Single-account: `aiml-sec-{account_id}` (for example, `aiml-sec-123456789012`)
    - Multi-account: `aiml-security-{account_id}` per member account, plus `aiml-security-mgmt` for management account
 
 2. **Infrastructure stack** (the stack you deployed manually):
-   - Single-account: Your chosen stack name (e.g., `my-aiml-assessment`)
+   - Single-account: Your chosen stack name (for example, `my-aiml-assessment`)
    - Multi-account: `aiml-security-multi-account` or your chosen name
 
 3. AWS CloudFormation StackSet member roles (multi-account only)
@@ -525,7 +532,6 @@ GitHub Actions workflows run automatically on pull requests and pushes to `main`
 | **CloudFormation Lint** | PR | Validates deployment and SAM templates with `cfn-lint` |
 | **SAM Validate & Build** | PR | Runs `sam validate --lint` and `sam build` on SAM templates |
 | **ASH Security Scan** | PR | Scans changed files for secrets, dependency vulnerabilities, and IaC misconfigurations |
-| **CodeQL** | PR, push, weekly | GitHub semantic code analysis for Python |
 | **ASH Full Repository Scan** | Push to main, monthly | Full repository security scan with results uploaded as artifacts |
 
 ---

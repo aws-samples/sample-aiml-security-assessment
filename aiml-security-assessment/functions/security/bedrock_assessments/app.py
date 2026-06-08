@@ -178,7 +178,7 @@ def check_marketplace_subscription_access(permission_cache) -> Dict[str, Any]:
                     finding_details="No identities found with overly permissive marketplace subscription access",
                     resolution="No action required",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-bedrock-marketplace",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                 )
             )
@@ -193,7 +193,17 @@ def check_marketplace_subscription_access(permission_cache) -> Dict[str, Any]:
             "check_name": "Marketplace Subscription Access Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-03",
+                    finding_name="Marketplace Subscription Access Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -406,7 +416,7 @@ def check_stale_bedrock_access(permission_cache) -> Dict[str, Any]:
                     finding_details=finding_details,
                     resolution="No action required",
                     reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                 )
             )
@@ -419,7 +429,17 @@ def check_stale_bedrock_access(permission_cache) -> Dict[str, Any]:
             "check_name": "Stale Bedrock Access Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-14",
+                    finding_name="Stale Bedrock Access Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -469,7 +489,7 @@ def check_bedrock_full_access_roles(permission_cache) -> Dict[str, Any]:
                 finding_details="No roles found with AmazonBedrockFullAccess policy",
                 resolution="No action required",
                 reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples-agent.html#iam-agents-ex-all\nhttps://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples-br-studio.html",
-                severity="Informational",
+                severity="High",
                 status="Passed",
             )
         )
@@ -706,7 +726,7 @@ def check_bedrock_access_and_vpc_endpoints(permission_cache) -> Dict[str, Any]:
                         finding_details=f"Bedrock VPC endpoints found: {'; '.join(endpoint_details)}",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html",
-                        severity="Informational",
+                        severity="High",
                         status="Passed",
                     )
                 )
@@ -723,7 +743,17 @@ def check_bedrock_access_and_vpc_endpoints(permission_cache) -> Dict[str, Any]:
             "check_name": "Bedrock Access and VPC Endpoint Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-02",
+                    finding_name="Bedrock VPC Endpoint Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -760,7 +790,7 @@ def check_bedrock_guardrails() -> Dict[str, Any]:
                         finding_details=f"Amazon Bedrock Guardrails are properly configured with {len(guardrail_names)} guardrails",
                         resolution="No action required. Continue monitoring and updating guardrails as needed.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
-                        severity="Informational",
+                        severity="High",
                         status="Passed",
                     )
                 )
@@ -802,7 +832,17 @@ def check_bedrock_guardrails() -> Dict[str, Any]:
             "check_name": "Bedrock Guardrails Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-05",
+                    finding_name="Bedrock Guardrails Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -859,7 +899,7 @@ def check_bedrock_logging_configuration() -> Dict[str, Any]:
                         finding_details=f"Model invocation logging is properly configured with delivery to: {', '.join(enabled_destinations)}",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
-                        severity="Informational",
+                        severity="Medium",
                         status="Passed",
                     )
                 )
@@ -903,7 +943,17 @@ def check_bedrock_logging_configuration() -> Dict[str, Any]:
             "check_name": "Bedrock Model Invocation Logging Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-04",
+                    finding_name="Bedrock Logging Configuration Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -994,7 +1044,7 @@ def check_bedrock_cloudtrail_logging() -> Dict[str, Any]:
                         finding_details=f"CloudTrail is properly configured to log Bedrock API activity in trails: {', '.join(logging_trails)}",
                         resolution="No action required. Continue monitoring CloudTrail logs for Bedrock activity.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html",
-                        severity="Informational",
+                        severity="Medium",
                         status="Passed",
                     )
                 )
@@ -1042,7 +1092,17 @@ def check_bedrock_cloudtrail_logging() -> Dict[str, Any]:
             "check_name": "Bedrock CloudTrail Logging Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-06",
+                    finding_name="Bedrock CloudTrail Logging Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -1081,7 +1141,7 @@ def check_bedrock_prompt_management() -> Dict[str, Any]:
                         finding_details=f"Prompt Management is being used with {len(prompts)} prompts ({len(active_prompts)} active, {len(draft_prompts)} draft)",
                         resolution="No action required. Continue using Prompt Management for consistent and optimized prompts.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management.html",
-                        severity="Informational",
+                        severity="Low",
                         status="Passed",
                     )
                 )
@@ -1157,7 +1217,17 @@ def check_bedrock_prompt_management() -> Dict[str, Any]:
             "check_name": "Bedrock Prompt Management Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-07",
+                    finding_name="Bedrock Prompt Management Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -1251,7 +1321,7 @@ def check_bedrock_knowledge_base_encryption() -> Dict[str, Any]:
                         finding_details=f"All {len(knowledge_bases)} Knowledge Bases reviewed for encryption configuration",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
-                        severity="Informational",
+                        severity="High",
                         status="Passed",
                     )
                 )
@@ -1283,7 +1353,17 @@ def check_bedrock_knowledge_base_encryption() -> Dict[str, Any]:
             "check_name": "Bedrock Knowledge Base Encryption Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-09",
+                    finding_name="Bedrock Knowledge Base Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -1442,7 +1522,7 @@ def check_bedrock_guardrail_iam_enforcement(permission_cache) -> Dict[str, Any]:
                         finding_details=f"All {len(roles_with_enforcement)} roles with Bedrock invoke permissions have guardrail enforcement",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions-id.html",
-                        severity="Informational",
+                        severity="Medium",
                         status="Passed",
                     )
                 )
@@ -1457,7 +1537,17 @@ def check_bedrock_guardrail_iam_enforcement(permission_cache) -> Dict[str, Any]:
             "check_name": "Bedrock Guardrail IAM Enforcement Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-10",
+                    finding_name="Bedrock Guardrail IAM Enforcement Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -1571,7 +1661,7 @@ def check_bedrock_custom_model_encryption() -> Dict[str, Any]:
                         finding_details=f"All {len(custom_models)} custom models reviewed",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
-                        severity="Informational",
+                        severity="High",
                         status="Passed",
                     )
                 )
@@ -1600,7 +1690,17 @@ def check_bedrock_custom_model_encryption() -> Dict[str, Any]:
             "check_name": "Bedrock Custom Model Encryption Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-11",
+                    finding_name="Bedrock Custom Model Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -1678,7 +1778,7 @@ def check_bedrock_invocation_log_encryption() -> Dict[str, Any]:
                             finding_details=f"S3 bucket '{bucket_name}' for invocation logs uses customer-managed KMS encryption",
                             resolution="No action required",
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
-                            severity="Informational",
+                            severity="Medium",
                             status="Passed",
                         )
                     )
@@ -1751,7 +1851,17 @@ def check_bedrock_invocation_log_encryption() -> Dict[str, Any]:
             "check_name": "Bedrock Invocation Log Encryption Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-12",
+                    finding_name="Bedrock Invocation Log Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -1884,7 +1994,7 @@ def check_bedrock_flows_guardrails() -> Dict[str, Any]:
                             finding_details=f"All nodes in {len(flows_with_guardrails)} flows have guardrails configured",
                             resolution="No action required",
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows-guardrails.html",
-                            severity="Informational",
+                            severity="Medium",
                             status="Passed",
                         )
                     )
@@ -1926,7 +2036,17 @@ def check_bedrock_flows_guardrails() -> Dict[str, Any]:
             "check_name": "Bedrock Flows Guardrails Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-13",
+                    finding_name="Bedrock Flows Guardrails Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 
@@ -2074,7 +2194,7 @@ def check_bedrock_agent_roles(permission_cache) -> Dict[str, Any]:
                         finding_details=f"All {len(agents)} Bedrock agent roles properly implement least privilege access",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/gensec05-bp01.html",
-                        severity="Informational",
+                        severity="Medium",
                         status="Passed",
                     )
                 )
@@ -2102,7 +2222,17 @@ def check_bedrock_agent_roles(permission_cache) -> Dict[str, Any]:
             "check_name": "Bedrock Agent IAM Roles Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                create_finding(
+                    check_id="BR-08",
+                    finding_name="Bedrock Agent IAM Roles Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ],
         }
 
 

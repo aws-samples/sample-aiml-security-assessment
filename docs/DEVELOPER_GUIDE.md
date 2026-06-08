@@ -87,7 +87,7 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 #### AWS CodeBuild Execution Flow
 1. **Account Discovery**: Lists active accounts from AWS Organizations
 2. **Role Assumption**: Assumes `AIMLSecurityMemberRole` in each target account
-3. **AWS SAM Deployment**: Deploys the AI/ML assessment stack via AWS SAM
+3. **AWS SAM Deployment**: Deploys the AI/ML assessment stack through AWS SAM
 4. **Assessment Execution**: Triggers AWS Step Functions workflow in each account
 5. **Results Consolidation**: Collects and consolidates results from all accounts
 
@@ -139,7 +139,7 @@ sample-aiml-security-assessment/
 1. Get active accounts from AWS Organizations
 2. For each account:
    - Assume AIMLSecurityMemberRole
-   - Deploy AI/ML assessment stack via AWS SAM
+   - Deploy AI/ML assessment stack through AWS SAM
    - Start AWS Step Functions execution
 3. Wait for completion and consolidate results
 ```
@@ -164,7 +164,7 @@ sample-aiml-security-assessment/
       "Type": "Parallel",
       "Branches": [
         {"StartAt": "Amazon Bedrock Assessment", "States": {...}},
-        {"StartAt": "Amazon SageMaker Assessment", "States": {...}},
+        {"StartAt": "Amazon SageMaker AI Assessment", "States": {...}},
         {"StartAt": "Amazon Bedrock AgentCore Assessment", "States": {...}}
       ],
       "Next": "Generate Consolidated Report"
@@ -199,7 +199,7 @@ Each assessment AWS Lambda function:
 
 ## Adding New AI/ML Service Assessments
 
-To add a new AI/ML service (e.g., Amazon Comprehend, Amazon Textract):
+To add a new AI/ML service (for example, Amazon Comprehend, Amazon Textract):
 
 ### Step 1: Create Service Assessment Function
 
@@ -217,6 +217,7 @@ import boto3
 import json
 from schema import create_finding
 
+
 def lambda_handler(event, context):
     """Main assessment handler for new service"""
     all_findings = []
@@ -231,25 +232,26 @@ def lambda_handler(event, context):
 
     # Generate and upload report
     csv_content = generate_csv_report(all_findings)
-    bucket_name = os.environ.get('AIML_ASSESSMENT_BUCKET_NAME')
+    bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
     s3_url = write_to_s3(execution_id, csv_content, bucket_name)
 
     return {
-        'statusCode': 200,
-        'body': {
-            'message': 'New service assessment completed',
-            'findings': all_findings,
-            'report_url': s3_url
-        }
+        "statusCode": 200,
+        "body": {
+            "message": "New service assessment completed",
+            "findings": all_findings,
+            "report_url": s3_url,
+        },
     }
+
 
 def check_new_service_security(permission_cache):
     """Implement your security checks here"""
     findings = {
-        'check_name': 'New Service Security Check',
-        'status': 'PASS',
-        'details': '',
-        'csv_data': []
+        "check_name": "New Service Security Check",
+        "status": "PASS",
+        "details": "",
+        "csv_data": [],
     }
 
     # Your assessment logic here
@@ -271,6 +273,7 @@ botocore>=1.29.0
 # schema.py
 from enum import Enum
 
+
 class SeverityEnum(str, Enum):
     HIGH = "High"
     MEDIUM = "Medium"
@@ -278,16 +281,20 @@ class SeverityEnum(str, Enum):
     INFORMATIONAL = "Informational"
     NA = "N/A"
 
+
 class StatusEnum(str, Enum):
     FAILED = "Failed"
     PASSED = "Passed"
     NA = "N/A"
 
-def create_finding(check_id, finding_name, finding_details, resolution, reference, severity, status):
+
+def create_finding(
+    check_id, finding_name, finding_details, resolution, reference, severity, status
+):
     """Create standardized finding format
 
     Args:
-        check_id: Unique check identifier (e.g., SM-01, BR-01, AC-01)
+        check_id: Unique check identifier (for example, SM-01, BR-01, AC-01)
         finding_name: Name of the finding
         finding_details: Detailed description
         resolution: Steps to resolve (empty string for N/A status)
@@ -296,13 +303,13 @@ def create_finding(check_id, finding_name, finding_details, resolution, referenc
         status: StatusEnum value (Failed, Passed, or N/A)
     """
     return {
-        'Check_ID': check_id,
-        'Finding': finding_name,
-        'Finding_Details': finding_details,
-        'Resolution': resolution,
-        'Reference': reference,
-        'Severity': severity,
-        'Status': status
+        "Check_ID": check_id,
+        "Finding": finding_name,
+        "Finding_Details": finding_details,
+        "Resolution": resolution,
+        "Reference": reference,
+        "Severity": severity,
+        "Status": status,
     }
 ```
 
@@ -406,9 +413,9 @@ sam local invoke ComprehendSecurityAssessmentFunction --event testfile.json
 - **Standardize Findings**: Use the `create_finding()` function for consistent output
 - **Check ID Convention**: Use service prefixes for check IDs (BR-XX for Amazon Bedrock, SM-XX for Amazon SageMaker AI, AC-XX for Amazon Bedrock AgentCore)
 - **Status Semantics**: Use correct status values:
+  - `Passed`: Resources were checked and met the assessed best practice
   - `Failed`: Resources were checked and found non-compliant
-  - `Passed`: Resources were checked and found compliant
-  - `N/A`: No resources exist to check (e.g., "No notebooks found", "No guardrails configured")
+  - `N/A`: No resources exist to check (for example, "No notebooks found", "No guardrails configured")
 - **Severity Values**: Use appropriate severity levels:
   - `High`: Critical security issues requiring immediate attention
   - `Medium`: Important security improvements recommended
@@ -428,7 +435,7 @@ try:
     # Assessment logic
     result = aws_client.describe_service()
 except ClientError as e:
-    if e.response['Error']['Code'] == 'AccessDenied':
+    if e.response["Error"]["Code"] == "AccessDenied":
         # Handle permission issues
         logger.warning(f"Access denied for service check: {str(e)}")
         return create_finding(
@@ -436,8 +443,8 @@ except ClientError as e:
             finding_details="Insufficient permissions to assess service",
             resolution="Grant required permissions to assessment role",
             reference="https://docs.aws.amazon.com/service/permissions",
-            severity='High',
-            status='Failed'
+            severity="High",
+            status="Failed",
         )
     else:
         # Handle other AWS errors
@@ -593,7 +600,7 @@ VIEWPORT_WIDTH = 1440
 VIEWPORT_HEIGHT = 900
 
 # Image quality
-JPEG_QUALITY = 85       # Range: 1-100
+JPEG_QUALITY = 85  # Range: 1-100
 PNG_OPTIMIZE = True
 
 # Add new screenshots to SCREENSHOTS list
@@ -613,10 +620,10 @@ SCREENSHOTS = [
 ```
 
 **Available action types:**
-- `wait` - Wait for selector (e.g., `{"type": "wait", "selector": ".metrics", "timeout": 2000}`)
-- `click` - Click element (e.g., `{"type": "click", "selector": ".theme-toggle"}`)
-- `scroll` - Scroll to position (e.g., `{"type": "scroll", "position": 500}`)
-- `wait_time` - Wait milliseconds (e.g., `{"type": "wait_time", "ms": 300}`)
+- `wait` - Wait for selector (for example, `{"type": "wait", "selector": ".metrics", "timeout": 2000}`)
+- `click` - Click element (for example, `{"type": "click", "selector": ".theme-toggle"}`)
+- `scroll` - Scroll to position (for example, `{"type": "scroll", "position": 500}`)
+- `wait_time` - Wait milliseconds (for example, `{"type": "wait_time", "ms": 300}`)
 
 **Troubleshooting:**
 
@@ -663,7 +670,6 @@ GitHub Actions workflows run automatically to validate code quality and security
 | **CloudFormation Lint** | `.github/workflows/cfn-lint.yml` | Validates deployment and SAM templates with `cfn-lint` |
 | **SAM Validate & Build** | `.github/workflows/sam-validate.yml` | Runs `sam validate --lint` and `sam build` on SAM templates |
 | **ASH Security Scan** | `.github/workflows/ash-security-scan.yml` | Scans changed files for secrets, dependency vulnerabilities, and IaC misconfigurations |
-| **CodeQL** | `.github/workflows/codeql.yml` | GitHub semantic code analysis for Python |
 
 Additional workflows run post-merge or on schedule:
 
@@ -672,19 +678,22 @@ Additional workflows run post-merge or on schedule:
 | **ASH Full Repository Scan** | `.github/workflows/ash-full-repository-scan.yml` | Push to main, monthly schedule, manual |
 | **Labeler** | `.github/workflows/label.yml` | Auto-labels PRs by changed paths (bedrock, sagemaker, agentcore, deployment, docs) |
 
-cfn-lint suppressions are configured in `.cfnlintrc` at the repository root for IAM actions not yet in cfn-lint's database (e.g., `bedrock-agentcore` actions).
+cfn-lint suppressions are configured in `.cfnlintrc` at the repository root for IAM actions not yet in cfn-lint's database (for example, `bedrock-agentcore` actions).
 
 ### Running Checks Locally
 
 Before pushing, run these checks locally to catch issues early:
 
 ```bash
-# Install tools
-pip install ruff cfn-lint
+# Install tools (first time only)
+pip install ruff cfn-lint pytest boto3 pydantic
 
 # Python lint and format
 ruff check aiml-security-assessment/functions/security/
 ruff format --check aiml-security-assessment/functions/security/
+
+# Unit tests (213 tests, ~5 seconds, no AWS credentials needed)
+python -m pytest tests/ -v
 
 # CloudFormation lint
 cfn-lint deployment/*.yaml

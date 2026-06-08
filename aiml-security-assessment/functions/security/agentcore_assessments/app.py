@@ -342,7 +342,7 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
                         finding_details="All AgentCore resources have proper VPC configuration",
                         resolution="No action required",
                         reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/security/agentcore-vpc.md",
-                        severity=SeverityEnum.INFORMATIONAL,
+                        severity=SeverityEnum.HIGH,
                         status=StatusEnum.PASSED,
                     )
                 )
@@ -506,7 +506,7 @@ def check_agentcore_full_access_roles(
                     finding_details="No roles with overly permissive AgentCore access found",
                     resolution="No action required",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
-                    severity=SeverityEnum.INFORMATIONAL,
+                    severity=SeverityEnum.HIGH,
                     status=StatusEnum.PASSED,
                 )
             )
@@ -899,7 +899,7 @@ def check_stale_agentcore_access(
                     finding_details=f"All {len(agentcore_principals)} principals with AgentCore permissions have accessed the service within the last 60 days",
                     resolution="No action required",
                     reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
-                    severity=SeverityEnum.INFORMATIONAL,
+                    severity=SeverityEnum.LOW,
                     status=StatusEnum.PASSED,
                 )
             )
@@ -1051,7 +1051,7 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
                         finding_details="All AgentCore resources have proper observability configuration",
                         resolution="No action required",
                         reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/observability/",
-                        severity=SeverityEnum.INFORMATIONAL,
+                        severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.PASSED,
                     )
                 )
@@ -1170,7 +1170,7 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
                         finding_details="All AgentCore resources have proper encryption configuration",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/key-management.html",
-                        severity=SeverityEnum.INFORMATIONAL,
+                        severity=SeverityEnum.HIGH,
                         status=StatusEnum.PASSED,
                     )
                 )
@@ -1296,7 +1296,7 @@ def check_browser_tool_recording() -> List[Dict[str, Any]]:
                     finding_details=f"All {len(runtimes)} Runtimes have proper storage configuration",
                     resolution="No action required",
                     reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/browser/",
-                    severity=SeverityEnum.INFORMATIONAL,
+                    severity=SeverityEnum.MEDIUM,
                     status=StatusEnum.PASSED,
                 )
             )
@@ -1406,7 +1406,7 @@ def check_agentcore_memory_configuration() -> List[Dict[str, Any]]:
                     finding_details=f"All {len(memories)} Memory resources have proper configuration",
                     resolution="No action required",
                     reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/memory/",
-                    severity=SeverityEnum.INFORMATIONAL,
+                    severity=SeverityEnum.HIGH,
                     status=StatusEnum.PASSED,
                 )
             )
@@ -1532,7 +1532,7 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
                         finding_details=f"AgentCore VPC endpoints configured: {endpoint_details}",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
-                        severity=SeverityEnum.INFORMATIONAL,
+                        severity=SeverityEnum.HIGH,
                         status=StatusEnum.PASSED,
                     )
                 )
@@ -1598,7 +1598,7 @@ def check_agentcore_service_linked_role() -> List[Dict[str, Any]]:
                         finding_details=f"Service-linked role '{slr_name}' exists and is properly configured for AgentCore VPC networking",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html",
-                        severity=SeverityEnum.INFORMATIONAL,
+                        severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.PASSED,
                     )
                 )
@@ -1789,7 +1789,7 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                         finding_details=f"Resource-based policies configured on: {', '.join(resources_with_rbp)}",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
-                        severity=SeverityEnum.INFORMATIONAL,
+                        severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.PASSED,
                     )
                 )
@@ -1921,7 +1921,7 @@ def check_agentcore_policy_engine_encryption() -> List[Dict[str, Any]]:
                         finding_details=f"Policy Engines with CMK encryption: {', '.join(engines_with_cmk)}",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-encryption.html",
-                        severity=SeverityEnum.INFORMATIONAL,
+                        severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.PASSED,
                     )
                 )
@@ -2069,7 +2069,7 @@ def check_agentcore_gateway_encryption() -> List[Dict[str, Any]]:
                         finding_details=f"Gateways with CMK encryption: {', '.join(gateways_with_cmk)}",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/data-encryption.html",
-                        severity=SeverityEnum.INFORMATIONAL,
+                        severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.PASSED,
                     )
                 )
@@ -2185,7 +2185,7 @@ def check_agentcore_gateway_configuration() -> List[Dict[str, Any]]:
                     finding_details=f"Found {len(gateways)} Gateway resources",
                     resolution="No action required",
                     reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/gateway/",
-                    severity=SeverityEnum.INFORMATIONAL,
+                    severity=SeverityEnum.MEDIUM,
                     status=StatusEnum.PASSED,
                 )
             )

@@ -1,0 +1,59 @@
+name: AI/ML Security Assessment Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "aiml-security-assessment/functions/security/**"
+      - "tests/**"
+      - ".github/workflows/python-tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "aiml-security-assessment/functions/security/**"
+      - "tests/**"
+      - ".github/workflows/python-tests.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tests/requirements.txt
+          # Install pydantic for schema validation used by Lambda functions
+          pip install pydantic>=2.0.0
+
+      - name: Run tests with coverage
+        env:
+          AIML_ASSESSMENT_BUCKET_NAME: test-assessment-bucket
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+        run: |
+          python -m pytest tests/ \
+            -v \
+            --tb=short \
+            --cov=aiml-security-assessment/functions/security \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            -x
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ matrix.python-version }}
+          path: coverage.xml

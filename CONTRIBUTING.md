@@ -3,7 +3,7 @@
 Thank you for your interest in contributing to our project. Whether it's a bug report, new feature, correction, or additional
 documentation, we greatly value feedback and contributions from our community.
 
-Please read through this document before submitting any issues or pull requests to ensure we have all the necessary
+Please read through this document before submitting any issues or pull requests so that we have all the necessary
 information to effectively respond to your bug report or contribution.
 
 
@@ -20,8 +20,8 @@ reported the issue. Please try to include as much information as you can. Detail
 * Anything unusual about your environment or deployment
 
 
-## Contributing via Pull Requests
-Contributions via pull requests are much appreciated. Before sending us a pull request, please ensure that:
+## Contributing through Pull Requests
+Contributions through pull requests are much appreciated. Before sending us a pull request, make sure that:
 
 1. You are working against the latest source on the *main* branch.
 2. You check existing open, and recently merged, pull requests to make sure someone else hasn't addressed the problem already.
@@ -31,12 +31,18 @@ To send us a pull request, please:
 
 1. Fork the repository.
 2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
-3. Ensure local tests pass.
-4. Run linting and formatting checks locally before pushing:
+3. Make sure local tests pass.
+4. Run linting, formatting, and tests locally before pushing:
    ```bash
-   pip install ruff
+   # Install test dependencies (first time only)
+   pip install ruff pytest boto3 pydantic
+
+   # Run lint and format checks
    ruff check <changed-files>
    ruff format --check <changed-files>
+
+   # Run unit tests
+   python -m pytest tests/ -v
    ```
 5. Commit to your fork using clear commit messages.
 6. Send us a pull request, answering any default questions in the pull request interface.
@@ -50,7 +56,6 @@ The following checks run automatically on every pull request:
 - **CloudFormation Lint** — `cfn-lint` validation of deployment and SAM templates
 - **SAM Validate & Build** — `sam validate --lint` and `sam build` on SAM templates
 - **ASH Security Scan** — [Automated Security Helper](https://github.com/awslabs/automated-security-helper) scans changed files for secrets, dependency vulnerabilities, and IaC misconfigurations
-- **CodeQL** — GitHub semantic code analysis for Python
 
 All checks must pass before a pull request can be merged.
 
@@ -69,9 +74,9 @@ opensource-codeofconduct@amazon.com with any additional questions or comments.
 
 
 ## Security issue notifications
-If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security via our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
+If you discover a potential security issue in this project we ask that you notify AWS/Amazon Security through our [vulnerability reporting page](http://aws.amazon.com/security/vulnerability-reporting/). Please do **not** create a public github issue.
 
 
 ## Licensing
 
-See the [LICENSE](LICENSE) file for our project's licensing. We will ask you to confirm the licensing of your contribution.
+See the [LICENSE](LICENSE) file for our project's licensing. We ask you to confirm the licensing of your contribution.

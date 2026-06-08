@@ -93,17 +93,19 @@ phases:
               continue
             fi
 
-            # Assume role with error handling
-            if ! aws sts assume-role --role-arn arn:$AWS_PARTITION:iam::$accountId:role/service-role/$MEMBER_ROLE --role-session-name AIMLSecurityAssessment > /tmp/creds.json; then
+            # Assume role with error handling - keep credentials in memory only
+            CREDS=$(aws sts assume-role --role-arn arn:$AWS_PARTITION:iam::$accountId:role/service-role/$MEMBER_ROLE --role-session-name AIMLSecurityAssessment --output json 2>/dev/null)
+            if [[ $? -ne 0 || -z "$CREDS" ]]; then
               echo "ERROR: Failed to assume role in account $accountId"
               failed_accounts+=($accountId)
               continue
             fi
 
-            # Validate credentials were retrieved
-            export AWS_ACCESS_KEY_ID=$(cat /tmp/creds.json | jq -r '.Credentials.AccessKeyId')
-            export AWS_SECRET_ACCESS_KEY=$(cat /tmp/creds.json | jq -r '.Credentials.SecretAccessKey')
-            export AWS_SESSION_TOKEN=$(cat /tmp/creds.json | jq -r '.Credentials.SessionToken')
+            # Extract credentials from memory
+            export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
+            export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
+            export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
+            unset CREDS
 
             if [[ -z "$AWS_ACCESS_KEY_ID" || "$AWS_ACCESS_KEY_ID" == "null" ]]; then
               echo "ERROR: Failed to extract credentials for account $accountId"
@@ -134,8 +136,6 @@ phases:
             fi
 
             unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-            # Clean up credentials file
-            rm -f /tmp/creds.json
           done
 
           echo "Deploying to management account $AWS_ACCOUNT_ID"
@@ -230,15 +230,17 @@ phases:
               STACK_NAME="aiml-security-mgmt"
             else
               # Member account - assume role and use account-specific stack name
-              if ! aws sts assume-role --role-arn arn:$AWS_PARTITION:iam::$accountId:role/service-role/$MEMBER_ROLE --role-session-name AIMLSecurityAssessment > /tmp/creds.json; then
+              CREDS=$(aws sts assume-role --role-arn arn:$AWS_PARTITION:iam::$accountId:role/service-role/$MEMBER_ROLE --role-session-name AIMLSecurityAssessment --output json 2>/dev/null)
+              if [[ $? -ne 0 || -z "$CREDS" ]]; then
                 echo "ERROR: Failed to assume role for account $accountId in post-build"
                 failed_accounts+=($accountId)
                 continue
               fi
 
-              export AWS_ACCESS_KEY_ID=$(cat /tmp/creds.json | jq -r '.Credentials.AccessKeyId')
-              export AWS_SECRET_ACCESS_KEY=$(cat /tmp/creds.json | jq -r '.Credentials.SecretAccessKey')
-              export AWS_SESSION_TOKEN=$(cat /tmp/creds.json | jq -r '.Credentials.SessionToken')
+              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
+              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
+              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
+              unset CREDS
 
               if [[ -z "$AWS_ACCESS_KEY_ID" || "$AWS_ACCESS_KEY_ID" == "null" ]]; then
                 echo "ERROR: Failed to extract credentials for account $accountId in post-build"
@@ -255,7 +257,7 @@ phases:
               EXECUTION_ARN=$(cat /tmp/execution_arns/$accountId.txt)
               echo "Waiting for Step Function execution in account $accountId: $EXECUTION_ARN"
               if [[ $EXECUTION_ARN != "" && $EXECUTION_ARN != "None" ]]; then
-                timeout=300
+                timeout=${SF_POLL_TIMEOUT:-600}
                 elapsed=0
                 while [[ $elapsed -lt $timeout ]]; do
                   STATUS=$(aws stepfunctions describe-execution --execution-arn $EXECUTION_ARN --query 'status' --output text 2>/dev/null)
@@ -307,7 +309,6 @@ phases:
 
             if [[ $accountId != $AWS_ACCOUNT_ID ]]; then
               unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-              rm -f /tmp/creds.json
             fi
           done
 
@@ -366,7 +367,7 @@ phases:
             EXECUTION_ARN=$(cat /tmp/single_account_execution_arn.txt)
             echo "Waiting for Step Function execution: $EXECUTION_ARN"
             if [[ $EXECUTION_ARN != "" && $EXECUTION_ARN != "None" ]]; then
-              timeout=300
+              timeout=${SF_POLL_TIMEOUT:-600}
               elapsed=0
               while [[ $elapsed -lt $timeout ]]; do
                 STATUS=$(aws stepfunctions describe-execution --execution-arn $EXECUTION_ARN --query 'status' --output text 2>/dev/null)

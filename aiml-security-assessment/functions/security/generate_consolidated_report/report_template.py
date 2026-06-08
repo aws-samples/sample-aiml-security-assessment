@@ -228,6 +228,8 @@ def get_html_template() -> str:
         .resolution-text {{ color: var(--text-2); font-size: 12px; line-height: 1.6; word-break: break-word; overflow-wrap: break-word; hyphens: auto; }}
         @media (max-width: 1024px) {{ .layout {{ grid-template-columns: 1fr; }} .sidebar {{ display: none; }} .metrics {{ grid-template-columns: repeat(2, 1fr); }} }}
         @media (max-width: 640px) {{ .metrics {{ grid-template-columns: 1fr; }} .main {{ padding: 20px; }} }}
+        .page-footer {{ padding: 16px 40px; border-top: 1px solid var(--border); font-size: 10px; line-height: 1.6; color: var(--text-3); text-align: center; background: var(--surface); }}
+        .page-footer a {{ color: var(--accent); text-decoration: none; }}
     </style>
 </head>
 <body>
@@ -390,6 +392,7 @@ def get_html_template() -> str:
             </section>
         </main>
     </div>
+    <footer class="page-footer">Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. Licensed under MIT-0. This report is provided as-is for informational purposes only and does not constitute professional security advice, compliance certification, or audit evidence. You are responsible for validating findings and determining applicability to your environment. See the <a href="https://aws.amazon.com/agreement/">AWS Customer Agreement</a> for terms of use.</footer>
     <script>
         const themeToggle = document.getElementById('themeToggle');
         const themeLabel = themeToggle.querySelector('.theme-label');

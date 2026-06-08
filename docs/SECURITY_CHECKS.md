@@ -1,6 +1,6 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 116 security checks performed by the AI/ML Security Assessment framework (52 core checks across Bedrock, SageMaker, and AgentCore, plus 64 Financial Services GenAI Risk checks).
+This document provides a comprehensive reference for all 116 security checks performed by the AI/ML Security Assessment framework (52 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 64 Financial Services GenAI Risk checks).
 
 ## Table of Contents
 
@@ -22,7 +22,7 @@ The framework evaluates your AI/ML workloads against AWS security best practices
 | Service | Number of Checks | Focus Areas |
 |---------|------------------|-------------|
 | Amazon SageMaker AI | 25 | Security Hub controls, encryption, network isolation, IAM, MLOps |
-| Amazon Bedrock | 14 | Guardrails, encryption, VPC endpoints, IAM permissions, logging |
+| Amazon Bedrock | 13 | Guardrails, encryption, VPC endpoints, IAM permissions, logging |
 | Amazon Bedrock AgentCore | 13 | VPC configuration, encryption, observability, resource policies |
 | Financial Services GenAI Risk | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
 
@@ -35,7 +35,7 @@ Each security check has a unique identifier with a service prefix:
 | Prefix | Service | Example |
 |--------|---------|---------|
 | **SM-XX** | Amazon SageMaker | SM-01, SM-25 |
-| **BR-XX** | Amazon Bedrock | BR-01, BR-14 |
+| **BR-XX** | Amazon Bedrock | BR-01, BR-13 |
 | **AC-XX** | Amazon Bedrock AgentCore | AC-01, AC-13 |
 | **FS-XX** | Financial Services GenAI Risk | FS-01, FS-69 |
 
@@ -58,8 +58,8 @@ Each security check has a unique identifier with a service prefix:
 | Status | Description |
 |--------|-------------|
 | **Failed** | Security issue identified that requires remediation |
-| **Passed** | Resources were checked and found compliant |
-| **N/A** | No resources exist to check (e.g., no notebooks, no guardrails configured) |
+| **Passed** | Checked resources met the assessed best practice at time of scan |
+| **N/A** | No resources exist to check (for example, no notebooks, no guardrails configured) |
 
 ---
 
@@ -74,7 +74,7 @@ Each security check has a unique identifier with a service prefix:
 ### SM-02: AWS IAM Permissions
 
 - **Severity:** High
-- **Description:** Identifies overly permissive policies, stale access, and SSO configuration.
+- **Description:** Identifies overly permissive policies, stale access, and IAM Identity Center configuration.
 
 ### SM-03: Data Protection
 
@@ -248,7 +248,7 @@ Each security check has a unique identifier with a service prefix:
 ### BR-10: Guardrail AWS IAM Enforcement
 
 - **Severity:** Medium
-- **Description:** Verifies guardrails are enforced via AWS IAM conditions.
+- **Description:** Verifies guardrails are enforced through AWS IAM conditions.
 
 ### BR-11: Custom Model Encryption
 
@@ -264,11 +264,6 @@ Each security check has a unique identifier with a service prefix:
 
 - **Severity:** Medium
 - **Description:** Validates Bedrock Flows have guardrails attached.
-
-### BR-14: Stale Bedrock Access
-
-- **Severity:** Medium
-- **Description:** Detects IAM identities with Bedrock permissions that have not accessed the service in over 60 days.
 
 ---
 
