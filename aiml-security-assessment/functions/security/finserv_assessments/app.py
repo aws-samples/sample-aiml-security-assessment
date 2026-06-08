@@ -414,7 +414,7 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
                     finding_details="AWS Shield Advanced subscription is active.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/shield-chapter.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-01"],
                 )
@@ -449,7 +449,7 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
                     finding_details=f"Found {len(acls)} regional WAF Web ACL(s).",
                     resolution="Verify ACLs are associated with Bedrock-facing endpoints.",
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-01"],
                 )
@@ -519,7 +519,7 @@ def check_api_gateway_rate_limiting() -> Dict[str, Any]:
                     finding_details=f"All {len(plans)} usage plan(s) have throttle settings.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-request-throttling.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-02"],
                 )
@@ -652,7 +652,7 @@ def check_bedrock_token_quotas() -> Dict[str, Any]:
                     ),
                     resolution="No action required. Periodically re-review quotas against expected peak load.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-03"],
                 )
@@ -781,7 +781,7 @@ def check_cost_anomaly_detection() -> Dict[str, Any]:
                     finding_details=f"Found {len(monitors)} anomaly monitor(s); {len(bedrock_monitors)} provide Bedrock/SageMaker service-level coverage.",
                     resolution="Verify monitors cover Bedrock and SageMaker service dimensions.",
                     reference="https://docs.aws.amazon.com/cost-management/latest/userguide/getting-started-ad.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-04"],
                 )
@@ -852,7 +852,7 @@ def check_cloudwatch_token_alarms() -> Dict[str, Any]:
                     ),
                     resolution="Ensure alarms have SNS actions and are in OK state.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-05"],
                 )
@@ -939,7 +939,7 @@ def check_aws_budgets_for_aiml() -> Dict[str, Any]:
                     finding_details=f"Found {len(aiml_budgets)} budget(s) covering AI/ML services.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-06"],
                 )
@@ -1048,7 +1048,7 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
                     finding_details=f"Reviewed {len(agents)} agent(s); no wildcard sensitive actions found.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-permissions.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-07"],
                 )
@@ -1137,7 +1137,7 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
                         finding_details=f"All {len(runtimes)} runtime(s) have authorizer configurations.",
                         resolution="No action required.",
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
-                        severity="Informational",
+                        severity="High",
                         status="Passed",
                         compliance_frameworks=COMPLIANCE_MAP["FS-08"],
                     )
@@ -1209,7 +1209,7 @@ def check_agent_transaction_limits() -> Dict[str, Any]:
                     finding_details=f"Reviewed {len(agent_lambdas)} agent Lambda(s); concurrency limits appear configured.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed" if agent_lambdas else "N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-09"],
                 )
@@ -1275,7 +1275,7 @@ def check_human_in_the_loop_for_high_risk_actions() -> Dict[str, Any]:
                     finding_details=f"State machines with waitForTaskToken (human approval): {', '.join(machines_with_wait)}.",
                     resolution="No action required. Verify approval routing reaches the correct reviewers.",
                     reference="https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html#connect-wait-token",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-10"],
                 )
@@ -1356,7 +1356,7 @@ def check_agent_rate_alarms() -> Dict[str, Any]:
                     finding_details=f"Found {len(agent_alarms)} agent-related CloudWatch alarm(s).",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-11"],
                 )
@@ -1442,7 +1442,7 @@ def check_scp_model_access_restrictions() -> Dict[str, Any]:
                     finding_details=f"SCPs referencing Bedrock: {', '.join(bedrock_scps)}.",
                     resolution="Verify SCPs use bedrock:ModelId conditions to allowlist approved models.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-12"],
                 )
@@ -1517,7 +1517,7 @@ def check_model_inventory_tagging() -> Dict[str, Any]:
                     finding_details="All reviewed models have required provenance tags.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/tagging.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-13"],
                 )
@@ -1574,7 +1574,7 @@ def check_model_onboarding_governance() -> Dict[str, Any]:
                     finding_details=f"Found {len(bedrock_rules)} model-related Config rule(s).",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/config/latest/developerguide/evaluate-config.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-14"],
                 )
@@ -1623,7 +1623,7 @@ def check_bedrock_model_evaluation_adversarial() -> Dict[str, Any]:
                     finding_details=f"Found {len(evals)} evaluation job(s). Verify adversarial datasets are included.",
                     resolution="Ensure evaluation datasets include adversarial/red-team test cases.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-15"],
                 )
@@ -1693,7 +1693,7 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
                     finding_details=f"All {len(repos)} ECR repo(s) have scan-on-push enabled.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-16"],
                 )
@@ -1776,7 +1776,7 @@ def check_feature_store_rollback_capability() -> Dict[str, Any]:
                     finding_details=f"All {len(groups)} feature group(s) have active offline stores.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-offline.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-20"],
                 )
@@ -1867,7 +1867,7 @@ def check_training_data_s3_versioning() -> Dict[str, Any]:
                     finding_details=f"All {len(training_buckets)} training bucket(s) have versioning enabled.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-21"],
                 )
@@ -1941,7 +1941,7 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                     finding_details="No wildcard KB permissions found in reviewed roles.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-22"],
                 )
@@ -2085,7 +2085,7 @@ def check_opensearch_serverless_encryption() -> Dict[str, Any]:
                         ),
                         resolution="Verify all vector store collections use customer-managed KMS keys.",
                         reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html",
-                        severity="Informational",
+                        severity="High",
                         status="Passed",
                         compliance_frameworks=COMPLIANCE_MAP["FS-25"],
                     )
@@ -2163,7 +2163,7 @@ def check_knowledge_base_vpc_access() -> Dict[str, Any]:
                         finding_details=f"{len(vpc_policies)} network policy(ies) restrict to VPC.",
                         resolution="No action required.",
                         reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-network.html",
-                        severity="Informational",
+                        severity="High",
                         status="Passed",
                         compliance_frameworks=COMPLIANCE_MAP["FS-26"],
                     )
@@ -2265,7 +2265,7 @@ def check_guardrail_contextual_grounding() -> Dict[str, Any]:
                         "Also consider enabling Automated Reasoning checks for formal policy verification."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-27"],
                 )
@@ -2377,7 +2377,7 @@ def check_automated_reasoning_policies() -> Dict[str, Any]:
                         "guardrail is applied to your Bedrock inference calls."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/automated-reasoning.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-27"],
                 )
@@ -2497,7 +2497,7 @@ def check_guardrail_denied_topics_financial() -> Dict[str, Any]:
                         "documents, and incident reports (as recommended in PDF \u00a71.2.1 Practical guidance)."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-28"],
                 )
@@ -2575,7 +2575,7 @@ def check_bedrock_evaluation_compliance_datasets() -> Dict[str, Any]:
                     finding_details=f"Found {len(evals)} evaluation job(s). Verify compliance datasets are included.",
                     resolution="Ensure evaluation datasets include FinServ regulatory test cases.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-30"],
                 )
@@ -2687,7 +2687,7 @@ def check_knowledge_base_data_source_sync() -> Dict[str, Any]:
                     ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-31"],
                 )
@@ -2867,7 +2867,7 @@ def check_knowledge_base_integrity_monitoring() -> Dict[str, Any]:
                     finding_details="All reviewed KB data source buckets have versioning enabled.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-33"],
                 )
@@ -2933,7 +2933,7 @@ def check_fm_version_currency() -> Dict[str, Any]:
                     finding_details="No legacy/deprecated foundation models detected.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-34"],
                 )
@@ -2987,7 +2987,7 @@ def check_fmeval_harmful_content() -> Dict[str, Any]:
                     finding_details=f"Found {len(evals)} evaluation job(s). Verify harmful content datasets are included.",
                     resolution="Ensure evaluation includes toxicity and harmful content test cases.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-35"],
                 )
@@ -3103,7 +3103,7 @@ def check_guardrail_content_filters() -> Dict[str, Any]:
                     ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-36"],
                 )
@@ -3209,7 +3209,7 @@ def check_guardrail_word_filters() -> Dict[str, Any]:
                     finding_details=f"Guardrails with word filters: {', '.join(guardrails_with_words)}.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-38"],
                 )
@@ -3268,7 +3268,7 @@ def check_sagemaker_clarify_bias() -> Dict[str, Any]:
                     finding_details=f"Found {len(bias_schedules)} model bias monitoring schedule(s).",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-monitor-bias-drift.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-39"],
                 )
@@ -3315,7 +3315,7 @@ def check_bedrock_evaluation_bias_datasets() -> Dict[str, Any]:
                     finding_details=f"Found {len(evals)} evaluation job(s). Verify bias datasets are included.",
                     resolution="Ensure evaluation includes demographic fairness test cases.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-40"],
                 )
@@ -3373,7 +3373,7 @@ def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
                     finding_details=f"Found {len(explainability_schedules)} explainability monitoring schedule(s).",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-41"],
                 )
@@ -3424,7 +3424,7 @@ def check_ai_service_cards_documentation() -> Dict[str, Any]:
                     finding_details=f"Found {len(model_cards)} model card(s).",
                     resolution="Verify cards are current and include bias/fairness evaluations.",
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-cards.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-42"],
                 )
@@ -3488,7 +3488,7 @@ def check_cloudwatch_log_pii_masking() -> Dict[str, Any]:
                     finding_details=f"Found {len(policies)} data protection policy(ies).",
                     resolution="Verify policies cover Bedrock invocation log groups.",
                     reference="https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/mask-sensitive-log-data.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-43"],
                 )
@@ -3543,7 +3543,7 @@ def check_macie_on_training_data_buckets() -> Dict[str, Any]:
                     finding_details="Amazon Macie is enabled and scanning S3 buckets.",
                     resolution="Verify Macie jobs cover training data and KB data source buckets.",
                     reference="https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-44"],
                 )
@@ -3619,7 +3619,7 @@ def check_guardrail_pii_filters() -> Dict[str, Any]:
                     finding_details=f"Guardrails with PII filters: {', '.join(guardrails_with_pii)}.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-sensitive-filters.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-45"],
                 )
@@ -3712,7 +3712,7 @@ def check_data_classification_tagging() -> Dict[str, Any]:
                     finding_details=f"All {len(aiml_buckets)} AI/ML bucket(s) have classification tags.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-46"],
                 )
@@ -3834,7 +3834,7 @@ def check_guardrail_grounding_threshold() -> Dict[str, Any]:
                     ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-47"],
                 )
@@ -3890,7 +3890,7 @@ def check_rag_knowledge_base_configured() -> Dict[str, Any]:
                     finding_details=f"Found {len(active_kbs)} active Knowledge Base(s) for RAG grounding.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-48"],
                 )
@@ -3995,7 +3995,7 @@ def check_guardrail_relevance_grounding() -> Dict[str, Any]:
                     ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-50"],
                 )
@@ -4111,7 +4111,7 @@ def check_prompt_injection_input_validation() -> Dict[str, Any]:
                         "filters to evaluate user input separately from system prompts."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-prompt-attack.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-51"],
                 )
@@ -4232,7 +4232,7 @@ def check_bedrock_sdk_version_currency() -> Dict[str, Any]:
                     finding_details=f"All {len(bedrock_functions)} Bedrock Lambda function(s) use current runtimes.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/lambda/latest/dg/runtimes-update.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-52"],
                 )
@@ -4320,7 +4320,7 @@ def check_waf_sql_injection_rules() -> Dict[str, Any]:
                     finding_details=f"All {len(acls)} WAF ACL(s) have injection protection rules.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
-                    severity="Informational",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-53"],
                 )
@@ -4427,7 +4427,7 @@ def check_output_validation_lambda() -> Dict[str, Any]:
                     finding_details=f"Found {len(validation_functions)} output validation/sanitization function(s).",
                     resolution="No action required.",
                     reference="https://genai.owasp.org/llm-top-10/",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-55"],
                 )
@@ -4657,7 +4657,7 @@ def check_guardrail_topic_allowlist() -> Dict[str, Any]:
                     finding_details=f"Guardrails with topic policies: {', '.join(guardrails_with_topics)}.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-59"],
                 )
@@ -4814,7 +4814,7 @@ def check_knowledge_base_sync_schedule() -> Dict[str, Any]:
                     ),
                     resolution="Verify the schedule frequency matches your data-currency requirements.",
                     reference="https://docs.aws.amazon.com/scheduler/latest/UserGuide/what-is-scheduler.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-61"],
                 )
@@ -4918,7 +4918,7 @@ def check_foundation_model_lifecycle_policy() -> Dict[str, Any]:
                     ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-63"],
                 )
@@ -5087,7 +5087,7 @@ def check_kb_datasource_s3_event_notifications() -> Dict[str, Any]:
                     finding_details="All KB data-source S3 buckets have event notifications configured.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/EventBridge.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-65"],
                 )
@@ -5183,7 +5183,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                     finding_details=f"All {len(runtimes)} runtime(s) have authorizer configurations supporting identity propagation.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
-                    severity="Informational",
+                    severity="Low",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-66"],
                 )
@@ -5299,7 +5299,7 @@ def check_agent_financial_transaction_thresholds() -> Dict[str, Any]:
                         ),
                         resolution="Verify threshold values are appropriate for your financial risk tolerance.",
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-engine.html",
-                        severity="Informational",
+                        severity="High",
                         status="Passed",
                         compliance_frameworks=COMPLIANCE_MAP["FS-67"],
                     )
@@ -5389,7 +5389,7 @@ def check_api_gateway_request_body_size_limits() -> Dict[str, Any]:
                     ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-68"],
                 )
@@ -5472,7 +5472,7 @@ def check_prompt_input_validation_function() -> Dict[str, Any]:
                         "format validation, size limits, and injection-sequence detection."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-injection.html",
-                    severity="Informational",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-69"],
                 )
