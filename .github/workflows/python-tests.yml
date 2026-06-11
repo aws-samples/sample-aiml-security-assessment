@@ -6,12 +6,16 @@ on:
     paths:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
+      - "consolidate_html_reports.py"
+      - "test_consolidate_finserv.py"
       - ".github/workflows/python-tests.yml"
   pull_request:
     branches: [main]
     paths:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
+      - "consolidate_html_reports.py"
+      - "test_consolidate_finserv.py"
       - ".github/workflows/python-tests.yml"
 
 jobs:
@@ -36,20 +40,50 @@ jobs:
           # Install pydantic for schema validation used by Lambda functions
           pip install pydantic>=2.0.0
 
-      - name: Run tests with coverage
+      - name: Run upstream tests with coverage
         env:
           AIML_ASSESSMENT_BUCKET_NAME: test-assessment-bucket
           AWS_DEFAULT_REGION: us-east-1
           AWS_ACCESS_KEY_ID: testing
-          AWS_SECRET_ACCESS_KEY: testing
+          AWS_SECRET_ACCESS_KEY: testing  # pragma: allowlist secret
         run: |
           python -m pytest tests/ \
             -v \
             --tb=short \
             --cov=aiml-security-assessment/functions/security \
+            --cov-report=term-missing
+
+      - name: Run FinServ assessment tests with coverage
+        # Run separately from tests/: the FinServ suite has its own conftest and
+        # imports the FinServ app as top-level `app`, which would collide in a
+        # single pytest session with the other assessment modules' app.py files.
+        env:
+          AIML_ASSESSMENT_BUCKET_NAME: test-assessment-bucket
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing  # pragma: allowlist secret
+        run: |
+          python -m pytest aiml-security-assessment/functions/security/finserv_tests/ \
+            -v \
+            --tb=short \
+            --cov=aiml-security-assessment/functions/security \
+            --cov-append \
             --cov-report=term-missing \
-            --cov-report=xml:coverage.xml \
-            -x
+            --cov-report=xml:coverage.xml
+
+      - name: Run report-pipeline tests
+        # The single- and multi-account HTML report generators (REQ-1) and the
+        # FinServ categorization test. The report generator package ships an
+        # __init__.py, so its tests run with that directory as CWD.
+        env:
+          AIML_ASSESSMENT_BUCKET_NAME: test-assessment-bucket
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing  # pragma: allowlist secret
+        run: |
+          python -m pytest test_consolidate_finserv.py -v --tb=short
+          cd aiml-security-assessment/functions/security/generate_consolidated_report
+          python -m pytest test_generate_report.py -v --tb=short
 
       - name: Upload coverage report
         if: always()
