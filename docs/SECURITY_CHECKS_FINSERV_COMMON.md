@@ -32,12 +32,26 @@ in the PDF). Every check below is tagged with one of:
 
 ## Severity rubric
 
-| Severity | Criteria |
+Severities follow a documented **Likelihood × Impact** methodology mapped to the AWS Security Hub
+ASFF label set (`Informational | Low | Medium | High`; `Critical` is reserved, not used this
+round). The full methodology, the 3×3 scoring matrix, the N/A **disposition rules**, and the
+authoritative per-finding assignments are in
+[`SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md)
+and [`SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
+
+| Severity | Criteria (ASFF-aligned) |
 |---|---|
 | **High** | Control whose absence can lead to direct regulatory breach, data exposure, large-scale financial loss, or full bypass of safety guardrails. |
 | **Medium** | Control whose absence materially increases the likelihood or impact of a risk category but does not by itself produce a breach. |
 | **Low** | Control that reduces residual risk or supports audit/observability but has alternative or compensating controls. |
-| **Advisory** | Control the assessment tool cannot fully evaluate via AWS APIs; requires human verification (included for completeness). |
+| **Informational** | No actionable issue is asserted. Used for three dispositions: (1) **NOT_APPLICABLE** — the control's resource type is absent (e.g., no Knowledge Bases, no guardrails); (2) **ADVISORY** — the control cannot be verified via AWS APIs and requires human review (finding name prefixed `ADVISORY:`); (3) checks awaiting manual verification. |
+
+> **Disposition rules (how a finding's severity is set):** severity is a property of the *control*
+> (its Likelihood × Impact), applied to that control's `Passed` and `Failed` rows alike. The `N/A`
+> family is fixed by disposition: **NOT_APPLICABLE → Informational**, **ADVISORY → Informational**,
+> **COULD_NOT_ASSESS** (access denied / unsupported region) **→ Low**. The legacy "Advisory" tier in
+> earlier revisions of this document is reconciled to the **Informational** label + `N/A` status +
+> `ADVISORY:` name prefix.
 
 ## Validation note
 

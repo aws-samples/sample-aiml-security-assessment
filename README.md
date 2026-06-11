@@ -244,12 +244,31 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 2. Select **Upload a template file** and upload the [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yaml) file.
 3. Set the `MultiAccountScan` parameter to `true`.
 4. Optionally, provide your email address in the `EmailAddress` parameter for completion notifications.
-5. Leave the remaining parameters at their default values.
+5. Optionally, set `EnableFinServAssessment` to `true` to run the Financial Services GenAI risk checks (FS-01..FS-69). It defaults to `false`; enable it only if you must adhere to FinServ compliance, as it adds a dedicated FinServ section to the report. See [How finding severities are determined](#how-finding-severities-are-determined) and the [FinServ check references](docs/SECURITY_CHECKS_FINSERV_COMMON.md).
+6. Leave the remaining parameters at their default values.
 6. Navigate to the next page, read and acknowledge the notice, and click **Next**.
 7. Review the information and click **Submit**.
 8. Stack creation automatically triggers AWS CodeBuild, which deploys the assessment to each account and runs it.
 
 ## How It Works
+
+### Optional: Financial Services GenAI Risk Checks (`EnableFinServAssessment`)
+
+The 64 Financial Services (FS-XX) GenAI risk checks are **opt-in** and default to `false`. Set the
+`EnableFinServAssessment` deployment parameter to `true` only if you must adhere to FinServ
+compliance. When enabled, the FinServ assessment Lambda runs and its findings appear in a dedicated
+**Financial Services** section of the HTML report. When left `false`, no FinServ findings are
+produced and the report omits the FinServ section entirely. The toggle is threaded into the Step
+Functions execution input (`enableFinServ`); the FinServ Lambda is always deployed but is invoked
+only when the flag is `true`.
+
+> **Deployment path note.** The `EnableFinServAssessment` parameter is wired through the CodeBuild-based deployment templates (`deployment/aiml-security-single-account.yaml` and `deployment/2-aiml-security-codebuild.yaml`), which thread it into every Step Functions `start-execution` call as `enableFinServ`. This is the supported install path. If you instead deploy `aiml-security-assessment/template.yaml` directly with `sam deploy` and start executions yourself, the state machine has no built-in trigger, so FinServ stays **off** unless you include `"enableFinServ": "true"` in the execution input you pass to `StartExecution`.
+
+#### Scope and limitations
+
+- **Single Region per run.** The assessment evaluates resources in the deployment Region only (the assessment Lambdas use their own Region). Region-scoped controls — WAF, API Gateway, Bedrock guardrails and Knowledge Bases, OpenSearch Serverless, Lambda, and SageMaker monitoring — are not evaluated in other Regions. For multi-Region GenAI workloads, deploy and run the assessment in each Region.
+- **Heuristic and advisory checks.** Some controls cannot be verified through an API (application-layer controls, dataset contents, resource associations); these are reported as `ADVISORY`/`N/A` and require manual review. See [How finding severities are determined](#how-finding-severities-are-determined).
+- **Permissions.** A check that lacks an IAM permission is reported as `COULD NOT ASSESS` (not a failure). Re-deploy the member role after any IAM template change so newer actions take effect.
 
 ### Single-Account Mode (`MultiAccountScan=false`)
 
@@ -361,15 +380,6 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
   - `agentcore_security_report_{execution_id}.csv` - Amazon Bedrock AgentCore security assessment results
   - `finserv_security_report_{execution_id}.csv` - Financial Services GenAI risk assessment results (64 FS-XX checks)
 
-> **⚠️ Known Limitation — FinServ findings appear in CSV only, not in the HTML report**
->
-> The HTML report (`security_assessment_*.html`) currently renders findings from Amazon Bedrock,
-> Amazon SageMaker, and Amazon Bedrock AgentCore assessments only. The Financial Services GenAI
-> risk checks write results to `finserv_security_report_{execution_id}.csv`, which is consolidated
-> into the multi-account CSV, but **FinServ findings are not yet visible in the interactive HTML
-> dashboard**. HTML rendering for the FinServ section is tracked as a follow-up enhancement.
-> To review FinServ findings, open the CSV file directly from the Amazon S3 assessment bucket.
-
   - `permissions_cache_{execution_id}.json` - IAM permissions cache
   - `security_assessment_{timestamp}_{execution_id}.html` - Consolidated HTML report (same features as multi-account report)
 
@@ -388,6 +398,32 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
 | **Failed** | Security issue identified that requires remediation |
 | **Passed** | Checked resources met the assessed best practice at time of scan |
 | **N/A** | No resources exist to check (for example, no notebooks, no guardrails configured) |
+
+### How finding severities are determined
+
+FinServ (`FS-`) check severities are assigned by a documented, reproducible methodology rather than
+per-check intuition. Each control is scored on two axes — **Impact** (harm if the control is absent)
+and **Likelihood** (probability the adverse outcome occurs given the control is absent) — and the
+pair is mapped to a severity via a 3×3 matrix. The labels align with the **AWS Security Hub ASFF**
+severity scale, so findings can be forwarded to Security Hub with consistent severities:
+
+| Label | ASFF normalized | Meaning |
+|-------|-----------------|---------|
+| Informational | 0 | No actionable issue (control not applicable, advisory/manual-review, or could-not-assess context) |
+| Low | 1–39 | Does not require action on its own; compensating controls exist |
+| Medium | 40–69 | Should be addressed, but not urgently |
+| High | 70–89 | Should be addressed as a priority |
+
+Severity is a property of the **control** (its inherent risk), so a check's `Passed` and `Failed`
+rows carry the same severity. The `N/A` family is fixed by disposition: *not-applicable* and
+*advisory* findings are **Informational**; *could-not-assess* (access-denied / unsupported region)
+findings are **Low**. `Critical` is reserved and not currently emitted.
+
+For the full methodology (matrix, factor definitions, disposition rules) and the authoritative
+per-finding assignments, see
+[FinServ Severity Methodology](docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) and the
+[FinServ Severity Register](docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md). Mappings are
+preliminary — validate with your MRM/Legal/Compliance teams before relying on them as audit evidence.
 
 ## Customization
 
@@ -516,6 +552,8 @@ For a clean removal, delete resources in this order:
 | [FinServ Part 1 — Infrastructure Controls](docs/SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md) | FS-01..26: Unbounded consumption, excessive agency, supply chain, training data poisoning, vector & embedding weaknesses |
 | [FinServ Part 2 — Guardrails & Content Safety](docs/SECURITY_CHECKS_FINSERV_PART2_GUARDRAILS_CONTENT_SAFETY.md) | FS-27..46: Non-compliant output, misinformation, abusive/harmful output, biased output, PII disclosure |
 | [FinServ Part 3 — App Layer & Gaps](docs/SECURITY_CHECKS_FINSERV_PART3_APP_LAYER_AND_GAPS.md) | FS-47..69: Hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data, cross-category gap checks |
+| [FinServ Severity Methodology](docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) | Likelihood × Impact → ASFF severity model, disposition rules, and research basis for FS check severities |
+| [FinServ Severity Register](docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md) | Authoritative per-finding severity assignments (the single source of truth enforced by the drift-guard test) |
 | [FinServ Compliance Mappings](docs/AIMLSecurityAssessment-MappingsTable.csv) | Machine-readable mapping of FS checks to SR 11-7, FFIEC CAT, NYDFS 500.06, PCI-DSS, DORA, MAS TRM, ISO 27001, OWASP LLM Top 10 |
 | [Troubleshooting Guide](docs/TROUBLESHOOTING.md) | Common issues, debugging tips, and FAQ |
 | [Developer Guide](docs/DEVELOPER_GUIDE.md) | Architecture details, adding custom checks, and contributing |

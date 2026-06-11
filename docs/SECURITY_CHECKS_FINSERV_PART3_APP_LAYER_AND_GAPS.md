@@ -25,7 +25,7 @@ and how a failure is **remediated** (the specific AWS actions to take).
 See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 - PDF traceability conventions (`[PDF §x.y.z]` vs `[PDF §x.y.z, extension]`)
-- Severity rubric (High / Medium / Low / Advisory)
+- Severity rubric (High / Medium / Low / Informational) — see SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md
 - Validation note and AWS service authorization references
 - Relationship to upstream SM/BR/AC checks and consolidation recommendations
 
@@ -71,7 +71,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.7] — "Implement response disclaimers in customer-facing applications, to inform end users that AI-generated responses should be verified for critical decisions." References "AWS Well-Architected Framework Generative AI Lens - Implement guardrails to mitigate harmful or incorrect model responses". |
 | Description | Advisory: verifies application adds hallucination disclaimers to AI-generated outputs. |
 | Detection | Advisory check — inspects application Lambda environment variables for disclaimer-related settings. Checks for post-processing Lambda functions that append disclaimers. |
@@ -140,7 +140,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.8] — "Security Testing – Test your applications regularly for prompt injection and other security vulnerabilities. Use penetration testing, static code analysis, and dynamic application security testing (DAST)." |
 | Description | Advisory: verifies GenAI applications have been penetration tested for prompt injection and other AI-specific vulnerabilities. |
 | Detection | Advisory check — inspects resource tags for `last-pentest-date` or checks for a documented penetration testing schedule. Cannot be fully automated. |
@@ -184,7 +184,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.13] — "Apply context-specific output sanitization based on the downstream consumer. For example, apply HTML encoding for web applications, SQL parameterization for database queries, and command escaping for system integrations." Practical guidance: "Use Amazon Bedrock Agents to securely integrate with AWS native and third-party services and implement output encoding in the action group Lambda function under an Amazon Bedrock Agent. Encoding all output text presented to end-users makes it automatically non-executable by JavaScript or Markdown." |
 | Description | Advisory: verifies application encodes GenAI outputs appropriately for the rendering context (HTML, JSON, SQL). |
 | Detection | Advisory check — inspects application Lambda functions for encoding libraries or patterns (e.g., `html.escape`, `json.dumps`, `markupsafe`). Checks environment variables for encoding-related configuration. |
@@ -195,7 +195,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.13] — "Implement output validation rules specific to the expected response format. For example, if the AI system is expected to return structured data (JSON, SQL), validate the output against the expected schema before processing." |
 | Description | Checks for structured output validation in GenAI pipelines (JSON schema, XML schema, or custom validators). |
 | Detection | Inspects Step Functions state machine definitions for states that perform schema validation (e.g., `Choice` states with JSON path conditions, Lambda states with "schema" or "validate" in the name). Does not rely on API Gateway response models as a validation signal because those are used for SDK generation, not runtime validation. |
@@ -225,7 +225,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Low |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.2] — "Use prompt engineering techniques to guide the model toward appropriate topics and prevent unwanted responses. Include an allowlist of approved topics aligned with the business purpose." Use of Bedrock Prompt Management for system prompt versioning is an implementation choice. |
 | Description | Advisory: verifies system prompts explicitly scope the assistant's role to prevent off-topic responses. |
 | Detection | Advisory check — inspects Bedrock Prompt Management templates (via `ListPrompts` on the `bedrock-agent` boto3 client; IAM action `bedrock:ListPrompts`) for system prompt content that defines the assistant's role, scope, and boundaries. Flags if no prompt templates exist. |
@@ -256,7 +256,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Low |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.10] — "Include data currency disclaimers in AI system responses where appropriate. Use source attribution in RAG-based response for end users to verify currency of information." |
 | Description | Advisory: verifies application adds data currency disclaimers to AI-generated outputs. |
 | Detection | Advisory check — inspects application configuration for data-currency disclaimer settings. Checks system prompts for instructions to include data freshness information. |
@@ -312,7 +312,7 @@ standalone checks.
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | High (deleted bucket) / Medium (notifications) |
 | PDF ref | [PDF §1.2.3] — "Use integrity monitoring on knowledge base data sources to detect unauthorized modifications... For example on S3 data sources use Amazon S3 event notification to track changes to documents." **Note:** This check overlaps with FS-33; FS-33 verifies notifications are *enabled* on the bucket, while FS-65 verifies that notifications are *routed to an alerting destination* (SNS/Lambda/EventBridge rule with a target). In the final PR to aws-samples these two checks may be consolidated into a single check at the reviewer's discretion. |
 | Description | Checks that S3 event notifications on KB data-source buckets are routed to an alerting destination (EventBridge rule with SNS/Lambda target, or direct SNS/SQS/Lambda notification) — not just enabled with no consumer. |
 | Detection | Identifies KB data-source S3 buckets via `ListDataSources` and `GetDataSource` (via the `bedrock-agent` boto3 client; IAM actions `bedrock:ListDataSources` and `bedrock:GetDataSource`). For each bucket, calls `s3:GetBucketNotificationConfiguration` and checks for the presence of `EventBridgeConfiguration`, `TopicConfigurations`, `QueueConfigurations`, or `LambdaFunctionConfigurations`. Flags buckets with no notifications configured. |

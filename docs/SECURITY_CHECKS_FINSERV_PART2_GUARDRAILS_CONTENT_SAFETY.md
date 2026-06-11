@@ -24,7 +24,7 @@ and how a failure is **remediated** (the specific AWS actions to take).
 See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 - PDF traceability conventions (`[PDF §x.y.z]` vs `[PDF §x.y.z, extension]`)
-- Severity rubric (High / Medium / Low / Advisory)
+- Severity rubric (High / Medium / Low / Informational) — see SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md
 - Validation note and AWS service authorization references
 - Relationship to upstream SM/BR/AC checks and consolidation recommendations
 
@@ -46,7 +46,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | High |
+| Severity | High (contextual grounding) / Medium (Automated Reasoning) |
 | PDF ref | [PDF §1.2.1, §1.2.7] — "Automated Reasoning checks in Amazon Bedrock Guardrails uses automated reasoning to verify that natural language content complies with your defined policies. This mathematical verification helps ensure that your content strictly follows your guardrails." |
 | Description | Verifies Bedrock Guardrails have Automated Reasoning checks or contextual grounding enabled. |
 | Detection | Calls `bedrock:ListGuardrails` and `bedrock:GetGuardrail` for each. Inspects the response fields `contextualGroundingPolicy` and `automatedReasoningPolicy`. Flags guardrails with neither enabled. |
@@ -68,7 +68,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.1, extension] — disclaimers are not verbatim in §1.2.1 but the PDF references "Implement response disclaimers in customer-facing applications" under §1.2.7 Hallucination, which is conceptually the same control applied here for non-compliant financial-advice output. |
 | Description | Advisory: verifies application adds required regulatory disclaimers to AI-generated outputs. |
 | Detection | Advisory check — cannot be fully automated. Inspects application Lambda function environment variables or configuration for disclaimer-related settings (e.g., `DISCLAIMER_ENABLED`, `COMPLIANCE_FOOTER`). |
@@ -79,7 +79,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.1, extension] — the PDF §1.2.12 practical guidance mentions "Amazon Bedrock Evaluations can help to evaluate models against specific types of attacks"; this check extends that concept to compliance-specific evaluation for FS-regulated outputs. |
 | Description | Checks Bedrock evaluation jobs use compliance-specific test datasets. |
 | Detection | Calls `bedrock:ListEvaluationJobs` to enumerate existing jobs, then calls `bedrock:GetEvaluationJob` for each to inspect the full `evaluationConfig` including dataset configuration. Flags if no evaluation jobs exist or if none reference compliance/regulatory test data. Note: `ListEvaluationJobs` returns only job summaries — dataset configuration details require `GetEvaluationJob`. |
@@ -111,7 +111,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.3, §1.2.10] — "Use source attribution in RAG-based response for end users to verify provenance of information" (§1.2.3); "Use source attribution in RAG-based response for end users to verify currency of information" (§1.2.10). |
 | Description | Advisory: verifies application implements source citations in RAG responses. |
 | Detection | Advisory check — inspects application code or configuration for use of the `citations` field in `RetrieveAndGenerate` API responses. Checks Lambda environment variables for attribution-related settings. |
@@ -122,7 +122,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | High (deleted bucket) / Medium (versioning) |
 | PDF ref | [PDF §1.2.3] — "Use integrity monitoring on knowledge base data sources to detect unauthorized modifications. Track changes to documents used in knowledge bases." References "For example on S3 data sources use Amazon S3 event notification to track changes to documents." |
 | Description | Checks KB data source S3 buckets have versioning enabled and S3 event notifications (EventBridge or SNS) configured to detect unauthorized document modifications in real time. |
 | Detection | Identifies KB data-source S3 buckets via `GetDataSource` (via the `bedrock-agent` boto3 client; IAM action `bedrock:GetDataSource`). Calls `s3:GetBucketVersioning` to verify `Status=Enabled`. Calls `s3:GetBucketNotificationConfiguration` and checks for `EventBridgeConfiguration`, `TopicConfigurations`, `QueueConfigurations`, or `LambdaFunctionConfigurations`. Flags buckets missing either control. |
@@ -161,7 +161,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.4] — "Foundation Model Evaluations (FMEval) evaluates your model to detect inappropriate content, including sexual references, profanity, hate speech, aggression, insults, flirtation, identity-based attacks, and threats." |
 | Description | Checks Bedrock evaluation jobs test for harmful/toxic content. |
 | Detection | Calls `bedrock:ListEvaluationJobs` to enumerate existing jobs, then calls `bedrock:GetEvaluationJob` for each to inspect the full `evaluationConfig`. The correct metric name depends on the evaluation job type: (a) For **automated model evaluation jobs** (pre-computed metrics), the toxicity metric is `"Builtin.Toxicity"` — the only valid harmful-content metric for this job type. (b) For **judge-based model evaluation jobs** (LLM-as-judge), the harmful content metrics are `"Builtin.Harmfulness"` and `"Builtin.Stereotyping"`. (c) For **knowledge base (RAG) evaluation jobs**, `"Builtin.Harmfulness"` and `"Builtin.Stereotyping"` are also valid. Flags if no evaluation jobs exist or none include a harmful-content metric (`Builtin.Toxicity` for automated, `Builtin.Harmfulness` for judge-based/RAG). Note: `ListEvaluationJobs` returns only job summaries — dataset configuration details require `GetEvaluationJob`. |
@@ -183,7 +183,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.4] — "Implement a user reporting mechanism that allows end users to flag abusive or harmful outputs. Reported incidents [are] reviewed within a defined process to refine content filters." |
 | Description | Advisory: verifies application has a user reporting mechanism for harmful outputs. |
 | Detection | Advisory check — inspects application configuration for feedback-related settings (e.g., `FEEDBACK_ENABLED`, `REPORT_ABUSE_ENDPOINT`). Checks for Lambda functions with "feedback" or "report" in the name. |
@@ -229,7 +229,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.5] — "Develop and maintain a bias testing dataset that includes representative test cases across demographic groups, geographic regions, and other sensitive attributes relevant to your use case. Run these test cases periodically and after model updates." |
 | Description | Checks evaluation jobs include demographic fairness test cases across protected groups and verifies evaluations are run on a defined periodic schedule and after each model update. |
 | Detection | Calls `bedrock:ListEvaluationJobs` to enumerate existing jobs, then calls `bedrock:GetEvaluationJob` for each to inspect the full `evaluationConfig` including dataset configuration for demographic diversity test cases. Checks the `creationTime` of the most recent evaluation job and flags if it is older than 90 days or if no evaluation was run after the most recent model deployment. Note: `ListEvaluationJobs` returns only job summaries — dataset configuration details require `GetEvaluationJob`. |

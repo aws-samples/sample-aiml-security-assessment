@@ -24,7 +24,7 @@ and how a failure is **remediated** (the specific AWS actions to take).
 See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 - PDF traceability conventions (`[PDF §x.y.z]` vs `[PDF §x.y.z, extension]`)
-- Severity rubric (High / Medium / Low / Advisory)
+- Severity rubric (High / Medium / Low / Informational) — see SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md
 - Validation note and AWS service authorization references
 - Relationship to upstream SM/BR/AC checks and consolidation recommendations
 
@@ -43,7 +43,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | High |
+| Severity | Medium (WAF) / Low (Shield Advanced) |
 | PDF ref | [PDF §1.2.11] — "Protect your LLM APIs and Amazon Bedrock-hosted LLMs by using AWS WAF and AWS Shield Advanced." Also covers: "To protect your API endpoints, set maximum length limits for input requests when you use large language models (LLMs) directly or through Amazon Bedrock." |
 | Description | Verifies AWS WAF Web ACLs and Shield Advanced protect GenAI API endpoints, and verifies the Web ACL enforces both rate-based limits and body-size (input-length) constraints. |
 | Detection | Calls `shield:DescribeSubscription` to check Shield Advanced is active. Calls `wafv2:ListWebACLs(Scope=REGIONAL)` in each region where GenAI API endpoints run to verify at least one regional Web ACL exists (covers API Gateway, ALB, AppSync). **Additionally** calls `wafv2:ListWebACLs(Scope=CLOUDFRONT)` in `us-east-1` to detect Web ACLs protecting CloudFront distributions fronting GenAI workloads — CLOUDFRONT-scope Web ACLs must be created and queried in `us-east-1` per the [WAF resources documentation](https://docs.aws.amazon.com/waf/latest/developerguide/how-aws-waf-works-resources.html). For each Web ACL found, calls `wafv2:GetWebACL` and inspects the `Rules` array for: (a) at least one `RateBasedStatement` (rate limiting) and (b) at least one `SizeConstraintStatement` with `FieldToMatch=Body` or `FieldToMatch=JsonBody` (input-size limit — this implements PDF §1.2.11 mitigation "set maximum length limits for input requests when you use large language models (LLMs) directly or through Amazon Bedrock"). Flags accounts with no Web ACL in either scope, a Web ACL with no rate-based rule, a Web ACL with no body size-constraint rule, or where Shield Advanced is inactive. |
@@ -54,7 +54,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | High |
+| Severity | Medium |
 | PDF ref | [PDF §1.2.11] — "protect your API endpoints by implementing rate limits and quotas for APIs that access large language models (LLMs)". |
 | Description | Checks API Gateway usage plans enforce throttling on GenAI endpoints. |
 | Detection | Calls `apigateway:GetUsagePlans` and inspects each plan's `throttle.rateLimit` and `throttle.burstLimit`. Flags plans where either is zero or absent. |
@@ -370,7 +370,7 @@ See `SECURITY_CHECKS_FINSERV_COMMON.md` for:
 
 | Field | Detail |
 |-------|--------|
-| Severity | Medium |
+| Severity | Informational |
 | PDF ref | [PDF §1.2.15] — "Implement access controls at the document or record level within knowledge bases where different users or applications should only have access to specific subsets of data. Use Amazon Bedrock Knowledge Bases metadata filtering to enforce data segmentation." |
 | Description | Advisory: verifies KB metadata fields support tenant-level filtering for multi-tenancy. |
 | Detection | Calls `ListKnowledgeBases` and `GetKnowledgeBase` (via the `bedrock-agent` boto3 client; IAM actions are `bedrock:ListKnowledgeBases` and `bedrock:GetKnowledgeBase`). Inspects the storage configuration for metadata field definitions. Flags KBs with no metadata fields defined (no tenant isolation possible). |
