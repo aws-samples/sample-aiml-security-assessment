@@ -161,14 +161,6 @@ Resources:
                 - bedrock:ListFlows
                 - bedrock:GetFlow
               Resource: '*'
-            - Sid: BedrockAgentPermissions
-              Effect: Allow
-              Action:
-                - bedrock-agent:ListKnowledgeBases
-                - bedrock-agent:GetKnowledgeBase
-                - bedrock-agent:ListFlows
-                - bedrock-agent:GetFlow
-              Resource: '*'
             - Sid: S3BucketEncryptionPermissions
               Effect: Allow
               Action:
@@ -400,7 +392,7 @@ Resources:
       Runtime: python3.12
       Architectures:
         - x86_64
-      Timeout: 600 # 10 minutes
+      Timeout: 900 # 15 minutes (Lambda max) — headroom for large accounts; ASL Catch keeps the report generating if exceeded
       MemorySize: 1024
       Environment:
         Variables:
@@ -471,6 +463,8 @@ Resources:
                 - bedrock:ListCustomModels
                 - bedrock:ListEvaluationJobs
                 - bedrock:GetModelInvocationLoggingConfiguration
+                - bedrock:ListTagsForResource
+                - bedrock:ListAutomatedReasoningPolicies
               Resource: '*'
             - Sid: BedrockAgentPermissions
               Effect: Allow
@@ -517,7 +511,6 @@ Resources:
               Effect: Allow
               Action:
                 - ecr:DescribeRepositories
-                - ecr:DescribeImageScanFindings
               Resource: '*'
             - Sid: CloudTrailPermissions
               Effect: Allow
@@ -541,6 +534,7 @@ Resources:
               Effect: Allow
               Action:
                 - events:ListRules
+                - scheduler:ListSchedules
                 - config:DescribeConfigRules
               Resource: '*'
             - Sid: S3BucketPermissions

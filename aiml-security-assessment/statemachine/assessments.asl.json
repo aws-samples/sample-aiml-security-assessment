@@ -86,6 +86,26 @@
                   "JitterStrategy": "FULL"
                 }
               ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.assessmentError",
+                  "Next": "Bedrock Assessment Incomplete"
+                }
+              ],
+              "End": true
+            },
+            "Bedrock Assessment Incomplete": {
+              "Type": "Pass",
+              "Result": {
+                "statusCode": 207,
+                "incomplete": true,
+                "body": {
+                  "findings": []
+                }
+              },
               "End": true
             }
           }
@@ -117,6 +137,26 @@
                   "JitterStrategy": "FULL"
                 }
               ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.assessmentError",
+                  "Next": "Sagemaker Assessment Incomplete"
+                }
+              ],
+              "End": true
+            },
+            "Sagemaker Assessment Incomplete": {
+              "Type": "Pass",
+              "Result": {
+                "statusCode": 207,
+                "incomplete": true,
+                "body": {
+                  "findings": []
+                }
+              },
               "End": true
             }
           }
@@ -148,13 +188,52 @@
                   "JitterStrategy": "FULL"
                 }
               ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.assessmentError",
+                  "Next": "AgentCore Assessment Incomplete"
+                }
+              ],
+              "End": true
+            },
+            "AgentCore Assessment Incomplete": {
+              "Type": "Pass",
+              "Result": {
+                "statusCode": 207,
+                "incomplete": true,
+                "body": {
+                  "findings": []
+                }
+              },
               "End": true
             }
           }
         },
         {
-          "StartAt": "FinServ Security Assessment",
+          "StartAt": "FinServ Enabled?",
           "States": {
+            "FinServ Enabled?": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "And": [
+                    {
+                      "Variable": "$.enableFinServ",
+                      "IsPresent": true
+                    },
+                    {
+                      "Variable": "$.enableFinServ",
+                      "StringEquals": "true"
+                    }
+                  ],
+                  "Next": "FinServ Security Assessment"
+                }
+              ],
+              "Default": "FinServ Assessment Skipped"
+            },
             "FinServ Security Assessment": {
               "Type": "Task",
               "Resource": "arn:aws:states:::lambda:invoke",
@@ -179,6 +258,37 @@
                   "JitterStrategy": "FULL"
                 }
               ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.finservError",
+                  "Next": "FinServ Assessment Incomplete"
+                }
+              ],
+              "End": true
+            },
+            "FinServ Assessment Incomplete": {
+              "Type": "Pass",
+              "Result": {
+                "statusCode": 207,
+                "incomplete": true,
+                "body": {
+                  "findings": []
+                }
+              },
+              "End": true
+            },
+            "FinServ Assessment Skipped": {
+              "Type": "Pass",
+              "Result": {
+                "statusCode": 200,
+                "skipped": true,
+                "body": {
+                  "findings": []
+                }
+              },
               "End": true
             }
           }

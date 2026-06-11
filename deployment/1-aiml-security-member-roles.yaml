@@ -69,14 +69,6 @@ Resources:
                   - bedrock:ListAgents
                   - bedrock:GetAgent
                 Resource: "*"
-              # Bedrock Agent Service Permissions (Knowledge Bases, Flows)
-              - Effect: Allow
-                Action:
-                  - bedrock-agent:ListKnowledgeBases
-                  - bedrock-agent:GetKnowledgeBase
-                  - bedrock-agent:ListFlows
-                  - bedrock-agent:GetFlow
-                Resource: "*"
               # Bedrock AgentCore Permissions
               - Effect: Allow
                 Action:
@@ -278,6 +270,7 @@ Resources:
                   # Bedrock Automated Reasoning (GA August 2025).
                   # Required for check_automated_reasoning_policies() (FS-27).
                   - bedrock:ListAutomatedReasoningPolicies
+                  - bedrock:ListTagsForResource
                   # Config — model onboarding governance (FS-14)
                   - config:DescribeConfigRules
                 Resource: "*"

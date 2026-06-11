@@ -42,6 +42,12 @@ Parameters:
     MaxValue: 480
     Default: 60
 
+  EnableFinServAssessment:
+    Description: "Run the Financial Services GenAI risk checks (FS-01..FS-69). Enable only if you must adhere to FinServ compliance; the FinServ findings add a dedicated report section."
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
 Conditions:
   CreateEmailNotification: !Not [!Equals [!Ref EmailAddress, ""]]
 
@@ -132,10 +138,6 @@ Resources:
                   - bedrock:ListFlows
                   - bedrock:GetFlow
                   # Bedrock Agent Permissions (Knowledge Bases, Flows)
-                  - bedrock-agent:ListKnowledgeBases
-                  - bedrock-agent:GetKnowledgeBase
-                  - bedrock-agent:ListFlows
-                  - bedrock-agent:GetFlow
                   # SageMaker Permissions
                   - sagemaker:ListNotebookInstances
                   - sagemaker:DescribeNotebookInstance
@@ -304,6 +306,7 @@ Resources:
                   # Bedrock Automated Reasoning (GA August 2025).
                   # Required for check_automated_reasoning_policies() (FS-27).
                   - bedrock:ListAutomatedReasoningPolicies
+                  - bedrock:ListTagsForResource
                   # Config — model onboarding governance (FS-14)
                   - config:DescribeConfigRules
                 Resource: "*"
@@ -503,6 +506,9 @@ Resources:
             Type: PLAINTEXT
           - Name: AWS_ACCOUNT_ID
             Value: !Sub ${AWS::AccountId}
+            Type: PLAINTEXT
+          - Name: ENABLE_FINSERV
+            Value: !Ref EnableFinServAssessment
             Type: PLAINTEXT
       Description: Run AIML Security single-account assessment
       ServiceRole: !GetAtt CodeBuildRole.Arn
