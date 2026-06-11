@@ -208,10 +208,11 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
         "bedrock": {"passed": 0, "failed": 0, "na": 0},
         "sagemaker": {"passed": 0, "failed": 0, "na": 0},
         "agentcore": {"passed": 0, "failed": 0, "na": 0},
+        "finserv": {"passed": 0, "failed": 0, "na": 0},
     }
-    service_findings = {"bedrock": [], "sagemaker": [], "agentcore": []}
+    service_findings = {"bedrock": [], "sagemaker": [], "agentcore": [], "finserv": []}
 
-    for service in ["bedrock", "sagemaker", "agentcore"]:
+    for service in ["bedrock", "sagemaker", "agentcore", "finserv"]:
         if service in assessment_results:
             for report_type, findings in assessment_results[service].items():
                 for finding in findings:
