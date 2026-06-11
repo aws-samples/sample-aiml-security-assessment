@@ -57,6 +57,7 @@ import functools
 import json
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import StringIO
 from typing import Any, Dict, List, Optional
@@ -112,7 +113,12 @@ def _bucket_name_from_arn(bucket_arn: str) -> str:
 
 
 def _paginate(
-    client, operation_name: str, result_key: str, **kwargs
+    client,
+    operation_name: str,
+    result_key: str,
+    *,
+    token: "tuple[str, str] | None" = None,
+    **kwargs,
 ) -> List[Dict[str, Any]]:
     """Collect all items across pages for a paginated list/describe operation by
     calling the operation directly and following its continuation token.
@@ -128,6 +134,19 @@ def _paginate(
     A single-page response (no continuation token) yields exactly one call, so
     this is a safe drop-in for previously non-paginated reads and for mocks that
     stub the operation with a single return value.
+
+    Args:
+        token: Optional explicit ``(output_field, input_param)`` pair that
+            bypasses the convention table entirely.  When set, ``token[0]`` is
+            read from each response to find the continuation value and
+            ``token[1]`` is the request kwarg used to send it on the next call.
+            Use this for operations whose token convention is not in the table,
+            or where the output and input names differ from every entry already
+            there (e.g. WAFv2 ``NextMarker``/``NextMarker`` vs Lambda's
+            ``NextMarker``/``Marker``).  When ``None`` (the default) the
+            existing convention table is used unchanged — all current callers
+            pass no ``token`` argument and are therefore byte-for-byte identical
+            to before this parameter was added.
     """
     # (output token field in response, input token kwarg on request)
     token_conventions = [
@@ -145,11 +164,18 @@ def _paginate(
         items.extend(resp.get(result_key, []) or [])
         next_token = None
         input_field = None
-        for out_field, in_field in token_conventions:
+        if token is not None:
+            # Explicit override: bypass the convention table.
+            out_field, in_field = token
             if resp.get(out_field):
                 next_token = resp[out_field]
                 input_field = in_field
-                break
+        else:
+            for out_field, in_field in token_conventions:
+                if resp.get(out_field):
+                    next_token = resp[out_field]
+                    input_field = in_field
+                    break
         # Stop when there is no token, or if a token repeats (guards against a
         # mock that returns the same token every call → infinite loop).
         if not next_token or next_token in seen_tokens:
@@ -217,6 +243,90 @@ def _is_missing_bucket_error(err: "ClientError") -> bool:
 # could not run (e.g., missing IAM permission). They are visible in the report
 # (Status="N/A") so a failed/permission-denied check does not silently vanish.
 COULD_NOT_ASSESS_PREFIX = "COULD NOT ASSESS: "
+
+# ---------------------------------------------------------------------------
+# ResourceInventory data model and helpers (REQ-3, REQ-4.1, REQ-6.4)
+# ---------------------------------------------------------------------------
+
+
+class _Unavailable:
+    """Sentinel marking an inventory field whose collection failed. Carries the
+    originating exception so dependent checks can reproduce the exact
+    COULD_NOT_ASSESS output that the check would have produced had it made the
+    call itself (design DD-3)."""
+
+    __slots__ = ("error",)
+
+    def __init__(self, error: Exception):
+        self.error = error
+
+
+@dataclass(frozen=True)
+class GuardrailInventory:
+    """Per-invocation guardrail enumeration. ``frozen=True`` prevents field
+    reassignment; the contained list/dict are read-only *by convention*."""
+
+    summaries: list  # raw list_guardrails 'guardrails' entries
+    detail_by_id: dict  # id -> get_guardrail(DRAFT) response (or _Unavailable)
+
+
+@dataclass(frozen=True)
+class KbInventory:
+    """Per-invocation Knowledge Base enumeration."""
+
+    summaries: list  # knowledgeBaseSummaries
+    data_sources_by_kb: (
+        dict  # knowledgeBaseId -> list of dataSourceSummaries (or _Unavailable)
+    )
+    data_source_detail: dict  # (knowledgeBaseId, dataSourceId) -> get_data_source resp (or _Unavailable)
+
+
+@dataclass(frozen=True)
+class WebAclInventory:
+    """Per-invocation WAFv2 REGIONAL Web ACL enumeration."""
+
+    summaries: list  # WebACLs list
+    detail_by_id: dict  # Id -> get_web_acl response (or _Unavailable)
+
+
+@dataclass(frozen=True)
+class ResourceInventory:
+    """Per-invocation, read-only inventory of shared AWS resources.
+
+    Each field is EITHER the collected data structure OR an ``_Unavailable``
+    sentinel (carrying the original exception). Checks MUST NOT mutate the
+    lists/dicts stored here; the equivalence tests catch any such mutation.
+
+    This is constructed once in ``lambda_handler`` and injected like
+    ``permission_cache`` (design DD-1, INV-6)."""
+
+    lambda_functions: "list | _Unavailable"
+    guardrails: "GuardrailInventory | _Unavailable"
+    knowledge_bases: "KbInventory | _Unavailable"
+    buckets: "list | _Unavailable"
+    web_acls: "WebAclInventory | _Unavailable"
+
+
+def inv_available(field) -> bool:
+    """Return True when *field* holds real data; False when it is an
+    ``_Unavailable`` sentinel."""
+    return not isinstance(field, _Unavailable)
+
+
+def require(inventory: "ResourceInventory | None", field_name: str):
+    """Return ``inventory.<field_name>`` when available; raise the stored
+    exception when the field is ``_Unavailable``; raise ``RuntimeError`` when
+    ``inventory`` is ``None`` (the test-only default from design DD-2b).
+
+    The caller's existing outer ``try/except`` turns the raised exception into
+    ``_error_findings`` → ``COULD_NOT_ASSESS``, matching today's behavior."""
+    if inventory is None:
+        raise RuntimeError("resource inventory not provided")
+    value = getattr(inventory, field_name)
+    if isinstance(value, _Unavailable):
+        raise value.error
+    return value
+
 
 # ---------------------------------------------------------------------------
 # COMPLIANCE_MAP — per-check regulatory framework mappings
@@ -317,11 +427,289 @@ COMPLIANCE_MAP: Dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# SEVERITY METHODOLOGY (see docs/severity-methodology.md + severity-register.md)
+#
+# Severity = property of the CONTROL (the risk it mitigates), assigned once via a
+# Likelihood (L) x Impact (I) matrix mapped to the AWS Security Hub ASFF label set,
+# then applied to every Passed/Failed row of that control. The N/A family follows a
+# fixed disposition rule so "nothing to assess" rows are consistent.
+#
+#   Matrix (I x L -> label), 1=Low 2=Medium 3=High:
+#       I=3: L1->Medium  L2->High    L3->High
+#       I=2: L1->Low     L2->Medium  L3->High
+#       I=1: L1->Low     L2->Low     L3->Medium
+#   (Critical is intentionally NOT used in this round — see methodology §6.)
+#
+#   Disposition -> severity:
+#       PASS / FAIL          -> control severity (from the matrix)
+#       NOT_APPLICABLE       -> Informational  (ASFF: "no issue was found")
+#       ADVISORY             -> Informational  (no API can verify it)
+#       COULD_NOT_ASSESS     -> Low            (unknown state; re-run after fixing access)
+#       SOFT_WARNING         -> control severity (intentional non-failing assessed state)
+# ---------------------------------------------------------------------------
+
+_SEVERITY_MATRIX = {
+    (3, 1): "Medium",
+    (3, 2): "High",
+    (3, 3): "High",
+    (2, 1): "Low",
+    (2, 2): "Medium",
+    (2, 3): "High",
+    (1, 1): "Low",
+    (1, 2): "Low",
+    (1, 3): "Medium",
+}
+
+
+def _label_from_matrix(impact: int, likelihood: int) -> str:
+    """Map an (Impact, Likelihood) pair (each 1-3) to an ASFF severity label."""
+    return _SEVERITY_MATRIX[(impact, likelihood)]
+
+
+# Disposition tiers whose severity is fixed by the disposition, not by I x L.
+_DISPOSITION_SEVERITY = {
+    "NOT_APPLICABLE": "Informational",
+    "ADVISORY": "Informational",
+    "COULD_NOT_ASSESS": "Low",
+}
+
+
+# Authoritative per-finding severity register (keyed by finding-name).
+# Source of truth derived from docs/severity-register.md. The test suite
+# (test_severity_register.py) asserts every emitted severity matches this map.
+# Entries: finding_name -> (severity, disposition). I/L rationale lives in the doc.
+SEVERITY_REGISTER: Dict[str, str] = {
+    # --- FS-01 (Shield = Low; WAF = Medium) ---
+    "AWS Shield Advanced Not Enabled": "Low",
+    "AWS Shield Advanced Enabled": "Low",
+    "No Regional WAF Web ACLs Found": "Medium",
+    "Regional WAF Web ACLs Present": "Medium",
+    # --- FS-02 (rate limiting = Medium) ---
+    "No API Gateway Usage Plans Found": "Informational",
+    "API Gateway Usage Plans Missing Throttle": "Medium",
+    "API Gateway Rate Limiting Configured": "Medium",
+    # --- FS-03 (token quotas = Medium) ---
+    "No Bedrock Token Quotas Returned": "Medium",
+    "Bedrock Default Quotas Unavailable — Customization Undetermined": "Medium",
+    "Bedrock Token Quotas Customized": "Medium",
+    "Bedrock Token Quotas At Default": "Medium",
+    # --- FS-04 ---
+    "No Cost Anomaly Detection Monitors": "Medium",
+    "Cost Anomaly Monitors Do Not Cover Bedrock/SageMaker": "Medium",
+    "Cost Anomaly Detection Configured": "Medium",
+    # --- FS-05 ---
+    "No Bedrock CloudWatch Alarms Found": "Medium",
+    "Bedrock CloudWatch Alarms Present": "Medium",
+    # --- FS-06 ---
+    "No AI/ML Service Budgets Configured": "Medium",
+    "AI/ML Service Budgets Configured": "Medium",
+    # --- FS-07 (agent action boundaries = High) ---
+    "Agent Action Boundary Check": "Informational",
+    "Bedrock Agent Overly Broad Action Permissions": "High",
+    "Agent Action Boundaries Look Appropriate": "High",
+    # --- FS-08 (AgentCore policy engine = High) ---
+    "AgentCore Policy Engine — Access Check": "Low",
+    "No AgentCore Runtimes Found": "Informational",
+    "AgentCore Runtimes Missing Policy Engine": "High",
+    "AgentCore Policy Engine Configured": "High",
+    # --- FS-09 ---
+    "Agent Lambda Functions Without Concurrency Limits": "Medium",
+    "Agent Lambda Concurrency Limits Present": "Medium",
+    # --- FS-10 (human-in-the-loop = High) ---
+    "Human-in-the-Loop Check — No Agent Workflows Found": "Informational",
+    "Human Approval Steps Found in Agent Workflows": "High",
+    "Agent Workflows Missing Human Approval Steps": "High",
+    # --- FS-11 ---
+    "No Agent Rate Alarms Found": "Medium",
+    "Agent Rate Alarms Present": "Medium",
+    # --- FS-12 (SCPs = High) ---
+    "SCP Model Access Check — Not in Organization": "Informational",
+    "No Bedrock-Scoped SCPs Found": "High",
+    "Bedrock SCPs Found": "High",
+    # --- FS-13 ---
+    "Models Missing Provenance Tags": "Medium",
+    "Model Provenance Tags Present": "Medium",
+    # --- FS-14 ---
+    "No Model Governance Config Rules Found": "Medium",
+    "Model Governance Config Rules Present": "Medium",
+    # --- FS-15 (eval jobs exist = Medium; absence is a real FAIL) ---
+    "No Bedrock Evaluation Jobs Found": "Medium",
+    "Bedrock Evaluation Jobs Present": "Medium",
+    # --- FS-16 (ECR scanning = High) ---
+    "No ECR Repositories Found": "Informational",
+    "ECR Repositories Without Image Scanning": "High",
+    "ECR Image Scanning Enabled": "High",
+    # --- FS-20 ---
+    "No SageMaker Feature Groups Found": "Informational",
+    "Feature Groups Without Offline Store": "Medium",
+    "Feature Store Offline Store Active": "Medium",
+    # --- FS-21 (training-data integrity = High) ---
+    "No Training Data Buckets Identified": "Informational",
+    "Training Data Buckets Without Versioning": "High",
+    "Training Data Buckets Have Versioning": "High",
+    # --- FS-22 (KB IAM least privilege = High) ---
+    "Overly Permissive Knowledge Base IAM Roles": "High",
+    "Knowledge Base IAM Permissions Look Appropriate": "High",
+    # --- FS-24 (advisory) ---
+    "No Knowledge Bases Found": "Informational",
+    "ADVISORY: Knowledge Base Metadata Filtering — Manual Review Required": "Informational",
+    # --- FS-25 (KB encryption = High) ---
+    "No OpenSearch Serverless Encryption Policies": "Informational",
+    "OpenSearch Serverless Encryption Not Using Customer-Managed Keys": "High",
+    "OpenSearch Serverless Encryption Policies Present": "High",
+    # --- FS-26 (VPC isolation = High) ---
+    "No OpenSearch Serverless Network Policies": "High",
+    "OpenSearch Serverless Collections Not VPC-Restricted": "High",
+    "OpenSearch Serverless VPC Access Configured": "High",
+    # --- FS-27 (contextual grounding = High; ARC = Medium) ---
+    "No Guardrails — Contextual Grounding Not Applicable": "Informational",
+    "No Guardrails With Contextual Grounding": "High",
+    "Contextual Grounding Enabled on Guardrails": "High",
+    "Automated Reasoning Policies — Access Check": "Low",
+    "No Automated Reasoning Policies Found": "Medium",
+    "Automated Reasoning Policies Found": "Medium",
+    # --- FS-28 (denied topics = High) ---
+    "No Guardrails — Denied Topics Not Applicable": "Informational",
+    "No Guardrails With Denied Financial Topics": "High",
+    "Denied Topics Configured on CLASSIC Tier": "High",
+    "Guardrails With Topic Policies Found": "High",
+    # --- FS-29 (advisory) ---
+    "ADVISORY: Compliance Disclaimer — Manual Review Required": "Informational",
+    # --- FS-30 (advisory — cannot inspect dataset content) ---
+    "ADVISORY: Compliance Dataset Coverage — Manual Review Required": "Informational",
+    # --- FS-31 ---
+    "Knowledge Base Data Sources Past Review Threshold": "Medium",
+    "Knowledge Base Data Sources Recently Synced": "Medium",
+    # --- FS-32 (advisory) ---
+    "ADVISORY: Source Attribution — Manual Review Required": "Informational",
+    # --- FS-33 (distinct risks: deleted bucket High, versioning Medium) ---
+    "KB Data Source References a Deleted S3 Bucket": "High",
+    "KB Data Source Buckets Without Versioning": "Medium",
+    "KB Data Source Buckets Have Versioning": "Medium",
+    # --- FS-34 ---
+    "Legacy Foundation Models Available in Region": "Informational",
+    "Foundation Models Are Current": "Medium",
+    # --- FS-35 (advisory) ---
+    "ADVISORY: Harmful-Content Test Coverage — Manual Review Required": "Informational",
+    # --- FS-36 (content filters = High) ---
+    "No Guardrails — Content Filters Not Applicable": "Informational",
+    "No Guardrails With Content Filters": "High",
+    "Guardrail Content Filters on CLASSIC Tier": "High",
+    "Guardrail Content Filters Configured (STANDARD Tier)": "High",
+    # --- FS-37 (advisory) ---
+    "ADVISORY: User Feedback Mechanism — Manual Review Required": "Informational",
+    # --- FS-38 (word filters = Medium) ---
+    "No Guardrails — Word Filters Not Applicable": "Informational",
+    "No Guardrails With Word Filters": "Medium",
+    "Guardrail Word Filters Configured": "Medium",
+    # --- FS-39 (bias = High) ---
+    "No SageMaker Clarify Bias Monitoring": "High",
+    "SageMaker Clarify Bias Monitoring Active": "High",
+    # --- FS-40 (advisory) ---
+    "ADVISORY: Bias Dataset Coverage — Manual Review Required": "Informational",
+    # --- FS-41 (explainability = High) ---
+    "No SageMaker Clarify Explainability Monitoring": "High",
+    "SageMaker Clarify Explainability Active": "High",
+    # --- FS-42 ---
+    "No SageMaker Model Cards Found": "Medium",
+    "SageMaker Model Cards Present": "Medium",
+    # --- FS-43 (log data protection = High) ---
+    "No CloudWatch Logs Data Protection Policies": "High",
+    "CloudWatch Logs Data Protection Policies Present": "High",
+    # --- FS-44 (Macie = High) ---
+    "Amazon Macie Not Enabled": "High",
+    "Amazon Macie Enabled": "High",
+    # --- FS-45 (PII filters = High) ---
+    "No Guardrails — PII Filters Not Applicable": "Informational",
+    "No Guardrails With PII Filters": "High",
+    "Guardrail PII Filters Configured": "High",
+    # --- FS-46 (classification = Medium) ---
+    "No AI/ML Data Buckets Identified": "Informational",
+    "AI/ML Buckets Without Data Classification Tags": "Medium",
+    "AI/ML Buckets Have Classification Tags": "Medium",
+    # --- FS-47 (grounding threshold = High) ---
+    "No Guardrails — Grounding Threshold Not Applicable": "Informational",
+    "Guardrails With Low Grounding Thresholds": "High",
+    "No Guardrails With a Grounding Filter": "High",
+    "Guardrail Grounding Thresholds Appropriate": "High",
+    # --- FS-48 ---
+    "No Active Knowledge Bases for RAG": "Medium",
+    "Active Knowledge Bases for RAG Present": "Medium",
+    # --- FS-49 (advisory) ---
+    "ADVISORY: Hallucination Disclaimer — Manual Review Required": "Informational",
+    # --- FS-50 (relevance grounding = Medium) ---
+    "No Guardrails With Relevance Grounding Filters": "Medium",
+    "Relevance Grounding Filters Present": "Medium",
+    # --- FS-51 (prompt attack = High) ---
+    "No Guardrails — Prompt Attack Filters Not Applicable": "Informational",
+    "No Guardrails With Prompt Attack Filters": "High",
+    "Prompt Attack Filters on CLASSIC Tier": "High",
+    "Prompt Attack Filters Configured (STANDARD Tier)": "High",
+    # --- FS-52 ---
+    "No Bedrock-Related Lambda Functions Found": "Informational",
+    "Bedrock Lambda Functions on Deprecated Runtimes": "Medium",
+    "Bedrock Lambda Functions on Current Runtimes": "Medium",
+    # --- FS-53 (injection rules = High) ---
+    "No WAF Web ACLs — Injection Rules Not Applicable": "Informational",
+    "WAF ACLs Missing Injection Protection Rules": "High",
+    "WAF Injection Protection Rules Present": "High",
+    # --- FS-54 (advisory) ---
+    "ADVISORY: Penetration Testing — Manual Review Required": "Informational",
+    # --- FS-55 ---
+    "No Output Validation Functions Found": "Medium",
+    "Output Validation Functions Present": "Medium",
+    # --- FS-56 (XSS = Medium; now has a FAIL path) ---
+    "No WAF ACLs — XSS Prevention Not Applicable": "Informational",
+    "WAF ACLs Missing Common Rule Set (XSS)": "Medium",
+    "XSS Prevention Common Rule Set Present": "Medium",
+    # --- FS-57 (advisory) ---
+    "ADVISORY: Output Encoding — Manual Review Required": "Informational",
+    # --- FS-58 (advisory) ---
+    "ADVISORY: Output Schema Validation — Manual Review Required": "Informational",
+    # --- FS-59 (topic allowlist = Medium) ---
+    "No Guardrails — Topic Allowlist Not Applicable": "Informational",
+    "No Guardrails With Topic Restrictions": "Medium",
+    "Topic Restrictions Configured on CLASSIC Tier": "Medium",
+    "Guardrail Topic Restrictions Configured": "Medium",
+    # --- FS-60 (advisory) ---
+    "ADVISORY: Contextual Grounding for Off-Topic Prevention": "Informational",
+    # --- FS-61 ---
+    "No Automated KB Sync Schedules Detected": "Medium",
+    "Automated KB Sync Schedules Present": "Medium",
+    # --- FS-62 (advisory) ---
+    "ADVISORY: Data Currency Disclaimer — Manual Review Required": "Informational",
+    # --- FS-63 ---
+    "Legacy Models Without Lifecycle Management": "Medium",
+    "Foundation Model Lifecycle Management": "Medium",
+    # --- FS-65 (distinct risks) ---
+    "KB Data Source Buckets Missing S3 Event Notifications": "Medium",
+    "KB Data Source S3 Event Notifications Configured": "Medium",
+    # --- FS-66 (identity propagation = High) ---
+    "AgentCore Identity Propagation — Access Check": "Low",
+    "AgentCore Runtimes Missing End-User Identity Propagation": "High",
+    "AgentCore End-User Identity Propagation Configured": "High",
+    # --- FS-67 (transaction thresholds = High) ---
+    "No Agent Action-Group Lambda Functions Found": "Informational",
+    "Agent Action-Group Lambdas May Lack Transaction Thresholds": "High",
+    "Agent Action-Group Lambdas Have Threshold Configuration": "High",
+    # --- FS-68 (body-size = Medium; now has N/A branch) ---
+    "API Gateway Request Body Size Limits Not Enforced": "Medium",
+    "API Gateway Request Body Size Limits — Not Applicable": "Informational",
+    "API Gateway Request Body Size Limits Configured": "Medium",
+    # --- FS-69 ---
+    "No Prompt Input Validation Function Found": "Medium",
+    "Prompt Input Validation Functions Present": "Medium",
+}
+
+
 def _could_not_assess_row(check_id: str, check_name: str, err: Any) -> Dict[str, Any]:
     """
     Synthesize one visible finding row for a check that errored out and produced
-    no rows. Uses the existing schema (Status="N/A", Severity="Medium") so the
-    gap surfaces in the report without inflating the Failed count.
+    no rows. Uses Status="N/A", Severity="Low" (the COULD_NOT_ASSESS disposition —
+    see severity-methodology.md §3.4) so the gap surfaces in the report as an
+    unknown/assessment-gap without inflating the Failed count or implying a
+    confirmed control failure.
     """
     return create_finding(
         check_id=check_id,
@@ -341,7 +729,7 @@ def _could_not_assess_row(check_id: str, check_name: str, err: Any) -> Dict[str,
             "4. Re-run the assessment; assess this control manually until it succeeds."
         ),
         reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/troubleshoot_access-denied.html",
-        severity="Medium",
+        severity="Low",
         status="N/A",
         compliance_frameworks=COMPLIANCE_MAP.get(check_id, ""),
     )
@@ -354,7 +742,7 @@ def _could_not_assess_row(check_id: str, check_name: str, err: Any) -> Dict[str,
 # ===========================================================================
 
 
-def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
+def check_waf_shield_on_bedrock_endpoints(inventory) -> Dict[str, Any]:
     """
     FS-01 — Verify AWS WAF is associated with API Gateway or ALB endpoints
     that front Bedrock/GenAI workloads, and that AWS Shield Advanced is enabled.
@@ -362,7 +750,6 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
     """
     findings = _empty_findings("WAF and Shield Protection Check")
     try:
-        wafv2 = boto3.client("wafv2", config=boto3_config)
         shield = boto3.client("shield", config=boto3_config)
 
         # Check Shield Advanced subscription
@@ -376,7 +763,9 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
             pass
 
         # Check WAF Web ACLs exist (regional, covering API GW / ALB)
-        acls = wafv2.list_web_acls(Scope="REGIONAL").get("WebACLs", [])
+        # require() raises if inventory is None or the field is _Unavailable,
+        # which propagates to the outer except and yields COULD_NOT_ASSESS.
+        acls = require(inventory, "web_acls").summaries
 
         if not shield_enabled:
             findings["status"] = "WARN"
@@ -401,7 +790,7 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
                         "to automate resource protection based on tags or resource types."
                     ),
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/shield-chapter.html",
-                    severity="High",
+                    severity="Low",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-01"],
                 )
@@ -414,7 +803,7 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
                     finding_details="AWS Shield Advanced subscription is active.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/shield-chapter.html",
-                    severity="High",
+                    severity="Low",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-01"],
                 )
@@ -436,7 +825,7 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
                         "3. Add AWS Managed Rules for known bad inputs."
                     ),
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html",
-                    severity="High",
+                    severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-01"],
                 )
@@ -449,7 +838,7 @@ def check_waf_shield_on_bedrock_endpoints() -> Dict[str, Any]:
                     finding_details=f"Found {len(acls)} regional WAF Web ACL(s).",
                     resolution="Verify ACLs are associated with Bedrock-facing endpoints.",
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html",
-                    severity="High",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-01"],
                 )
@@ -486,7 +875,7 @@ def check_api_gateway_rate_limiting() -> Dict[str, Any]:
                         "(rateLimit and burstLimit) for all Bedrock-facing APIs."
                     ),
                     reference="https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-request-throttling.html",
-                    severity="Medium",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-02"],
                 )
@@ -506,7 +895,7 @@ def check_api_gateway_rate_limiting() -> Dict[str, Any]:
                         "GenAI API stages. Consider per-consumer API keys with individual quotas."
                     ),
                     reference="https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-request-throttling.html",
-                    severity="High",
+                    severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-02"],
                 )
@@ -519,7 +908,7 @@ def check_api_gateway_rate_limiting() -> Dict[str, Any]:
                     finding_details=f"All {len(plans)} usage plan(s) have throttle settings.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-request-throttling.html",
-                    severity="High",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-02"],
                 )
@@ -1147,7 +1536,7 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
     return findings
 
 
-def check_agent_transaction_limits() -> Dict[str, Any]:
+def check_agent_transaction_limits(inventory) -> Dict[str, Any]:
     """
     FS-09 — Check for application-level transaction/action limits on agents
     via Lambda concurrency limits or Step Functions execution limits.
@@ -1155,8 +1544,7 @@ def check_agent_transaction_limits() -> Dict[str, Any]:
     """
     findings = _empty_findings("Agent Transaction Limits Check")
     try:
-        lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = _paginate(lambda_client, "list_functions", "Functions")
+        functions = require(inventory, "lambda_functions")
 
         # Look for agent-related Lambda functions without reserved concurrency
         agent_lambdas = [
@@ -1167,6 +1555,7 @@ def check_agent_transaction_limits() -> Dict[str, Any]:
             )
         ]
 
+        lambda_client = boto3.client("lambda", config=boto3_config)
         lambdas_without_concurrency = []
         for fn in agent_lambdas:
             try:
@@ -1262,7 +1651,7 @@ def check_human_in_the_loop_for_high_risk_actions() -> Dict[str, Any]:
                         "Route approval requests to human reviewers via SNS/SES/Slack."
                     ),
                     reference="https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html#connect-wait-token",
-                    severity="Medium",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-10"],
                 )
@@ -1397,7 +1786,7 @@ def check_scp_model_access_restrictions() -> Dict[str, Any]:
                         finding_details="Account is not part of an AWS Organization or lacks SCP read access.",
                         resolution="If using AWS Organizations, ensure SCPs restrict Bedrock model access to approved models.",
                         reference="https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         compliance_frameworks=COMPLIANCE_MAP["FS-12"],
                     )
@@ -1596,13 +1985,15 @@ def check_bedrock_model_evaluation_adversarial() -> Dict[str, Any]:
         evals = _paginate(bedrock, "list_evaluation_jobs", "jobSummaries")
 
         if not evals:
+            findings["status"] = "WARN"
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-15",
                     finding_name="No Bedrock Evaluation Jobs Found",
                     finding_details=(
-                        "No Bedrock Model Evaluation jobs found. "
-                        "Models have not been evaluated for adversarial robustness."
+                        "No Bedrock Model Evaluation jobs found. Models have not been evaluated "
+                        "for adversarial robustness. FinServ model-risk management (SR 11-7) "
+                        "expects documented model validation/evaluation."
                     ),
                     resolution=(
                         "1. Run Bedrock Model Evaluation with adversarial/red-team datasets.\n"
@@ -1611,7 +2002,7 @@ def check_bedrock_model_evaluation_adversarial() -> Dict[str, Any]:
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
                     severity="Medium",
-                    status="N/A",
+                    status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-15"],
                 )
             )
@@ -1786,7 +2177,7 @@ def check_feature_store_rollback_capability() -> Dict[str, Any]:
     return findings
 
 
-def check_training_data_s3_versioning() -> Dict[str, Any]:
+def check_training_data_s3_versioning(inventory) -> Dict[str, Any]:
     """
     FS-21 — Verify S3 buckets used for training data have versioning enabled
     to support rollback of poisoned datasets.
@@ -1794,8 +2185,8 @@ def check_training_data_s3_versioning() -> Dict[str, Any]:
     """
     findings = _empty_findings("Training Data S3 Versioning Check")
     try:
+        buckets = require(inventory, "buckets")
         s3 = boto3.client("s3", config=boto3_config)
-        buckets = s3.list_buckets().get("Buckets", [])
 
         training_buckets = [
             b
@@ -1884,6 +2275,21 @@ def check_training_data_s3_versioning() -> Dict[str, Any]:
 # ===========================================================================
 
 
+def _is_overbroad_kb_action(action: Any) -> bool:
+    """True if an IAM action grants overly broad Bedrock/Knowledge Base access:
+    the full wildcard, a service-wide bedrock(-agent) wildcard, or ANY partial
+    wildcard within those namespaces (e.g., 'bedrock-agent:Get*', 'bedrock:Invoke*').
+    Round-3 fixed the crash; this widens detection beyond the three exact wildcards."""
+    if not isinstance(action, str):
+        return False
+    a = action.lower()
+    if a in ("*", "bedrock:*", "bedrock-agent:*"):
+        return True
+    if a.endswith("*") and (a.startswith("bedrock:") or a.startswith("bedrock-agent:")):
+        return True
+    return False
+
+
 def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]:
     """
     FS-22 — Verify IAM roles accessing Bedrock Knowledge Bases follow
@@ -1896,21 +2302,61 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
         for role_name, perms in (
             (permission_cache or {}).get("role_permissions", {}).items()
         ):
-            for policy in perms.get("attached_policies", []) + perms.get(
-                "inline_policies", []
+            if not isinstance(perms, dict):
+                continue
+            for policy in (perms.get("attached_policies", []) or []) + (
+                perms.get("inline_policies", []) or []
             ):
+                if not isinstance(policy, dict):
+                    continue
                 doc = policy.get("document", {})
                 if isinstance(doc, str):
-                    doc = json.loads(doc)
-                for stmt in doc.get("Statement", []):
+                    try:
+                        doc = json.loads(doc)
+                    except (ValueError, TypeError):
+                        continue
+                if not isinstance(doc, dict):
+                    continue
+                # IAM allows Statement to be a single object (dict) or a list.
+                # Normalize to a list so iterating never yields statement *keys*
+                # (the cause of the 'str' object has no attribute 'get' crash).
+                statements = doc.get("Statement", [])
+                if isinstance(statements, dict):
+                    statements = [statements]
+                for stmt in statements:
+                    if not isinstance(stmt, dict):
+                        continue
                     if stmt.get("Effect") != "Allow":
                         continue
+                    # NotAction Allow ("allow everything except …") is inherently
+                    # broad and the antithesis of least privilege — flag it.
+                    if "NotAction" in stmt:
+                        issues.append(
+                            f"Role '{role_name}' uses a NotAction Allow (overly broad — "
+                            "grants all actions except those listed)"
+                        )
+                    resources = stmt.get("Resource", [])
+                    if isinstance(resources, str):
+                        resources = [resources]
+                    unscoped_resource = "*" in resources
                     actions = stmt.get("Action", [])
                     if isinstance(actions, str):
                         actions = [actions]
                     for action in actions:
-                        if action in ("bedrock-agent:*", "bedrock:*", "*"):
+                        if _is_overbroad_kb_action(action):
                             issues.append(f"Role '{role_name}' allows '{action}'")
+                        elif (
+                            unscoped_resource
+                            and isinstance(action, str)
+                            and (
+                                action.lower().startswith("bedrock:")
+                                or action.lower().startswith("bedrock-agent:")
+                            )
+                        ):
+                            issues.append(
+                                f"Role '{role_name}' allows '{action}' on Resource '*' "
+                                "(no ARN scoping to specific Knowledge Bases)"
+                            )
 
         if issues:
             findings["status"] = "WARN"
@@ -1951,7 +2397,7 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
     return findings
 
 
-def check_knowledge_base_metadata_filtering() -> Dict[str, Any]:
+def check_knowledge_base_metadata_filtering(inventory) -> Dict[str, Any]:
     """
     FS-24 — Check that Bedrock Knowledge Bases have metadata fields configured
     to support tenant-level filtering (multi-tenancy isolation).
@@ -1959,11 +2405,7 @@ def check_knowledge_base_metadata_filtering() -> Dict[str, Any]:
     """
     findings = _empty_findings("Knowledge Base Metadata Filtering Check")
     try:
-        bedrock_agent = boto3.client("bedrock-agent", config=boto3_config)
-        paginator = bedrock_agent.get_paginator("list_knowledge_bases")
-        kbs = []
-        for page in paginator.paginate():
-            kbs.extend(page.get("knowledgeBaseSummaries", []))
+        kbs = require(inventory, "knowledge_bases").summaries
 
         if not kbs:
             findings["csv_data"].append(
@@ -1984,9 +2426,10 @@ def check_knowledge_base_metadata_filtering() -> Dict[str, Any]:
         findings["csv_data"].append(
             create_finding(
                 check_id="FS-24",
-                finding_name="Knowledge Base Metadata Filtering — Manual Review Required",
+                finding_name="ADVISORY: Knowledge Base Metadata Filtering — Manual Review Required",
                 finding_details=(
-                    f"Found {len(kbs)} Knowledge Base(s). "
+                    f"Found {len(kbs)} Knowledge Base(s). Tenant-isolation metadata filtering is a "
+                    "design pattern that cannot be verified via API — manual review required. "
                     "Verify that metadata attributes (e.g., tenantId, classification) are indexed "
                     "and that Retrieve calls include RetrievalFilter conditions for tenant isolation."
                 ),
@@ -1996,8 +2439,8 @@ def check_knowledge_base_metadata_filtering() -> Dict[str, Any]:
                     "3. Validate filters in integration tests to prevent cross-tenant data leakage."
                 ),
                 reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-test-config.html",
-                severity="Medium",
-                status="Passed",
+                severity="Informational",
+                status="N/A",
                 compliance_frameworks=COMPLIANCE_MAP["FS-24"],
             )
         )
@@ -2180,7 +2623,7 @@ def check_knowledge_base_vpc_access() -> Dict[str, Any]:
 # ===========================================================================
 
 
-def check_guardrail_contextual_grounding() -> Dict[str, Any]:
+def check_guardrail_contextual_grounding(inventory) -> Dict[str, Any]:
     """
     FS-27 — Check whether Bedrock Guardrails have contextual grounding checks
     configured to validate that outputs are grounded in the provided context and
@@ -2200,8 +2643,8 @@ def check_guardrail_contextual_grounding() -> Dict[str, Any]:
     """
     findings = _empty_findings("Guardrail Contextual Grounding Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
+        guardrail_inv = require(inventory, "guardrails")
+        guardrails = guardrail_inv.summaries
 
         if not guardrails:
             findings["csv_data"].append(
@@ -2214,7 +2657,7 @@ def check_guardrail_contextual_grounding() -> Dict[str, Any]:
                         "(grounding threshold ≥0.7 and relevance threshold ≥0.7 for FinServ use cases)."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
-                    severity="Medium",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-27"],
                 )
@@ -2223,9 +2666,9 @@ def check_guardrail_contextual_grounding() -> Dict[str, Any]:
 
         guardrails_with_grounding = []
         for g in guardrails:
-            detail = bedrock.get_guardrail(
-                guardrailIdentifier=g["id"], guardrailVersion="DRAFT"
-            )
+            detail = guardrail_inv.detail_by_id[g["id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
             if detail.get("contextualGroundingPolicy"):
                 guardrails_with_grounding.append(g["name"])
 
@@ -2265,7 +2708,7 @@ def check_guardrail_contextual_grounding() -> Dict[str, Any]:
                         "Also consider enabling Automated Reasoning checks for formal policy verification."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
-                    severity="Medium",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-27"],
                 )
@@ -2286,8 +2729,11 @@ def check_automated_reasoning_policies() -> Dict[str, Any]:
     grounding (a threshold applied per call), ARC requires authoring an Automated
     Reasoning Policy document containing the rules to verify against.
 
-    Regions supported (as of June 2026): us-east-1, us-east-2, us-west-2,
-    eu-central-1, eu-west-1, eu-west-3.
+    Regions supported (verify against current AWS docs at run time —
+    https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning-checks.html):
+    AWS GovCloud (US), us-east-1, us-east-2, us-west-2, eu-central-1, eu-west-1,
+    eu-west-3. The list expands over time; treat a region miss as "verify
+    availability", not a hard limitation.
 
     IAM action required: bedrock:ListAutomatedReasoningPolicies
 
@@ -2310,17 +2756,27 @@ def check_automated_reasoning_policies() -> Dict[str, Any]:
                         check_id="FS-27",
                         finding_name="Automated Reasoning Policies — Access Check",
                         finding_details=(
-                            "Unable to list Automated Reasoning policies (access denied or service "
-                            "unavailable in this region). ARC is available in: us-east-1, us-east-2, "
-                            "us-west-2, eu-central-1, eu-west-1, eu-west-3."
+                            "Access denied or service unavailable when listing Automated Reasoning "
+                            "policies. The IAM action name (bedrock:ListAutomatedReasoningPolicies) "
+                            "is correct, so the most likely causes are, in order: (1) the assessment "
+                            "MEMBER ROLE in this account was deployed before this action was added "
+                            "and has not been re-deployed; (2) an AWS Organizations SCP or permission "
+                            "boundary denies this newer Bedrock action; (3) the region does not "
+                            "support ARC. ARC is available in AWS GovCloud (US) and a growing set "
+                            "of commercial regions (e.g., us-east-1, us-east-2, us-west-2, "
+                            "eu-central-1, eu-west-1, eu-west-3) — verify the current list in the "
+                            "AWS documentation."
                         ),
                         resolution=(
-                            "1. Ensure the assessment role grants bedrock:ListAutomatedReasoningPolicies.\n"
-                            "2. Confirm the assessed region supports Automated Reasoning checks.\n"
-                            "3. Add bedrock:ListAutomatedReasoningPolicies to the member role policy "
-                            "in deployment/1-aiml-security-member-roles.yaml."
+                            "1. RE-DEPLOY the member-role CloudFormation stack so the role picks up "
+                            "bedrock:ListAutomatedReasoningPolicies (templates may be current while "
+                            "the *deployed* role is stale). See deployment/1-aiml-security-member-roles.yaml "
+                            "and aiml-security-single-account.yaml.\n"
+                            "2. Check for an Organizations SCP / permission boundary denying the action.\n"
+                            "3. Confirm the assessed region supports Automated Reasoning checks.\n"
+                            "4. Re-run the assessment after re-deploying."
                         ),
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/automated-reasoning.html",
+                        reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/troubleshoot_access-denied.html",
                         severity="Low",
                         status="N/A",
                         compliance_frameworks=COMPLIANCE_MAP["FS-27"],
@@ -2387,7 +2843,7 @@ def check_automated_reasoning_policies() -> Dict[str, Any]:
     return findings
 
 
-def check_guardrail_denied_topics_financial() -> Dict[str, Any]:
+def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
     """
     FS-28 — Verify Bedrock Guardrails have denied topics configured for
     regulated financial advice categories (investment advice, credit decisions).
@@ -2395,8 +2851,8 @@ def check_guardrail_denied_topics_financial() -> Dict[str, Any]:
     """
     findings = _empty_findings("Financial Denied Topics Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
+        guardrail_inv = require(inventory, "guardrails")
+        guardrails = guardrail_inv.summaries
 
         if not guardrails:
             findings["csv_data"].append(
@@ -2406,7 +2862,7 @@ def check_guardrail_denied_topics_financial() -> Dict[str, Any]:
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with denied topics for regulated financial content.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
-                    severity="Medium",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-28"],
                 )
@@ -2416,9 +2872,9 @@ def check_guardrail_denied_topics_financial() -> Dict[str, Any]:
         guardrails_with_topics = []
         topics_classic_tier = []
         for g in guardrails:
-            detail = bedrock.get_guardrail(
-                guardrailIdentifier=g["id"], guardrailVersion="DRAFT"
-            )
+            detail = guardrail_inv.detail_by_id[g["id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
             topic_policy = detail.get("topicPolicy", {})
             if topic_policy.get("topics"):
                 guardrails_with_topics.append(g["name"])
@@ -2479,7 +2935,7 @@ def check_guardrail_denied_topics_financial() -> Dict[str, Any]:
                         "(PDF \u00a71.2.1 Practical guidance)."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
-                    severity="Low",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-28"],
                 )
@@ -2497,7 +2953,7 @@ def check_guardrail_denied_topics_financial() -> Dict[str, Any]:
                         "documents, and incident reports (as recommended in PDF \u00a71.2.1 Practical guidance)."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
-                    severity="Medium",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-28"],
                 )
@@ -2540,46 +2996,39 @@ def check_compliance_disclaimer_in_outputs() -> Dict[str, Any]:
 
 def check_bedrock_evaluation_compliance_datasets() -> Dict[str, Any]:
     """
-    FS-30 — Check whether Bedrock Model Evaluation jobs use compliance-specific
+    FS-30 — Advisory: Bedrock Model Evaluation jobs should use compliance-specific
     datasets (e.g., fair lending, UDAP, ECOA test cases).
+
+    The Bedrock evaluation-job APIs do not expose dataset *content*, so whether a
+    job actually includes compliance test cases cannot be verified programmatically.
+    This is therefore an advisory (manual-review) check. The existence of evaluation
+    jobs at all is the verifiable control and is assessed by FS-15.
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, NYDFS 500]
     """
     findings = _empty_findings("Compliance Evaluation Datasets Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        evals = _paginate(bedrock, "list_evaluation_jobs", "jobSummaries")
-
-        if not evals:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="FS-30",
-                    finding_name="No Bedrock Evaluation Jobs — Compliance Datasets Not Verified",
-                    finding_details="No Bedrock Model Evaluation jobs found.",
-                    resolution=(
-                        "Run Bedrock Model Evaluation with compliance-specific datasets:\n"
-                        "- Fair lending test cases (ECOA, Fair Housing Act)\n"
-                        "- UDAP/UDAAP unfair/deceptive practice scenarios\n"
-                        "- AML/KYC edge cases"
-                    ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
-                    severity="Medium",
-                    status="N/A",
-                    compliance_frameworks=COMPLIANCE_MAP["FS-30"],
-                )
+        findings["csv_data"].append(
+            create_finding(
+                check_id="FS-30",
+                finding_name="ADVISORY: Compliance Dataset Coverage — Manual Review Required",
+                finding_details=(
+                    "Bedrock model-evaluation dataset content cannot be inspected via API. "
+                    "Manually verify your model-evaluation jobs include compliance-specific "
+                    "datasets (fair lending/ECOA, Fair Housing Act, UDAP/UDAAP, AML/KYC edge cases). "
+                    "Whether any evaluation jobs exist at all is assessed by FS-15."
+                ),
+                resolution=(
+                    "Run Bedrock Model Evaluation with compliance-specific datasets:\n"
+                    "- Fair lending test cases (ECOA, Fair Housing Act)\n"
+                    "- UDAP/UDAAP unfair/deceptive practice scenarios\n"
+                    "- AML/KYC edge cases"
+                ),
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
+                severity="Informational",
+                status="N/A",
+                compliance_frameworks=COMPLIANCE_MAP["FS-30"],
             )
-        else:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="FS-30",
-                    finding_name="Bedrock Evaluation Jobs Present",
-                    finding_details=f"Found {len(evals)} evaluation job(s). Verify compliance datasets are included.",
-                    resolution="Ensure evaluation datasets include FinServ regulatory test cases.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
-                    severity="Medium",
-                    status="Passed",
-                    compliance_frameworks=COMPLIANCE_MAP["FS-30"],
-                )
-            )
+        )
     except Exception as e:
         return _error_findings("Compliance Evaluation Datasets Check", e)
     return findings
@@ -2592,7 +3041,7 @@ def check_bedrock_evaluation_compliance_datasets() -> Dict[str, Any]:
 # ===========================================================================
 
 
-def check_knowledge_base_data_source_sync() -> Dict[str, Any]:
+def check_knowledge_base_data_source_sync(inventory) -> Dict[str, Any]:
     """
     FS-31 — Verify Bedrock Knowledge Base data sources have recent sync jobs
     to ensure information currency.
@@ -2609,11 +3058,8 @@ def check_knowledge_base_data_source_sync() -> Dict[str, Any]:
     STALE_AFTER_DAYS = 7
     findings = _empty_findings("Knowledge Base Data Source Sync Check")
     try:
-        bedrock_agent = boto3.client("bedrock-agent", config=boto3_config)
-        paginator = bedrock_agent.get_paginator("list_knowledge_bases")
-        kbs = []
-        for page in paginator.paginate():
-            kbs.extend(page.get("knowledgeBaseSummaries", []))
+        kb_inv = require(inventory, "knowledge_bases")
+        kbs = kb_inv.summaries
 
         if not kbs:
             findings["csv_data"].append(
@@ -2634,12 +3080,9 @@ def check_knowledge_base_data_source_sync() -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
         for kb in kbs:
             kb_id = kb["knowledgeBaseId"]
-            sources = _paginate(
-                bedrock_agent,
-                "list_data_sources",
-                "dataSourceSummaries",
-                knowledgeBaseId=kb_id,
-            )
+            sources = kb_inv.data_sources_by_kb.get(kb_id, [])
+            if isinstance(sources, _Unavailable):
+                raise sources.error
             for source in sources:
                 last_updated = source.get("updatedAt")
                 if last_updated:
@@ -2727,7 +3170,7 @@ def check_source_attribution_in_guardrails() -> Dict[str, Any]:
     return findings
 
 
-def check_knowledge_base_integrity_monitoring() -> Dict[str, Any]:
+def check_knowledge_base_integrity_monitoring(inventory) -> Dict[str, Any]:
     """
     FS-33 — Check for S3 object integrity monitoring (checksums, versioning)
     on Knowledge Base data source buckets.
@@ -2735,13 +3178,9 @@ def check_knowledge_base_integrity_monitoring() -> Dict[str, Any]:
     """
     findings = _empty_findings("Knowledge Base Integrity Monitoring Check")
     try:
-        bedrock_agent = boto3.client("bedrock-agent", config=boto3_config)
+        kb_inv = require(inventory, "knowledge_bases")
+        kbs = kb_inv.summaries
         s3 = boto3.client("s3", config=boto3_config)
-
-        paginator = bedrock_agent.get_paginator("list_knowledge_bases")
-        kbs = []
-        for page in paginator.paginate():
-            kbs.extend(page.get("knowledgeBaseSummaries", []))
 
         if not kbs:
             findings["csv_data"].append(
@@ -2761,17 +3200,17 @@ def check_knowledge_base_integrity_monitoring() -> Dict[str, Any]:
         buckets_without_versioning = []
         missing_buckets = []
         for kb in kbs:
-            sources = _paginate(
-                bedrock_agent,
-                "list_data_sources",
-                "dataSourceSummaries",
-                knowledgeBaseId=kb["knowledgeBaseId"],
-            )
+            kb_id = kb["knowledgeBaseId"]
+            sources = kb_inv.data_sources_by_kb.get(kb_id, [])
+            if isinstance(sources, _Unavailable):
+                raise sources.error
             for source in sources:
-                source_detail = bedrock_agent.get_data_source(
-                    knowledgeBaseId=kb["knowledgeBaseId"],
-                    dataSourceId=source["dataSourceId"],
-                )
+                ds_id = source["dataSourceId"]
+                source_detail = kb_inv.data_source_detail.get((kb_id, ds_id))
+                if isinstance(source_detail, _Unavailable):
+                    raise source_detail.error
+                if source_detail is None:
+                    continue
                 s3_config = (
                     source_detail.get("dataSource", {})
                     .get("dataSourceConfiguration", {})
@@ -2920,7 +3359,7 @@ def check_fm_version_currency() -> Dict[str, Any]:
                         "4. Add data-currency disclaimers to outputs from models with old cutoffs."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html",
-                    severity="Medium",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-34"],
                 )
@@ -2958,46 +3397,34 @@ def check_fmeval_harmful_content() -> Dict[str, Any]:
     """
     findings = _empty_findings("FMEval Harmful Content Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        evals = _paginate(bedrock, "list_evaluation_jobs", "jobSummaries")
-
-        if not evals:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="FS-35",
-                    finding_name="No Evaluation Jobs — Harmful Content Testing Not Verified",
-                    finding_details="No Bedrock Model Evaluation jobs found.",
-                    resolution=(
-                        "Run Bedrock Model Evaluation or FMEval with harmful content datasets:\n"
-                        "- Toxicity detection\n"
-                        "- Hate speech classification\n"
-                        "- Violence/self-harm content"
-                    ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
-                    severity="Medium",
-                    status="N/A",
-                    compliance_frameworks=COMPLIANCE_MAP["FS-35"],
-                )
+        findings["csv_data"].append(
+            create_finding(
+                check_id="FS-35",
+                finding_name="ADVISORY: Harmful-Content Test Coverage — Manual Review Required",
+                finding_details=(
+                    "Bedrock model-evaluation dataset content cannot be inspected via API. "
+                    "Manually verify your model-evaluation/FMEval jobs include harmful-content "
+                    "datasets (toxicity, hate speech, violence/self-harm). Whether any evaluation "
+                    "jobs exist at all is assessed by FS-15."
+                ),
+                resolution=(
+                    "Run Bedrock Model Evaluation or FMEval with harmful content datasets:\n"
+                    "- Toxicity detection\n"
+                    "- Hate speech classification\n"
+                    "- Violence/self-harm content"
+                ),
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
+                severity="Informational",
+                status="N/A",
+                compliance_frameworks=COMPLIANCE_MAP["FS-35"],
             )
-        else:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="FS-35",
-                    finding_name="Evaluation Jobs Present",
-                    finding_details=f"Found {len(evals)} evaluation job(s). Verify harmful content datasets are included.",
-                    resolution="Ensure evaluation includes toxicity and harmful content test cases.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
-                    severity="Medium",
-                    status="Passed",
-                    compliance_frameworks=COMPLIANCE_MAP["FS-35"],
-                )
-            )
+        )
     except Exception as e:
         return _error_findings("FMEval Harmful Content Check", e)
     return findings
 
 
-def check_guardrail_content_filters() -> Dict[str, Any]:
+def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
     """
     FS-36 — Verify Bedrock Guardrails have content filters configured for
     hate speech, violence, and sexual content at appropriate thresholds.
@@ -3005,8 +3432,8 @@ def check_guardrail_content_filters() -> Dict[str, Any]:
     """
     findings = _empty_findings("Guardrail Content Filters Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
+        guardrail_inv = require(inventory, "guardrails")
+        guardrails = guardrail_inv.summaries
 
         if not guardrails:
             findings["csv_data"].append(
@@ -3016,7 +3443,7 @@ def check_guardrail_content_filters() -> Dict[str, Any]:
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with content filters.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html",
-                    severity="High",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-36"],
                 )
@@ -3026,9 +3453,9 @@ def check_guardrail_content_filters() -> Dict[str, Any]:
         guardrails_with_filters = []
         guardrails_classic_tier = []
         for g in guardrails:
-            detail = bedrock.get_guardrail(
-                guardrailIdentifier=g["id"], guardrailVersion="DRAFT"
-            )
+            detail = guardrail_inv.detail_by_id[g["id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
             content_policy = detail.get("contentPolicy", {})
             if content_policy.get("filters"):
                 guardrails_with_filters.append(g["name"])
@@ -3087,7 +3514,7 @@ def check_guardrail_content_filters() -> Dict[str, Any]:
                         "with tierName=STANDARD and configure a guardrail cross-region profile."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html",
-                    severity="Low",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-36"],
                 )
@@ -3143,7 +3570,7 @@ def check_user_feedback_mechanism() -> Dict[str, Any]:
     return findings
 
 
-def check_guardrail_word_filters() -> Dict[str, Any]:
+def check_guardrail_word_filters(inventory) -> Dict[str, Any]:
     """
     FS-38 — Verify Bedrock Guardrails have word/phrase filters (allowlists/denylists)
     configured for financial services context.
@@ -3151,8 +3578,8 @@ def check_guardrail_word_filters() -> Dict[str, Any]:
     """
     findings = _empty_findings("Guardrail Word Filters Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
+        guardrail_inv = require(inventory, "guardrails")
+        guardrails = guardrail_inv.summaries
 
         if not guardrails:
             findings["csv_data"].append(
@@ -3162,7 +3589,7 @@ def check_guardrail_word_filters() -> Dict[str, Any]:
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with word filters.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
-                    severity="Medium",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-38"],
                 )
@@ -3171,9 +3598,9 @@ def check_guardrail_word_filters() -> Dict[str, Any]:
 
         guardrails_with_words = []
         for g in guardrails:
-            detail = bedrock.get_guardrail(
-                guardrailIdentifier=g["id"], guardrailVersion="DRAFT"
-            )
+            detail = guardrail_inv.detail_by_id[g["id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
             if detail.get("wordPolicy", {}).get("words") or detail.get(
                 "wordPolicy", {}
             ).get("managedWordLists"):
@@ -3286,40 +3713,29 @@ def check_bedrock_evaluation_bias_datasets() -> Dict[str, Any]:
     """
     findings = _empty_findings("Bedrock Bias Evaluation Datasets Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        evals = _paginate(bedrock, "list_evaluation_jobs", "jobSummaries")
-
-        if not evals:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="FS-40",
-                    finding_name="No Evaluation Jobs — Bias Datasets Not Verified",
-                    finding_details="No Bedrock Model Evaluation jobs found.",
-                    resolution=(
-                        "Run Bedrock Model Evaluation with bias test datasets:\n"
-                        "- Demographic parity test cases\n"
-                        "- Equal opportunity scenarios\n"
-                        "- Counterfactual fairness tests"
-                    ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
-                    severity="Medium",
-                    status="N/A",
-                    compliance_frameworks=COMPLIANCE_MAP["FS-40"],
-                )
+        findings["csv_data"].append(
+            create_finding(
+                check_id="FS-40",
+                finding_name="ADVISORY: Bias Dataset Coverage — Manual Review Required",
+                finding_details=(
+                    "Bedrock model-evaluation dataset content cannot be inspected via API. "
+                    "Manually verify your model-evaluation jobs include bias/fairness datasets "
+                    "(demographic parity, equal-opportunity, counterfactual fairness) for any "
+                    "GenAI models used in financial decisions (ECOA/Fair Housing). Whether any "
+                    "evaluation jobs exist at all is assessed by FS-15."
+                ),
+                resolution=(
+                    "Run Bedrock Model Evaluation with bias test datasets:\n"
+                    "- Demographic parity test cases\n"
+                    "- Equal opportunity scenarios\n"
+                    "- Counterfactual fairness tests"
+                ),
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
+                severity="Informational",
+                status="N/A",
+                compliance_frameworks=COMPLIANCE_MAP["FS-40"],
             )
-        else:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="FS-40",
-                    finding_name="Evaluation Jobs Present",
-                    finding_details=f"Found {len(evals)} evaluation job(s). Verify bias datasets are included.",
-                    resolution="Ensure evaluation includes demographic fairness test cases.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
-                    severity="Medium",
-                    status="Passed",
-                    compliance_frameworks=COMPLIANCE_MAP["FS-40"],
-                )
-            )
+        )
     except Exception as e:
         return _error_findings("Bedrock Bias Evaluation Datasets Check", e)
     return findings
@@ -3553,7 +3969,7 @@ def check_macie_on_training_data_buckets() -> Dict[str, Any]:
     return findings
 
 
-def check_guardrail_pii_filters() -> Dict[str, Any]:
+def check_guardrail_pii_filters(inventory) -> Dict[str, Any]:
     """
     FS-45 — Verify Bedrock Guardrails have sensitive information (PII) filters
     configured to block PII in prompts and responses.
@@ -3561,8 +3977,8 @@ def check_guardrail_pii_filters() -> Dict[str, Any]:
     """
     findings = _empty_findings("Guardrail PII Filters Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
+        guardrail_inv = require(inventory, "guardrails")
+        guardrails = guardrail_inv.summaries
 
         if not guardrails:
             findings["csv_data"].append(
@@ -3572,7 +3988,7 @@ def check_guardrail_pii_filters() -> Dict[str, Any]:
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with PII/sensitive information filters.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-sensitive-filters.html",
-                    severity="High",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-45"],
                 )
@@ -3581,9 +3997,9 @@ def check_guardrail_pii_filters() -> Dict[str, Any]:
 
         guardrails_with_pii = []
         for g in guardrails:
-            detail = bedrock.get_guardrail(
-                guardrailIdentifier=g["id"], guardrailVersion="DRAFT"
-            )
+            detail = guardrail_inv.detail_by_id[g["id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
             if detail.get("sensitiveInformationPolicy", {}).get("piiEntities"):
                 guardrails_with_pii.append(g["name"])
 
@@ -3629,7 +4045,7 @@ def check_guardrail_pii_filters() -> Dict[str, Any]:
     return findings
 
 
-def check_data_classification_tagging() -> Dict[str, Any]:
+def check_data_classification_tagging(inventory) -> Dict[str, Any]:
     """
     FS-46 — Check that S3 buckets containing AI/ML data are tagged with
     data classification labels (e.g., Confidential, PII, Public).
@@ -3637,8 +4053,8 @@ def check_data_classification_tagging() -> Dict[str, Any]:
     """
     findings = _empty_findings("Data Classification Tagging Check")
     try:
+        buckets = require(inventory, "buckets")
         s3 = boto3.client("s3", config=boto3_config)
-        buckets = s3.list_buckets().get("Buckets", [])
 
         aiml_buckets = [
             b
@@ -3729,7 +4145,7 @@ def check_data_classification_tagging() -> Dict[str, Any]:
 # ===========================================================================
 
 
-def check_guardrail_grounding_threshold() -> Dict[str, Any]:
+def check_guardrail_grounding_threshold(inventory) -> Dict[str, Any]:
     """
     FS-47 — Verify Bedrock Guardrails contextual grounding thresholds are
     set appropriately high for financial services use cases.
@@ -3737,8 +4153,8 @@ def check_guardrail_grounding_threshold() -> Dict[str, Any]:
     """
     findings = _empty_findings("Guardrail Grounding Threshold Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
+        guardrail_inv = require(inventory, "guardrails")
+        guardrails = guardrail_inv.summaries
 
         if not guardrails:
             findings["csv_data"].append(
@@ -3748,7 +4164,7 @@ def check_guardrail_grounding_threshold() -> Dict[str, Any]:
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with contextual grounding checks.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
-                    severity="High",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-47"],
                 )
@@ -3758,9 +4174,9 @@ def check_guardrail_grounding_threshold() -> Dict[str, Any]:
         low_threshold_guardrails = []
         guardrails_with_grounding = []
         for g in guardrails:
-            detail = bedrock.get_guardrail(
-                guardrailIdentifier=g["id"], guardrailVersion="DRAFT"
-            )
+            detail = guardrail_inv.detail_by_id[g["id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
             grounding = detail.get("contextualGroundingPolicy", {})
             has_grounding_filter = False
             for filter_item in grounding.get("filters", []):
@@ -3844,7 +4260,7 @@ def check_guardrail_grounding_threshold() -> Dict[str, Any]:
     return findings
 
 
-def check_rag_knowledge_base_configured() -> Dict[str, Any]:
+def check_rag_knowledge_base_configured(inventory) -> Dict[str, Any]:
     """
     FS-48 — Verify RAG (Retrieval Augmented Generation) is used via Bedrock
     Knowledge Bases to ground responses in authoritative data.
@@ -3852,11 +4268,7 @@ def check_rag_knowledge_base_configured() -> Dict[str, Any]:
     """
     findings = _empty_findings("RAG Knowledge Base Configuration Check")
     try:
-        bedrock_agent = boto3.client("bedrock-agent", config=boto3_config)
-        paginator = bedrock_agent.get_paginator("list_knowledge_bases")
-        kbs = []
-        for page in paginator.paginate():
-            kbs.extend(page.get("knowledgeBaseSummaries", []))
+        kbs = require(inventory, "knowledge_bases").summaries
 
         active_kbs = [k for k in kbs if k.get("status") == "ACTIVE"]
 
@@ -3930,7 +4342,7 @@ def check_hallucination_disclaimer_advisory() -> Dict[str, Any]:
     return findings
 
 
-def check_guardrail_relevance_grounding() -> Dict[str, Any]:
+def check_guardrail_relevance_grounding(inventory) -> Dict[str, Any]:
     """
     FS-50 — Check for Bedrock Guardrails contextual grounding RELEVANCE filters
     configured to detect and block responses that are not grounded in the context
@@ -3947,14 +4359,14 @@ def check_guardrail_relevance_grounding() -> Dict[str, Any]:
     """
     findings = _empty_findings("Guardrail Relevance Grounding Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
+        guardrail_inv = require(inventory, "guardrails")
+        guardrails = guardrail_inv.summaries
 
         guardrails_with_relevance = []
         for g in guardrails:
-            detail = bedrock.get_guardrail(
-                guardrailIdentifier=g["id"], guardrailVersion="DRAFT"
-            )
+            detail = guardrail_inv.detail_by_id[g["id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
             grounding = detail.get("contextualGroundingPolicy", {})
             for f in grounding.get("filters", []):
                 if f.get("type") == "RELEVANCE":
@@ -4005,7 +4417,7 @@ def check_guardrail_relevance_grounding() -> Dict[str, Any]:
     return findings
 
 
-def check_prompt_injection_input_validation() -> Dict[str, Any]:
+def check_prompt_injection_input_validation(inventory) -> Dict[str, Any]:
     """
     FS-51 — Check for Bedrock Guardrails prompt attack filters to detect
     and block prompt injection attempts.
@@ -4013,8 +4425,8 @@ def check_prompt_injection_input_validation() -> Dict[str, Any]:
     """
     findings = _empty_findings("Prompt Injection Input Validation Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
+        guardrail_inv = require(inventory, "guardrails")
+        guardrails = guardrail_inv.summaries
 
         if not guardrails:
             findings["csv_data"].append(
@@ -4024,7 +4436,7 @@ def check_prompt_injection_input_validation() -> Dict[str, Any]:
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with prompt attack filters.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
-                    severity="High",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-51"],
                 )
@@ -4034,9 +4446,9 @@ def check_prompt_injection_input_validation() -> Dict[str, Any]:
         guardrails_with_prompt_attack = []
         guardrails_classic_tier_pa = []
         for g in guardrails:
-            detail = bedrock.get_guardrail(
-                guardrailIdentifier=g["id"], guardrailVersion="DRAFT"
-            )
+            detail = guardrail_inv.detail_by_id[g["id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
             content_policy = detail.get("contentPolicy", {})
             for f in content_policy.get("filters", []):
                 if f.get("type") == "PROMPT_ATTACK":
@@ -4091,7 +4503,7 @@ def check_prompt_injection_input_validation() -> Dict[str, Any]:
                         "STANDARD tier requires cross-region inference on the guardrail."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-prompt-attack.html",
-                    severity="Low",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-51"],
                 )
@@ -4121,7 +4533,7 @@ def check_prompt_injection_input_validation() -> Dict[str, Any]:
     return findings
 
 
-def check_bedrock_sdk_version_currency() -> Dict[str, Any]:
+def check_bedrock_sdk_version_currency(inventory) -> Dict[str, Any]:
     """
     FS-52 — Advisory check: verify Bedrock SDK versions in Lambda functions
     are current (outdated SDKs may lack prompt injection mitigations).
@@ -4129,8 +4541,7 @@ def check_bedrock_sdk_version_currency() -> Dict[str, Any]:
     """
     findings = _empty_findings("Bedrock SDK Version Currency Check")
     try:
-        lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = _paginate(lambda_client, "list_functions", "Functions")
+        functions = require(inventory, "lambda_functions")
 
         bedrock_functions = [
             f
@@ -4242,7 +4653,7 @@ def check_bedrock_sdk_version_currency() -> Dict[str, Any]:
     return findings
 
 
-def check_waf_sql_injection_rules() -> Dict[str, Any]:
+def check_waf_sql_injection_rules(inventory) -> Dict[str, Any]:
     """
     FS-53 — Verify WAF Web ACLs include SQL injection and XSS managed rules
     to protect GenAI API endpoints from injection attacks.
@@ -4250,8 +4661,10 @@ def check_waf_sql_injection_rules() -> Dict[str, Any]:
     """
     findings = _empty_findings("WAF Injection Protection Rules Check")
     try:
-        wafv2 = boto3.client("wafv2", config=boto3_config)
-        acls = wafv2.list_web_acls(Scope="REGIONAL").get("WebACLs", [])
+        # require() raises if inventory is None or web_acls is _Unavailable,
+        # propagating to the outer except which yields COULD_NOT_ASSESS.
+        web_acl_inv = require(inventory, "web_acls")
+        acls = web_acl_inv.summaries
 
         if not acls:
             findings["csv_data"].append(
@@ -4261,7 +4674,7 @@ def check_waf_sql_injection_rules() -> Dict[str, Any]:
                     finding_details="No regional WAF Web ACLs found.",
                     resolution="Create WAF Web ACLs with injection protection rules (see FS-01).",
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
-                    severity="High",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-53"],
                 )
@@ -4276,11 +4689,14 @@ def check_waf_sql_injection_rules() -> Dict[str, Any]:
 
         acls_without_injection_rules = []
         for acl_summary in acls:
-            acl = wafv2.get_web_acl(
-                Name=acl_summary["Name"],
-                Scope="REGIONAL",
-                Id=acl_summary["Id"],
-            ).get("WebACL", {})
+            # detail_by_id holds get_web_acl(...)['WebACL'] or _Unavailable.
+            # Accessing an _Unavailable entry re-raises its stored error, which
+            # propagates to the outer except and yields COULD_NOT_ASSESS —
+            # matching today's behaviour (no per-item try/except in this check).
+            detail = web_acl_inv.detail_by_id[acl_summary["Id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
+            acl = detail
             rule_names = {
                 r.get("Statement", {})
                 .get("ManagedRuleGroupStatement", {})
@@ -4377,7 +4793,7 @@ def check_penetration_testing_evidence() -> Dict[str, Any]:
 # ===========================================================================
 
 
-def check_output_validation_lambda() -> Dict[str, Any]:
+def check_output_validation_lambda(inventory) -> Dict[str, Any]:
     """
     FS-55 — Check for Lambda functions implementing output validation/sanitization
     in GenAI application pipelines.
@@ -4385,8 +4801,7 @@ def check_output_validation_lambda() -> Dict[str, Any]:
     """
     findings = _empty_findings("Output Validation Lambda Check")
     try:
-        lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = _paginate(lambda_client, "list_functions", "Functions")
+        functions = require(inventory, "lambda_functions")
 
         validation_functions = [
             f
@@ -4437,15 +4852,16 @@ def check_output_validation_lambda() -> Dict[str, Any]:
     return findings
 
 
-def check_xss_prevention_waf() -> Dict[str, Any]:
+def check_xss_prevention_waf(inventory) -> Dict[str, Any]:
     """
     FS-56 — Verify WAF rules include XSS prevention for GenAI web application outputs.
     COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, PCI-DSS 6.4.1, OWASP LLM02]
     """
     findings = _empty_findings("XSS Prevention WAF Check")
     try:
-        wafv2 = boto3.client("wafv2", config=boto3_config)
-        acls = wafv2.list_web_acls(Scope="REGIONAL").get("WebACLs", [])
+        # require() raises if inventory is None or web_acls is _Unavailable.
+        web_acl_inv = require(inventory, "web_acls")
+        acls = web_acl_inv.summaries
 
         if not acls:
             findings["csv_data"].append(
@@ -4455,33 +4871,75 @@ def check_xss_prevention_waf() -> Dict[str, Any]:
                     finding_details="No regional WAF Web ACLs found.",
                     resolution="Create WAF ACLs with XSS prevention rules.",
                     reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
-                    severity="High",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-56"],
                 )
             )
             return findings
 
-        # XSS is covered by AWSManagedRulesCommonRuleSet — reuse FS-53 logic
-        findings["csv_data"].append(
-            create_finding(
-                check_id="FS-56",
-                finding_name="XSS Prevention — Review WAF Common Rule Set",
-                finding_details=(
-                    f"Found {len(acls)} WAF ACL(s). "
-                    "Verify AWSManagedRulesCommonRuleSet is enabled for XSS prevention (see FS-53)."
-                ),
-                resolution=(
-                    "Ensure AWSManagedRulesCommonRuleSet is enabled on all WAF ACLs "
-                    "protecting GenAI web applications. "
-                    "Additionally, implement Content Security Policy (CSP) headers."
-                ),
-                reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
-                severity="Medium",
-                status="Passed",
-                compliance_frameworks=COMPLIANCE_MAP["FS-56"],
+        # XSS protections live in the AWS managed Common Rule Set. Inspect each ACL's
+        # managed-rule-group statements (mirrors FS-53) to actually verify coverage
+        # rather than emitting an unconditional "review required" pass.
+        acls_without_xss = []
+        for acl_summary in acls:
+            # detail_by_id holds get_web_acl(...)['WebACL'] or _Unavailable.
+            # An _Unavailable entry re-raises its error → outer except → COULD_NOT_ASSESS.
+            detail = web_acl_inv.detail_by_id[acl_summary["Id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
+            acl = detail
+            rule_groups = {
+                r.get("Statement", {})
+                .get("ManagedRuleGroupStatement", {})
+                .get("Name", "")
+                for r in acl.get("Rules", [])
+            }
+            if "AWSManagedRulesCommonRuleSet" not in rule_groups:
+                acls_without_xss.append(acl_summary["Name"])
+
+        if acls_without_xss:
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-56",
+                    finding_name="WAF ACLs Missing Common Rule Set (XSS)",
+                    finding_details=(
+                        "The following WAF ACL(s) do not include AWSManagedRulesCommonRuleSet, "
+                        "which provides cross-site-scripting (XSS) protections for GenAI web "
+                        "application outputs:\n"
+                        + "\n".join(f"- {a}" for a in acls_without_xss[:10])
+                    ),
+                    resolution=(
+                        "1. Add AWSManagedRulesCommonRuleSet to each WAF ACL protecting GenAI "
+                        "web applications (it includes the CrossSiteScripting rules).\n"
+                        "2. Additionally, implement Content Security Policy (CSP) response headers."
+                    ),
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
+                    severity="Medium",
+                    status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-56"],
+                )
             )
-        )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-56",
+                    finding_name="XSS Prevention Common Rule Set Present",
+                    finding_details=(
+                        f"All {len(acls)} WAF ACL(s) include AWSManagedRulesCommonRuleSet "
+                        "(XSS protections)."
+                    ),
+                    resolution=(
+                        "No action required. Consider also implementing Content Security Policy "
+                        "(CSP) response headers as defense in depth."
+                    ),
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
+                    severity="Medium",
+                    status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-56"],
+                )
+            )
     except Exception as e:
         return _error_findings("XSS Prevention WAF Check", e)
     return findings
@@ -4517,7 +4975,7 @@ def check_output_encoding_advisory() -> Dict[str, Any]:
     return findings
 
 
-def check_output_schema_validation() -> Dict[str, Any]:
+def check_output_schema_validation(inventory) -> Dict[str, Any]:
     """
     FS-58 — Check for structured output validation using Bedrock response
     schemas or application-level JSON schema validation.
@@ -4526,8 +4984,7 @@ def check_output_schema_validation() -> Dict[str, Any]:
     findings = _empty_findings("Output Schema Validation Check")
     try:
         # Check for EventBridge Pipes or Lambda destinations that could validate outputs
-        lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = _paginate(lambda_client, "list_functions", "Functions")
+        functions = require(inventory, "lambda_functions")
 
         schema_functions = [
             f
@@ -4541,10 +4998,12 @@ def check_output_schema_validation() -> Dict[str, Any]:
         findings["csv_data"].append(
             create_finding(
                 check_id="FS-58",
-                finding_name="Output Schema Validation — Review Required",
+                finding_name="ADVISORY: Output Schema Validation — Manual Review Required",
                 finding_details=(
-                    f"Found {len(schema_functions)} potential schema validation function(s). "
-                    "Verify structured output validation is implemented for all GenAI responses."
+                    f"Found {len(schema_functions)} Lambda function(s) whose names suggest "
+                    "schema/validation handling. Structured-output / JSON-schema validation of "
+                    "GenAI responses is an application-layer control that cannot be verified "
+                    "automatically — manual review required."
                 ),
                 resolution=(
                     "1. Use Bedrock structured output (response schemas) where supported.\n"
@@ -4553,8 +5012,8 @@ def check_output_schema_validation() -> Dict[str, Any]:
                     "4. Log schema validation failures to CloudWatch for monitoring."
                 ),
                 reference="https://docs.aws.amazon.com/bedrock/latest/userguide/inference-parameters.html",
-                severity="Medium",
-                status="Passed",
+                severity="Informational",
+                status="N/A",
                 compliance_frameworks=COMPLIANCE_MAP["FS-58"],
             )
         )
@@ -4563,7 +5022,7 @@ def check_output_schema_validation() -> Dict[str, Any]:
     return findings
 
 
-def check_guardrail_topic_allowlist() -> Dict[str, Any]:
+def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
     """
     FS-59 — Verify Bedrock Guardrails topic policies restrict GenAI to
     on-topic financial services responses only.
@@ -4571,8 +5030,8 @@ def check_guardrail_topic_allowlist() -> Dict[str, Any]:
     """
     findings = _empty_findings("Guardrail Topic Allowlist Check")
     try:
-        bedrock = boto3.client("bedrock", config=boto3_config)
-        guardrails = _paginate(bedrock, "list_guardrails", "guardrails")
+        guardrail_inv = require(inventory, "guardrails")
+        guardrails = guardrail_inv.summaries
 
         if not guardrails:
             findings["csv_data"].append(
@@ -4582,7 +5041,7 @@ def check_guardrail_topic_allowlist() -> Dict[str, Any]:
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with topic policies to restrict off-topic responses.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
-                    severity="Medium",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-59"],
                 )
@@ -4592,9 +5051,9 @@ def check_guardrail_topic_allowlist() -> Dict[str, Any]:
         guardrails_with_topics = []
         topics_classic_tier = []
         for g in guardrails:
-            detail = bedrock.get_guardrail(
-                guardrailIdentifier=g["id"], guardrailVersion="DRAFT"
-            )
+            detail = guardrail_inv.detail_by_id[g["id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
             topic_policy = detail.get("topicPolicy", {})
             if topic_policy.get("topics"):
                 guardrails_with_topics.append(g["name"])
@@ -4644,7 +5103,7 @@ def check_guardrail_topic_allowlist() -> Dict[str, Any]:
                         "requires a cross-region inference profile)."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
-                    severity="Low",
+                    severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-59"],
                 )
@@ -4698,7 +5157,7 @@ def check_contextual_grounding_for_offtopic() -> Dict[str, Any]:
     return findings
 
 
-def check_knowledge_base_sync_schedule() -> Dict[str, Any]:
+def check_knowledge_base_sync_schedule(inventory) -> Dict[str, Any]:
     """
     FS-61 — Verify Bedrock Knowledge Base data sources have automated sync
     schedules to keep training/retrieval data current.
@@ -4707,14 +5166,9 @@ def check_knowledge_base_sync_schedule() -> Dict[str, Any]:
     # Reuses logic from FS-31 but focuses on scheduled automation
     findings = _empty_findings("Knowledge Base Sync Schedule Check")
     try:
-        bedrock_agent = boto3.client("bedrock-agent", config=boto3_config)
+        kbs = require(inventory, "knowledge_bases").summaries
         events = boto3.client("events", config=boto3_config)
         scheduler = boto3.client("scheduler", config=boto3_config)
-
-        paginator = bedrock_agent.get_paginator("list_knowledge_bases")
-        kbs = []
-        for page in paginator.paginate():
-            kbs.extend(page.get("knowledgeBaseSummaries", []))
 
         if not kbs:
             findings["csv_data"].append(
@@ -4747,6 +5201,7 @@ def check_knowledge_base_sync_schedule() -> Dict[str, Any]:
         # NextToken. Treat an access error as a soft signal (do not fail the whole
         # check) since Scheduler may not be in use.
         kb_sync_schedules = []
+        scheduler_access_error = None
         try:
             schedules = _paginate(scheduler, "list_schedules", "Schedules")
             kb_sync_schedules = [
@@ -4761,13 +5216,24 @@ def check_knowledge_base_sync_schedule() -> Dict[str, Any]:
         except ClientError as e:
             if not _is_access_error(e):
                 raise
+            # Remember the access error. If we ALSO find no EventBridge-rule
+            # automation, we cannot conclude the control is absent (a Scheduler
+            # schedule we were not allowed to read might exist) — so we surface
+            # COULD_NOT_ASSESS rather than a false Failed. If a rule IS found, the
+            # positive evidence stands and the access gap is immaterial.
+            scheduler_access_error = e
             logger.warning(
                 "Could not list EventBridge Scheduler schedules (access denied); "
-                "FS-61 fell back to EventBridge rules only. Grant "
-                "scheduler:ListSchedules for full coverage."
+                "grant scheduler:ListSchedules for full FS-61 coverage."
             )
 
         total_sync_automation = len(kb_sync_rules) + len(kb_sync_schedules)
+
+        # No positive evidence AND we were blocked from reading Scheduler →
+        # unknown state, not a confirmed failure. Re-raise so the handler emits a
+        # COULD NOT ASSESS row (Status="N/A", Severity="Low").
+        if total_sync_automation == 0 and scheduler_access_error is not None:
+            raise scheduler_access_error
 
         if total_sync_automation == 0:
             findings["status"] = "WARN"
@@ -4937,7 +5403,7 @@ def check_foundation_model_lifecycle_policy() -> Dict[str, Any]:
 # ===========================================================================
 
 
-def check_kb_datasource_s3_event_notifications() -> Dict[str, Any]:
+def check_kb_datasource_s3_event_notifications(inventory) -> Dict[str, Any]:
     """
     FS-65 — Check that S3 event notifications (EventBridge or SNS/SQS) are
     configured on Knowledge Base data-source buckets to detect unauthorized
@@ -4946,13 +5412,10 @@ def check_kb_datasource_s3_event_notifications() -> Dict[str, Any]:
     """
     findings = _empty_findings("KB Data Source S3 Event Notifications Check")
     try:
-        bedrock_agent = boto3.client("bedrock-agent", config=boto3_config)
+        kb_inv = require(inventory, "knowledge_bases")
+        kbs = kb_inv.summaries
         s3_client = boto3.client("s3", config=boto3_config)
 
-        paginator = bedrock_agent.get_paginator("list_knowledge_bases")
-        kbs = []
-        for page in paginator.paginate():
-            kbs.extend(page.get("knowledgeBaseSummaries", []))
         if not kbs:
             findings["csv_data"].append(
                 create_finding(
@@ -4972,17 +5435,16 @@ def check_kb_datasource_s3_event_notifications() -> Dict[str, Any]:
         missing_buckets = []
         for kb in kbs:
             kb_id = kb["knowledgeBaseId"]
-            data_sources = _paginate(
-                bedrock_agent,
-                "list_data_sources",
-                "dataSourceSummaries",
-                knowledgeBaseId=kb_id,
-            )
+            data_sources = kb_inv.data_sources_by_kb.get(kb_id, [])
+            if isinstance(data_sources, _Unavailable):
+                raise data_sources.error
             for ds in data_sources:
-                ds_detail = bedrock_agent.get_data_source(
-                    knowledgeBaseId=kb_id,
-                    dataSourceId=ds["dataSourceId"],
-                )
+                ds_id = ds["dataSourceId"]
+                ds_detail = kb_inv.data_source_detail.get((kb_id, ds_id))
+                if isinstance(ds_detail, _Unavailable):
+                    raise ds_detail.error
+                if ds_detail is None:
+                    continue
                 s3_config = (
                     ds_detail.get("dataSource", {})
                     .get("dataSourceConfiguration", {})
@@ -5183,7 +5645,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                     finding_details=f"All {len(runtimes)} runtime(s) have authorizer configurations supporting identity propagation.",
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
-                    severity="Low",
+                    severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-66"],
                 )
@@ -5193,7 +5655,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
     return findings
 
 
-def check_agent_financial_transaction_thresholds() -> Dict[str, Any]:
+def check_agent_financial_transaction_thresholds(inventory) -> Dict[str, Any]:
     """
     FS-67 — Check AgentCore Policy Engine or action-group Lambda functions
     enforce maximum transaction-value limits to prevent runaway or unauthorized
@@ -5202,8 +5664,7 @@ def check_agent_financial_transaction_thresholds() -> Dict[str, Any]:
     """
     findings = _empty_findings("Agent Financial Transaction Value Thresholds Check")
     try:
-        lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = _paginate(lambda_client, "list_functions", "Functions")
+        functions = require(inventory, "lambda_functions")
 
         # Look for agent action-group Lambda functions
         action_group_lambdas = [
@@ -5240,7 +5701,7 @@ def check_agent_financial_transaction_thresholds() -> Dict[str, Any]:
                         "3. Reject or escalate to human review any transaction exceeding defined limits."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-engine.html",
-                    severity="High",
+                    severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-67"],
                 )
@@ -5309,88 +5770,200 @@ def check_agent_financial_transaction_thresholds() -> Dict[str, Any]:
     return findings
 
 
-def check_api_gateway_request_body_size_limits() -> Dict[str, Any]:
+# Default body-inspection window AWS WAF applies before oversize handling kicks
+# in. For CloudFront/API Gateway/Cognito/App Runner/Verified Access the default
+# is 16 KB (raisable to 64 KB via the web ACL AssociationConfig); for ALB/AppSync
+# it is a fixed 8 KB. A GT/GE SizeConstraint above this window can only ever fire
+# if the rule's OversizeHandling is MATCH. See:
+# https://docs.aws.amazon.com/waf/latest/developerguide/waf-oversize-request-components.html
+_WAF_DEFAULT_BODY_INSPECTION_LIMIT = 16384
+
+# JSON-Schema keywords that actually bound request-body SIZE. A request validator
+# only enforces a size cap when its model schema carries one of these — merely
+# enabling validateRequestBody does NOT cap payload size (it validates the schema
+# / required params only; the REST hard limit is a fixed, non-configurable 10 MB).
+_SCHEMA_SIZE_KEYWORDS = ('"maxLength"', '"maxItems"', '"maxProperties"')
+
+
+def _waf_statement_has_firing_body_size_constraint(
+    stmt: Any, inspection_limit: int = _WAF_DEFAULT_BODY_INSPECTION_LIMIT
+) -> bool:
+    """True if a WAF rule Statement contains a SizeConstraintStatement on the
+    request Body/JsonBody that can actually fire.
+
+    Recurses into And/Or/Not combinators. A GT/GE size threshold above the body
+    inspection window cannot fire unless OversizeHandling is MATCH, so such a rule
+    is NOT credited as a working body-size control (the documented WAF limitation).
     """
-    FS-68 — Verify API Gateway REST/HTTP APIs fronting GenAI endpoints enforce
-    maximum input payload sizes via request validators or WAF body-size rules
-    to prevent token-exhaustion attacks via oversized prompts.
+    if not isinstance(stmt, dict):
+        return False
+    sc = stmt.get("SizeConstraintStatement")
+    if isinstance(sc, dict):
+        ftm = sc.get("FieldToMatch", {}) or {}
+        body = ftm.get("Body")
+        json_body = ftm.get("JsonBody")
+        target = body if isinstance(body, dict) else json_body
+        if isinstance(target, dict):
+            comparison = sc.get("ComparisonOperator", "")
+            size = sc.get("Size", 0) or 0
+            oversize = target.get("OversizeHandling")
+            # A "block if body > N" rule with N beyond the inspection window only
+            # fires when oversize content is treated as a match.
+            if (
+                comparison in ("GT", "GE")
+                and size > inspection_limit
+                and oversize != "MATCH"
+            ):
+                return False
+            return True
+    for combinator in ("AndStatement", "OrStatement"):
+        sub = stmt.get(combinator)
+        if isinstance(sub, dict):
+            for inner in sub.get("Statements", []) or []:
+                if _waf_statement_has_firing_body_size_constraint(
+                    inner, inspection_limit
+                ):
+                    return True
+    not_stmt = stmt.get("NotStatement")
+    if isinstance(not_stmt, dict):
+        if _waf_statement_has_firing_body_size_constraint(
+            not_stmt.get("Statement"), inspection_limit
+        ):
+            return True
+    return False
+
+
+def _api_has_body_size_validator(apigw, api_id: str) -> bool:
+    """True only if a REST API has a request validator that validates the body
+    AND at least one model whose schema bounds body size (maxLength/maxItems/
+    maxProperties). Validator presence alone is NOT sufficient — it does not cap
+    payload size (the bug FS-68 previously had)."""
+    validators = apigw.get_request_validators(restApiId=api_id).get("items", [])
+    if not any(v.get("validateRequestBody") for v in validators):
+        return False
+    for model in _paginate(apigw, "get_models", "items", restApiId=api_id):
+        schema = model.get("schema", "") or ""
+        if any(tok in schema for tok in _SCHEMA_SIZE_KEYWORDS):
+            return True
+    return False
+
+
+def check_api_gateway_request_body_size_limits(inventory) -> Dict[str, Any]:
+    """
+    FS-68 — Verify API Gateway REST APIs fronting GenAI endpoints actually enforce
+    a maximum input-payload size (to blunt token-exhaustion via oversized prompts).
+
+    Important correctness note: an API Gateway request validator does NOT cap body
+    size — it validates required params + a JSON-Schema model, and the REST payload
+    limit is a fixed, non-configurable 10 MB. A real size cap requires either (a) a
+    validator model with a maxLength/maxItems/maxProperties bound, or (b) a WAF
+    SizeConstraintStatement on the request Body that can actually fire within WAF's
+    body-inspection window (default 16 KB for API Gateway). This check credits only
+    those evidenced controls — validator presence alone is not a pass.
     COMPLIANCE_PLACEHOLDER: [FFIEC CAT, DORA Art.6, PCI-DSS, OWASP LLM10]
     """
     findings = _empty_findings("API Gateway Request Body Size Limits Check")
     try:
         apigw = boto3.client("apigateway", config=boto3_config)
-        wafv2 = boto3.client("wafv2", config=boto3_config)
 
-        # Check REST APIs for request validators
         rest_apis = _paginate(apigw, "get_rest_apis", "items")
-        apis_without_validators = []
-        for api in rest_apis:
-            validators = apigw.get_request_validators(restApiId=api["id"]).get(
-                "items", []
-            )
-            if not validators:
-                apis_without_validators.append(api.get("name", api["id"]))
+        # require() raises if inventory is None or web_acls is _Unavailable.
+        web_acl_inv = require(inventory, "web_acls")
+        acls = web_acl_inv.summaries
 
-        # Check WAF rules for body size constraints
-        acls = wafv2.list_web_acls(Scope="REGIONAL").get("WebACLs", [])
+        # Nothing-to-assess branch: no REST APIs AND no WAF ACLs means there is no
+        # input-payload surface to evaluate in this region.
+        if not rest_apis and not acls:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-68",
+                    finding_name="API Gateway Request Body Size Limits — Not Applicable",
+                    finding_details=(
+                        "No API Gateway REST APIs and no regional WAF Web ACLs were found in this "
+                        "region. There is no input-payload surface to assess for body-size limits."
+                    ),
+                    resolution=(
+                        "If GenAI endpoints are fronted by API Gateway or WAF in another region, "
+                        "run the assessment there. Otherwise no action is required."
+                    ),
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint.html",
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-68"],
+                )
+            )
+            return findings
+
+        # Evidence 1: REST APIs whose validator model actually bounds body size.
+        apis_with_size_control = []
+        for api in rest_apis:
+            if _api_has_body_size_validator(apigw, api["id"]):
+                apis_with_size_control.append(api.get("name", api["id"]))
+
+        # Evidence 2: regional WAF ACLs with a body SizeConstraint that can fire.
+        # detail_by_id holds get_web_acl(...)['WebACL'] or _Unavailable.
+        # An _Unavailable entry re-raises its error → outer except → COULD_NOT_ASSESS.
         acls_with_size_rules = 0
         for acl in acls:
-            acl_detail = wafv2.get_web_acl(
-                Name=acl["Name"], Scope="REGIONAL", Id=acl["Id"]
-            )
-            rules = acl_detail.get("WebACL", {}).get("Rules", [])
-            for rule in rules:
-                stmt = json.dumps(rule.get("Statement", {}))
-                if "SizeConstraintStatement" in stmt or "body" in stmt.lower():
-                    acls_with_size_rules += 1
-                    break
+            detail = web_acl_inv.detail_by_id[acl["Id"]]
+            if isinstance(detail, _Unavailable):
+                raise detail.error
+            rules = detail.get("Rules", [])
+            if any(
+                _waf_statement_has_firing_body_size_constraint(r.get("Statement", {}))
+                for r in rules
+            ):
+                acls_with_size_rules += 1
 
-        issues = []
-        if apis_without_validators:
-            issues.append(
-                f"REST APIs without request validators: {', '.join(apis_without_validators[:5])}"
-            )
-        if acls and acls_with_size_rules == 0:
-            issues.append("No WAF Web ACLs have body-size constraint rules configured.")
+        has_size_control = bool(apis_with_size_control) or acls_with_size_rules > 0
 
-        if issues:
+        if has_size_control:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-68",
+                    finding_name="API Gateway Request Body Size Limits Configured",
+                    finding_details=(
+                        f"Found {len(rest_apis)} REST API(s) "
+                        f"({len(apis_with_size_control)} with a body-size-bounding validator model) "
+                        f"and {acls_with_size_rules} WAF ACL(s) with a firing body-size constraint. "
+                        "Verify the WAF ACL(s) are associated with the GenAI-facing API stages, "
+                        "since this check does not confirm resource association."
+                    ),
+                    resolution="No action required (verify WAF/API association as noted).",
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint.html",
+                    severity="Medium",
+                    status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-68"],
+                )
+            )
+        else:
             findings["status"] = "WARN"
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-68",
                     finding_name="API Gateway Request Body Size Limits Not Enforced",
                     finding_details=(
-                        "Input payload size limits are not fully enforced on GenAI API endpoints. "
-                        "Oversized prompts can exhaust Bedrock token quotas and inflate costs:\n"
-                        + "\n".join(f"- {i}" for i in issues)
+                        f"Found {len(rest_apis)} REST API(s) and {len(acls)} regional WAF Web "
+                        "ACL(s), but none enforce a maximum request-body size. Note: an API "
+                        "Gateway request validator does NOT cap body size (it validates the schema "
+                        "and required params; the REST limit is a fixed 10 MB), and a WAF body "
+                        "SizeConstraint only inspects the first ~16 KB of the body by default. "
+                        "Oversized prompts can exhaust Bedrock token quotas and inflate costs."
                     ),
                     resolution=(
-                        "1. Add API Gateway request validators to enforce maximum body size on "
-                        "all Bedrock-facing REST API methods.\n"
-                        "2. Add a WAF SizeConstraintStatement rule to block requests with body "
-                        "size exceeding your maximum prompt length (e.g., 32 KB).\n"
+                        "1. Add a maxLength (or maxItems/maxProperties) bound to the request-body "
+                        "JSON-Schema model used by your request validator, so oversized prompts are "
+                        "rejected with a 400.\n"
+                        "2. Add a WAF SizeConstraintStatement on the request Body sized within WAF's "
+                        "body-inspection window (default 16 KB; raise via the web ACL "
+                        "AssociationConfig, or set OversizeHandling=MATCH to block bodies beyond the "
+                        "window), and associate the ACL with the API stage.\n"
                         "3. Set the max_tokens parameter in Bedrock API calls to cap output length.\n"
                         "4. Implement client-side token counting before submitting requests."
                     ),
-                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint.html",
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-oversize-request-components.html",
                     severity="Medium",
                     status="Failed",
-                    compliance_frameworks=COMPLIANCE_MAP["FS-68"],
-                )
-            )
-        else:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="FS-68",
-                    finding_name="API Gateway Request Body Size Limits Configured",
-                    finding_details=(
-                        f"Found {len(rest_apis)} REST API(s) with validators and "
-                        f"{acls_with_size_rules} WAF ACL(s) with body-size rules."
-                    ),
-                    resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint.html",
-                    severity="Medium",
-                    status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-68"],
                 )
             )
@@ -5399,7 +5972,7 @@ def check_api_gateway_request_body_size_limits() -> Dict[str, Any]:
     return findings
 
 
-def check_prompt_input_validation_function() -> Dict[str, Any]:
+def check_prompt_input_validation_function(inventory) -> Dict[str, Any]:
     """
     FS-69 — Check for a Lambda function or API Gateway request validator that
     sanitizes user prompt input (strips special characters, enforces expected
@@ -5408,8 +5981,7 @@ def check_prompt_input_validation_function() -> Dict[str, Any]:
     """
     findings = _empty_findings("Prompt Input Validation Function Check")
     try:
-        lambda_client = boto3.client("lambda", config=boto3_config)
-        functions = _paginate(lambda_client, "list_functions", "Functions")
+        functions = require(inventory, "lambda_functions")
 
         # Look for Lambda functions with input validation / sanitization naming patterns
         VALIDATION_KEYWORDS = [
@@ -5518,7 +6090,177 @@ def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
     return f"https://{bucket_name}.s3.amazonaws.com/{file_name}"
 
 
-def build_finserv_checks(permission_cache):
+# ---------------------------------------------------------------------------
+# Inventory collector (REQ-1, REQ-2, REQ-3, REQ-4, REQ-7)
+# ---------------------------------------------------------------------------
+
+
+def _safe_collect_lambda_functions():
+    """Collect all Lambda functions via list_functions (fully paginated).
+    Returns a list on success, or _Unavailable(exc) on any failure."""
+    try:
+        client = boto3.client("lambda", config=boto3_config)
+        return _paginate(client, "list_functions", "Functions")
+    except Exception as e:
+        logger.warning(
+            "inventory:lambda_functions collection failed: %s", type(e).__name__
+        )
+        return _Unavailable(e)
+
+
+def _safe_collect_guardrails():
+    """Collect Bedrock guardrail summaries and per-guardrail DRAFT detail.
+    A single-guardrail detail failure is recorded as _Unavailable for that id
+    only — it does NOT abort the whole guardrail inventory."""
+    try:
+        client = boto3.client("bedrock", config=boto3_config)
+        summaries = _paginate(client, "list_guardrails", "guardrails")
+        detail_by_id: dict = {}
+        for g in summaries:
+            gid = g["id"]
+            try:
+                detail_by_id[gid] = client.get_guardrail(
+                    guardrailIdentifier=gid, guardrailVersion="DRAFT"
+                )
+            except Exception as e:
+                logger.warning(
+                    "inventory:guardrails detail for %s failed: %s",
+                    gid,
+                    type(e).__name__,
+                )
+                detail_by_id[gid] = _Unavailable(e)
+        return GuardrailInventory(summaries=summaries, detail_by_id=detail_by_id)
+    except Exception as e:
+        logger.warning("inventory:guardrails collection failed: %s", type(e).__name__)
+        return _Unavailable(e)
+
+
+def _safe_collect_knowledge_bases():
+    """Collect Bedrock Knowledge Base summaries, per-KB data-source summaries,
+    and per-data-source detail.  Per-KB and per-data-source failures are
+    recorded as _Unavailable without aborting the rest of the collection."""
+    try:
+        client = boto3.client("bedrock-agent", config=boto3_config)
+        summaries = _paginate(client, "list_knowledge_bases", "knowledgeBaseSummaries")
+        data_sources_by_kb: dict = {}
+        data_source_detail: dict = {}
+        for kb in summaries:
+            kb_id = kb["knowledgeBaseId"]
+            try:
+                ds_summaries = _paginate(
+                    client,
+                    "list_data_sources",
+                    "dataSourceSummaries",
+                    knowledgeBaseId=kb_id,
+                )
+                data_sources_by_kb[kb_id] = ds_summaries
+                for ds in ds_summaries:
+                    ds_id = ds["dataSourceId"]
+                    try:
+                        data_source_detail[(kb_id, ds_id)] = client.get_data_source(
+                            knowledgeBaseId=kb_id, dataSourceId=ds_id
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "inventory:knowledge_bases data_source detail (%s, %s) failed: %s",
+                            kb_id,
+                            ds_id,
+                            type(e).__name__,
+                        )
+                        data_source_detail[(kb_id, ds_id)] = _Unavailable(e)
+            except Exception as e:
+                logger.warning(
+                    "inventory:knowledge_bases data_sources for KB %s failed: %s",
+                    kb_id,
+                    type(e).__name__,
+                )
+                data_sources_by_kb[kb_id] = _Unavailable(e)
+        return KbInventory(
+            summaries=summaries,
+            data_sources_by_kb=data_sources_by_kb,
+            data_source_detail=data_source_detail,
+        )
+    except Exception as e:
+        logger.warning(
+            "inventory:knowledge_bases collection failed: %s", type(e).__name__
+        )
+        return _Unavailable(e)
+
+
+def _safe_collect_buckets():
+    """Collect the full account S3 bucket list with explicit ContinuationToken
+    pagination.  MaxBuckets=1000 ensures pagination is always engaged so accounts
+    above the 10,000-bucket quota (where unpaginated requests are rejected) succeed."""
+    try:
+        client = boto3.client("s3", config=boto3_config)
+        return _paginate(
+            client,
+            "list_buckets",
+            "Buckets",
+            token=("ContinuationToken", "ContinuationToken"),
+            MaxBuckets=1000,
+        )
+    except Exception as e:
+        logger.warning("inventory:buckets collection failed: %s", type(e).__name__)
+        return _Unavailable(e)
+
+
+def _safe_collect_web_acls():
+    """Collect WAFv2 REGIONAL Web ACL summaries and per-ACL detail.  Uses
+    explicit NextMarker/NextMarker pagination (WAFv2 input ≠ Lambda Marker).
+    Per-ACL detail failures are recorded as _Unavailable for that id only."""
+    try:
+        client = boto3.client("wafv2", config=boto3_config)
+        summaries = _paginate(
+            client,
+            "list_web_acls",
+            "WebACLs",
+            token=("NextMarker", "NextMarker"),
+            Scope="REGIONAL",
+        )
+        detail_by_id: dict = {}
+        for acl in summaries:
+            acl_id = acl["Id"]
+            try:
+                # Store the WebACL dict directly (response["WebACL"]), not the
+                # full envelope, so consuming checks can do detail.get("Rules")
+                # without an extra ["WebACL"] indirection (matches design §3).
+                resp = client.get_web_acl(Name=acl["Name"], Scope="REGIONAL", Id=acl_id)
+                detail_by_id[acl_id] = resp["WebACL"]
+            except Exception as e:
+                logger.warning(
+                    "inventory:web_acls detail for %s failed: %s",
+                    acl_id,
+                    type(e).__name__,
+                )
+                detail_by_id[acl_id] = _Unavailable(e)
+        return WebAclInventory(summaries=summaries, detail_by_id=detail_by_id)
+    except Exception as e:
+        logger.warning("inventory:web_acls collection failed: %s", type(e).__name__)
+        return _Unavailable(e)
+
+
+def collect_resource_inventory() -> ResourceInventory:
+    """Collect each shared inventory at most once per invocation.
+
+    Each inventory is isolated: a failure yields an ``_Unavailable`` sentinel
+    for that field without aborting the others (REQ-4, INV-5).  All five
+    inventories are always collected because the current registry always
+    consumes all five (design DD-7).
+
+    All clients use ``boto3.client(service, config=boto3_config)`` — no
+    ``region_name`` or ``endpoint_url`` — so the Lambda's default-Region
+    resolution is preserved (REQ-7, INV-4)."""
+    return ResourceInventory(
+        lambda_functions=_safe_collect_lambda_functions(),
+        guardrails=_safe_collect_guardrails(),
+        knowledge_bases=_safe_collect_knowledge_bases(),
+        buckets=_safe_collect_buckets(),
+        web_acls=_safe_collect_web_acls(),
+    )
+
+
+def build_finserv_checks(permission_cache, inventory=None):
     """
     Single source of truth: ordered (check_id, zero-arg callable) registry of
     all FinServ checks, in execution order (FS-01 → FS-69, skipping the ids
@@ -5528,10 +6270,18 @@ def build_finserv_checks(permission_cache):
     Driving the handler from this registry lets us attach the correct Check_ID
     to a synthesized "could not assess" row when a check errors out, instead of
     silently dropping the check from the report.
+
+    ``inventory`` is optional (defaults to ``None``) so that existing one-arg
+    call sites — e.g. tests/test_severity_register.py — continue to work
+    without modification (DD-2b).  ``lambda_handler`` always passes a real
+    ``ResourceInventory``; consuming checks will be bound to it in Wave 3.
+    FS-21 and FS-46 (S3-inventory consumers) are bound to ``inventory`` here.
+    Guardrail consumers (FS-27a, 28, 36, 38, 45, 47, 50, 51, 59) are now
+    bound to ``inventory`` as well (Task 7).
     """
     return [
         # --- Category 1: Unbounded Consumption ---
-        ("FS-01", check_waf_shield_on_bedrock_endpoints),
+        ("FS-01", functools.partial(check_waf_shield_on_bedrock_endpoints, inventory)),
         ("FS-02", check_api_gateway_rate_limiting),
         ("FS-03", check_bedrock_token_quotas),
         ("FS-04", check_cost_anomaly_detection),
@@ -5543,7 +6293,7 @@ def build_finserv_checks(permission_cache):
             functools.partial(check_bedrock_agent_action_boundaries, permission_cache),
         ),
         ("FS-08", check_agentcore_policy_engine),
-        ("FS-09", check_agent_transaction_limits),
+        ("FS-09", functools.partial(check_agent_transaction_limits, inventory)),
         ("FS-10", check_human_in_the_loop_for_high_risk_actions),
         ("FS-11", check_agent_rate_alarms),
         # --- Category 3: Supply Chain Vulnerabilities ---
@@ -5554,7 +6304,7 @@ def build_finserv_checks(permission_cache):
         ("FS-16", check_ecr_image_scanning),
         # --- Category 4: Training Data & Model Poisoning ---
         ("FS-20", check_feature_store_rollback_capability),
-        ("FS-21", check_training_data_s3_versioning),
+        ("FS-21", functools.partial(check_training_data_s3_versioning, inventory)),
         # --- Category 5: Vector & Embedding Weaknesses ---
         (
             "FS-22",
@@ -5562,28 +6312,37 @@ def build_finserv_checks(permission_cache):
                 check_knowledge_base_iam_least_privilege, permission_cache
             ),
         ),
-        ("FS-24", check_knowledge_base_metadata_filtering),
+        (
+            "FS-24",
+            functools.partial(check_knowledge_base_metadata_filtering, inventory),
+        ),
         ("FS-25", check_opensearch_serverless_encryption),
         ("FS-26", check_knowledge_base_vpc_access),
         # --- Category 6: Non-Compliant Output ---
         # FS-27 is split into two checks: contextual grounding (threshold-based) and
         # Automated Reasoning policies (formal-verification, GA August 2025). Both
         # use the FS-27 check_id so they appear together in the CSV report.
-        ("FS-27", check_guardrail_contextual_grounding),
+        ("FS-27", functools.partial(check_guardrail_contextual_grounding, inventory)),
         ("FS-27", check_automated_reasoning_policies),
-        ("FS-28", check_guardrail_denied_topics_financial),
+        (
+            "FS-28",
+            functools.partial(check_guardrail_denied_topics_financial, inventory),
+        ),
         ("FS-29", check_compliance_disclaimer_in_outputs),
         ("FS-30", check_bedrock_evaluation_compliance_datasets),
         # --- Category 7: Misinformation ---
-        ("FS-31", check_knowledge_base_data_source_sync),
+        ("FS-31", functools.partial(check_knowledge_base_data_source_sync, inventory)),
         ("FS-32", check_source_attribution_in_guardrails),
-        ("FS-33", check_knowledge_base_integrity_monitoring),
+        (
+            "FS-33",
+            functools.partial(check_knowledge_base_integrity_monitoring, inventory),
+        ),
         ("FS-34", check_fm_version_currency),
         # --- Category 8: Abusive or Harmful Output ---
         ("FS-35", check_fmeval_harmful_content),
-        ("FS-36", check_guardrail_content_filters),
+        ("FS-36", functools.partial(check_guardrail_content_filters, inventory)),
         ("FS-37", check_user_feedback_mechanism),
-        ("FS-38", check_guardrail_word_filters),
+        ("FS-38", functools.partial(check_guardrail_word_filters, inventory)),
         # --- Category 9: Biased Output ---
         ("FS-39", check_sagemaker_clarify_bias),
         ("FS-40", check_bedrock_evaluation_bias_datasets),
@@ -5592,36 +6351,48 @@ def build_finserv_checks(permission_cache):
         # --- Category 10: Sensitive Information Disclosure ---
         ("FS-43", check_cloudwatch_log_pii_masking),
         ("FS-44", check_macie_on_training_data_buckets),
-        ("FS-45", check_guardrail_pii_filters),
-        ("FS-46", check_data_classification_tagging),
+        ("FS-45", functools.partial(check_guardrail_pii_filters, inventory)),
+        ("FS-46", functools.partial(check_data_classification_tagging, inventory)),
         # --- Category 11: Hallucination ---
-        ("FS-47", check_guardrail_grounding_threshold),
-        ("FS-48", check_rag_knowledge_base_configured),
+        ("FS-47", functools.partial(check_guardrail_grounding_threshold, inventory)),
+        ("FS-48", functools.partial(check_rag_knowledge_base_configured, inventory)),
         ("FS-49", check_hallucination_disclaimer_advisory),
-        ("FS-50", check_guardrail_relevance_grounding),
+        ("FS-50", functools.partial(check_guardrail_relevance_grounding, inventory)),
         # --- Category 12: Prompt Injection ---
-        ("FS-51", check_prompt_injection_input_validation),
-        ("FS-52", check_bedrock_sdk_version_currency),
-        ("FS-53", check_waf_sql_injection_rules),
+        (
+            "FS-51",
+            functools.partial(check_prompt_injection_input_validation, inventory),
+        ),
+        ("FS-52", functools.partial(check_bedrock_sdk_version_currency, inventory)),
+        ("FS-53", functools.partial(check_waf_sql_injection_rules, inventory)),
         ("FS-54", check_penetration_testing_evidence),
         # --- Category 13: Improper Output Handling ---
-        ("FS-55", check_output_validation_lambda),
-        ("FS-56", check_xss_prevention_waf),
+        ("FS-55", functools.partial(check_output_validation_lambda, inventory)),
+        ("FS-56", functools.partial(check_xss_prevention_waf, inventory)),
         ("FS-57", check_output_encoding_advisory),
-        ("FS-58", check_output_schema_validation),
+        ("FS-58", functools.partial(check_output_schema_validation, inventory)),
         # --- Category 14: Off-Topic & Inappropriate Output ---
-        ("FS-59", check_guardrail_topic_allowlist),
+        ("FS-59", functools.partial(check_guardrail_topic_allowlist, inventory)),
         ("FS-60", check_contextual_grounding_for_offtopic),
         # --- Category 15: Out-of-Date Training Data ---
-        ("FS-61", check_knowledge_base_sync_schedule),
+        ("FS-61", functools.partial(check_knowledge_base_sync_schedule, inventory)),
         ("FS-62", check_data_currency_disclaimer_advisory),
         ("FS-63", check_foundation_model_lifecycle_policy),
         # --- Material Gap Checks (FS-65 to FS-69) ---
-        ("FS-65", check_kb_datasource_s3_event_notifications),
+        (
+            "FS-65",
+            functools.partial(check_kb_datasource_s3_event_notifications, inventory),
+        ),
         ("FS-66", check_agentcore_end_user_identity_propagation),
-        ("FS-67", check_agent_financial_transaction_thresholds),
-        ("FS-68", check_api_gateway_request_body_size_limits),
-        ("FS-69", check_prompt_input_validation_function),
+        (
+            "FS-67",
+            functools.partial(check_agent_financial_transaction_thresholds, inventory),
+        ),
+        (
+            "FS-68",
+            functools.partial(check_api_gateway_request_body_size_limits, inventory),
+        ),
+        ("FS-69", functools.partial(check_prompt_input_validation_function, inventory)),
     ]
 
 
@@ -5641,6 +6412,7 @@ def lambda_handler(event, context):
         "role_permissions": {},
         "user_permissions": {},
     }
+    inventory = collect_resource_inventory()  # NEW: once per invocation
 
     # Run every check from the registry. If a check produces no rows for ANY
     # reason (an ERROR envelope, or an unexpected empty non-error result),
@@ -5648,7 +6420,7 @@ def lambda_handler(event, context):
     # gap surfaces in the report instead of the check silently vanishing. The
     # guard intentionally keys off empty csv_data (not just status=="ERROR") so
     # the no-silent-drop invariant holds structurally, not by data coincidence.
-    for check_id, check_fn in build_finserv_checks(permission_cache):
+    for check_id, check_fn in build_finserv_checks(permission_cache, inventory):
         result = check_fn()
         if not result.get("csv_data"):
             details = result.get("details", "") or (
