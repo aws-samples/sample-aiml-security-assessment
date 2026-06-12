@@ -40,3 +40,4 @@ samples/
 **/test_reports/
 
 .ruff_cache/
+.ash/
