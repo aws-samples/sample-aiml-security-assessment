@@ -201,6 +201,23 @@ phases:
 
         echo "Assessment completed. Results in S3:$BUCKET_REPORT"
 
+        # Derive how long to wait for Step Function completion from the overall
+        # CodeBuild timeout, reserving a buffer for the build/deploy work that runs
+        # before this loop and the report processing that runs after it. An explicit
+        # SF_POLL_TIMEOUT override always wins; a floor guards against tiny/negative
+        # values when CODEBUILD_TIMEOUT_MINUTES is small.
+        SF_POLL_BUFFER_SECONDS=${SF_POLL_BUFFER_SECONDS:-600}
+        SF_POLL_FLOOR_SECONDS=${SF_POLL_FLOOR_SECONDS:-300}
+        if [[ -n "$SF_POLL_TIMEOUT" ]]; then
+          sf_poll_timeout=$SF_POLL_TIMEOUT
+        else
+          sf_poll_timeout=$(( ${CODEBUILD_TIMEOUT_MINUTES:-60} * 60 - SF_POLL_BUFFER_SECONDS ))
+          if [[ $sf_poll_timeout -lt $SF_POLL_FLOOR_SECONDS ]]; then
+            sf_poll_timeout=$SF_POLL_FLOOR_SECONDS
+          fi
+        fi
+        echo "Step Function poll timeout set to ${sf_poll_timeout}s (CodeBuild timeout: ${CODEBUILD_TIMEOUT_MINUTES:-60}m, buffer: ${SF_POLL_BUFFER_SECONDS}s, floor: ${SF_POLL_FLOOR_SECONDS}s)"
+
         if [[ $MULTI_ACCOUNT_SCAN = 'true' ]]; then
           echo "Getting list of accounts for post-build processing"
           if [[ $MULTI_ACCOUNT_LIST_OVERRIDE != '' ]]; then
@@ -258,7 +275,7 @@ phases:
               EXECUTION_ARN=$(cat /tmp/execution_arns/$accountId.txt)
               echo "Waiting for Step Function execution in account $accountId: $EXECUTION_ARN"
               if [[ $EXECUTION_ARN != "" && $EXECUTION_ARN != "None" ]]; then
-                timeout=${SF_POLL_TIMEOUT:-600}
+                timeout=$sf_poll_timeout
                 elapsed=0
                 while [[ $elapsed -lt $timeout ]]; do
                   STATUS=$(aws stepfunctions describe-execution --execution-arn $EXECUTION_ARN --query 'status' --output text 2>/dev/null)
@@ -375,7 +392,7 @@ phases:
             EXECUTION_ARN=$(cat /tmp/single_account_execution_arn.txt)
             echo "Waiting for Step Function execution: $EXECUTION_ARN"
             if [[ $EXECUTION_ARN != "" && $EXECUTION_ARN != "None" ]]; then
-              timeout=${SF_POLL_TIMEOUT:-600}
+              timeout=$sf_poll_timeout
               elapsed=0
               while [[ $elapsed -lt $timeout ]]; do
                 STATUS=$(aws stepfunctions describe-execution --execution-arn $EXECUTION_ARN --query 'status' --output text 2>/dev/null)
