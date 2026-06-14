@@ -1,18 +1,10 @@
 import boto3
-import csv
 import os
 import logging
-from datetime import datetime, timedelta, timezone
-import time
-from typing import Dict, List, Any, Optional
-from io import StringIO
-import asyncio
+from datetime import datetime, timezone
 import json
 from botocore.config import Config
-from botocore.exceptions import ClientError
-import random
 
-from datetime import datetime
 
 def get_current_utc_date():
     return datetime.now(timezone.utc).strftime("%Y/%m/%d")

@@ -1,7 +1,6 @@
 # test_generate_report.py
 import unittest
 import os
-import webbrowser
 from app import generate_html_report
 from report_template import generate_html_report as generate_report_direct
 
