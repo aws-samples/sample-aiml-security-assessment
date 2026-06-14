@@ -741,14 +741,25 @@ def generate_html_report(
         service_findings.get("agentcore", []), include_data_attrs=True
     )
 
-    # Build region filter HTML (shared across modes, only shown when multiple regions)
-    if regions and len(regions) > 1:
+    # Build region filter HTML (shared across modes, only shown when multiple regions).
+    # "Global" tags IAM-only findings and is intentionally excluded from `regions`
+    # (it must not inflate the region count / tiles), but those findings still appear
+    # in the tables, so surface a "Global" filter option when any are present.
+    has_global = any(
+        (f.get("region") or f.get("Region")) == "Global" for f in all_findings
+    )
+    # Show the filter when there is more than one distinct value to choose from:
+    # multiple scanned regions, or a single scanned region alongside Global findings.
+    num_real_regions = len(regions) if regions else 0
+    if num_real_regions + (1 if has_global else 0) > 1:
         region_options = "".join(
             [
                 f'<option value="{r}">{r}</option>'
-                for r in sorted(regions)
+                for r in sorted(regions or [])
             ]
         )
+        if has_global:
+            region_options += '<option value="Global">Global</option>'
         region_filter = f'<div class="filter-group"><label for="regionFilter">Region</label><select id="regionFilter" onchange="applyFilters()"><option value="">All Regions</option>{region_options}</select></div>'
         bedrock_region_filter = f'<div class="filter-group"><label for="bedrockRegionFilter">Region</label><select id="bedrockRegionFilter"><option value="">All Regions</option>{region_options}</select></div>'
         sagemaker_region_filter = f'<div class="filter-group"><label for="sagemakerRegionFilter">Region</label><select id="sagemakerRegionFilter"><option value="">All Regions</option>{region_options}</select></div>'
