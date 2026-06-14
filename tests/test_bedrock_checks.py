@@ -219,7 +219,10 @@ class TestBR04LoggingConfiguration:
     """BR-04: Check model invocation logging."""
 
     @patch("boto3.client")
-    def test_br04_logging_enabled_s3_returns_passed(self, mock_client):
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
+    def test_br04_logging_enabled_s3_returns_passed(
+        self, mock_footprint, mock_client
+    ):
         check = bedrock_app.check_bedrock_logging_configuration
         mock_bedrock = MagicMock()
         mock_client.return_value = mock_bedrock
@@ -236,7 +239,10 @@ class TestBR04LoggingConfiguration:
         assert findings[0]["Check_ID"] == "BR-04"
 
     @patch("boto3.client")
-    def test_br04_logging_disabled_returns_failed(self, mock_client):
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
+    def test_br04_logging_disabled_returns_failed(
+        self, mock_footprint, mock_client
+    ):
         check = bedrock_app.check_bedrock_logging_configuration
         mock_bedrock = MagicMock()
         mock_client.return_value = mock_bedrock
@@ -250,6 +256,21 @@ class TestBR04LoggingConfiguration:
         assert findings[0]["Severity"] == "Medium"
 
     @patch("boto3.client")
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=False)
+    def test_br04_no_regional_footprint_returns_na(
+        self, mock_footprint, mock_client
+    ):
+        check = bedrock_app.check_bedrock_logging_configuration
+        result = check(region="eu-west-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Finding_Details"] == (
+            "No regional Bedrock resources found to monitor with invocation logging"
+        )
+        mock_client.assert_not_called()
+
+    @patch("boto3.client")
     def test_br04_exception_returns_error_finding(self, mock_client):
         check = bedrock_app.check_bedrock_logging_configuration
         mock_client.side_effect = Exception("Service unavailable")
@@ -259,7 +280,8 @@ class TestBR04LoggingConfiguration:
         assert findings[0]["Status"] == "Failed"
 
     @patch("boto3.client")
-    def test_br04_schema_valid(self, mock_client):
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
+    def test_br04_schema_valid(self, mock_footprint, mock_client):
         check = bedrock_app.check_bedrock_logging_configuration
         mock_bedrock = MagicMock()
         mock_client.return_value = mock_bedrock
@@ -356,7 +378,10 @@ class TestBR06CloudTrailLogging:
     """BR-06: Check CloudTrail logging for Bedrock."""
 
     @patch("boto3.client")
-    def test_br06_trail_is_logging_returns_passed(self, mock_client):
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
+    def test_br06_trail_is_logging_returns_passed(
+        self, mock_footprint, mock_client
+    ):
         check = bedrock_app.check_bedrock_cloudtrail_logging
         mock_ct = MagicMock()
         mock_client.return_value = mock_ct
@@ -383,7 +408,8 @@ class TestBR06CloudTrailLogging:
         assert findings[0]["Check_ID"] == "BR-06"
 
     @patch("boto3.client")
-    def test_br06_no_trails_returns_failed(self, mock_client):
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
+    def test_br06_no_trails_returns_failed(self, mock_footprint, mock_client):
         check = bedrock_app.check_bedrock_cloudtrail_logging
         mock_ct = MagicMock()
         mock_client.return_value = mock_ct
@@ -395,7 +421,10 @@ class TestBR06CloudTrailLogging:
         assert findings[0]["Severity"] == "High"
 
     @patch("boto3.client")
-    def test_br06_trail_not_logging_returns_failed(self, mock_client):
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
+    def test_br06_trail_not_logging_returns_failed(
+        self, mock_footprint, mock_client
+    ):
         check = bedrock_app.check_bedrock_cloudtrail_logging
         mock_ct = MagicMock()
         mock_client.return_value = mock_ct
@@ -414,6 +443,21 @@ class TestBR06CloudTrailLogging:
         assert findings[0]["Status"] == "Failed"
 
     @patch("boto3.client")
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=False)
+    def test_br06_no_regional_footprint_returns_na(
+        self, mock_footprint, mock_client
+    ):
+        check = bedrock_app.check_bedrock_cloudtrail_logging
+        result = check(region="eu-west-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Finding_Details"] == (
+            "No regional Bedrock resources found to audit with Bedrock-specific CloudTrail coverage"
+        )
+        mock_client.assert_not_called()
+
+    @patch("boto3.client")
     def test_br06_exception_returns_error_finding(self, mock_client):
         check = bedrock_app.check_bedrock_cloudtrail_logging
         mock_client.side_effect = Exception("CloudTrail error")
@@ -423,7 +467,8 @@ class TestBR06CloudTrailLogging:
         assert findings[0]["Status"] == "Failed"
 
     @patch("boto3.client")
-    def test_br06_schema_valid(self, mock_client):
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
+    def test_br06_schema_valid(self, mock_footprint, mock_client):
         check = bedrock_app.check_bedrock_cloudtrail_logging
         mock_ct = MagicMock()
         mock_client.return_value = mock_ct
@@ -598,6 +643,28 @@ class TestBR09KBEncryption:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Check_ID"] == "BR-09"
+
+    @patch("boto3.client")
+    def test_br09_access_denied_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_knowledge_base_encryption
+        mock_agent = MagicMock()
+        mock_client.return_value = mock_agent
+        paginator = MagicMock()
+        mock_agent.get_paginator.return_value = paginator
+        paginator.paginate.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "AccessDeniedException",
+                    "Message": "missing permission",
+                }
+            },
+            "ListKnowledgeBases",
+        )
+        result = check(region="eu-west-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert "Bedrock Knowledge Base API" in findings[0]["Finding_Details"]
 
     @patch("boto3.client")
     def test_br09_exception_returns_error_finding(self, mock_client):

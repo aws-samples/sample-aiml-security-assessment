@@ -171,12 +171,18 @@ def detect_bedrock_regional_footprint(region: str = "") -> Optional[bool]:
     ]
 
     indeterminate = False
+    successful_empty_probe = False
     for probe_label, probe_func in probes:
         probe_result = _probe_bedrock_resource_list(probe_label, probe_func)
         if probe_result is True:
             return True
+        if probe_result is False:
+            successful_empty_probe = True
         if probe_result is None:
             indeterminate = True
+
+    if successful_empty_probe:
+        return False
 
     return None if indeterminate else False
 
@@ -1071,6 +1077,23 @@ def check_bedrock_logging_configuration(region: str = "") -> Dict[str, Any]:
             "csv_data": [],
         }
 
+        bedrock_footprint_found = detect_bedrock_regional_footprint(region=region)
+        if bedrock_footprint_found is False:
+            findings["details"] = "No regional Bedrock resources found"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-04",
+                    finding_name="Bedrock Model Invocation Logging Check",
+                    finding_details="No regional Bedrock resources found to monitor with invocation logging",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+            return findings
+
         bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
 
         try:
@@ -1179,6 +1202,23 @@ def check_bedrock_cloudtrail_logging(region: str = "") -> Dict[str, Any]:
             "details": "",
             "csv_data": [],
         }
+
+        bedrock_footprint_found = detect_bedrock_regional_footprint(region=region)
+        if bedrock_footprint_found is False:
+            findings["details"] = "No regional Bedrock resources found"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-06",
+                    finding_name="Bedrock CloudTrail Logging Check",
+                    finding_details="No regional Bedrock resources found to audit with Bedrock-specific CloudTrail coverage",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+            return findings
 
         cloudtrail_client = boto3.client("cloudtrail", config=boto3_config, region_name=region)
 
@@ -1546,20 +1586,22 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
                     )
                 )
 
-        except bedrock_agent_client.exceptions.ValidationException as e:
-            findings["status"] = "ERROR"
-            findings["details"] = (
-                f"Error validating Knowledge Base configuration: {str(e)}"
+        except Exception as e:
+            findings["status"] = "WARN"
+            findings["details"] = describe_api_error(
+                e, "Bedrock Knowledge Base API", region
             )
             findings["csv_data"].append(
                 create_finding(
                     check_id="BR-09",
                     finding_name="Bedrock Knowledge Base Encryption Check",
-                    finding_details=f"Error checking Knowledge Base encryption: {str(e)}",
-                    resolution="Verify your AWS credentials and permissions to access Bedrock Knowledge Bases",
+                    finding_details=describe_api_error(
+                        e, "Bedrock Knowledge Base API", region
+                    ),
+                    resolution="Verify your AWS credentials and permissions to access Bedrock Knowledge Bases, then retry the assessment.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             )
