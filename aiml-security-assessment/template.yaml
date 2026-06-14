@@ -13,6 +13,15 @@ Parameters:
       Comma-separated list of AWS regions to scan (e.g., us-east-1,us-west-2,eu-west-1).
       Use 'all' to scan all regions where the service is available.
       Leave empty to scan only the deployment region.
+  MaxRegionConcurrency:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    MaxValue: 40
+    Description: >
+      Maximum number of regions scanned in parallel by the Map state. Lower
+      values reduce concurrent Lambda usage; higher values speed up large
+      multi-region scans. Set to 1 for fully sequential scanning.
 
 Resources:
   AIMLAssessmentStateMachine:
@@ -28,6 +37,7 @@ Resources:
         AgentCoreSecurityAssessmentFunction: !GetAtt AgentCoreSecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
+        MaxRegionConcurrency: !Ref MaxRegionConcurrency
       Policies:
         - LambdaInvokePolicy:
             FunctionName: !Ref CleanupBucketFunction
@@ -277,6 +287,7 @@ Resources:
                 - kms:ListAliases
                 - sagemaker:ListModelPackageGroups
                 - sagemaker:ListModelPackages
+                - sagemaker:DescribeModelPackage
                 - sagemaker:ListFeatureGroups
                 - sagemaker:DescribeFeatureGroup
                 - sagemaker:ListPipelines
@@ -291,6 +302,19 @@ Resources:
                 - sagemaker:DescribeEndpoint
                 - sagemaker:ListDataQualityJobDefinitions
                 - sagemaker:DescribeDataQualityJobDefinition
+                - sagemaker:ListTransformJobs
+                - sagemaker:DescribeTransformJob
+                - sagemaker:ListHyperParameterTuningJobs
+                - sagemaker:DescribeHyperParameterTuningJob
+                - sagemaker:ListCompilationJobs
+                - sagemaker:DescribeCompilationJob
+                - sagemaker:ListAutoMLJobs
+                - sagemaker:DescribeAutoMLJob
+                - sagemaker:ListExperiments
+                - sagemaker:DescribeExperiment
+                - sagemaker:ListTrials
+                - sagemaker:DescribeTrial
+                - sagemaker:ListAssociations
               Resource: '*'
         - Statement:
             - Sid: GuardDutyPermissions

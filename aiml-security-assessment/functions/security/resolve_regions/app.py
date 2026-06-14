@@ -15,7 +15,7 @@ logger.setLevel(logging.INFO)
 
 BEDROCK_SERVICE = "bedrock"
 SAGEMAKER_SERVICE = "sagemaker"
-AGENTCORE_SERVICE = "bedrock-agent"
+AGENTCORE_SERVICE = "bedrock-agentcore-control"
 
 SERVICES = [BEDROCK_SERVICE, SAGEMAKER_SERVICE, AGENTCORE_SERVICE]
 

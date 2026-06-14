@@ -13,6 +13,15 @@ Parameters:
       Comma-separated list of AWS regions to scan (e.g., us-east-1,us-west-2,eu-west-1).
       Use 'all' to scan all regions where the service is available.
       Leave empty to scan only the deployment region.
+  MaxRegionConcurrency:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    MaxValue: 40
+    Description: >
+      Maximum number of regions scanned in parallel by the Map state. Lower
+      values reduce concurrent Lambda usage; higher values speed up large
+      multi-region scans. Set to 1 for fully sequential scanning.
 
 Resources:
   AIMLAssessmentStateMachine:
@@ -28,6 +37,7 @@ Resources:
         AgentCoreSecurityAssessmentFunction: !GetAtt AgentCoreSecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
+        MaxRegionConcurrency: !Ref MaxRegionConcurrency
       Policies:
         - LambdaInvokePolicy:
             FunctionName: !Ref CleanupBucketFunction
@@ -49,7 +59,7 @@ Resources:
   ResolveRegionsFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-ResolveRegions'
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-ResolveRegions'
       CodeUri: functions/security/resolve_regions/
       Handler: app.lambda_handler
       Runtime: python3.12
@@ -64,7 +74,7 @@ Resources:
   CleanupBucketFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-CleanupBucket'
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-CleanupBucket'
       CodeUri: functions/security/cleanup_bucket/
       Handler: app.lambda_handler
       Runtime: python3.12
@@ -82,7 +92,7 @@ Resources:
   IAMPermissionCachingFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-IAMPermissionCaching'
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-IAMPermissionCaching'
       CodeUri: functions/security/iam_permission_caching/
       Handler: app.lambda_handler
       Runtime: python3.12
@@ -118,7 +128,7 @@ Resources:
   GenerateConsolidatedReportFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-GenerateReport'
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-GenerateReport'
       CodeUri: functions/security/generate_consolidated_report/
       Handler: app.lambda_handler
       Runtime: python3.12
@@ -136,7 +146,7 @@ Resources:
   BedrockSecurityAssessmentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-BedrockAssessment'
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-BedrockAssessment'
       CodeUri: functions/security/bedrock_assessments/
       Handler: app.lambda_handler
       Runtime: python3.12
@@ -229,7 +239,7 @@ Resources:
   SagemakerSecurityAssessmentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-SagemakerAssessment'
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-SagemakerAssessment'
       CodeUri: functions/security/sagemaker_assessments/
       Handler: app.lambda_handler
       Runtime: python3.12
@@ -281,6 +291,7 @@ Resources:
                 - kms:ListAliases
                 - sagemaker:ListModelPackageGroups
                 - sagemaker:ListModelPackages
+                - sagemaker:DescribeModelPackage
                 - sagemaker:ListFeatureGroups
                 - sagemaker:DescribeFeatureGroup
                 - sagemaker:ListPipelines
@@ -295,6 +306,19 @@ Resources:
                 - sagemaker:DescribeEndpoint
                 - sagemaker:ListDataQualityJobDefinitions
                 - sagemaker:DescribeDataQualityJobDefinition
+                - sagemaker:ListTransformJobs
+                - sagemaker:DescribeTransformJob
+                - sagemaker:ListHyperParameterTuningJobs
+                - sagemaker:DescribeHyperParameterTuningJob
+                - sagemaker:ListCompilationJobs
+                - sagemaker:DescribeCompilationJob
+                - sagemaker:ListAutoMLJobs
+                - sagemaker:DescribeAutoMLJob
+                - sagemaker:ListExperiments
+                - sagemaker:DescribeExperiment
+                - sagemaker:ListTrials
+                - sagemaker:DescribeTrial
+                - sagemaker:ListAssociations
               Resource: '*'
         - Statement:
             - Sid: GuardDutyPermissions
@@ -323,7 +347,7 @@ Resources:
   AgentCoreSecurityAssessmentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-AgentCoreAssessment'
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-AgentCoreAssessment'
       CodeUri: functions/security/agentcore_assessments/
       Handler: app.lambda_handler
       Runtime: python3.12

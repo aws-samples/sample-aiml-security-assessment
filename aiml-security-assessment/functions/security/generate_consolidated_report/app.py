@@ -10,6 +10,13 @@ from botocore.exceptions import ClientError
 
 from report_template import generate_html_report as generate_report_from_template
 
+# Sentinel region label used by the per-service assessments to tag findings that
+# are derived purely from global (IAM) data and run once per execution rather
+# than per region (e.g. BR-01, SM-02, AC-09). It is NOT a real AWS region, so it
+# must be excluded when counting scanned regions for the report's multi-region
+# UI (region filter, "Risk by Region", region count).
+GLOBAL_REGION_LABEL = "Global"
+
 boto3_config = Config(
     retries=dict(
         max_attempts=10,  # Maximum number of retries
@@ -56,30 +63,25 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
     try:
         s3_client = boto3.client("s3", config=boto3_config)
 
-        # List all CSV files with execution ID in filename (bucket root)
+        # List all CSV files with execution ID in filename (bucket root).
+        # Use a paginator: a multi-region scan produces one file per service per
+        # region, so a single list_objects_v2 call (capped at 1000 keys) could
+        # silently truncate and drop regions for large scans.
         s3_bucket = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
-        response = s3_client.list_objects_v2(
-            Bucket=s3_bucket, Prefix=f"bedrock_security_report_{execution_id}"
-        )
+        paginator = s3_client.get_paginator("list_objects_v2")
 
-        # Also check for SageMaker reports
-        sagemaker_response = s3_client.list_objects_v2(
-            Bucket=s3_bucket, Prefix=f"sagemaker_security_report_{execution_id}"
-        )
+        # One prefix per service; each matches every region's report file.
+        prefixes = [
+            f"bedrock_security_report_{execution_id}",
+            f"sagemaker_security_report_{execution_id}",
+            f"agentcore_security_report_{execution_id}",
+        ]
 
-        # Also check for AgentCore reports
-        agentcore_response = s3_client.list_objects_v2(
-            Bucket=s3_bucket, Prefix=f"agentcore_security_report_{execution_id}"
-        )
-
-        # Combine all responses
         all_objects = []
-        if "Contents" in response:
-            all_objects.extend(response["Contents"])
-        if "Contents" in sagemaker_response:
-            all_objects.extend(sagemaker_response["Contents"])
-        if "Contents" in agentcore_response:
-            all_objects.extend(agentcore_response["Contents"])
+        for prefix in prefixes:
+            for page in paginator.paginate(Bucket=s3_bucket, Prefix=prefix):
+                all_objects.extend(page.get("Contents", []))
+
         if not all_objects:
             logger.warning(f"No assessment files found for execution {execution_id}")
             return {}
@@ -200,10 +202,30 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
     service_findings = {"bedrock": [], "sagemaker": [], "agentcore": []}
     regions = set()
 
+    # Global/IAM findings (Region == "Global", e.g. BR-01, SM-02, AC-09) are
+    # produced once per run by the primary-region Lambda and should land in a
+    # single CSV. Dedup defensively here so the totals and per-region tiles stay
+    # correct even if the same finding ever appears in more than one region's
+    # file (e.g. RegionIndex missing from the event, or a future per-region
+    # write of a global check). The key uniquely identifies a finding within an
+    # account; account is included so a future multi-account merge is unaffected.
+    seen_findings = set()
+
     for service in ["bedrock", "sagemaker", "agentcore"]:
         if service in assessment_results:
             for report_type, findings in assessment_results[service].items():
                 for finding in findings:
+                    dedup_key = (
+                        finding.get("Account_ID", ""),
+                        service,
+                        finding.get("Check_ID", ""),
+                        finding.get("Region", ""),
+                        finding.get("Finding_Details", ""),
+                    )
+                    if dedup_key in seen_findings:
+                        continue
+                    seen_findings.add(dedup_key)
+
                     finding["_service"] = service
                     all_findings.append(finding)
                     service_findings[service].append(finding)
@@ -215,7 +237,9 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
                     elif status == "n/a":
                         service_stats[service]["na"] += 1
                     region = finding.get("Region", "")
-                    if region:
+                    # "Global" tags IAM-only findings; it is not a scanned region
+                    # and must not inflate the region count / multi-region UI.
+                    if region and region != GLOBAL_REGION_LABEL:
                         regions.add(region)
 
     account_id = assessment_results.get("account_id", "Unknown")
@@ -242,6 +266,11 @@ def get_current_utc_date():
     return datetime.now(timezone.utc).strftime("%Y/%m/%d")
 
 
+def build_single_account_report_key(timestamp: str) -> str:
+    """Build the single-account HTML report object key."""
+    return f"security_assessment_single_account_{timestamp}.html"
+
+
 def write_html_to_s3(
     html_content: str, s3_bucket: str, execution_id: str, account_id: str = None
 ) -> Optional[str]:
@@ -261,7 +290,7 @@ def write_html_to_s3(
 
         # Generate the S3 key for local bucket (no account folder needed)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        s3_key = f"security_assessment_{timestamp}_{execution_id}.html"
+        s3_key = build_single_account_report_key(timestamp)
 
         # Upload the HTML file
         s3_client.put_object(

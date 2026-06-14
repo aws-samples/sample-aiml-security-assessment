@@ -1,11 +1,7 @@
 from enum import Enum
-from typing import Dict, List, Any
-from pydantic import BaseModel, Field, HttpUrl, validator
-from datetime import datetime
+from typing import Any, Dict
+from pydantic import BaseModel, Field, field_validator
 import re
-
-class Config:
-    strict = True  # Enables strict type checking
 
 class SeverityEnum(str, Enum):
     HIGH = "High"
@@ -29,7 +25,8 @@ class Finding(BaseModel):
     Status: StatusEnum = Field(..., description="Current status of the finding")
     Region: str = Field(default="", description="AWS region where the finding was identified")
 
-    @validator('Check_ID')
+    @field_validator("Check_ID")
+    @classmethod
     def validate_check_id(cls, v):
         """Validate that Check_ID follows the pattern XX-NN (e.g., SM-01, BR-14, AC-05)"""
         pattern = r'^[A-Z]{2,3}-\d{2}$'
@@ -37,21 +34,24 @@ class Finding(BaseModel):
             raise ValueError('Check_ID must follow pattern XX-NN (e.g., SM-01, BR-14, AC-05)')
         return v
 
-    @validator('Reference')
+    @field_validator("Reference")
+    @classmethod
     def validate_reference_url(cls, v):
         """Validate that reference URL starts with https://"""
         if not str(v).startswith('https://'):
             raise ValueError('Reference URL must start with https://')
         return v
 
-    @validator('Severity')
+    @field_validator("Severity")
+    @classmethod
     def validate_severity(cls, v):
         """Validate that severity is one of the allowed values"""
         if v not in SeverityEnum.__members__.values():
             raise ValueError('Severity must be one of the allowed values')
         return v
 
-    @validator('Status')
+    @field_validator("Status")
+    @classmethod
     def validate_status(cls, v):
         """Validate that status is one of the allowed values"""
         if v not in StatusEnum.__members__.values():

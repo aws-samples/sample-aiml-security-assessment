@@ -13,6 +13,7 @@ import sys
 import os
 import importlib.util
 from unittest.mock import patch, MagicMock
+from botocore.exceptions import EndpointConnectionError, ClientError
 
 # Add tests dir so we can import helpers
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
@@ -432,6 +433,22 @@ class TestBR07PromptManagement:
         assert findings[0]["Status"] == "Failed"
 
     @patch("boto3.client")
+    def test_br07_list_prompts_api_error_returns_na(self, mock_client):
+        # An API error (e.g. InternalServerErrorException after retries) is not a
+        # security failure; it should surface as N/A, not Failed (matches BR-11).
+        check = bedrock_app.check_bedrock_prompt_management
+        mock_agent = MagicMock()
+        mock_client.return_value = mock_agent
+        mock_agent.list_prompts.side_effect = Exception(
+            "InternalServerErrorException"
+        )
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-07"
+
+    @patch("boto3.client")
     def test_br07_schema_valid(self, mock_client):
         check = bedrock_app.check_bedrock_prompt_management
         mock_agent = MagicMock()
@@ -699,6 +716,40 @@ class TestBR11CustomModelEncryption:
         for f in extract_csv_data(result):
             assert_finding_schema(f)
 
+    @patch("boto3.client")
+    def test_br11_unknown_operation_returns_clean_message(self, mock_client):
+        # Regions without the custom model API surface "Unknown operation
+        # ListCustomModels" / UnknownOperationException; report a clean message
+        # instead of leaking the raw boto3 exception text.
+        check = bedrock_app.check_bedrock_custom_model_encryption
+        mock_bedrock = MagicMock()
+        mock_client.return_value = mock_bedrock
+        mock_bedrock.get_paginator.side_effect = Exception(
+            "ValidationException: Unknown operation ListCustomModels"
+        )
+        result = check(region="us-west-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert (
+            findings[0]["Finding_Details"]
+            == "Custom model API not available in us-west-1"
+        )
+
+    @patch("boto3.client")
+    def test_br11_other_list_error_preserves_raw_message(self, mock_client):
+        # Genuine errors (e.g. permissions) keep the raw text so they stay
+        # diagnosable.
+        check = bedrock_app.check_bedrock_custom_model_encryption
+        mock_bedrock = MagicMock()
+        mock_client.return_value = mock_bedrock
+        mock_bedrock.get_paginator.side_effect = Exception("AccessDeniedException")
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert "AccessDeniedException" in findings[0]["Finding_Details"]
+
 
 # ===================================================================
 # BR-12: check_bedrock_invocation_log_encryption
@@ -908,3 +959,199 @@ class TestBR13FlowsGuardrails:
         result = check()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
+
+    @patch("boto3.client")
+    def test_br13_unknown_operation_returns_clean_message(self, mock_client):
+        # Regions without the Flows API surface an "Unknown operation" error;
+        # report a clean message instead of leaking the raw boto3 text.
+        check = bedrock_app.check_bedrock_flows_guardrails
+        mock_agent = MagicMock()
+        mock_client.return_value = mock_agent
+        mock_agent.get_paginator.side_effect = Exception(
+            "UnknownOperationException"
+        )
+        result = check(region="us-west-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert (
+            findings[0]["Finding_Details"]
+            == "Bedrock Flows API not available in us-west-1"
+        )
+
+
+# ===================================================================
+# describe_api_error helper
+# ===================================================================
+class TestDescribeApiError:
+    """Shared helper that maps region-unavailability errors to clean text."""
+
+    def test_unknown_operation_phrase_returns_clean_message(self):
+        msg = bedrock_app.describe_api_error(
+            Exception("ValidationException: Unknown operation ListPrompts"),
+            "Bedrock Prompt Management API",
+            "us-east-2",
+        )
+        assert msg == "Bedrock Prompt Management API not available in us-east-2"
+
+    def test_unknown_operation_exception_returns_clean_message(self):
+        msg = bedrock_app.describe_api_error(
+            Exception("UnknownOperationException"), "Custom model API", "us-west-1"
+        )
+        assert msg == "Custom model API not available in us-west-1"
+
+    def test_missing_region_falls_back_to_generic_location(self):
+        msg = bedrock_app.describe_api_error(
+            Exception("Unknown operation Foo"), "Custom model API"
+        )
+        assert msg == "Custom model API not available in this region"
+
+    def test_other_error_preserves_raw_text(self):
+        msg = bedrock_app.describe_api_error(
+            Exception("AccessDeniedException"), "Custom model API", "us-east-1"
+        )
+        assert msg == "Unable to check Custom model API: AccessDeniedException"
+
+
+# ===================================================================
+# lambda_handler: multi-region gating and availability probe
+# ===================================================================
+def _make_client_error(code, message="error"):
+    return ClientError({"Error": {"Code": code, "Message": message}}, "operation")
+
+
+def _bedrock_event(region="us-east-1", region_index=0):
+    return {
+        "Region": region,
+        "RegionIndex": region_index,
+        "Execution": {"Name": "test-execution-1"},
+        "StateMachine": {"Name": "test-sm"},
+    }
+
+
+class TestBedrockHandlerMultiRegion:
+    """lambda_handler primary-region gating + availability probe (BR-00/BR-01/BR-03)."""
+
+    def _run_handler_unavailable(self, mock_client, event):
+        """Drive the handler down the 'Bedrock unavailable' early-return path and
+        return the findings captured via generate_csv_report. The availability
+        probe raises EndpointConnectionError so no regional checks run."""
+        captured = {}
+
+        def fake_csv(findings):
+            captured["findings"] = findings
+            return "csv"
+
+        test_client = MagicMock()
+        test_client.get_model_invocation_logging_configuration.side_effect = (
+            EndpointConnectionError(endpoint_url="https://bedrock.invalid")
+        )
+        mock_client.return_value = test_client
+
+        with patch.object(bedrock_app, "get_permissions_cache", return_value={
+            "role_permissions": {}, "user_permissions": {}
+        }), patch.object(bedrock_app, "generate_csv_report", side_effect=fake_csv), \
+                patch.object(bedrock_app, "write_to_s3", return_value="s3://bucket/report.csv"):
+            resp = bedrock_app.lambda_handler(event, None)
+
+        return resp, captured.get("findings", [])
+
+    @patch("bedrock_app.boto3.client")
+    def test_primary_region_emits_global_iam_checks_tagged_global(self, mock_client):
+        # On the primary region, BR-01 and BR-03 (IAM-global) must be emitted and
+        # tagged "Global", even when Bedrock itself is unavailable in the region.
+        resp, findings = self._run_handler_unavailable(
+            mock_client, _bedrock_event(region="ap-south-2", region_index=0)
+        )
+        assert resp["statusCode"] == 200
+
+        rows = [r for f in findings for r in f.get("csv_data", [])]
+        check_ids = {r["Check_ID"] for r in rows}
+        assert "BR-01" in check_ids
+        assert "BR-03" in check_ids
+        # Every global IAM finding is tagged Global, not the scanned region.
+        for r in rows:
+            if r["Check_ID"] in ("BR-01", "BR-03"):
+                assert r["Region"] == "Global"
+        # The availability finding itself is tagged with the scanned region.
+        br00 = [r for r in rows if r["Check_ID"] == "BR-00"]
+        assert br00 and br00[0]["Region"] == "ap-south-2"
+
+    @patch("bedrock_app.boto3.client")
+    def test_non_primary_region_skips_global_iam_checks(self, mock_client):
+        # On a non-primary region (index > 0), the IAM-global checks must NOT run,
+        # so they are not duplicated once per scanned region.
+        resp, findings = self._run_handler_unavailable(
+            mock_client, _bedrock_event(region="eu-west-1", region_index=1)
+        )
+        assert resp["statusCode"] == 200
+
+        rows = [r for f in findings for r in f.get("csv_data", [])]
+        check_ids = {r["Check_ID"] for r in rows}
+        assert "BR-01" not in check_ids
+        assert "BR-03" not in check_ids
+        # Only the BR-00 availability finding should be present.
+        assert check_ids == {"BR-00"}
+
+    @patch("bedrock_app.boto3.client")
+    def test_optin_region_error_treated_as_unavailable(self, mock_client):
+        # A region-not-enabled error code (e.g. UnrecognizedClientException) is
+        # treated like an endpoint failure: emit a single BR-00 N/A finding.
+        captured = {}
+
+        def fake_csv(findings):
+            captured["findings"] = findings
+            return "csv"
+
+        test_client = MagicMock()
+        test_client.get_model_invocation_logging_configuration.side_effect = (
+            _make_client_error("UnrecognizedClientException")
+        )
+        mock_client.return_value = test_client
+
+        with patch.object(bedrock_app, "get_permissions_cache", return_value={
+            "role_permissions": {}, "user_permissions": {}
+        }), patch.object(bedrock_app, "generate_csv_report", side_effect=fake_csv), \
+                patch.object(bedrock_app, "write_to_s3", return_value="s3://b/r.csv"):
+            resp = bedrock_app.lambda_handler(
+                _bedrock_event(region="me-south-1", region_index=1), None
+            )
+
+        assert resp["statusCode"] == 200
+        rows = [r for f in captured["findings"] for r in f.get("csv_data", [])]
+        br00 = [r for r in rows if r["Check_ID"] == "BR-00"]
+        assert br00 and br00[0]["Status"] == "N/A"
+        assert "me-south-1" in br00[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_validation_exception_proceeds_with_checks(self, mock_client):
+        # A ValidationException from the probe means logging simply isn't
+        # configured — the service IS reachable, so the handler must NOT short
+        # circuit; it should run the regional checks (no BR-00 finding emitted).
+        captured = {}
+
+        def fake_csv(findings):
+            captured["findings"] = findings
+            return "csv"
+
+        test_client = MagicMock()
+        test_client.get_model_invocation_logging_configuration.side_effect = (
+            _make_client_error("ValidationException")
+        )
+        mock_client.return_value = test_client
+
+        with patch.object(bedrock_app, "get_permissions_cache", return_value={
+            "role_permissions": {}, "user_permissions": {}
+        }), patch.object(bedrock_app, "generate_csv_report", side_effect=fake_csv), \
+                patch.object(bedrock_app, "write_to_s3", return_value="s3://b/r.csv"):
+            resp = bedrock_app.lambda_handler(
+                _bedrock_event(region="us-east-1", region_index=0), None
+            )
+
+        assert resp["statusCode"] == 200
+        rows = [r for f in captured["findings"] for r in f.get("csv_data", [])]
+        check_ids = {r["Check_ID"] for r in rows}
+        # Service reachable => no availability (BR-00) finding, and regional
+        # checks ran (e.g. BR-04 logging, BR-05 guardrails are present).
+        assert "BR-00" not in check_ids
+        assert len(check_ids) > 3

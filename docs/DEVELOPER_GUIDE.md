@@ -44,7 +44,7 @@
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 51 security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 52 security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, generating interactive HTML reports with findings and remediation guidance.
 
 ### Security Design Principles
 
@@ -168,7 +168,7 @@ sample-aiml-security-assessment/
     "Scan Regions": {
       "Type": "Map",
       "ItemsPath": "$.ResolvedRegions.regions",
-      "MaxConcurrency": 0,
+      "MaxConcurrency": "${MaxRegionConcurrency}",
       "ItemProcessor": {
         "ProcessorConfig": {"Mode": "INLINE"},
         "StartAt": "Run Security Assessments",
@@ -196,7 +196,7 @@ sample-aiml-security-assessment/
 
 ## Assessment Structure
 
-The framework includes **51 security checks** across three AI/ML services. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **52 security checks** across three AI/ML services. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
@@ -531,7 +531,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 ## Development Roadmap
 
 ### Current Status
-- **AI/ML Assessment**: 51 security checks across three services (see [Security Checks Reference](SECURITY_CHECKS.md))
+- **AI/ML Assessment**: 52 security checks across three services (see [Security Checks Reference](SECURITY_CHECKS.md))
 
 ### Potential Additions
 - **Amazon Comprehend**: Data privacy, access controls, entity recognition security

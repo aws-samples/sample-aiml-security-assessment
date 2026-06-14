@@ -55,6 +55,7 @@ class TestCreateFindingValid:
             "Reference",
             "Severity",
             "Status",
+            "Region",
         }
         assert set(result.keys()) == expected_keys
 

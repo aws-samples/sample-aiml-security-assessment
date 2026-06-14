@@ -335,14 +335,14 @@ A: All assessment data remains **entirely within your AWS account**:
 - Logs in **your Amazon CloudWatch Logs** (configurable retention)
 - No data is sent to external services or third parties
 
-**Q: What IAM permissions does the assessment role need?**
+**Q: What IAM permissions does the framework need?**
 
-A: The framework uses **read-only permissions** only:
-- AI/ML services: `List*`, `Describe*`, `Get*` actions
-- AWS IAM: Read permissions for policy analysis
-- Supporting services: AWS CloudTrail, Amazon GuardDuty, Amazon VPC (read-only)
+A: The framework uses multiple roles, and only the Lambda runtime roles are close to read-only:
+- **CodeBuild orchestration roles** (`CodeBuildRole`, `MultiAccountCodeBuildRole`) need deployment permissions to build SAM, create or update stacks, and start Step Functions executions.
+- **`AIMLSecurityMemberRole`** in the target account is also not read-only in the multi-account flow, because it must allow the central CodeBuild project to deploy or update the per-account SAM stack before the assessment runs.
+- **Assessment Lambda execution roles** are primarily read-oriented. They use AI/ML service `List*`, `Describe*`, and `Get*` APIs plus supporting read APIs, and S3 access to read the IAM cache and write reports.
 
-See the main [README](../README.md#permissions-required) for the complete permission list.
+See [README - Permissions Required](../README.md#permissions-required) for the role breakdown and the template files that define each policy.
 
 **Q: Is this assessment sufficient for compliance requirements (SOC 2, HIPAA, and similar)?**
 

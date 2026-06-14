@@ -4,7 +4,7 @@
 
 **Open-source automated security scanner for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore** — Built on [AWS Well-Architected Framework (Generative AI Lens)](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
 
-Cloud security automation with **[51 security checks](docs/SECURITY_CHECKS.md)** for your generative AI and machine learning workloads. Identify IAM misconfigurations, encryption gaps, network isolation issues, and compliance violations with interactive HTML reports and actionable remediation guidance.
+Cloud security automation with **[52 security checks](docs/SECURITY_CHECKS.md)** for your generative AI and machine learning workloads. Identify IAM misconfigurations, encryption gaps, network isolation issues, and compliance violations with interactive HTML reports and actionable remediation guidance.
 
 ---
 
@@ -35,7 +35,7 @@ The framework generates professional, interactive security assessment reports wi
 
 ### Key Features
 
-- **[51 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore
+- **[52 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore
 - **Multi-Region Support** — parallel scanning across AWS regions with per-region risk breakdown
 - **Multi-Account Support** — consolidated reporting across AWS Organizations
 - **Interactive Filtering** by account, region, service, severity, and status
@@ -43,7 +43,7 @@ The framework generates professional, interactive security assessment reports wi
 - **Fully Automated** — one-click CloudFormation deployment and execution
 
 **Services Covered:**
-- **[Amazon Bedrock](docs/SECURITY_CHECKS.md#amazon-bedrock-security-checks-13)** (13 checks) — Guardrails, encryption, VPC endpoints, IAM, model invocation logging
+- **[Amazon Bedrock](docs/SECURITY_CHECKS.md#amazon-bedrock-security-checks-14)** (14 checks) — Guardrails, encryption, VPC endpoints, IAM, model invocation logging
 - **[Amazon SageMaker AI](docs/SECURITY_CHECKS.md#amazon-sagemaker-ai-security-checks-25)** (25 checks) — Security Hub controls, encryption, network isolation, IAM, MLOps
 - **[Amazon Bedrock AgentCore](docs/SECURITY_CHECKS.md#amazon-bedrock-agentcore-security-checks-13)** (13 checks) — VPC configuration, encryption, observability, resource policies
 
@@ -78,7 +78,7 @@ The framework generates professional, interactive security assessment reports wi
    - `all` to scan all regions where the services are available
 6. Acknowledge IAM capabilities and click **Submit**.
 7. Once complete, CodeBuild automatically runs the assessment.
-8. View results: go to the stack **Outputs** tab → copy `AssessmentBucket` → open the HTML report in that S3 bucket.
+8. View results: go to the stack **Outputs** tab → copy `AssessmentBucket` → open the report under the `/{account_id}/` prefix in that S3 bucket.
 
 > **Tip**: The deployment creates two stacks. Your results are in the stack *you named*, not the auto-generated `aiml-sec-*` stack. See [Troubleshooting](docs/TROUBLESHOOTING.md#8-confused-by-multiple-cloudformation-stacks) for details.
 
@@ -140,7 +140,8 @@ For detailed architecture, execution flow, and extension guidance, see the [Deve
 
 1. Open your **infrastructure stack** in CloudFormation → **Outputs** tab → copy `AssessmentBucket`
 2. Navigate to that S3 bucket
-3. Open the `security_assessment_*.html` file (single-account) or check `consolidated-reports/` (multi-account)
+3. For single-account, open `{account_id}/security_assessment_single_account_*.html`
+4. For multi-account, open `consolidated-reports/security_assessment_multi_account_*.html`
 
 ### Understanding Results
 
@@ -167,6 +168,24 @@ For detailed architecture, execution flow, and extension guidance, see the [Deve
 | Modify permissions scope | Edit `1-aiml-security-member-roles.yaml` |
 | Adjust concurrency | Change `ConcurrentAccountScans` parameter |
 | Add new service checks | See [Developer Guide](docs/DEVELOPER_GUIDE.md#adding-new-aiml-service-assessments) |
+
+---
+
+## Permissions Required
+
+The deployment uses multiple IAM roles with different trust and permission boundaries. They are not all read-only.
+
+- **`CodeBuildRole` / `MultiAccountCodeBuildRole`**: orchestration roles used by the infrastructure stack to clone the repo, build SAM, deploy/update the assessment stack, and start Step Functions executions. These roles require infrastructure-management permissions such as CloudFormation, Lambda, IAM, Step Functions, and S3 actions.
+- **`AIMLSecurityMemberRole`**: role assumed in the target account during single-account and multi-account runs. In the multi-account flow this role is also **not read-only**. It needs both service-read permissions for the checks and deployment permissions so CodeBuild can create or update the per-account SAM assessment stack.
+- **SAM-created Lambda execution roles**: runtime roles for the assessment functions. These are the closest thing to read-only assessment roles. They primarily use `List*`, `Describe*`, and `Get*` access against Bedrock, SageMaker, AgentCore, IAM analysis APIs, and supporting read APIs, plus S3 access to write reports and read the cached IAM permissions file.
+
+If you need to reduce scope, review the role policies in:
+
+- [deployment/aiml-security-single-account.yaml](/Users/akothurk/Documents/Code/Github/aws-samples/sample-aiml-security-assessment/deployment/aiml-security-single-account.yaml)
+- [deployment/1-aiml-security-member-roles.yaml](/Users/akothurk/Documents/Code/Github/aws-samples/sample-aiml-security-assessment/deployment/1-aiml-security-member-roles.yaml)
+- [deployment/2-aiml-security-codebuild.yaml](/Users/akothurk/Documents/Code/Github/aws-samples/sample-aiml-security-assessment/deployment/2-aiml-security-codebuild.yaml)
+- [aiml-security-assessment/template.yaml](/Users/akothurk/Documents/Code/Github/aws-samples/sample-aiml-security-assessment/aiml-security-assessment/template.yaml)
+- [aiml-security-assessment/template-multi-account.yaml](/Users/akothurk/Documents/Code/Github/aws-samples/sample-aiml-security-assessment/aiml-security-assessment/template-multi-account.yaml)
 
 ---
 

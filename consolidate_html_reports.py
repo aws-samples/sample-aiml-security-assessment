@@ -33,6 +33,16 @@ sys.path.insert(
 
 from report_template import generate_html_report
 
+# Sentinel region label used by the per-service assessments to tag IAM-only
+# findings that run once per execution rather than per region. It is not a real
+# AWS region and must be excluded when counting scanned regions.
+GLOBAL_REGION_LABEL = "Global"
+
+
+def build_multi_account_report_key(timestamp: str) -> str:
+    """Build the consolidated multi-account HTML report object key."""
+    return f"consolidated-reports/security_assessment_multi_account_{timestamp}.html"
+
 
 def consolidate_html_reports():
     """
@@ -85,7 +95,8 @@ def consolidate_html_reports():
                         for row in reader:
                             # Map CSV columns to finding structure
                             region = row.get("Region", "")
-                            if region:
+                            # "Global" tags IAM-only findings; not a scanned region.
+                            if region and region != GLOBAL_REGION_LABEL:
                                 regions.add(region)
                             finding = {
                                 "account_id": account_id,
@@ -160,7 +171,7 @@ def consolidate_html_reports():
         )
 
         timestamp_file = datetime.now().strftime("%Y%m%d_%H%M%S")
-        s3_key = f"consolidated-reports/multi_account_report_{timestamp_file}.html"
+        s3_key = build_multi_account_report_key(timestamp_file)
 
         try:
             s3.put_object(

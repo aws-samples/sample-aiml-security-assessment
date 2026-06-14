@@ -41,6 +41,22 @@ agentcore_client = None
 # Environment variables
 BUCKET_NAME = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
 
+# IAM is a global service. Findings derived purely from the IAM permission cache
+# (e.g. AC-02, AC-03) are identical across regions, so they are produced only on
+# the primary region (Map index 0) and tagged with this region label to avoid
+# duplicate findings when scanning multiple regions.
+GLOBAL_REGION_LABEL = "Global"
+
+# Error codes returned when a region exists but is not enabled/usable for the
+# account (opt-in regions, disabled regions). The availability probe treats
+# these the same as an endpoint connection failure.
+REGION_UNAVAILABLE_ERROR_CODES = {
+    "UnrecognizedClientException",
+    "InvalidClientTokenId",
+    "AuthFailure",
+    "OptInRequired",
+}
+
 # Execution tracking
 start_time = None
 
@@ -2257,9 +2273,13 @@ def lambda_handler(event, context):
     try:
         # Extract target region from Step Functions Map state
         region = event.get("Region", os.environ.get("AWS_REGION", "us-east-1"))
-        logger.info(f"Scanning region: {region}")
+        # IAM is global: only the primary region (Map index 0) runs IAM-only checks.
+        is_primary_region = int(event.get("RegionIndex", 0)) == 0
+        logger.info(f"Scanning region: {region} (primary={is_primary_region})")
 
-        # Initialize regional clients
+        execution_id = event.get("Execution", {}).get("Name", "unknown")
+
+        # Initialize regional clients (iam is global, the rest are region-scoped)
         iam_client = boto3.client("iam", config=boto3_config)
         ec2_client = boto3.client("ec2", config=boto3_config, region_name=region)
         ecr_client = boto3.client("ecr", config=boto3_config, region_name=region)
@@ -2267,33 +2287,95 @@ def lambda_handler(event, context):
         xray_client = boto3.client("xray", config=boto3_config, region_name=region)
         cloudwatch_client = boto3.client("cloudwatch", config=boto3_config, region_name=region)
 
+        # Collect all findings
+        all_findings = []
+
+        # Retrieve permission cache (shared/global IAM data)
+        try:
+            permission_cache = get_permissions_cache(execution_id)
+        except Exception as e:
+            logger.warning(f"Failed to retrieve permission cache: {e}")
+            permission_cache = {"role_permissions": [], "user_permissions": []}
+
+        # Run global IAM-only checks once (on the primary region) so the same role
+        # violations are not reported once per scanned region. These run before the
+        # regional availability gate so they are still emitted even if AgentCore is
+        # not available in the primary region.
+        if is_primary_region:
+            global_checks = [
+                ("IAM Full Access", lambda: check_agentcore_full_access_roles(permission_cache)),
+                ("Stale Access", lambda: check_stale_agentcore_access(permission_cache)),
+                # AC-09 inspects a global IAM service-linked role, so it is also
+                # run once on the primary region rather than per scanned region.
+                ("Service-Linked Role", check_agentcore_service_linked_role),
+            ]
+            for check_name, check_func in global_checks:
+                try:
+                    logger.info(f"Running global check: {check_name}")
+                    global_findings = check_func()
+                    for finding in global_findings:
+                        finding["Region"] = GLOBAL_REGION_LABEL
+                    all_findings.extend(global_findings)
+                except Exception as e:
+                    logger.error(f"Error in global check '{check_name}': {e}")
+                    all_findings.append(
+                        create_finding(
+                            check_id="AC-00",
+                            finding_name=f"AgentCore {check_name} Check Error",
+                            finding_details=f"Error during {check_name} check: {str(e)}",
+                            resolution="Investigate error and retry assessment",
+                            reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/",
+                            severity=SeverityEnum.HIGH,
+                            status=StatusEnum.FAILED,
+                            region=GLOBAL_REGION_LABEL,
+                        )
+                    )
+
+        # Reset per-invocation so a warm container cannot leak a previous
+        # region's client if creation below fails.
+        agentcore_client = None
         try:
             agentcore_client = boto3.client("bedrock-agentcore-control", config=boto3_config, region_name=region)
-            # Test service availability with a lightweight call
-            agentcore_client.list_agent_runtimes(maxResults=1)
-            logger.info("Successfully initialized bedrock-agentcore-control client")
-        except EndpointConnectionError:
-            logger.info(f"AgentCore service not available in region {region}, skipping")
-            agentcore_client = None
-        except ClientError as e:
-            if "Could not connect" in str(e):
-                logger.info(f"AgentCore service not available in region {region}, skipping")
-                agentcore_client = None
-            else:
-                # Service is available but returned an API error (e.g., access denied) — proceed
-                logger.info("AgentCore client initialized (API accessible)")
         except Exception as e:
-            if "Could not connect to the endpoint URL" in str(e):
+            # The client could not even be constructed (e.g. the SDK in this
+            # runtime does not know the service). This is the one case where the
+            # region genuinely cannot be assessed.
+            logger.warning(f"Failed to initialize bedrock-agentcore-control client: {e}")
+            agentcore_client = None
+
+        if agentcore_client is not None:
+            # Test service availability with a lightweight call
+            try:
+                agentcore_client.list_agent_runtimes(maxResults=1)
+                logger.info("Successfully initialized bedrock-agentcore-control client")
+            except EndpointConnectionError:
                 logger.info(f"AgentCore service not available in region {region}, skipping")
                 agentcore_client = None
-            else:
-                logger.warning(f"Failed to initialize bedrock-agentcore-control client: {e}")
-                agentcore_client = None
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code in REGION_UNAVAILABLE_ERROR_CODES:
+                    logger.info(f"AgentCore not accessible in region {region} ({error_code}), skipping")
+                    agentcore_client = None
+                else:
+                    # Service is reachable but returned another API error (e.g. access
+                    # denied) — proceed; individual checks handle their own errors.
+                    logger.info(f"AgentCore client initialized (probe returned {error_code})")
+            except Exception as e:
+                # An unexpected probe failure (e.g. a boto3/botocore SDK param or
+                # operation mismatch such as ParamValidationError/AttributeError)
+                # says nothing about regional availability. Treating it as "not
+                # available" would silently skip every AgentCore check and emit a
+                # false N/A report, so keep the client and let the individual
+                # checks surface their own errors instead.
+                logger.warning(
+                    f"AgentCore availability probe raised an unexpected error, "
+                    f"proceeding with checks: {e}"
+                )
 
-        # If AgentCore not available, produce a single N/A report and exit early
+        # If AgentCore not available, produce an N/A report (plus any global IAM
+        # findings already collected on the primary region) and exit early
         if agentcore_client is None:
-            execution_id = event.get("Execution", {}).get("Name", "unknown")
-            na_findings = [
+            all_findings.append(
                 create_finding(
                     check_id="AC-00",
                     finding_name="AgentCore Service Availability",
@@ -2304,47 +2386,32 @@ def lambda_handler(event, context):
                     status=StatusEnum.NA,
                     region=region,
                 )
-            ]
-            for finding in na_findings:
-                finding["Region"] = region
-            csv_content = generate_csv_report(na_findings)
+            )
+            for finding in all_findings:
+                if not finding.get("Region"):
+                    finding["Region"] = region
+            csv_content = generate_csv_report(all_findings)
             s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
             return {
                 "statusCode": 200,
                 "body": json.dumps({"message": f"AgentCore not available in {region}", "s3_url": s3_url}),
             }
 
-        # Extract execution ID
-        execution_id = event.get("Execution", {}).get("Name", "unknown")
         logger.info(
             f"Starting AgentCore security assessment for execution: {execution_id}"
         )
 
-        # Retrieve permission cache
-        try:
-            permission_cache = get_permissions_cache(execution_id)
-        except Exception as e:
-            logger.warning(f"Failed to retrieve permission cache: {e}")
-            permission_cache = {"role_permissions": [], "user_permissions": []}
-
-        # Collect all findings
-        all_findings = []
-
-        # Execute all assessment checks
+        # Execute regional assessment checks (IAM-only checks AC-02/AC-03 and the
+        # global service-linked role check AC-09 are run separately, once, on the
+        # primary region above)
         checks = [
             ("VPC Configuration", check_agentcore_vpc_configuration),
-            (
-                "IAM Full Access",
-                lambda: check_agentcore_full_access_roles(permission_cache),
-            ),
-            ("Stale Access", lambda: check_stale_agentcore_access(permission_cache)),
             ("Observability", check_agentcore_observability),
             ("Encryption", check_agentcore_encryption),
             ("Browser Tool Recording", check_browser_tool_recording),
             ("Memory Configuration", check_agentcore_memory_configuration),
             ("Gateway Configuration", check_agentcore_gateway_configuration),
             ("VPC Endpoints", check_agentcore_vpc_endpoints),
-            ("Service-Linked Role", check_agentcore_service_linked_role),
             ("Resource-Based Policies", check_agentcore_resource_based_policies),
             ("Policy Engine Encryption", check_agentcore_policy_engine_encryption),
             ("Gateway Encryption", check_agentcore_gateway_encryption),

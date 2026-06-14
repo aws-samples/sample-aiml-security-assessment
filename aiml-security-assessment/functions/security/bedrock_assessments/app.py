@@ -25,6 +25,41 @@ boto3_config = Config(
 logger = logging.getLogger()
 logger.setLevel(logging.ERROR)
 
+# IAM is a global service. Findings derived purely from the IAM permission cache
+# (e.g. BR-01, BR-03) are identical across regions, so they are produced only on
+# the primary region (Map index 0) and tagged with this region label to avoid
+# duplicate findings when scanning multiple regions.
+GLOBAL_REGION_LABEL = "Global"
+
+# Error codes returned when a region exists but is not enabled/usable for the
+# account (opt-in regions, disabled regions). The availability probe treats
+# these the same as an endpoint connection failure.
+REGION_UNAVAILABLE_ERROR_CODES = {
+    "UnrecognizedClientException",
+    "InvalidClientTokenId",
+    "AuthFailure",
+    "OptInRequired",
+}
+
+
+def describe_api_error(error: Exception, api_label: str, region: str = "") -> str:
+    """
+    Build a report-friendly description for an API error raised by a regional
+    check.
+
+    Some regions don't support a given Bedrock API. boto3 surfaces this as
+    "Unknown operation ..." (ValidationException) or UnknownOperationException.
+    For those, return a clean "<api_label> not available in <region>" message
+    instead of leaking the raw boto3 exception text into the report. Any other
+    error keeps its raw text so genuine problems (e.g. permissions) stay
+    diagnosable.
+    """
+    error_text = str(error)
+    if "UnknownOperation" in error_text or "Unknown operation" in error_text:
+        location = region if region else "this region"
+        return f"{api_label} not available in {location}"
+    return f"Unable to check {api_label}: {error_text}"
+
 
 def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
     """
@@ -268,7 +303,14 @@ def has_bedrock_access(iam_client, principal_name: str, principal_type: str) -> 
         return False
 
 
-def check_stale_bedrock_access(permission_cache) -> Dict[str, Any]:
+def check_stale_bedrock_access(permission_cache, region: str = "") -> Dict[str, Any]:
+    """
+    Check for stale Bedrock access using IAM service-last-accessed data.
+
+    This check is derived purely from IAM (a global service) and the cached
+    permissions, so it produces identical results in every region. The handler
+    runs it once, on the primary region, tagged with GLOBAL_REGION_LABEL.
+    """
     logger.debug("Starting check for stale Bedrock access")
     try:
         findings = {
@@ -308,6 +350,7 @@ def check_stale_bedrock_access(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
                     severity="Informational",
                     status="N/A",
+                    region=region,
                 )
             )
             return findings
@@ -394,6 +437,7 @@ def check_stale_bedrock_access(permission_cache) -> Dict[str, Any]:
                         reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
                         severity="Medium",
                         status="Failed",
+                        region=region,
                     )
                 )
 
@@ -421,6 +465,7 @@ def check_stale_bedrock_access(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
                     severity="Medium",
                     status="Passed",
+                    region=region,
                 )
             )
 
@@ -441,6 +486,7 @@ def check_stale_bedrock_access(permission_cache) -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
                     severity="High",
                     status="Failed",
+                    region=region,
                 )
             ],
         }
@@ -1202,18 +1248,22 @@ def check_bedrock_prompt_management(region: str = "") -> Dict[str, Any]:
                     )
                 )
 
-        except bedrock_client.exceptions.ValidationException as e:
-            findings["status"] = "ERROR"
-            findings["details"] = f"Error checking Prompt Management: {str(e)}"
+        except Exception as e:
+            # An API error (e.g. InternalServerErrorException after retries,
+            # throttling, or a permissions issue) is not a security failure.
+            # Surface it as N/A rather than Failed, matching the BR-11 pattern.
+            logger.warning(f"Error listing prompts: {str(e)}")
             findings["csv_data"].append(
                 create_finding(
                     check_id="BR-07",
                     finding_name="Bedrock Prompt Management Check",
-                    finding_details=f"Error checking Bedrock Prompt Management configuration: {str(e)}",
-                    resolution="Verify your AWS credentials and permissions to access Bedrock Prompt Management.",
+                    finding_details=describe_api_error(
+                        e, "Bedrock Prompt Management API", region
+                    ),
+                    resolution="Verify your AWS credentials and permissions to access Bedrock Prompt Management, then retry the assessment.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Low",
+                    status="N/A",
                     region=region,
                 )
             )
@@ -1697,7 +1747,7 @@ def check_bedrock_custom_model_encryption(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-11",
                     finding_name="Bedrock Custom Model Encryption Check",
-                    finding_details=f"Unable to list custom models: {str(e)}",
+                    finding_details=describe_api_error(e, "Custom model API", region),
                     resolution="Verify permissions to access Bedrock custom models",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-iam-role.html",
                     severity="Low",
@@ -2056,7 +2106,7 @@ def check_bedrock_flows_guardrails(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-13",
                     finding_name="Bedrock Flows Guardrails Check",
-                    finding_details=f"Unable to check flows: {str(e)}",
+                    finding_details=describe_api_error(e, "Bedrock Flows API", region),
                     resolution="Verify permissions to access Bedrock Flows",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows-guardrails.html",
                     severity="Low",
@@ -2346,42 +2396,14 @@ def lambda_handler(event, context):
     try:
         # Extract target region from Step Functions Map state
         region = event.get("Region", os.environ.get("AWS_REGION", "us-east-1"))
-        logger.info(f"Scanning region: {region}")
+        # IAM is global: only the primary region (Map index 0) runs IAM-only checks.
+        is_primary_region = int(event.get("RegionIndex", 0)) == 0
+        logger.info(f"Scanning region: {region} (primary={is_primary_region})")
 
-        # Verify Bedrock is available in this region
-        try:
-            test_client = boto3.client("bedrock", config=boto3_config, region_name=region)
-            test_client.get_model_invocation_logging_configuration()
-        except (EndpointConnectionError, Exception) as e:
-            error_msg = str(e)
-            if "Could not connect to the endpoint URL" in error_msg or "EndpointConnectionError" in type(e).__name__:
-                logger.info(f"Bedrock service not available in region {region}, skipping")
-                all_findings.append({
-                    "check_name": "Bedrock Service Availability",
-                    "status": "N/A",
-                    "details": f"Bedrock is not available in region {region}",
-                    "csv_data": [
-                        create_finding(
-                            check_id="BR-00",
-                            finding_name="Bedrock Service Availability",
-                            finding_details=f"Amazon Bedrock is not available in region {region}. No checks performed.",
-                            resolution="No action required. Bedrock is not deployed in this region.",
-                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-regions.html",
-                            severity="Informational",
-                            status="N/A",
-                            region=region,
-                        )
-                    ],
-                })
-                execution_id = event["Execution"]["Name"]
-                csv_content = generate_csv_report(all_findings)
-                bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
-                s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
-                return {"statusCode": 200, "body": {"message": f"Bedrock not available in {region}", "report_url": s3_url}}
-
-        # Initialize permission cache
-        logger.info("Initializing IAM permission cache")
         execution_id = event["Execution"]["Name"]
+
+        # Initialize permission cache (shared/global IAM data)
+        logger.info("Initializing IAM permission cache")
         permission_cache = get_permissions_cache(execution_id)
 
         if not permission_cache:
@@ -2390,22 +2412,78 @@ def lambda_handler(event, context):
             )
             permission_cache = {"role_permissions": {}, "user_permissions": {}}
 
-        # Run all checks using the cached permissions
-        logger.info("Running AmazonBedrockFullAccess check")
-        bedrock_full_access_findings = check_bedrock_full_access_roles(permission_cache, region=region)
-        all_findings.append(bedrock_full_access_findings)
+        # Run global IAM-only checks once (on the primary region) so the same role
+        # violations are not reported once per scanned region. These run before the
+        # regional availability gate so they are still emitted even if Bedrock is
+        # not available in the primary region.
+        if is_primary_region:
+            logger.info("Running global AmazonBedrockFullAccess check (BR-01)")
+            all_findings.append(
+                check_bedrock_full_access_roles(permission_cache, region=GLOBAL_REGION_LABEL)
+            )
 
+            logger.info("Running global marketplace subscription access check (BR-03)")
+            all_findings.append(
+                check_marketplace_subscription_access(permission_cache, region=GLOBAL_REGION_LABEL)
+            )
+
+            logger.info("Running global stale Bedrock access check (BR-14)")
+            all_findings.append(
+                check_stale_bedrock_access(permission_cache, region=GLOBAL_REGION_LABEL)
+            )
+
+        # Verify Bedrock is available in this region. A ValidationException here
+        # (logging simply not configured) still means the service is reachable,
+        # so only an endpoint connection failure or a region-not-enabled error
+        # should short-circuit the assessment.
+        bedrock_unavailable = False
+        unavailable_detail = ""
+        try:
+            test_client = boto3.client("bedrock", config=boto3_config, region_name=region)
+            test_client.get_model_invocation_logging_configuration()
+        except EndpointConnectionError:
+            bedrock_unavailable = True
+            unavailable_detail = f"Amazon Bedrock is not available in region {region}. No checks performed."
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in REGION_UNAVAILABLE_ERROR_CODES:
+                bedrock_unavailable = True
+                unavailable_detail = f"Amazon Bedrock is not available or not enabled in region {region} ({error_code}). No checks performed."
+            else:
+                # Service is reachable (e.g. ValidationException, AccessDenied) —
+                # proceed; individual checks handle their own errors.
+                logger.info(f"Bedrock availability probe returned {error_code}; proceeding with checks")
+
+        if bedrock_unavailable:
+            logger.info(f"Bedrock service not available in region {region}, skipping")
+            all_findings.append({
+                "check_name": "Bedrock Service Availability",
+                "status": "N/A",
+                "details": f"Bedrock is not available in region {region}",
+                "csv_data": [
+                    create_finding(
+                        check_id="BR-00",
+                        finding_name="Bedrock Service Availability",
+                        finding_details=unavailable_detail,
+                        resolution="No action required. Bedrock is not deployed in this region.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-regions.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                ],
+            })
+            csv_content = generate_csv_report(all_findings)
+            bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
+            s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
+            return {"statusCode": 200, "body": {"message": f"Bedrock not available in {region}", "report_url": s3_url}}
+
+        # Run regional checks using the cached permissions
         logger.info("Running Bedrock access and VPC endpoints check")
         bedrock_access_vpc_findings = check_bedrock_access_and_vpc_endpoints(
             permission_cache, region=region
         )
         all_findings.append(bedrock_access_vpc_findings)
-
-        logger.info("Running marketplace subscription access check")
-        marketplace_access_findings = check_marketplace_subscription_access(
-            permission_cache, region=region
-        )
-        all_findings.append(marketplace_access_findings)
 
         logger.info("Running Bedrock logging findings check")
         bedrock_logging_findings = check_bedrock_logging_configuration(region=region)

@@ -91,10 +91,11 @@
             "ItemsPath": "$.ResolvedRegions.regions",
             "ItemSelector": {
                 "Region.$": "$$.Map.Item.Value",
+                "RegionIndex.$": "$$.Map.Item.Index",
                 "Execution.$": "$$.Execution",
                 "StateMachine.$": "$$.StateMachine"
             },
-            "MaxConcurrency": 0,
+            "MaxConcurrency": ${MaxRegionConcurrency},
             "ItemProcessor": {
                 "ProcessorConfig": {
                     "Mode": "INLINE"
@@ -115,7 +116,8 @@
                                             "Payload": {
                                                 "Execution.$": "$.Execution",
                                                 "StateMachine.$": "$.StateMachine",
-                                                "Region.$": "$.Region"
+                                                "Region.$": "$.Region",
+                                                "RegionIndex.$": "$.RegionIndex"
                                             }
                                         },
                                         "Retry": [
@@ -147,7 +149,8 @@
                                             "Payload": {
                                                 "Execution.$": "$.Execution",
                                                 "StateMachine.$": "$.StateMachine",
-                                                "Region.$": "$.Region"
+                                                "Region.$": "$.Region",
+                                                "RegionIndex.$": "$.RegionIndex"
                                             }
                                         },
                                         "Retry": [
@@ -179,7 +182,8 @@
                                             "Payload": {
                                                 "Execution.$": "$.Execution",
                                                 "StateMachine.$": "$.StateMachine",
-                                                "Region.$": "$.Region"
+                                                "Region.$": "$.Region",
+                                                "RegionIndex.$": "$.RegionIndex"
                                             }
                                         },
                                         "Retry": [

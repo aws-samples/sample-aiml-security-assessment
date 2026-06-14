@@ -26,6 +26,23 @@ boto3_config = Config(
 logger = logging.getLogger()
 logger.setLevel(logging.ERROR)
 
+# IAM is a global service. Findings derived purely from the IAM permission cache
+# (e.g. the SM-02 full-access and stale-access checks) are identical across
+# regions, so they are produced only on the primary region (Map index 0) and
+# tagged with this region label to avoid duplicate findings when scanning
+# multiple regions.
+GLOBAL_REGION_LABEL = "Global"
+
+# Error codes returned when a region exists but is not enabled/usable for the
+# account (opt-in regions, disabled regions). The availability probe treats
+# these the same as an endpoint connection failure.
+REGION_UNAVAILABLE_ERROR_CODES = {
+    "UnrecognizedClientException",
+    "InvalidClientTokenId",
+    "AuthFailure",
+    "OptInRequired",
+}
+
 
 def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
     """
@@ -318,7 +335,13 @@ def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
 
 def check_sagemaker_iam_permissions(permission_cache, region: str = "") -> Dict[str, Any]:
     """
-    Check SageMaker IAM permissions, SSO configuration, and stale access
+    Check SageMaker IAM permissions and stale access.
+
+    These checks are derived purely from IAM (a global service) and the cached
+    permissions, so they produce identical results in every region. The handler
+    runs this check once, on the primary region, tagged with GLOBAL_REGION_LABEL.
+    Regional SSO/domain configuration is checked separately by
+    check_sagemaker_sso_configuration.
     """
     logger.debug("Starting check for SageMaker IAM permissions")
     try:
@@ -332,9 +355,10 @@ def check_sagemaker_iam_permissions(permission_cache, region: str = "") -> Dict[
                     roles_with_full_access.append(role_name)
                     break
 
-        # Check for stale access
+        # Check for stale access. IAM is a global service, so the client is not
+        # region-scoped (region is used only for finding tags).
         stale_users = []
-        iam_client = boto3.client("iam", config=boto3_config, region_name=region)
+        iam_client = boto3.client("iam", config=boto3_config)
         two_months_ago = datetime.now(timezone.utc) - timedelta(days=60)
 
         # Check users' last access to SageMaker
@@ -379,66 +403,8 @@ def check_sagemaker_iam_permissions(permission_cache, region: str = "") -> Dict[
                         f"Error checking last access for user {user_name}: {str(e)}"
                     )
 
-        # Check SSO configuration
-        domains_without_sso = []
-        try:
-            sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
-            paginator = sagemaker_client.get_paginator("list_domains")
-
-            for page in paginator.paginate():
-                for domain in page["Domains"]:
-                    domain_id = domain["DomainId"]
-                    try:
-                        domain_details = sagemaker_client.describe_domain(
-                            DomainId=domain_id
-                        )
-
-                        # Check authentication mode
-                        auth_mode = domain_details.get("AuthMode", "")
-                        if auth_mode != "SSO":
-                            domains_without_sso.append(
-                                {
-                                    "domain_id": domain_id,
-                                    "domain_name": domain_details.get(
-                                        "DomainName", "N/A"
-                                    ),
-                                    "auth_mode": auth_mode,
-                                }
-                            )
-
-                        # Check if SSO is properly configured with Identity Center
-                        if auth_mode == "SSO":
-                            try:
-                                # Check Identity Center configuration
-                                identity_store_id = domain_details.get(
-                                    "IdentityStoreId"
-                                )
-
-                                if not identity_store_id:
-                                    domains_without_sso.append(
-                                        {
-                                            "domain_id": domain_id,
-                                            "domain_name": domain_details.get(
-                                                "DomainName", "N/A"
-                                            ),
-                                            "auth_mode": "SSO (Incomplete Configuration)",
-                                        }
-                                    )
-                            except Exception as sso_error:
-                                logger.error(
-                                    f"Error checking SSO configuration for domain {domain_id}: {str(sso_error)}"
-                                )
-
-                    except Exception as domain_error:
-                        logger.error(
-                            f"Error checking domain {domain_id}: {str(domain_error)}"
-                        )
-
-        except Exception as e:
-            logger.error(f"Error checking SSO configuration: {str(e)}")
-
         # Generate findings
-        if roles_with_full_access or stale_users or domains_without_sso:
+        if roles_with_full_access or stale_users:
             # Findings for full access roles
             if roles_with_full_access:
                 for role_name in roles_with_full_access:
@@ -470,34 +436,12 @@ def check_sagemaker_iam_permissions(permission_cache, region: str = "") -> Dict[
                             region=region,
                         )
                     )
-
-            # Findings for SSO
-            if domains_without_sso:
-                for domain in domains_without_sso:
-                    findings["csv_data"].append(
-                        create_finding(
-                            check_id="SM-02",
-                            finding_name="SSO Not Properly Configured",
-                            finding_details=(
-                                f"SageMaker domain '{domain['domain_id']}' ({domain['domain_name']}) "
-                                f"is using authentication mode: {domain['auth_mode']}"
-                            ),
-                            resolution=(
-                                "Enable and properly configure AWS IAM Identity Center (successor to AWS SSO) "
-                                "for centralized access management. Ensure Identity Store ID is configured."
-                            ),
-                            reference="https://aws.amazon.com/blogs/machine-learning/team-and-user-management-with-amazon-sagemaker-and-aws-sso/",
-                            severity="Medium",
-                            status="Failed",
-                            region=region,
-                        )
-                    )
         else:
             findings["csv_data"].append(
                 create_finding(
                     check_id="SM-02",
                     finding_name="SageMaker IAM Permissions Check",
-                    finding_details="No issues found with IAM permissions, SSO is enabled, and no stale access detected",
+                    finding_details="No issues found with IAM permissions and no stale access detected",
                     resolution="No action required",
                     reference="https://docs.aws.amazon.com/sagemaker-unified-studio/latest/adminguide/security-iam.html",
                     severity="High",
@@ -514,6 +458,109 @@ def check_sagemaker_iam_permissions(permission_cache, region: str = "") -> Dict[
         )
         return {
             "check_name": "SageMaker IAM Permissions Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [],
+        }
+
+
+def check_sagemaker_sso_configuration(region: str = "") -> Dict[str, Any]:
+    """
+    Check SageMaker domain SSO / IAM Identity Center configuration.
+
+    SageMaker domains are regional resources, so this check runs once per
+    scanned region (unlike the IAM-global checks in
+    check_sagemaker_iam_permissions).
+    """
+    logger.debug("Starting check for SageMaker SSO configuration")
+    try:
+        findings = {"csv_data": []}
+
+        domains_without_sso = []
+        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        paginator = sagemaker_client.get_paginator("list_domains")
+
+        for page in paginator.paginate():
+            for domain in page["Domains"]:
+                domain_id = domain["DomainId"]
+                try:
+                    domain_details = sagemaker_client.describe_domain(
+                        DomainId=domain_id
+                    )
+
+                    # Check authentication mode
+                    auth_mode = domain_details.get("AuthMode", "")
+                    if auth_mode != "SSO":
+                        domains_without_sso.append(
+                            {
+                                "domain_id": domain_id,
+                                "domain_name": domain_details.get("DomainName", "N/A"),
+                                "auth_mode": auth_mode,
+                            }
+                        )
+
+                    # Check if SSO is properly configured with Identity Center
+                    if auth_mode == "SSO":
+                        identity_store_id = domain_details.get("IdentityStoreId")
+
+                        if not identity_store_id:
+                            domains_without_sso.append(
+                                {
+                                    "domain_id": domain_id,
+                                    "domain_name": domain_details.get(
+                                        "DomainName", "N/A"
+                                    ),
+                                    "auth_mode": "SSO (Incomplete Configuration)",
+                                }
+                            )
+
+                except Exception as domain_error:
+                    logger.error(
+                        f"Error checking domain {domain_id}: {str(domain_error)}"
+                    )
+
+        if domains_without_sso:
+            for domain in domains_without_sso:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-02",
+                        finding_name="SSO Not Properly Configured",
+                        finding_details=(
+                            f"SageMaker domain '{domain['domain_id']}' ({domain['domain_name']}) "
+                            f"is using authentication mode: {domain['auth_mode']}"
+                        ),
+                        resolution=(
+                            "Enable and properly configure AWS IAM Identity Center (successor to AWS SSO) "
+                            "for centralized access management. Ensure Identity Store ID is configured."
+                        ),
+                        reference="https://aws.amazon.com/blogs/machine-learning/team-and-user-management-with-amazon-sagemaker-and-aws-sso/",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-02",
+                    finding_name="SageMaker SSO Configuration Check",
+                    finding_details="No SageMaker domains found, or all domains use SSO with IAM Identity Center configured",
+                    resolution="No action required",
+                    reference="https://aws.amazon.com/blogs/machine-learning/team-and-user-management-with-amazon-sagemaker-and-aws-sso/",
+                    severity="Medium",
+                    status="Passed",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_sso_configuration: {str(e)}", exc_info=True
+        )
+        return {
+            "check_name": "SageMaker SSO Configuration Check",
             "status": "ERROR",
             "details": f"Error during check: {str(e)}",
             "csv_data": [],
@@ -3808,42 +3855,14 @@ def lambda_handler(event, context):
     try:
         # Extract target region from Step Functions Map state
         region = event.get("Region", os.environ.get("AWS_REGION", "us-east-1"))
-        logger.info(f"Scanning region: {region}")
+        # IAM is global: only the primary region (Map index 0) runs IAM-only checks.
+        is_primary_region = int(event.get("RegionIndex", 0)) == 0
+        logger.info(f"Scanning region: {region} (primary={is_primary_region})")
 
-        # Verify SageMaker is available in this region
-        try:
-            test_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
-            test_client.list_notebook_instances(MaxResults=1)
-        except (EndpointConnectionError, Exception) as e:
-            error_msg = str(e)
-            if "Could not connect to the endpoint URL" in error_msg or "EndpointConnectionError" in type(e).__name__:
-                logger.info(f"SageMaker service not available in region {region}, skipping")
-                all_findings.append({
-                    "check_name": "SageMaker Service Availability",
-                    "status": "N/A",
-                    "details": f"SageMaker is not available in region {region}",
-                    "csv_data": [
-                        create_finding(
-                            check_id="SM-00",
-                            finding_name="SageMaker Service Availability",
-                            finding_details=f"Amazon SageMaker is not available in region {region}. No checks performed.",
-                            resolution="No action required. SageMaker is not deployed in this region.",
-                            reference="https://docs.aws.amazon.com/general/latest/gr/sagemaker.html",
-                            severity="Informational",
-                            status="N/A",
-                            region=region,
-                        )
-                    ],
-                })
-                execution_id = event["Execution"]["Name"]
-                csv_content = generate_csv_report(all_findings)
-                bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
-                s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
-                return {"statusCode": 200, "body": {"message": f"SageMaker not available in {region}", "report_url": s3_url}}
-
-        # Initialize permission cache
-        logger.info("Initializing IAM permission cache")
         execution_id = event["Execution"]["Name"]
+
+        # Initialize permission cache (shared/global IAM data)
+        logger.info("Initializing IAM permission cache")
         permission_cache = get_permissions_cache(execution_id)
 
         if not permission_cache:
@@ -3852,13 +3871,83 @@ def lambda_handler(event, context):
             )
             permission_cache = {"role_permissions": {}, "user_permissions": {}}
 
+        # Run global IAM-only checks once (on the primary region) so the same role
+        # and stale-access violations are not reported once per scanned region.
+        # These run before the regional availability gate so they are still emitted
+        # even if SageMaker is not available in the primary region.
+        if is_primary_region:
+            logger.info("Running global SageMaker IAM permissions check (SM-02)")
+            sagemaker_iam_findings = check_sagemaker_iam_permissions(
+                permission_cache, region=GLOBAL_REGION_LABEL
+            )
+            all_findings.append(sagemaker_iam_findings)
+
+        # Verify SageMaker is available in this region
+        try:
+            test_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+            test_client.list_notebook_instances(MaxResults=1)
+        except EndpointConnectionError:
+            logger.info(f"SageMaker service not available in region {region}, skipping")
+            all_findings.append({
+                "check_name": "SageMaker Service Availability",
+                "status": "N/A",
+                "details": f"SageMaker is not available in region {region}",
+                "csv_data": [
+                    create_finding(
+                        check_id="SM-00",
+                        finding_name="SageMaker Service Availability",
+                        finding_details=f"Amazon SageMaker is not available in region {region}. No checks performed.",
+                        resolution="No action required. SageMaker is not deployed in this region.",
+                        reference="https://docs.aws.amazon.com/general/latest/gr/sagemaker.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                ],
+            })
+            csv_content = generate_csv_report(all_findings)
+            bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
+            s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
+            return {"statusCode": 200, "body": {"message": f"SageMaker not available in {region}", "report_url": s3_url}}
+        except ClientError as e:
+            # A region that exists but is not enabled for the account surfaces as
+            # an auth/opt-in error rather than a connection failure. Treat it the
+            # same as "not available" instead of running every check against it.
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in REGION_UNAVAILABLE_ERROR_CODES:
+                logger.info(f"SageMaker not accessible in region {region} ({error_code}), skipping")
+                all_findings.append({
+                    "check_name": "SageMaker Service Availability",
+                    "status": "N/A",
+                    "details": f"SageMaker is not available in region {region}",
+                    "csv_data": [
+                        create_finding(
+                            check_id="SM-00",
+                            finding_name="SageMaker Service Availability",
+                            finding_details=f"Amazon SageMaker is not available or not enabled in region {region} ({error_code}). No checks performed.",
+                            resolution="No action required if the region is intentionally disabled. Otherwise enable the region for this account.",
+                            reference="https://docs.aws.amazon.com/general/latest/gr/sagemaker.html",
+                            severity="Informational",
+                            status="N/A",
+                            region=region,
+                        )
+                    ],
+                })
+                csv_content = generate_csv_report(all_findings)
+                bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
+                s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
+                return {"statusCode": 200, "body": {"message": f"SageMaker not available in {region}", "report_url": s3_url}}
+            # Service is reachable but returned another API error (e.g. AccessDenied)
+            # — proceed; individual checks handle their own errors.
+            logger.info(f"SageMaker availability probe returned {error_code}; proceeding with checks")
+
         logger.info("Running SageMaker internet access check")
         sagemaker_internet_access_findings = check_sagemaker_internet_access(region=region)
         all_findings.append(sagemaker_internet_access_findings)
 
-        logger.info("Running SageMaker IAM permissions check")
-        sagemaker_iam_findings = check_sagemaker_iam_permissions(permission_cache, region=region)
-        all_findings.append(sagemaker_iam_findings)
+        logger.info("Running SageMaker SSO configuration check")
+        sagemaker_sso_findings = check_sagemaker_sso_configuration(region=region)
+        all_findings.append(sagemaker_sso_findings)
 
         logger.info("Running SageMaker data protection check")
         sagemaker_data_protection_findings = check_sagemaker_data_protection(region=region)

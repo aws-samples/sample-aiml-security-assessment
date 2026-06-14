@@ -266,6 +266,10 @@ def assert_finding_schema(finding):
         "Reference",
         "Severity",
         "Status",
+        # Region is part of the multi-region finding schema. Every finding
+        # produced via create_finding() must carry it (may be an empty string
+        # when a check is invoked without a region).
+        "Region",
     }
     assert required_keys.issubset(finding.keys()), (
         f"Missing keys: {required_keys - finding.keys()}"
@@ -273,3 +277,5 @@ def assert_finding_schema(finding):
     assert finding["Severity"] in ("High", "Medium", "Low", "Informational")
     assert finding["Status"] in ("Failed", "Passed", "N/A")
     assert finding["Reference"].startswith("https://")
+    # Region must be a string (default "" when unset).
+    assert isinstance(finding["Region"], str)
