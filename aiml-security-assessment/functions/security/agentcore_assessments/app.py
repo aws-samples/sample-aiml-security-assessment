@@ -1458,8 +1458,39 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
     """
     findings = []
 
+    if agentcore_client is None:
+        findings.append(
+            create_finding(
+                check_id="AC-08",
+                finding_name="AgentCore VPC Endpoints Check",
+                finding_details="AgentCore client not available in this region",
+                resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
+                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+        return findings
+
     try:
         logger.info("Checking for AgentCore VPC endpoints")
+
+        runtimes_response = agentcore_client.list_agent_runtimes()
+        runtimes = runtimes_response.get("agentRuntimes", [])
+
+        if not runtimes:
+            findings.append(
+                create_finding(
+                    check_id="AC-08",
+                    finding_name="AgentCore VPC Endpoints Check",
+                    finding_details="No AgentCore resources found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            return findings
 
         # Get all VPCs
         vpcs_response = ec2_client.describe_vpcs()

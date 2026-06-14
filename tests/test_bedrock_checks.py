@@ -92,8 +92,9 @@ class TestBR02VPCEndpoints:
         assert "csv_data" in result
 
     @patch("bedrock_app.check_bedrock_vpc_endpoints")
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
     def test_br02_bedrock_access_with_endpoints_returns_passed(
-        self, mock_vpc, permission_cache_compliant
+        self, mock_footprint, mock_vpc, permission_cache_compliant
     ):
         check = bedrock_app.check_bedrock_access_and_vpc_endpoints
         mock_vpc.return_value = {
@@ -113,8 +114,9 @@ class TestBR02VPCEndpoints:
         assert findings[0]["Check_ID"] == "BR-02"
 
     @patch("bedrock_app.check_bedrock_vpc_endpoints")
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
     def test_br02_bedrock_access_no_endpoints_returns_failed(
-        self, mock_vpc, permission_cache_compliant
+        self, mock_footprint, mock_vpc, permission_cache_compliant
     ):
         check = bedrock_app.check_bedrock_access_and_vpc_endpoints
         mock_vpc.return_value = {
@@ -129,8 +131,24 @@ class TestBR02VPCEndpoints:
         assert findings[0]["Severity"] == "Medium"
 
     @patch("bedrock_app.check_bedrock_vpc_endpoints")
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=False)
+    def test_br02_no_regional_footprint_returns_na(
+        self, mock_footprint, mock_vpc, permission_cache_compliant
+    ):
+        check = bedrock_app.check_bedrock_access_and_vpc_endpoints
+        result = check(permission_cache_compliant, region="eu-west-3")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Finding_Details"] == (
+            "No regional Bedrock resources found to assess private connectivity"
+        )
+        mock_vpc.assert_not_called()
+
+    @patch("bedrock_app.check_bedrock_vpc_endpoints")
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
     def test_br02_exception_returns_error_finding(
-        self, mock_vpc, permission_cache_compliant
+        self, mock_footprint, mock_vpc, permission_cache_compliant
     ):
         check = bedrock_app.check_bedrock_access_and_vpc_endpoints
         mock_vpc.side_effect = Exception("VPC check failed")
@@ -141,7 +159,10 @@ class TestBR02VPCEndpoints:
         assert "Error" in findings[0]["Finding_Details"]
 
     @patch("bedrock_app.check_bedrock_vpc_endpoints")
-    def test_br02_schema_valid(self, mock_vpc, permission_cache_compliant):
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
+    def test_br02_schema_valid(
+        self, mock_footprint, mock_vpc, permission_cache_compliant
+    ):
         check = bedrock_app.check_bedrock_access_and_vpc_endpoints
         mock_vpc.return_value = {
             "has_endpoints": True,
@@ -279,11 +300,31 @@ class TestBR05Guardrails:
         mock_bedrock = MagicMock()
         mock_client.return_value = mock_bedrock
         mock_bedrock.list_guardrails.return_value = {"guardrails": []}
-        result = check()
+        with patch(
+            "bedrock_app.detect_bedrock_regional_footprint", return_value=True
+        ):
+            result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Failed"
         assert findings[0]["Severity"] == "Medium"
+
+    @patch("boto3.client")
+    def test_br05_no_guardrails_and_no_regional_footprint_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_guardrails
+        mock_bedrock = MagicMock()
+        mock_client.return_value = mock_bedrock
+        mock_bedrock.list_guardrails.return_value = {"guardrails": []}
+        with patch(
+            "bedrock_app.detect_bedrock_regional_footprint", return_value=False
+        ):
+            result = check(region="eu-west-3")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Finding_Details"] == (
+            "No regional Bedrock resources found to protect with guardrails"
+        )
 
     @patch("boto3.client")
     def test_br05_exception_returns_error_finding(self, mock_client):
@@ -300,7 +341,10 @@ class TestBR05Guardrails:
         mock_bedrock = MagicMock()
         mock_client.return_value = mock_bedrock
         mock_bedrock.list_guardrails.return_value = {"guardrails": []}
-        result = check()
+        with patch(
+            "bedrock_app.detect_bedrock_regional_footprint", return_value=True
+        ):
+            result = check()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
 

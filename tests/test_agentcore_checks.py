@@ -372,6 +372,8 @@ class TestAC08VPCEndpoints:
         result = agentcore_app.check_agentcore_vpc_endpoints()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Finding_Details"] == "No AgentCore resources found"
 
     @patch("agentcore_app.agentcore_client")
     def test_ac08_exception_returns_error_finding(self, mock_ac):

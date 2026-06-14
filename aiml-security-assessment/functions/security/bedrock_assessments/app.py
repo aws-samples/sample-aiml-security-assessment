@@ -41,6 +41,12 @@ REGION_UNAVAILABLE_ERROR_CODES = {
     "OptInRequired",
 }
 
+ACCESS_DENIED_ERROR_CODES = {
+    "AccessDenied",
+    "AccessDeniedException",
+    "UnauthorizedOperation",
+}
+
 
 def describe_api_error(error: Exception, api_label: str, region: str = "") -> str:
     """
@@ -59,6 +65,120 @@ def describe_api_error(error: Exception, api_label: str, region: str = "") -> st
         location = region if region else "this region"
         return f"{api_label} not available in {location}"
     return f"Unable to check {api_label}: {error_text}"
+
+
+def _probe_bedrock_resource_list(probe_label: str, probe_func) -> Optional[bool]:
+    """
+    Probe a Bedrock list API and report whether it found any regional resources.
+
+    Returns:
+        True if the API found at least one resource
+        False if the API was successfully queried and returned no resources
+        None if the result is inconclusive (for example, AccessDenied)
+    """
+    try:
+        return bool(probe_func())
+    except EndpointConnectionError:
+        raise
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        error_text = str(e)
+
+        if code in REGION_UNAVAILABLE_ERROR_CODES:
+            raise
+
+        if code in ACCESS_DENIED_ERROR_CODES:
+            logger.warning(
+                f"Unable to determine regional Bedrock footprint from {probe_label}: {code}"
+            )
+            return None
+
+        if code == "ValidationException" or "UnknownOperation" in error_text or "Unknown operation" in error_text:
+            logger.info(f"{probe_label} API not available in this region")
+            return False
+
+        logger.warning(
+            f"Unexpected error probing {probe_label} for regional Bedrock footprint: {error_text}"
+        )
+        return None
+    except Exception as e:
+        error_text = str(e)
+        if "UnknownOperation" in error_text or "Unknown operation" in error_text:
+            logger.info(f"{probe_label} API not available in this region")
+            return False
+
+        logger.warning(
+            f"Unexpected error probing {probe_label} for regional Bedrock footprint: {error_text}"
+        )
+        return None
+
+
+def _first_page_items(paginator, result_key: str) -> List[Dict[str, Any]]:
+    """Return at most the first page of items from a paginator-based Bedrock list API."""
+    for page in paginator.paginate(PaginationConfig={"MaxItems": 1, "PageSize": 1}):
+        return page.get(result_key, [])
+    return []
+
+
+def detect_bedrock_regional_footprint(region: str = "") -> Optional[bool]:
+    """
+    Detect whether a region has Bedrock-managed resources that justify regional findings.
+
+    Returns:
+        True if Bedrock-managed resources exist in the region
+        False if supported APIs were probed and no resources were found
+        None if the footprint could not be determined confidently
+    """
+    bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
+    bedrock_agent_client = boto3.client(
+        "bedrock-agent", config=boto3_config, region_name=region
+    )
+
+    probes = [
+        (
+            "Bedrock Guardrails",
+            lambda: bedrock_client.list_guardrails().get("guardrails", []),
+        ),
+        (
+            "Bedrock Prompts",
+            lambda: bedrock_agent_client.list_prompts().get("promptSummaries", []),
+        ),
+        (
+            "Bedrock Agents",
+            lambda: bedrock_agent_client.list_agents().get("agents", []),
+        ),
+        (
+            "Bedrock Knowledge Bases",
+            lambda: _first_page_items(
+                bedrock_agent_client.get_paginator("list_knowledge_bases"),
+                "knowledgeBaseSummaries",
+            ),
+        ),
+        (
+            "Bedrock Flows",
+            lambda: _first_page_items(
+                bedrock_agent_client.get_paginator("list_flows"),
+                "flowSummaries",
+            ),
+        ),
+        (
+            "Bedrock Custom Models",
+            lambda: _first_page_items(
+                bedrock_client.get_paginator("list_custom_models"),
+                "modelSummaries",
+            ),
+        ),
+    ]
+
+    indeterminate = False
+    for probe_label, probe_func in probes:
+        probe_result = _probe_bedrock_resource_list(probe_label, probe_func)
+        if probe_result is True:
+            return True
+        if probe_result is None:
+            indeterminate = True
+
+    return None if indeterminate else False
 
 
 def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
@@ -736,6 +856,24 @@ def check_bedrock_access_and_vpc_endpoints(permission_cache, region: str = "") -
                     break
 
         if bedrock_access_found:
+            bedrock_footprint_found = detect_bedrock_regional_footprint(region=region)
+
+            if bedrock_footprint_found is False:
+                findings["details"] = "No regional Bedrock resources found"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-02",
+                        finding_name="Amazon Bedrock private connectivity check",
+                        finding_details="No regional Bedrock resources found to assess private connectivity",
+                        resolution="No action required",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
             vpc_endpoint_check = check_bedrock_vpc_endpoints(region=region)
 
             if not vpc_endpoint_check["has_endpoints"]:
@@ -849,20 +987,37 @@ def check_bedrock_guardrails(region: str = "") -> Dict[str, Any]:
                     )
                 )
             else:
-                findings["status"] = "WARN"
-                findings["details"] = "No Bedrock guardrails configured"
-                findings["csv_data"].append(
-                    create_finding(
-                        check_id="BR-05",
-                        finding_name="Bedrock Guardrails Check",
-                        finding_details="No Amazon Bedrock Guardrails are configured. This may expose your application to potential risks such as harmful content, sensitive information disclosure, or hallucinations.",
-                        resolution="Configure Bedrock Guardrails to implement safeguards such as:\n- Content filters to block harmful content\n- Denied topics to prevent undesirable discussions\n- Sensitive information filters to protect PII\n- Contextual grounding checks to prevent hallucinations",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
-                        severity="Medium",
-                        status="Failed",
-                        region=region,
+                bedrock_footprint_found = detect_bedrock_regional_footprint(region=region)
+
+                if bedrock_footprint_found is False:
+                    findings["details"] = "No regional Bedrock resources found"
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-05",
+                            finding_name="Bedrock Guardrails Check",
+                            finding_details="No regional Bedrock resources found to protect with guardrails",
+                            resolution="No action required",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+                            severity="Informational",
+                            status="N/A",
+                            region=region,
+                        )
                     )
-                )
+                else:
+                    findings["status"] = "WARN"
+                    findings["details"] = "No Bedrock guardrails configured"
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-05",
+                            finding_name="Bedrock Guardrails Check",
+                            finding_details="No Amazon Bedrock Guardrails are configured. This may expose your application to potential risks such as harmful content, sensitive information disclosure, or hallucinations.",
+                            resolution="Configure Bedrock Guardrails to implement safeguards such as:\n- Content filters to block harmful content\n- Denied topics to prevent undesirable discussions\n- Sensitive information filters to protect PII\n- Contextual grounding checks to prevent hallucinations",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+                            severity="Medium",
+                            status="Failed",
+                            region=region,
+                        )
+                    )
 
         except bedrock_client.exceptions.ValidationException as e:
             findings["status"] = "ERROR"
