@@ -9,6 +9,10 @@ Parameters:
   TargetRegions:
     Type: String
     Default: ""
+    AllowedPattern: "^[a-zA-Z0-9,-]*$"
+    ConstraintDescription: >
+      TargetRegions must be a comma-separated list of region names with no spaces
+      (e.g., us-east-1,us-west-2,eu-west-1), 'all', or empty.
     Description: >
       Comma-separated list of AWS regions to scan (e.g., us-east-1,us-west-2,eu-west-1).
       Use 'all' to scan all regions where the service is available.

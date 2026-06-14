@@ -40,6 +40,20 @@ phases:
           echo "ERROR: Missing required environment variables: ${missing_vars[*]}"
           exit 1
         fi
+      - |
+        # Normalize TARGET_REGIONS: strip all whitespace so the comma-separated
+        # value survives 'sam deploy --parameter-overrides', which re-splits its
+        # argument on spaces and would otherwise drop every region after the first.
+        TARGET_REGIONS=$(echo "${TARGET_REGIONS:-}" | tr -d '[:space:]')
+        export TARGET_REGIONS
+
+        # Validate the normalized value matches the CloudFormation AllowedPattern.
+        if [[ -n "$TARGET_REGIONS" && ! "$TARGET_REGIONS" =~ ^[a-zA-Z0-9,-]+$ ]]; then
+          echo "ERROR: TARGET_REGIONS contains invalid characters: '$TARGET_REGIONS'"
+          echo "Expected a comma-separated list of region names (e.g., us-east-1,us-west-2), 'all', or empty."
+          exit 1
+        fi
+        echo "Using TARGET_REGIONS: '${TARGET_REGIONS:-<deployment region only>}'"
       - echo "Multi-account scan is $MULTI_ACCOUNT_SCAN"
       - cd aiml-security-assessment
       - ls -la
