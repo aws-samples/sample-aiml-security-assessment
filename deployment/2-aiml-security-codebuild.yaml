@@ -531,7 +531,7 @@ Resources:
           - Name: TARGET_REGIONS
             Value: !Ref TargetRegions
             Type: PLAINTEXT
-          - Name: CODEBUILD_TIMEOUT_MINUTES
+          - Name: BUILD_TIMEOUT_MINUTES
             Value: !Ref CodeBuildTimeout
             Type: PLAINTEXT
       Description: Run AIML Security multi-account assessment
