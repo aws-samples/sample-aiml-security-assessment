@@ -966,6 +966,12 @@ def generate_html_report(
             + f' FinServ</div><div class="metric-value">{finserv_total}</div>'
             + f'<div class="metric-sub">{finserv_failed} Failed \u00b7 {finserv_passed} Passed</div></div>'
         )
+        finserv_scope_chip = (
+            '<div data-scope-service="finserv" style="display: flex; align-items: center; gap: 8px; '
+            'padding: 8px 12px; background: var(--surface-2); border-radius: 6px;">'
+            + FINSERV_ICON_SMALL
+            + '<span style="font-size: 13px; font-weight: 500;">Financial Services GenAI Risk</span></div>'
+        )
         finserv_section = (
             '<section id="finserv" class="section">'
             '<div class="section-title">'
@@ -989,12 +995,13 @@ def generate_html_report(
         finserv_nav = ""
         finserv_filter_option = ""
         finserv_service_card = ""
+        finserv_scope_chip = ""
         finserv_section = ""
 
     # Fill template
     html_template = get_html_template()
 
-    return html_template.format(
+    rendered_html = html_template.format(
         title=title,
         sidebar_subtitle=sidebar_subtitle,
         account_info=account_info,
@@ -1053,3 +1060,12 @@ def generate_html_report(
         account_risk_section=account_risk_section,
         region_risk_section=region_risk_section,
     )
+    if finserv_scope_chip:
+        rendered_html = rendered_html.replace(
+            '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div></div><p style=',
+            '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div>'
+            + finserv_scope_chip
+            + '</div><p style=',
+            1,
+        )
+    return rendered_html
