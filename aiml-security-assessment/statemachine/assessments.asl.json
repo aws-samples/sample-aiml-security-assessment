@@ -300,7 +300,8 @@
                                                 "Execution.$": "$.Execution",
                                                 "StateMachine.$": "$.StateMachine",
                                                 "Region.$": "$.Region",
-                                                "RegionIndex.$": "$.RegionIndex"
+                                                "RegionIndex.$": "$.RegionIndex",
+                                                "TargetRegions.$": "$.OriginalInput.ResolvedRegions.regions"
                                             }
                                         },
                                         "Retry": [

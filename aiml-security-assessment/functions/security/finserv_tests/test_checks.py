@@ -3506,6 +3506,7 @@ class TestGenerateCsvReport:
         lines = csv_content.strip().split("\n")
         assert len(lines) == 1  # header only
         assert "Check_ID" in lines[0]
+        assert "Region" in lines[0]
 
     def test_findings_produce_csv_rows(self):
         findings = [
@@ -3529,6 +3530,50 @@ class TestGenerateCsvReport:
         lines = csv_content.strip().split("\n")
         assert len(lines) == 2  # header + 1 data row
         assert "FS-01" in lines[1]
+
+    def test_region_scope_uses_configured_target_regions_from_event(self):
+        event = {"Region": "fallback-region", "TargetRegions": ["region-a", "region-b"]}
+
+        assert app._get_region_scope(event) == "region-a, region-b"
+
+    def test_region_scope_uses_target_regions_env_when_event_list_absent(self, monkeypatch):
+        monkeypatch.setenv("TARGET_REGIONS", "region-a,region-b")
+
+        assert app._get_region_scope({"Region": "fallback-region"}) == "region-a, region-b"
+
+    def test_stamp_region_populates_missing_csv_regions(self):
+        findings = [
+            {
+                "check_name": "Test",
+                "status": "PASS",
+                "csv_data": [
+                    {
+                        "Check_ID": "FS-01",
+                        "Finding": "Test Finding",
+                        "Finding_Details": "Details",
+                        "Resolution": "Fix",
+                        "Reference": "https://example.com",
+                        "Severity": "High",
+                        "Status": "Passed",
+                    },
+                    {
+                        "Check_ID": "FS-02",
+                        "Finding": "Already Scoped",
+                        "Finding_Details": "Details",
+                        "Resolution": "Fix",
+                        "Reference": "https://example.com",
+                        "Severity": "Medium",
+                        "Status": "Failed",
+                        "Region": "Global",
+                    },
+                ],
+            }
+        ]
+
+        app._stamp_region(findings, "region-a, region-b")
+
+        assert findings[0]["csv_data"][0]["Region"] == "region-a, region-b"
+        assert findings[0]["csv_data"][1]["Region"] == "Global"
 
     def test_multiple_findings_multiple_rows(self):
         findings = [

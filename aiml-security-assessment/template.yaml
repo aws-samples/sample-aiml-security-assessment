@@ -145,6 +145,7 @@ Resources:
       Environment:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+          TARGET_REGIONS: !Ref TargetRegions
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
@@ -451,6 +452,7 @@ Resources:
       Environment:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+          TARGET_REGIONS: !Ref TargetRegions
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket

@@ -936,6 +936,23 @@ def generate_html_report(
     finserv_failed = service_stats.get("finserv", {}).get("failed", 0)
     finserv_passed = service_stats.get("finserv", {}).get("passed", 0)
     if finserv_total > 0:
+        finserv_regions = sorted(
+            {
+                f.get("region", f.get("Region", ""))
+                for f in service_findings.get("finserv", [])
+                if f.get("region", f.get("Region", ""))
+            }
+        )
+        finserv_region_options = "".join(
+            [f'<option value="{r}">{r}</option>' for r in finserv_regions]
+        )
+        finserv_region_filter = (
+            '<div class="filter-group"><label>Region</label>'
+            '<select id="finservRegionFilter">'
+            f'<option value="">All Regions</option>{finserv_region_options}</select></div>'
+            if finserv_regions
+            else ""
+        )
         finserv_nav = (
             '<a href="#finserv" class="nav-item">'
             + FINSERV_ICON
@@ -954,10 +971,11 @@ def generate_html_report(
             '<div class="section-title">'
             + FINSERV_ICON
             + "Financial Services GenAI Risk Findings</div>"
-            '<div class="muted" style="margin:-6px 0 10px;font-size:13px;">Scope: this assessment evaluates the deployment Region once per execution. Severities follow a documented Likelihood &times; Impact methodology (see docs).</div>'
+            '<div class="muted" style="margin:-6px 0 10px;font-size:13px;">Scope: this assessment records the configured CloudFormation TargetRegions for this execution. Severities follow a documented Likelihood &times; Impact methodology (see docs).</div>'
             '<div class="filter-bar">'
             '<div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="finservSearchInput"></div>'
             + finserv_account_filter
+            + finserv_region_filter
             + '<div class="filter-group"><label>Severity</label><select id="finservSeverityFilter"><option value="">All Severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="informational">Informational</option></select></div>'
             '<div class="filter-group"><label>Status</label><select id="finservStatusFilter"><option value="">All Statuses</option><option value="failed">Failed</option><option value="passed">Passed</option><option value="n/a">N/A</option></select></div>'
             '<button class="btn btn-reset" id="finservResetFilters"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>'

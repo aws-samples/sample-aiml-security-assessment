@@ -246,7 +246,7 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
                     region = finding.get("Region", "")
                     # "Global" tags IAM-only findings; it is not a scanned region
                     # and must not inflate the region count / multi-region UI.
-                    if region and region != GLOBAL_REGION_LABEL:
+                    if region and region != GLOBAL_REGION_LABEL and "," not in region:
                         regions.add(region)
 
     account_id = assessment_results.get("account_id", "Unknown")

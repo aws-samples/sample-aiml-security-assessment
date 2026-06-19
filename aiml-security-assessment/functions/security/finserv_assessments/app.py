@@ -6070,6 +6070,7 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
         "Reference",
         "Severity",
         "Status",
+        "Region",
         "Compliance_Frameworks",
     ]
     writer = csv.DictWriter(csv_buffer, fieldnames=fieldnames)
@@ -6078,6 +6079,42 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
         for row in finding.get("csv_data", []):
             writer.writerow(row)
     return csv_buffer.getvalue()
+
+
+def _normalized_target_regions(value: str) -> List[str]:
+    """Parse the CloudFormation TargetRegions parameter value."""
+    value = (value or "").strip()
+    if not value or value.lower() == "all":
+        return []
+    return [region.strip() for region in value.split(",") if region.strip()]
+
+
+def _get_region_scope(event: Dict[str, Any]) -> str:
+    """Return the configured FinServ region scope without assuming a fixed region."""
+    target_regions = event.get("TargetRegions")
+    if isinstance(target_regions, list):
+        regions = [str(region).strip() for region in target_regions if str(region).strip()]
+        if regions:
+            return ", ".join(regions)
+
+    regions = _normalized_target_regions(os.environ.get("TARGET_REGIONS", ""))
+    if regions:
+        return ", ".join(regions)
+
+    return (
+        event.get("Region")
+        or os.environ.get("AWS_REGION")
+        or os.environ.get("AWS_DEFAULT_REGION")
+        or ""
+    )
+
+
+def _stamp_region(findings: List[Dict[str, Any]], region: str) -> None:
+    """Populate missing CSV Region values so reports show FinServ scope."""
+    for finding in findings:
+        for row in finding.get("csv_data", []):
+            if not row.get("Region"):
+                row["Region"] = region
 
 
 def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
@@ -6406,6 +6443,7 @@ def lambda_handler(event, context):
     """
     logger.info("Starting FinServ GenAI security assessment")
     all_findings = []
+    region_scope = _get_region_scope(event)
 
     execution_id = event.get("Execution", {}).get("Name", "local-test")
     permission_cache = get_permissions_cache(execution_id) or {
@@ -6437,6 +6475,7 @@ def lambda_handler(event, context):
         all_findings.append(result)
 
     # Generate and upload report
+    _stamp_region(all_findings, region_scope)
     csv_content = generate_csv_report(all_findings)
     bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
     if not bucket_name:
