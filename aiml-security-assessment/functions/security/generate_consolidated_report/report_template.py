@@ -971,7 +971,7 @@ def generate_html_report(
             '<div class="section-title">'
             + FINSERV_ICON
             + "Financial Services GenAI Risk Findings</div>"
-            '<div class="muted" style="margin:-6px 0 10px;font-size:13px;">Scope: this assessment records the configured CloudFormation TargetRegions for this execution. Severities follow a documented Likelihood &times; Impact methodology (see docs).</div>'
+            '<div class="muted" style="margin:-6px 0 10px;font-size:13px;">Scope: this assessment records findings against each resolved CloudFormation TargetRegions entry. Severities follow a documented Likelihood &times; Impact methodology (see docs).</div>'
             '<div class="filter-bar">'
             '<div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="finservSearchInput"></div>'
             + finserv_account_filter

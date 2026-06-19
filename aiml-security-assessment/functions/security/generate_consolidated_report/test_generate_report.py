@@ -276,7 +276,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
                     "Reference": "https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html",
                     "Severity": "Medium",
                     "Status": "Failed",
-                    "Region": "region-a, region-b",
+                    "Region": "region-a",
                 },
                 {
                     "Account_ID": "123456789012",
@@ -287,7 +287,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
                     "Reference": "https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html",
                     "Severity": "High",
                     "Status": "Passed",
-                    "Region": "region-a, region-b",
+                    "Region": "region-b",
                 },
             ]
         }
@@ -298,7 +298,8 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertIn("FS-01", html)
         self.assertIn('data-service="finserv"', html)
         self.assertIn('id="finservRegionFilter"', html)
-        self.assertIn('<option value="region-a, region-b">region-a, region-b</option>', html)
+        self.assertIn('<option value="region-a">region-a</option>', html)
+        self.assertIn('<option value="region-b">region-b</option>', html)
 
     def test_finserv_omitted_when_absent(self):
         """REQ-1/REQ-7: with no FinServ data the FinServ section is omitted cleanly."""

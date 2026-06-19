@@ -6089,32 +6089,44 @@ def _normalized_target_regions(value: str) -> List[str]:
     return [region.strip() for region in value.split(",") if region.strip()]
 
 
-def _get_region_scope(event: Dict[str, Any]) -> str:
-    """Return the configured FinServ region scope without assuming a fixed region."""
+def _get_region_scopes(event: Dict[str, Any]) -> List[str]:
+    """Return resolved target regions without assuming a fixed deployment region."""
     target_regions = event.get("TargetRegions")
     if isinstance(target_regions, list):
         regions = [str(region).strip() for region in target_regions if str(region).strip()]
         if regions:
-            return ", ".join(regions)
+            return regions
 
     regions = _normalized_target_regions(os.environ.get("TARGET_REGIONS", ""))
     if regions:
-        return ", ".join(regions)
+        return regions
 
-    return (
+    fallback_region = (
         event.get("Region")
         or os.environ.get("AWS_REGION")
         or os.environ.get("AWS_DEFAULT_REGION")
         or ""
     )
+    return [fallback_region] if fallback_region else []
 
 
-def _stamp_region(findings: List[Dict[str, Any]], region: str) -> None:
-    """Populate missing CSV Region values so reports show FinServ scope."""
+def _stamp_regions(findings: List[Dict[str, Any]], regions: List[str]) -> None:
+    """Expand missing CSV Region values so each target region is filterable."""
+    regions = [region for region in regions if region]
+    if not regions:
+        return
+
     for finding in findings:
+        expanded_rows = []
         for row in finding.get("csv_data", []):
-            if not row.get("Region"):
-                row["Region"] = region
+            if row.get("Region"):
+                expanded_rows.append(row)
+                continue
+            for region in regions:
+                regional_row = dict(row)
+                regional_row["Region"] = region
+                expanded_rows.append(regional_row)
+        finding["csv_data"] = expanded_rows
 
 
 def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
@@ -6443,7 +6455,7 @@ def lambda_handler(event, context):
     """
     logger.info("Starting FinServ GenAI security assessment")
     all_findings = []
-    region_scope = _get_region_scope(event)
+    region_scopes = _get_region_scopes(event)
 
     execution_id = event.get("Execution", {}).get("Name", "local-test")
     permission_cache = get_permissions_cache(execution_id) or {
@@ -6475,7 +6487,7 @@ def lambda_handler(event, context):
         all_findings.append(result)
 
     # Generate and upload report
-    _stamp_region(all_findings, region_scope)
+    _stamp_regions(all_findings, region_scopes)
     csv_content = generate_csv_report(all_findings)
     bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
     if not bucket_name:

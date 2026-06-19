@@ -3531,17 +3531,20 @@ class TestGenerateCsvReport:
         assert len(lines) == 2  # header + 1 data row
         assert "FS-01" in lines[1]
 
-    def test_region_scope_uses_configured_target_regions_from_event(self):
+    def test_region_scopes_use_configured_target_regions_from_event(self):
         event = {"Region": "fallback-region", "TargetRegions": ["region-a", "region-b"]}
 
-        assert app._get_region_scope(event) == "region-a, region-b"
+        assert app._get_region_scopes(event) == ["region-a", "region-b"]
 
-    def test_region_scope_uses_target_regions_env_when_event_list_absent(self, monkeypatch):
+    def test_region_scopes_use_target_regions_env_when_event_list_absent(self, monkeypatch):
         monkeypatch.setenv("TARGET_REGIONS", "region-a,region-b")
 
-        assert app._get_region_scope({"Region": "fallback-region"}) == "region-a, region-b"
+        assert app._get_region_scopes({"Region": "fallback-region"}) == [
+            "region-a",
+            "region-b",
+        ]
 
-    def test_stamp_region_populates_missing_csv_regions(self):
+    def test_stamp_regions_expands_missing_csv_regions(self):
         findings = [
             {
                 "check_name": "Test",
@@ -3570,10 +3573,10 @@ class TestGenerateCsvReport:
             }
         ]
 
-        app._stamp_region(findings, "region-a, region-b")
+        app._stamp_regions(findings, ["region-a", "region-b"])
 
-        assert findings[0]["csv_data"][0]["Region"] == "region-a, region-b"
-        assert findings[0]["csv_data"][1]["Region"] == "Global"
+        regions = [row["Region"] for row in findings[0]["csv_data"]]
+        assert regions == ["region-a", "region-b", "Global"]
 
     def test_multiple_findings_multiple_rows(self):
         findings = [
