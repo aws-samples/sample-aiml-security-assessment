@@ -34,6 +34,19 @@ sys.path.insert(
 from report_template import generate_html_report
 
 
+def _account_files_dir():
+    """Base directory holding per-account CSV files.
+
+    Defaults to the CodeBuild layout (/tmp/account-files) but is overridable
+    via the ACCOUNT_FILES_DIR environment variable so the consolidator can be
+    exercised hermetically in tests (and repointed if ever needed).
+    """
+    # /tmp/account-files is the ephemeral CodeBuild working directory where the
+    # buildspec stages per-account CSVs; it is not a security-sensitive path and is
+    # overridable via ACCOUNT_FILES_DIR.
+    return os.environ.get("ACCOUNT_FILES_DIR", "/tmp/account-files")  # nosec B108
+
+
 def consolidate_html_reports():
     """
     Consolidate security findings from CSV reports across all accounts into a
@@ -60,10 +73,11 @@ def consolidate_html_reports():
         "bedrock": {"passed": 0, "failed": 0, "na": 0},
         "sagemaker": {"passed": 0, "failed": 0, "na": 0},
         "agentcore": {"passed": 0, "failed": 0, "na": 0},
+        "finserv": {"passed": 0, "failed": 0, "na": 0},
     }
-    service_findings = {"bedrock": [], "sagemaker": [], "agentcore": []}
+    service_findings = {"bedrock": [], "sagemaker": [], "agentcore": [], "finserv": []}
 
-    for account_dir in glob.glob("/tmp/account-files/*/"):
+    for account_dir in glob.glob(os.path.join(_account_files_dir(), "*/")):
         account_id = os.path.basename(account_dir.rstrip("/"))
         if account_id == "consolidated-reports":
             continue
@@ -104,6 +118,8 @@ def consolidate_html_reports():
                                 service = "sagemaker"
                             elif check_id.startswith("AC-"):
                                 service = "agentcore"
+                            elif check_id.startswith("FS-"):
+                                service = "finserv"
                             else:
                                 # Fallback to finding name analysis
                                 finding_name = finding["finding"].lower()
@@ -178,7 +194,7 @@ def consolidate_html_reports():
             raise
     else:
         print("No findings found for consolidation")
-        for account_dir in glob.glob("/tmp/account-files/*/"):
+        for account_dir in glob.glob(os.path.join(_account_files_dir(), "*/")):
             account_id = os.path.basename(account_dir.rstrip("/"))
             all_files = glob.glob(os.path.join(account_dir, "**/*"), recursive=True)
             print(f"Account {account_id} files: {all_files}")

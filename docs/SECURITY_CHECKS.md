@@ -1,6 +1,6 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 51 security checks performed by the AI/ML Security Assessment framework.
+This document provides a comprehensive reference for all 116 security checks performed by the AI/ML Security Assessment framework (52 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 64 Financial Services GenAI Risk checks).
 
 ## Table of Contents
 
@@ -9,8 +9,9 @@ This document provides a comprehensive reference for all 51 security checks perf
 - [Severity Levels](#severity-levels)
 - [Status Values](#status-values)
 - [Amazon SageMaker AI Security Checks (25)](#amazon-sagemaker-ai-security-checks-25)
-- [Amazon Bedrock Security Checks (13)](#amazon-bedrock-security-checks-13)
+- [Amazon Bedrock Security Checks (14)](#amazon-bedrock-security-checks-14)
 - [Amazon Bedrock AgentCore Security Checks (13)](#amazon-bedrock-agentcore-security-checks-13)
+- [Financial Services GenAI Risk Checks (64)](#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)
 
 ---
 
@@ -23,6 +24,7 @@ The framework evaluates your AI/ML workloads against AWS security best practices
 | Amazon SageMaker AI | 25 | Security Hub controls, encryption, network isolation, IAM, MLOps |
 | Amazon Bedrock | 13 | Guardrails, encryption, VPC endpoints, IAM permissions, logging |
 | Amazon Bedrock AgentCore | 13 | VPC configuration, encryption, observability, resource policies |
+| Financial Services GenAI Risk | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
 
 ---
 
@@ -35,6 +37,7 @@ Each security check has a unique identifier with a service prefix:
 | **SM-XX** | Amazon SageMaker | SM-01, SM-25 |
 | **BR-XX** | Amazon Bedrock | BR-01, BR-13 |
 | **AC-XX** | Amazon Bedrock AgentCore | AC-01, AC-13 |
+| **FS-XX** | Financial Services GenAI Risk | FS-01, FS-69 |
 
 ---
 
@@ -195,7 +198,7 @@ Each security check has a unique identifier with a service prefix:
 
 ---
 
-## Amazon Bedrock Security Checks (13)
+## Amazon Bedrock Security Checks (14)
 
 ### BR-01: AWS IAM Least Privilege
 
@@ -339,3 +342,32 @@ Each security check has a unique identifier with a service prefix:
 - [Amazon Bedrock Security](https://docs.aws.amazon.com/bedrock/latest/userguide/security.html)
 - [AWS Security Hub SageMaker Controls](https://docs.aws.amazon.com/securityhub/latest/userguide/sagemaker-controls.html)
 - [AWS Well-Architected Framework - Security Pillar](https://docs.aws.amazon.com/wellarchitected/latest/security-pillar/welcome.html)
+
+---
+
+## Financial Services GenAI Risk Checks (64 additional, 5 upstream extensions)
+
+These 64 standalone checks (FS-XX) extend the framework with Financial Services
+regulatory controls derived from the
+[AWS guide for Financial Services risk management of the use of Generative AI (March 2026)](https://d1.awsstatic.com/onedam/marketing-channels/website/public/global-FinServ-ComplianceGuide-GenAIRisks-public.pdf).
+An additional 5 FS checks are contributed as extensions to existing SM-07,
+SM-22, SM-23, BR-04, and BR-06 (see in-file extension notes).
+
+The full catalog is split across three companion files for readability:
+
+- **[`SECURITY_CHECKS_FINSERV_COMMON.md`](./SECURITY_CHECKS_FINSERV_COMMON.md)** — shared
+  intro, severity rubric, validation note, upstream-overlap table, compliance framework
+  mapping.
+- **[`SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md`](./SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md)** — FS-01 to FS-26
+  (Unbounded Consumption, Excessive Agency, Supply Chain, Training Poisoning, Vector
+  Weaknesses).
+- **[`SECURITY_CHECKS_FINSERV_PART2_GUARDRAILS_CONTENT_SAFETY.md`](./SECURITY_CHECKS_FINSERV_PART2_GUARDRAILS_CONTENT_SAFETY.md)** — FS-27 to FS-46
+  (Non-Compliant Output, Misinformation, Abusive/Harmful Output, Biased Output,
+  Sensitive Information Disclosure).
+- **[`SECURITY_CHECKS_FINSERV_PART3_APP_LAYER_AND_GAPS.md`](./SECURITY_CHECKS_FINSERV_PART3_APP_LAYER_AND_GAPS.md)** — FS-47 to FS-69
+  (Hallucination, Prompt Injection, Improper Output Handling, Off-Topic Output,
+  Out-of-Date Training Data, and 6 cross-category material gap checks).
+
+Compliance framework mapping table is in `SECURITY_CHECKS_FINSERV_COMMON.md`
+(SR 11-7, FFIEC CAT, NYDFS 500.06, PCI-DSS 12.3.2, DORA Art.6, MAS TRM 9,
+ISO 27001 A.12, ECOA, OWASP LLM Top 10).

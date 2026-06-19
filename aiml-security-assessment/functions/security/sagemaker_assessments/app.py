@@ -1107,6 +1107,12 @@ def check_sagemaker_model_monitor_usage(permission_cache) -> Dict[str, Any]:
     """
     Check if SageMaker Model Monitor is configured and actively monitoring models
     """
+    # FinServ extension (FS-17): The FinServ guide (PDF §1.2.14) asks for Model
+    # Monitor data-quality baselines to be refreshed on a regulator-aligned cadence
+    # (SR 11-7 ongoing monitoring) and for the baseline statistics to be emitted to
+    # CloudWatch under namespace /aws/sagemaker/Endpoints/data-metric with
+    # emit_metrics=Enabled. See docs/SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md
+    # (FS-17 → SM-07 extension note).
     logger.debug("Starting check for SageMaker Model Monitor usage")
     try:
         findings = {"csv_data": []}
@@ -2800,6 +2806,11 @@ def check_model_approval_workflow() -> Dict[str, Any]:
     Check if Model Registry has proper approval workflows configured.
     Validates that models go through approval process before production deployment.
     """
+    # FinServ extension (FS-19): The FinServ guide (PDF §1.2.14) expects model
+    # package groups to enforce ModelApprovalStatus=PendingManualApproval by default
+    # and to flag model packages that are auto-approved as their latest version.
+    # See docs/SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md (FS-19 → SM-22
+    # extension note) for the detection refinement.
     logger.debug("Starting check for model approval workflow")
     try:
         findings = {"csv_data": []}
@@ -2941,6 +2952,11 @@ def check_model_drift_detection() -> Dict[str, Any]:
     Check if Model Monitor is configured for drift detection with proper baselines.
     Validates that models have data quality and model quality monitoring configured.
     """
+    # FinServ extension (FS-18): In addition to ModelQuality drift monitoring, the
+    # FinServ guide (PDF §1.2.14) calls out low-entropy classification monitoring
+    # as an early-warning indicator of training-data poisoning. See
+    # docs/SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md (FS-18 → SM-23
+    # extension note) for the remediation step to add.
     logger.debug("Starting check for model drift detection")
     try:
         findings = {"csv_data": []}

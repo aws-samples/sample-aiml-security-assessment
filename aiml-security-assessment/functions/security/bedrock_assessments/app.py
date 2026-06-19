@@ -850,6 +850,12 @@ def check_bedrock_logging_configuration() -> Dict[str, Any]:
     """
     Check if model invocation logging is enabled for Amazon Bedrock
     """
+    # FinServ extension (FS-64): In addition to verifying that invocation
+    # logging is enabled, the FinServ guide (PDF §1.2.1, §1.2.6, §1.2.7)
+    # expects the log output to include guardrailTrace with action,
+    # inputAssessments, and outputAssessments to support SR 11-7 audit trails
+    # and NYDFS 500.06 retention. See docs/SECURITY_CHECKS_FINSERV_PART3_APP_LAYER_AND_GAPS.md
+    # (FS-64 → BR-04 extension note) for the detection / remediation language.
     logger.debug("Starting check for Bedrock model invocation logging configuration")
     try:
         findings = {
@@ -955,6 +961,12 @@ def check_bedrock_cloudtrail_logging() -> Dict[str, Any]:
     """
     Check if CloudTrail is configured to log Amazon Bedrock API calls
     """
+    # FinServ extension (FS-23): In addition to verifying CloudTrail is logging
+    # Bedrock API calls, the FinServ guide (PDF §1.2.15) expects an advanced
+    # event selector for AWS::Bedrock::KnowledgeBase so Retrieve and
+    # RetrieveAndGenerate data events are captured (NOT logged by default).
+    # See docs/SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md (FS-23 → BR-06
+    # extension note) for the detection / remediation language.
     logger.debug("Starting check for Bedrock CloudTrail logging configuration")
     try:
         findings = {

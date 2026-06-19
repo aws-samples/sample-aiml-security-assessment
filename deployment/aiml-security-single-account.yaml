@@ -42,6 +42,12 @@ Parameters:
     MaxValue: 480
     Default: 60
 
+  EnableFinServAssessment:
+    Description: "Run the Financial Services GenAI risk checks (FS-01..FS-69). Enable only if you must adhere to FinServ compliance; the FinServ findings add a dedicated report section."
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
 Conditions:
   CreateEmailNotification: !Not [!Equals [!Ref EmailAddress, ""]]
 
@@ -132,10 +138,6 @@ Resources:
                   - bedrock:ListFlows
                   - bedrock:GetFlow
                   # Bedrock Agent Permissions (Knowledge Bases, Flows)
-                  - bedrock-agent:ListKnowledgeBases
-                  - bedrock-agent:GetKnowledgeBase
-                  - bedrock-agent:ListFlows
-                  - bedrock-agent:GetFlow
                   # SageMaker Permissions
                   - sagemaker:ListNotebookInstances
                   - sagemaker:DescribeNotebookInstance
@@ -227,6 +229,86 @@ Resources:
                   - s3:GetBucketVersioning
                   - s3:GetBucketTagging
                   - s3:HeadBucket
+                Resource: "*"
+
+              # FinServ GenAI Risk Assessment Permissions (FS-01 to FS-69)
+              # Read-only list/describe/get actions required by the 64 FinServ
+              # security checks. Resource: "*" is required for inventory-style
+              # checks where resource ARNs are not known in advance. Validated
+              # with cfn-lint (no unrecognized actions).
+              - Effect: Allow
+                Sid: FinServGenAIRiskAssessmentPermissions
+                Action:
+                  # WAF / Shield (FS-01)
+                  - wafv2:ListWebACLs
+                  - wafv2:GetWebACL
+                  - shield:DescribeSubscription
+                  # API Gateway (FS-02, FS-68, FS-69)
+                  - apigateway:GET
+                  # Service Quotas (FS-03)
+                  - servicequotas:ListServiceQuotas
+                  - servicequotas:ListAWSDefaultServiceQuotas
+                  # Cost Explorer / Budgets (FS-04, FS-06)
+                  - ce:GetAnomalyMonitors
+                  - budgets:ViewBudget
+                  # CloudWatch / Logs (FS-05, FS-11, FS-43)
+                  - cloudwatch:DescribeAlarms
+                  - logs:DescribeAccountPolicies
+                  # Bedrock — guardrails, models, evaluation (FS-15, FS-27..50, FS-59..63)
+                  - bedrock:ListGuardrails
+                  - bedrock:GetGuardrail
+                  - bedrock:ListFoundationModels
+                  - bedrock:ListCustomModels
+                  - bedrock:ListEvaluationJobs
+                  # Bedrock — agents and knowledge bases (FS-07, FS-24, FS-31, FS-33, FS-48, FS-61, FS-65)
+                  - bedrock:ListAgents
+                  - bedrock:GetAgent
+                  - bedrock:ListKnowledgeBases
+                  - bedrock:GetKnowledgeBase
+                  - bedrock:ListDataSources
+                  - bedrock:GetDataSource
+                  # Bedrock AgentCore (FS-08, FS-66)
+                  - bedrock-agentcore:ListAgentRuntimes
+                  - bedrock-agentcore:GetAgentRuntime
+                  - bedrock-agentcore:ListGateways
+                  - bedrock-agentcore:GetGateway
+                  # Lambda — concurrency / agent transaction checks (FS-09, FS-67, FS-69)
+                  - lambda:ListFunctions
+                  - lambda:GetFunctionConcurrency
+                  # Step Functions — human-in-the-loop / rate checks (FS-10, FS-11)
+                  - states:ListStateMachines
+                  - states:DescribeStateMachine
+                  # Organizations — SCP model access restrictions (FS-12)
+                  - organizations:ListPolicies
+                  - organizations:DescribePolicy
+                  # SageMaker — inventory / monitoring / bias / cards (FS-13, FS-20, FS-39..42, FS-61, FS-63)
+                  - sagemaker:ListMonitoringSchedules
+                  - sagemaker:ListFeatureGroups
+                  - sagemaker:ListModels
+                  - sagemaker:ListModelCards
+                  - sagemaker:ListTags
+                  # S3 — bucket metadata (FS-20, FS-21, FS-46, FS-65)
+                  - s3:ListAllMyBuckets
+                  - s3:GetBucketVersioning
+                  - s3:GetBucketTagging
+                  - s3:GetBucketNotification
+                  # ECR — image scanning (FS-16)
+                  - ecr:DescribeRepositories
+                  # OpenSearch Serverless — KB vector store (FS-25, FS-26)
+                  - aoss:ListSecurityPolicies
+                  # Macie — PII detection on training data (FS-44)
+                  - macie2:GetMacieSession
+                  # EventBridge — KB integrity monitoring (FS-33, FS-65)
+                  - events:ListRules
+                  # EventBridge Scheduler (KB sync schedules - FS-61).
+                  # AWS-recommended scheduling approach; classic EventBridge rules are legacy.
+                  - scheduler:ListSchedules
+                  # Bedrock Automated Reasoning (GA August 2025).
+                  # Required for check_automated_reasoning_policies() (FS-27).
+                  - bedrock:ListAutomatedReasoningPolicies
+                  - bedrock:ListTagsForResource
+                  # Config — model onboarding governance (FS-14)
+                  - config:DescribeConfigRules
                 Resource: "*"
 
   # CodeBuild role for running assessments
@@ -424,6 +506,9 @@ Resources:
             Type: PLAINTEXT
           - Name: AWS_ACCOUNT_ID
             Value: !Sub ${AWS::AccountId}
+            Type: PLAINTEXT
+          - Name: ENABLE_FINSERV
+            Value: !Ref EnableFinServAssessment
             Type: PLAINTEXT
       Description: Run AIML Security single-account assessment
       ServiceRole: !GetAtt CodeBuildRole.Arn

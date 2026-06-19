@@ -16,6 +16,7 @@ Resources:
         BedrockSecurityAssessmentFunction: !GetAtt BedrockSecurityAssessmentFunction.Arn
         SagemakerSecurityAssessmentFunction: !GetAtt SagemakerSecurityAssessmentFunction.Arn
         AgentCoreSecurityAssessmentFunction: !GetAtt AgentCoreSecurityAssessmentFunction.Arn
+        FinServSecurityAssessmentFunction: !GetAtt FinServSecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
       Policies:
@@ -30,6 +31,8 @@ Resources:
             FunctionName: !Ref SagemakerSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref AgentCoreSecurityAssessmentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref FinServSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref GenerateConsolidatedReportFunction
         #Add S3 Read Write policy
@@ -157,14 +160,6 @@ Resources:
                 - bedrock:GetModelCustomizationJob
                 - bedrock:ListFlows
                 - bedrock:GetFlow
-              Resource: '*'
-            - Sid: BedrockAgentPermissions
-              Effect: Allow
-              Action:
-                - bedrock-agent:ListKnowledgeBases
-                - bedrock-agent:GetKnowledgeBase
-                - bedrock-agent:ListFlows
-                - bedrock-agent:GetFlow
               Resource: '*'
             - Sid: S3BucketEncryptionPermissions
               Effect: Allow
@@ -385,6 +380,172 @@ Resources:
                 - s3:GetBucketVersioning
                 - s3:GetBucketTagging
                 - s3:HeadBucket
+              Resource: 'arn:aws:s3:::*'
+
+
+  FinServSecurityAssessmentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-FinServAssessment'
+      CodeUri: functions/security/finserv_assessments/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      Timeout: 900 # 15 minutes (Lambda max) — headroom for large accounts; ASL Catch keeps the report generating if exceeded
+      MemorySize: 1024
+      Environment:
+        Variables:
+          AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref AIMLAssessmentBucket
+        - Statement:
+            - Sid: IAMPermissions
+              Effect: Allow
+              Action:
+                - iam:ListRoles
+                - iam:ListUsers
+                - iam:ListAttachedRolePolicies
+                - iam:ListAttachedUserPolicies
+                - iam:ListRolePolicies
+                - iam:ListUserPolicies
+                - iam:GetRolePolicy
+                - iam:GetUserPolicy
+                - iam:GetPolicy
+                - iam:GetPolicyVersion
+                - iam:GetRole
+                - iam:GetUser
+                - sts:GetCallerIdentity
+              Resource: '*'
+            - Sid: WAFShieldPermissions
+              Effect: Allow
+              Action:
+                - wafv2:ListWebACLs
+                - wafv2:GetWebACL
+                - shield:DescribeSubscription
+              Resource: '*'
+            - Sid: APIGatewayPermissions
+              Effect: Allow
+              Action:
+                - apigateway:GET
+              Resource: '*'
+            - Sid: ServiceQuotasPermissions
+              Effect: Allow
+              Action:
+                - servicequotas:ListServiceQuotas
+                - servicequotas:ListAWSDefaultServiceQuotas
+              Resource: '*'
+            - Sid: CostBudgetPermissions
+              Effect: Allow
+              Action:
+                - ce:GetAnomalyMonitors
+                - budgets:ViewBudget
+              Resource: '*'
+            - Sid: CloudWatchPermissions
+              Effect: Allow
+              Action:
+                - cloudwatch:DescribeAlarms
+                - cloudwatch:ListMetrics
+              Resource: '*'
+            - Sid: LogsPermissions
+              Effect: Allow
+              Action:
+                - logs:DescribeAccountPolicies
+                - logs:DescribeLogGroups
+              Resource: '*'
+            - Sid: BedrockPermissions
+              Effect: Allow
+              Action:
+                - bedrock:ListGuardrails
+                - bedrock:GetGuardrail
+                - bedrock:ListFoundationModels
+                - bedrock:ListCustomModels
+                - bedrock:ListEvaluationJobs
+                - bedrock:GetModelInvocationLoggingConfiguration
+                - bedrock:ListTagsForResource
+                - bedrock:ListAutomatedReasoningPolicies
+              Resource: '*'
+            - Sid: BedrockAgentPermissions
+              Effect: Allow
+              Action:
+                - bedrock:ListAgents
+                - bedrock:GetAgent
+                - bedrock:ListKnowledgeBases
+                - bedrock:GetKnowledgeBase
+                - bedrock:ListDataSources
+                - bedrock:GetDataSource
+              Resource: '*'
+            - Sid: BedrockAgentCorePermissions
+              Effect: Allow
+              Action:
+                - bedrock-agentcore:ListAgentRuntimes
+                - bedrock-agentcore:GetAgentRuntime
+              Resource: '*'
+            - Sid: SageMakerPermissions
+              Effect: Allow
+              Action:
+                - sagemaker:ListMonitoringSchedules
+                - sagemaker:ListModelPackageGroups
+                - sagemaker:ListModelPackages
+                - sagemaker:ListFeatureGroups
+                - sagemaker:ListModels
+                - sagemaker:ListModelCards
+                - sagemaker:ListTags
+              Resource: '*'
+            - Sid: LambdaStatesPermissions
+              Effect: Allow
+              Action:
+                - lambda:ListFunctions
+                - lambda:GetFunctionConcurrency
+                - states:ListStateMachines
+                - states:DescribeStateMachine
+              Resource: '*'
+            - Sid: OrganizationsPermissions
+              Effect: Allow
+              Action:
+                - organizations:ListPolicies
+                - organizations:DescribePolicy
+              Resource: '*'
+            - Sid: ECRPermissions
+              Effect: Allow
+              Action:
+                - ecr:DescribeRepositories
+              Resource: '*'
+            - Sid: CloudTrailPermissions
+              Effect: Allow
+              Action:
+                - cloudtrail:ListTrails
+                - cloudtrail:GetTrail
+                - cloudtrail:GetTrailStatus
+                - cloudtrail:GetEventSelectors
+              Resource: '*'
+            - Sid: OpenSearchServerlessPermissions
+              Effect: Allow
+              Action:
+                - aoss:ListSecurityPolicies
+              Resource: '*'
+            - Sid: MaciePermissions
+              Effect: Allow
+              Action:
+                - macie2:GetMacieSession
+              Resource: '*'
+            - Sid: EventsConfigPermissions
+              Effect: Allow
+              Action:
+                - events:ListRules
+                - scheduler:ListSchedules
+                - config:DescribeConfigRules
+              Resource: '*'
+            - Sid: S3BucketPermissions
+              Effect: Allow
+              Action:
+                - s3:ListAllMyBuckets
+                - s3:ListBucket
+                - s3:GetBucketVersioning
+                - s3:GetBucketTagging
+                - s3:GetBucketEncryption
+                - s3:GetBucketNotification
               Resource: 'arn:aws:s3:::*'
 
   # Add a S3 bucket to store the AIML assessment results

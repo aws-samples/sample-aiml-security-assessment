@@ -1,0 +1,13 @@
+# FinServ Security Assessment Lambda — runtime dependencies
+#
+# These pins are scanned by ASH (Automated Security Helper) via Grype + Syft
+# during the pre-PR security scan. Keep versions current; if ASH reports a
+# CVE against any pinned dep, bump to the patched version before opening the
+# PR. See GIT_WORKFLOW.md Step 5 for the ASH workflow.
+#
+# Dev tooling (ruff, cfn-lint, ash, sam) is NOT pinned here — install those
+# in your development environment, not into the Lambda image.
+
+boto3>=1.43.21
+botocore>=1.43.21
+pydantic>=2.0.0,<3.0.0
