@@ -3498,6 +3498,101 @@ class TestRequirementVersionFloors:
         )
 
 
+class TestFinservRegionalFootprint:
+    """Regional footprint gating used to avoid false FinServ failures."""
+
+    @staticmethod
+    def _client_factory(clients):
+        def factory(service_name, **kwargs):
+            return clients[service_name]
+
+        return factory
+
+    @patch("app.boto3.client")
+    def test_detect_returns_true_when_any_genai_resource_exists(self, mock_client):
+        bedrock = MagicMock()
+        bedrock.list_guardrails.return_value = {"guardrails": [{"id": "gr-1"}]}
+        clients = {
+            "bedrock": bedrock,
+            "bedrock-agent": MagicMock(),
+            "bedrock-agentcore-control": MagicMock(),
+            "sagemaker": MagicMock(),
+        }
+        mock_client.side_effect = self._client_factory(clients)
+
+        assert app.detect_finserv_regional_footprint("us-east-1") is True
+        mock_client.assert_any_call(
+            "bedrock", config=app.boto3_config, region_name="us-east-1"
+        )
+
+    @patch("app.boto3.client")
+    def test_detect_returns_false_when_all_supported_probes_are_empty(
+        self, mock_client
+    ):
+        bedrock = MagicMock()
+        bedrock.list_guardrails.return_value = {"guardrails": []}
+        bedrock_agent = MagicMock()
+        bedrock_agent.list_agents.return_value = {"agentSummaries": []}
+        bedrock_agent.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
+        agentcore = MagicMock()
+        agentcore.list_agent_runtimes.return_value = {"agentRuntimes": []}
+        sagemaker = MagicMock()
+        sagemaker.list_endpoints.return_value = {"Endpoints": []}
+        sagemaker.list_models.return_value = {"Models": []}
+        sagemaker.list_feature_groups.return_value = {"FeatureGroupSummaries": []}
+        mock_client.side_effect = self._client_factory(
+            {
+                "bedrock": bedrock,
+                "bedrock-agent": bedrock_agent,
+                "bedrock-agentcore-control": agentcore,
+                "sagemaker": sagemaker,
+            }
+        )
+
+        assert app.detect_finserv_regional_footprint("us-west-2") is False
+
+    @patch("app.boto3.client")
+    def test_detect_returns_none_when_footprint_is_indeterminate(self, mock_client):
+        bedrock = MagicMock()
+        bedrock.list_guardrails.side_effect = _client_error("AccessDeniedException")
+        bedrock_agent = MagicMock()
+        bedrock_agent.list_agents.side_effect = _client_error("AccessDeniedException")
+        bedrock_agent.list_knowledge_bases.side_effect = _client_error(
+            "AccessDeniedException"
+        )
+        agentcore = MagicMock()
+        agentcore.list_agent_runtimes.side_effect = _client_error(
+            "AccessDeniedException"
+        )
+        sagemaker = MagicMock()
+        sagemaker.list_endpoints.side_effect = _client_error("AccessDeniedException")
+        sagemaker.list_models.side_effect = _client_error("AccessDeniedException")
+        sagemaker.list_feature_groups.side_effect = _client_error(
+            "AccessDeniedException"
+        )
+        mock_client.side_effect = self._client_factory(
+            {
+                "bedrock": bedrock,
+                "bedrock-agent": bedrock_agent,
+                "bedrock-agentcore-control": agentcore,
+                "sagemaker": sagemaker,
+            }
+        )
+
+        assert app.detect_finserv_regional_footprint("eu-west-1") is None
+
+    @patch("app.detect_finserv_regional_footprint")
+    def test_partition_keeps_indeterminate_regions_in_scope(self, mock_detect):
+        mock_detect.side_effect = [None, False, True]
+
+        assessable, empty = app._partition_regions_by_finserv_footprint(
+            ["unknown-region", "empty-region", "active-region"]
+        )
+
+        assert assessable == ["unknown-region", "active-region"]
+        assert empty == ["empty-region"]
+
+
 class TestGenerateCsvReport:
     """Test CSV report generation."""
 
@@ -3536,7 +3631,9 @@ class TestGenerateCsvReport:
 
         assert app._get_region_scopes(event) == ["region-a", "region-b"]
 
-    def test_region_scopes_use_target_regions_env_when_event_list_absent(self, monkeypatch):
+    def test_region_scopes_use_target_regions_env_when_event_list_absent(
+        self, monkeypatch
+    ):
         monkeypatch.setenv("TARGET_REGIONS", "region-a,region-b")
 
         assert app._get_region_scopes({"Region": "fallback-region"}) == [
@@ -3577,6 +3674,72 @@ class TestGenerateCsvReport:
 
         regions = [row["Region"] for row in findings[0]["csv_data"]]
         assert regions == ["region-a", "region-b", "Global"]
+
+    def test_apply_region_scope_does_not_copy_failures_to_empty_regions(self):
+        findings = [
+            {
+                "check_name": "Test",
+                "status": "WARN",
+                "csv_data": [
+                    {
+                        "Check_ID": "FS-01",
+                        "Finding": "Test Failed Finding",
+                        "Finding_Details": "Details",
+                        "Resolution": "Fix",
+                        "Reference": "https://example.com",
+                        "Severity": "High",
+                        "Status": "Failed",
+                    }
+                ],
+            }
+        ]
+
+        with patch(
+            "app._partition_regions_by_finserv_footprint",
+            return_value=(["region-with-resources"], ["region-without-resources"]),
+        ):
+            app._apply_region_scope(
+                findings, ["region-with-resources", "region-without-resources"]
+            )
+
+        rows = [row for finding in findings for row in finding["csv_data"]]
+        failed_rows = [row for row in rows if row["Status"] == "Failed"]
+        na_rows = [row for row in rows if row["Status"] == "N/A"]
+
+        assert [row["Region"] for row in failed_rows] == ["region-with-resources"]
+        assert [row["Region"] for row in na_rows] == ["region-without-resources"]
+        assert na_rows[0]["Check_ID"] == "FS-00"
+
+    def test_apply_region_scope_suppresses_unscoped_rows_when_all_regions_empty(self):
+        findings = [
+            {
+                "check_name": "Test",
+                "status": "WARN",
+                "csv_data": [
+                    {
+                        "Check_ID": "FS-01",
+                        "Finding": "Test Failed Finding",
+                        "Finding_Details": "Details",
+                        "Resolution": "Fix",
+                        "Reference": "https://example.com",
+                        "Severity": "High",
+                        "Status": "Failed",
+                    }
+                ],
+            }
+        ]
+
+        with patch(
+            "app._partition_regions_by_finserv_footprint",
+            return_value=([], ["region-a", "region-b"]),
+        ):
+            app._apply_region_scope(findings, ["region-a", "region-b"])
+
+        rows = [row for finding in findings for row in finding["csv_data"]]
+
+        assert {row["Region"] for row in rows} == {"region-a", "region-b"}
+        assert {row["Status"] for row in rows} == {"N/A"}
+        assert {row["Check_ID"] for row in rows} == {"FS-00"}
 
     def test_multiple_findings_multiple_rows(self):
         findings = [

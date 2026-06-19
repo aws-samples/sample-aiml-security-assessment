@@ -63,7 +63,11 @@ from io import StringIO
 from typing import Any, Dict, List, Optional
 
 from botocore.config import Config
-from botocore.exceptions import ClientError, ParamValidationError
+from botocore.exceptions import (
+    ClientError,
+    EndpointConnectionError,
+    ParamValidationError,
+)
 
 from schema import create_finding
 
@@ -243,6 +247,10 @@ def _is_missing_bucket_error(err: "ClientError") -> bool:
 # could not run (e.g., missing IAM permission). They are visible in the report
 # (Status="N/A") so a failed/permission-denied check does not silently vanish.
 COULD_NOT_ASSESS_PREFIX = "COULD NOT ASSESS: "
+FINSERV_GUIDE_URL = (
+    "https://d1.awsstatic.com/onedam/marketing-channels/website/public/"
+    "global-FinServ-ComplianceGuide-GenAIRisks-public.pdf"
+)
 
 # ---------------------------------------------------------------------------
 # ResourceInventory data model and helpers (REQ-3, REQ-4.1, REQ-6.4)
@@ -732,6 +740,23 @@ def _could_not_assess_row(check_id: str, check_name: str, err: Any) -> Dict[str,
         severity="Low",
         status="N/A",
         compliance_frameworks=COMPLIANCE_MAP.get(check_id, ""),
+    )
+
+
+def _no_regional_genai_resources_row(region: str) -> Dict[str, Any]:
+    """Visible N/A row used when a target region has no GenAI resource footprint."""
+    return create_finding(
+        check_id="FS-00",
+        finding_name="FinServ Regional Scope Not Applicable",
+        finding_details=(
+            f"No regional Bedrock, AgentCore, or SageMaker resources were found in {region}; "
+            "FinServ GenAI risk checks were not applied to this region."
+        ),
+        resolution="No action required unless GenAI workloads are expected in this region.",
+        reference=FINSERV_GUIDE_URL,
+        severity="Informational",
+        status="N/A",
+        region=region,
     )
 
 
@@ -6093,7 +6118,9 @@ def _get_region_scopes(event: Dict[str, Any]) -> List[str]:
     """Return resolved target regions without assuming a fixed deployment region."""
     target_regions = event.get("TargetRegions")
     if isinstance(target_regions, list):
-        regions = [str(region).strip() for region in target_regions if str(region).strip()]
+        regions = [
+            str(region).strip() for region in target_regions if str(region).strip()
+        ]
         if regions:
             return regions
 
@@ -6101,13 +6128,139 @@ def _get_region_scopes(event: Dict[str, Any]) -> List[str]:
     if regions:
         return regions
 
-    fallback_region = (
-        event.get("Region")
-        or os.environ.get("AWS_REGION")
-        or os.environ.get("AWS_DEFAULT_REGION")
-        or ""
-    )
+    fallback_region = event.get("Region") or ""
     return [fallback_region] if fallback_region else []
+
+
+def _probe_regional_resource_list(probe_label: str, probe_func) -> Optional[bool]:
+    """Return True for resources, False for a successful empty list, None if unknown."""
+    try:
+        result = probe_func()
+        return bool(result) if isinstance(result, list) else None
+    except (EndpointConnectionError, ParamValidationError):
+        logger.info("%s API is not available in this region", probe_label)
+        return False
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if _is_access_error(e):
+            logger.warning(
+                "Unable to determine FinServ regional footprint from %s: %s",
+                probe_label,
+                error_code,
+            )
+            return None
+        if error_code in {
+            "UnknownOperationException",
+            "ValidationException",
+            "ResourceNotFoundException",
+            "OptInRequired",
+            "UnauthorizedOperation",
+        }:
+            logger.info(
+                "%s API is not available in this region: %s", probe_label, error_code
+            )
+            return False
+        logger.warning(
+            "Unexpected error probing %s for FinServ regional footprint: %s",
+            probe_label,
+            error_code or str(e),
+        )
+        return None
+    except Exception as e:
+        error_text = str(e)
+        if "Unknown operation" in error_text or "UnknownOperation" in error_text:
+            logger.info("%s API is not available in this region", probe_label)
+            return False
+        logger.warning(
+            "Unexpected error probing %s for FinServ regional footprint: %s",
+            probe_label,
+            error_text,
+        )
+        return None
+
+
+def detect_finserv_regional_footprint(region: str) -> Optional[bool]:
+    """
+    Detect whether a target region has GenAI resources that justify regional
+    FinServ findings.
+
+    Returns:
+        True when Bedrock, AgentCore, or SageMaker resources exist
+        False when supported probes succeed and return no resources
+        None when permissions/API errors prevent a confident decision
+    """
+    bedrock = boto3.client("bedrock", config=boto3_config, region_name=region)
+    bedrock_agent = boto3.client(
+        "bedrock-agent", config=boto3_config, region_name=region
+    )
+    agentcore = boto3.client(
+        "bedrock-agentcore-control", config=boto3_config, region_name=region
+    )
+    sagemaker = boto3.client("sagemaker", config=boto3_config, region_name=region)
+
+    probes = [
+        ("Bedrock Guardrails", lambda: bedrock.list_guardrails().get("guardrails", [])),
+        (
+            "Bedrock Agents",
+            lambda: bedrock_agent.list_agents().get("agentSummaries", []),
+        ),
+        (
+            "Bedrock Knowledge Bases",
+            lambda: bedrock_agent.list_knowledge_bases().get(
+                "knowledgeBaseSummaries", []
+            ),
+        ),
+        (
+            "AgentCore Runtimes",
+            lambda: agentcore.list_agent_runtimes().get("agentRuntimes", []),
+        ),
+        (
+            "SageMaker Endpoints",
+            lambda: sagemaker.list_endpoints(MaxResults=1).get("Endpoints", []),
+        ),
+        (
+            "SageMaker Models",
+            lambda: sagemaker.list_models(MaxResults=1).get("Models", []),
+        ),
+        (
+            "SageMaker Feature Groups",
+            lambda: sagemaker.list_feature_groups(MaxResults=1).get(
+                "FeatureGroupSummaries", []
+            ),
+        ),
+    ]
+
+    indeterminate = False
+    successful_empty_probe = False
+    for probe_label, probe_func in probes:
+        probe_result = _probe_regional_resource_list(probe_label, probe_func)
+        if probe_result is True:
+            return True
+        if probe_result is False:
+            successful_empty_probe = True
+        if probe_result is None:
+            indeterminate = True
+
+    if successful_empty_probe:
+        return False
+    return None if indeterminate else False
+
+
+def _partition_regions_by_finserv_footprint(
+    regions: List[str],
+) -> "tuple[List[str], List[str]]":
+    """Split target regions into regions to assess and regions that are N/A."""
+    assessable_regions = []
+    empty_regions = []
+    for region in regions:
+        footprint_found = detect_finserv_regional_footprint(region)
+        if footprint_found is False:
+            empty_regions.append(region)
+        else:
+            # Unknown footprint keeps the region in scope so access/API problems do
+            # not hide potentially real risks.
+            assessable_regions.append(region)
+    return assessable_regions, empty_regions
 
 
 def _stamp_regions(findings: List[Dict[str, Any]], regions: List[str]) -> None:
@@ -6127,6 +6280,40 @@ def _stamp_regions(findings: List[Dict[str, Any]], regions: List[str]) -> None:
                 regional_row["Region"] = region
                 expanded_rows.append(regional_row)
         finding["csv_data"] = expanded_rows
+
+
+def _append_no_resource_region_findings(
+    findings: List[Dict[str, Any]], regions: List[str]
+) -> None:
+    """Append one informational N/A finding for each region without GenAI resources."""
+    if not regions:
+        return
+    findings.append(
+        {
+            "check_name": "FinServ Regional Resource Scope",
+            "status": "PASS",
+            "details": "No regional GenAI resources found",
+            "csv_data": [
+                _no_regional_genai_resources_row(region) for region in regions if region
+            ],
+        }
+    )
+
+
+def _apply_region_scope(findings: List[Dict[str, Any]], regions: List[str]) -> None:
+    """Scope FinServ rows to target regions with resources and emit N/A rows for empty regions."""
+    if not regions:
+        return
+
+    assessable_regions, empty_regions = _partition_regions_by_finserv_footprint(regions)
+    if assessable_regions:
+        _stamp_regions(findings, assessable_regions)
+    else:
+        for finding in findings:
+            finding["csv_data"] = [
+                row for row in finding.get("csv_data", []) if row.get("Region")
+            ]
+    _append_no_resource_region_findings(findings, empty_regions)
 
 
 def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
@@ -6486,8 +6673,10 @@ def lambda_handler(event, context):
             )
         all_findings.append(result)
 
-    # Generate and upload report
-    _stamp_regions(all_findings, region_scopes)
+    # Generate and upload report. Only duplicate regional FinServ rows into
+    # target regions where a GenAI footprint is present; empty regions receive a
+    # visible N/A row instead of false failed controls.
+    _apply_region_scope(all_findings, region_scopes)
     csv_content = generate_csv_report(all_findings)
     bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
     if not bucket_name:

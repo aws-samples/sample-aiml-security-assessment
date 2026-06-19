@@ -169,6 +169,11 @@ def get_html_template() -> str:
         .section-title .service-icon svg {{ border-radius: 8px; }}
         .nav-item .count {{ margin-left: auto; font-size: 12px; font-weight: 600; background: var(--surface-2); padding: 2px 8px; border-radius: 10px; }}
         .nav-item.active .count {{ background: var(--accent); color: #fff; }}
+        .nav-section.industry-nav {{ border-top: 1px solid var(--border); padding-top: 16px; margin-top: -8px; }}
+        .industry-nav .nav-item {{ background: var(--accent-soft); color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }}
+        .industry-nav .nav-item:hover {{ background: var(--accent-soft); color: var(--accent); }}
+        .industry-nav .nav-item.active {{ background: var(--accent-soft); color: var(--accent); }}
+        .industry-nav .nav-item .count {{ background: var(--accent); color: #fff; }}
         .sidebar-footer {{ margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-3); }}
         .sidebar-footer a {{ color: var(--accent); text-decoration: none; }}
         .main {{ padding: 32px 40px; max-width: 1400px; }}
@@ -185,6 +190,11 @@ def get_html_template() -> str:
         .metric.highlight .metric-value {{ color: var(--success); }}
         .metric.danger .metric-value {{ color: var(--danger); }}
         .metric.warning .metric-value {{ color: var(--warning); }}
+        .scope-industry {{ margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }}
+        .scope-industry-label {{ font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }}
+        .scope-chip-row {{ display: flex; gap: 12px; flex-wrap: wrap; }}
+        .scope-chip {{ display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-2); border-radius: 6px; }}
+        .scope-chip.industry-chip {{ background: var(--accent-soft); border: 1px solid var(--accent); }}
         .card {{ background: var(--surface); border: 2px solid var(--border); border-radius: 12px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }}
         .card-header {{ padding: 16px 20px; border-bottom: 2px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--surface-2); }}
         .card-header h3 {{ font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; }}
@@ -300,14 +310,14 @@ def get_html_template() -> str:
                 </a>
                 <a href="#agentcore" class="nav-item">
                     <span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" d="M67.372,28.073L64.178,26.792 62.933,23.634C62.781,23.252 62.412,23.001 62.002,23.001 61.591,23.001 61.222,23.253 61.071,23.636L59.814,26.838 56.638,28.071C56.253,28.22 55.999,28.592 56,29.005 56.001,29.419 56.257,29.79 56.643,29.937L59.89,31.178 61.063,34.348C61.205,34.735 61.572,34.995 61.985,35.001L62,35.001C62.407,35.001 62.774,34.754 62.928,34.375L64.231,31.142 67.36,29.934C67.743,29.786 67.997,29.418 68,29.007 68.003,28.597 67.754,28.226 67.372,28.073ZM63.106,29.432C62.849,29.532 62.643,29.734 62.539,29.991L62.04,31.228 61.607,30.058C61.508,29.788 61.296,29.574 61.027,29.471L59.782,28.996 60.947,28.543C61.207,28.442 61.414,28.237 61.516,27.977L62.004,26.732 62.435,27.822C62.523,28.142 62.767,28.398 63.079,28.506L64.269,28.983 63.106,29.432ZM64.053,38.6L54.914,34.935 51.351,25.902C51.123,25.325 50.575,24.953 49.955,24.953 49.335,24.954 48.786,25.327 48.56,25.905L44.958,35.083 42,36.23 42,16C42,15.569 41.725,15.188 41.316,15.051L32.316,12.051C32.042,11.961 31.744,11.991 31.496,12.136L19.496,19.136C19.189,19.315 19,19.645 19,20L19,29.42 12.504,33.132C12.192,33.31 12,33.641 12,34L12,46C12,46.359 12.192,46.69 12.504,46.868L19,50.58 19,60C19,60.355 19.189,60.685 19.496,60.864L31.496,67.864C31.65,67.954 31.825,68 32,68 32.106,68 32.213,67.983 32.316,67.949L41.316,64.949C41.725,64.813 42,64.431 42,64L42,43.738 45.2,44.961 48.561,54.046C48.777,54.632 49.32,55.017 49.945,55.026L49.969,55.026C50.584,55.026 51.128,54.66 51.359,54.087L55.089,44.845 64.035,41.392C64.614,41.168 64.991,40.623 64.995,40.001 64.999,39.381 64.629,38.831 64.053,38.6ZM32.113,65.908L28.865,64.014 35.53,59.848 34.47,58.186 26.913,62.759 21,58.441 21,50.566 26.555,46.832 25.445,45.168 19.959,48.825 14,45.42 14,40.58 20.496,36.868 19.504,35.132 14,38.277 14,34.58 20,31.152 26,34.58 26,38.434 21.485,41.143 22.515,42.857 27,40.166 31.485,42.857 32.515,41.143 28,38.434 28,34.535 33.555,30.832C33.833,30.646 34,30.334 34,30L34,24 32,24 32,29.465 26.959,32.825 21,29.42 21,20.574 26,17.658 26,27 28,27 28,16.491 32.113,14.092 40,16.721 40,45.434 25.485,54.143 26.515,55.857 40,47.766 40,63.279 32.113,65.908ZM53.964,43.135C53.706,43.235 53.501,43.438 53.397,43.694L49.988,52.14 46.918,43.842C46.818,43.572 46.607,43.358 46.338,43.255L42,41.597 42,38.375 46.09,36.788C46.351,36.687 46.558,36.481 46.659,36.221L49.957,27.818 53.14,35.886C53.209,36.252 53.486,36.548 53.84,36.659L62.129,39.983 53.964,43.135Z"/></svg></span>
-                    AgentCore
-                    <span class="count">{agentcore_total}</span>
-                </a>
-                {finserv_nav}
-            </nav>
-            <div class="sidebar-footer">
-                <p>Generated: {date_display}</p>
-                <p>{account_info}</p>
+	                    AgentCore
+	                    <span class="count">{agentcore_total}</span>
+	                </a>
+	            </nav>
+	            {industry_nav}
+	            <div class="sidebar-footer">
+	                <p>Generated: {date_display}</p>
+	                <p>{account_info}</p>
                 <p style="margin-top: 8px;"><a href="https://github.com/aws-samples/sample-aiml-security-assessment">GitHub Repository</a></p>
             </div>
         </aside>
@@ -350,7 +360,7 @@ def get_html_template() -> str:
                     <div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="searchInput"></div>
                     {account_filter}
                     {region_filter}
-                    <div class="filter-group"><label>Service</label><select id="serviceFilter"><option value="">All Services</option><option value="bedrock">Bedrock</option><option value="sagemaker">SageMaker</option><option value="agentcore">AgentCore</option>{finserv_filter_option}</select></div>
+                    <div class="filter-group"><label>Assessment Area</label><select id="serviceFilter"><option value="">All Assessment Areas</option><option value="bedrock">Bedrock</option><option value="sagemaker">SageMaker</option><option value="agentcore">AgentCore</option>{finserv_filter_option}</select></div>
                     <div class="filter-group"><label>Severity</label><select id="severityFilter"><option value="">All Severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="informational">Informational</option></select></div>
                     <div class="filter-group"><label>Status</label><select id="statusFilter"><option value="">All Statuses</option><option value="failed">Failed</option><option value="passed">Passed</option><option value="n/a">N/A</option></select></div>
                     <button class="btn btn-reset" id="resetFilters"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>
@@ -930,7 +940,7 @@ def generate_html_report(
     else:
         region_risk_section = ""
 
-    # FinServ (FS-*) — first-class service, rendered only when findings exist
+    # FinServ (FS-*) — first-class industry assessment, rendered only when findings exist
     # (so non-FinServ accounts and EnableFinServAssessment=false deploys stay clean).
     finserv_total = (
         service_stats.get("finserv", {}).get("passed", 0)
@@ -958,23 +968,29 @@ def generate_html_report(
             else ""
         )
         finserv_nav = (
-            '<a href="#finserv" class="nav-item">'
+            '<a href="#finserv" class="nav-item industry-item">'
             + FINSERV_ICON
             + " Financial Services"
             + f'<span class="count">{finserv_total}</span></a>'
+        )
+        industry_nav = (
+            '<nav class="nav-section industry-nav"><h3>By Industry</h3>'
+            + finserv_nav
+            + "</nav>"
         )
         finserv_filter_option = '<option value="finserv">Financial Services</option>'
         finserv_service_card = (
             '<div class="metric"><div class="metric-label">'
             + FINSERV_ICON_SMALL
-            + f' FinServ</div><div class="metric-value">{finserv_total}</div>'
+            + f' Financial Services Risk</div><div class="metric-value">{finserv_total}</div>'
             + f'<div class="metric-sub">{finserv_failed} Failed \u00b7 {finserv_passed} Passed</div></div>'
         )
-        finserv_scope_chip = (
-            '<div data-scope-service="finserv" style="display: flex; align-items: center; gap: 8px; '
-            'padding: 8px 12px; background: var(--surface-2); border-radius: 6px;">'
+        finserv_scope_industry_block = (
+            '<div class="scope-industry" data-scope-service="finserv">'
+            '<div class="scope-industry-label">Industry</div>'
+            '<div class="scope-chip-row"><div class="scope-chip industry-chip">'
             + FINSERV_ICON_SMALL
-            + '<span style="font-size: 13px; font-weight: 500;">Financial Services GenAI Risk</span></div>'
+            + '<span style="font-size: 13px; font-weight: 500;">Financial Services GenAI Risk</span></div></div></div>'
         )
         finserv_scope_source = (
             f' Includes Financial Services GenAI Risk checks derived from the '
@@ -1003,9 +1019,10 @@ def generate_html_report(
         )
     else:
         finserv_nav = ""
+        industry_nav = ""
         finserv_filter_option = ""
         finserv_service_card = ""
-        finserv_scope_chip = ""
+        finserv_scope_industry_block = ""
         finserv_scope_source = ""
         finserv_section = ""
 
@@ -1064,19 +1081,20 @@ def generate_html_report(
         bedrock_region_filter=bedrock_region_filter,
         sagemaker_region_filter=sagemaker_region_filter,
         agentcore_region_filter=agentcore_region_filter,
-        finserv_nav=finserv_nav,
+        industry_nav=industry_nav,
         finserv_filter_option=finserv_filter_option,
         finserv_service_card=finserv_service_card,
         finserv_section=finserv_section,
         account_risk_section=account_risk_section,
         region_risk_section=region_risk_section,
     )
-    if finserv_scope_chip:
+    if finserv_scope_industry_block:
         rendered_html = rendered_html.replace(
             '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div></div><p style=',
             '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div>'
-            + finserv_scope_chip
-            + '</div><p style=',
+            + "</div>"
+            + finserv_scope_industry_block
+            + '<p style=',
             1,
         )
         rendered_html = rendered_html.replace(
