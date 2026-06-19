@@ -8,6 +8,7 @@ Metadata:
           default: Assessment Options
         Parameters:
           - EmailAddress
+          - ExistingBucketName
       - Label:
           default: Advanced Options
         Parameters:
@@ -42,12 +43,20 @@ Parameters:
     MaxValue: 480
     Default: 60
 
+  ExistingBucketName:
+    Description: "Name of an existing S3 bucket to store assessment results (leave empty to create a new bucket)"
+    Type: String
+    Default: ""
+
 Conditions:
   CreateEmailNotification: !Not [!Equals [!Ref EmailAddress, ""]]
+  UseExistingBucket: !Not [!Equals [!Ref ExistingBucketName, ""]]
+  CreateNewBucket: !Equals [!Ref ExistingBucketName, ""]
 
 Resources:
   # S3 bucket for assessment results
   AssessmentBucket:
+    Condition: CreateNewBucket
     Type: AWS::S3::Bucket
     Properties:
       VersioningConfiguration:
@@ -63,6 +72,7 @@ Resources:
         RestrictPublicBuckets: true
 
   AssessmentBucketPolicy:
+    Condition: CreateNewBucket
     Type: "AWS::S3::BucketPolicy"
     Properties:
       Bucket: !Ref AssessmentBucket
@@ -385,12 +395,19 @@ Resources:
                   - s3:PutObject
                   - s3:GetObject
                 Effect: Allow
-                Resource: !Sub "${AssessmentBucket.Arn}/*"
+                Resource: !If
+                  - UseExistingBucket
+                  - !Sub "arn:${AWS::Partition}:s3:::${ExistingBucketName}/*"
+                  - !Sub "${AssessmentBucket.Arn}/*"
               - Action:
                   - s3:GetObject
                   - s3:ListBucket
                 Effect: Allow
                 Resource:
+                  - !If
+                    - UseExistingBucket
+                    - !Sub "arn:${AWS::Partition}:s3:::${ExistingBucketName}"
+                    - !GetAtt AssessmentBucket.Arn
                   - !Sub "arn:${AWS::Partition}:s3:::aiml-security-*"
                   - !Sub "arn:${AWS::Partition}:s3:::aiml-security-*/*"
 
@@ -405,7 +422,10 @@ Resources:
         Type: "LINUX_CONTAINER"
         EnvironmentVariables:
           - Name: BUCKET_REPORT
-            Value: !Ref AssessmentBucket
+            Value: !If [UseExistingBucket, !Ref ExistingBucketName, !Ref AssessmentBucket]
+            Type: PLAINTEXT
+          - Name: EXISTING_ASSESSMENT_BUCKET
+            Value: !If [UseExistingBucket, !Ref ExistingBucketName, ""]
             Type: PLAINTEXT
           - Name: GITHUB_REPO_URL
             Value: !Ref GitHubRepoUrl
@@ -514,7 +534,6 @@ Resources:
 
   CodeBuildStartBuild:
     Type: Custom::CodeBuildStartBuild
-    DependsOn: AssessmentBucketPolicy
     Properties:
       ServiceToken: !GetAtt CodeBuildStartBuildLambda.Arn
       ProjectName: !Ref CodeBuild
@@ -583,4 +602,4 @@ Outputs:
 
   AssessmentBucket:
     Description: S3 bucket containing assessment results (HTML reports and CSV data)
-    Value: !Ref AssessmentBucket
+    Value: !If [UseExistingBucket, !Ref ExistingBucketName, !Ref AssessmentBucket]
