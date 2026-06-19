@@ -23,6 +23,10 @@ FINSERV_ICON_SMALL = (
     '<path fill="#FFF" d="M40 14 L66 26 L66 31 L14 31 L14 26 Z '
     'M20 35 h6 v23 h-6 z M37 35 h6 v23 h-6 z M54 35 h6 v23 h-6 z M14 62 h52 v5 h-52 z"/></svg></span>'
 )
+FINSERV_GUIDE_URL = (
+    "https://d1.awsstatic.com/onedam/marketing-channels/website/public/"
+    "global-FinServ-ComplianceGuide-GenAIRisks-public.pdf"
+)
 
 
 def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -> str:
@@ -972,12 +976,18 @@ def generate_html_report(
             + FINSERV_ICON_SMALL
             + '<span style="font-size: 13px; font-weight: 500;">Financial Services GenAI Risk</span></div>'
         )
+        finserv_scope_source = (
+            f' Includes Financial Services GenAI Risk checks derived from the '
+            f'<a href="{FINSERV_GUIDE_URL}" target="_blank">AWS guide for Financial Services risk management of the use of Generative AI</a>.'
+        )
         finserv_section = (
             '<section id="finserv" class="section">'
             '<div class="section-title">'
             + FINSERV_ICON
             + "Financial Services GenAI Risk Findings</div>"
-            '<div class="muted" style="margin:-6px 0 10px;font-size:13px;">Scope: this assessment records findings against each resolved CloudFormation TargetRegions entry. Severities follow a documented Likelihood &times; Impact methodology (see docs).</div>'
+            '<div class="muted" style="margin:-6px 0 10px;font-size:13px;">Scope: this assessment records findings against each resolved CloudFormation TargetRegions entry. These checks are derived from the '
+            f'<a href="{FINSERV_GUIDE_URL}" target="_blank">AWS guide for Financial Services risk management of the use of Generative AI</a>. '
+            'Severities follow a documented Likelihood &times; Impact methodology (see docs).</div>'
             '<div class="filter-bar">'
             '<div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="finservSearchInput"></div>'
             + finserv_account_filter
@@ -996,6 +1006,7 @@ def generate_html_report(
         finserv_filter_option = ""
         finserv_service_card = ""
         finserv_scope_chip = ""
+        finserv_scope_source = ""
         finserv_section = ""
 
     # Fill template
@@ -1066,6 +1077,12 @@ def generate_html_report(
             '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div>'
             + finserv_scope_chip
             + '</div><p style=',
+            1,
+        )
+        rendered_html = rendered_html.replace(
+            "Based on AWS Well-Architected Framework (Generative AI Lens) and service-specific security documentation.",
+            "Based on AWS Well-Architected Framework (Generative AI Lens) and service-specific security documentation."
+            + finserv_scope_source,
             1,
         )
     return rendered_html

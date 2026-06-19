@@ -301,6 +301,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertIn('<option value="region-a">region-a</option>', html)
         self.assertIn('<option value="region-b">region-b</option>', html)
         self.assertIn('data-scope-service="finserv"', html)
+        self.assertIn("global-FinServ-ComplianceGuide-GenAIRisks-public.pdf", html)
 
     def test_finserv_omitted_when_absent(self):
         """REQ-1/REQ-7: with no FinServ data the FinServ section is omitted cleanly."""
@@ -308,6 +309,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertNotIn('id="finserv"', html)
         self.assertNotIn('<option value="finserv">', html)
         self.assertNotIn('data-scope-service="finserv"', html)
+        self.assertNotIn("global-FinServ-ComplianceGuide-GenAIRisks-public.pdf", html)
         # Other services still render (regression check).
         self.assertIn('id="bedrock"', html)
 
