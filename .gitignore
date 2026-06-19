@@ -2,6 +2,7 @@
 .kiro/
 .vscode/
 .claude/
+.codex/
 .mcp.json
 
 # AWS SAM build artifacts
@@ -12,6 +13,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.pyc
+.pytest_cache/
 
 # OS files
 .DS_Store
@@ -40,3 +42,4 @@ samples/
 **/test_reports/
 
 .ruff_cache/
+.ash/
