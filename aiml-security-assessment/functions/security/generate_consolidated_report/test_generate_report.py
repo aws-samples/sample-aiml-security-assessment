@@ -4,6 +4,7 @@ import os
 from app import generate_html_report
 from report_template import generate_html_report as generate_report_direct
 
+
 class TestHtmlReportGeneration(unittest.TestCase):
     def setUp(self):
         self.test_dir = "test_reports"
@@ -23,7 +24,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
                         "Resolution": "Implement IAM policies to restrict access to specific principals and use resource-based policies for model invocations.",
                         "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
                         "Severity": "High",
-                        "Status": "Failed"
+                        "Status": "Failed",
                     },
                     {
                         "Account_ID": "123456789012",
@@ -33,7 +34,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
                         "Resolution": "Enable CloudTrail logging for Bedrock API actions and configure log retention policies.",
                         "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html",
                         "Severity": "Medium",
-                        "Status": "Failed"
+                        "Status": "Failed",
                     },
                     {
                         "Account_ID": "123456789012",
@@ -43,8 +44,8 @@ class TestHtmlReportGeneration(unittest.TestCase):
                         "Resolution": "No action required",
                         "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
                         "Severity": "Informational",
-                        "Status": "Passed"
-                    }
+                        "Status": "Passed",
+                    },
                 ]
             },
             "sagemaker": {
@@ -57,7 +58,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
                         "Resolution": "Enable AWS KMS encryption for SageMaker endpoints using customer managed keys.",
                         "Reference": "https://docs.aws.amazon.com/sagemaker/latest/dg/encryption-at-rest.html",
                         "Severity": "High",
-                        "Status": "Failed"
+                        "Status": "Failed",
                     },
                     {
                         "Account_ID": "123456789012",
@@ -67,7 +68,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
                         "Resolution": "Enable network isolation for SageMaker training jobs and use VPC configurations.",
                         "Reference": "https://docs.aws.amazon.com/sagemaker/latest/dg/mkt-algo-model-internet-free.html",
                         "Severity": "Medium",
-                        "Status": "Failed"
+                        "Status": "Failed",
                     },
                     {
                         "Account_ID": "123456789012",
@@ -77,8 +78,8 @@ class TestHtmlReportGeneration(unittest.TestCase):
                         "Resolution": "Review and restrict IAM role permissions to only necessary actions and resources.",
                         "Reference": "https://docs.aws.amazon.com/sagemaker/latest/dg/security_iam_id-based-policy-examples.html",
                         "Severity": "High",
-                        "Status": "Failed"
-                    }
+                        "Status": "Failed",
+                    },
                 ]
             },
             "agentcore": {
@@ -91,10 +92,10 @@ class TestHtmlReportGeneration(unittest.TestCase):
                         "Resolution": "No action required",
                         "Reference": "https://docs.aws.amazon.com/singlesignon/latest/userguide/what-is.html",
                         "Severity": "Informational",
-                        "Status": "Passed"
+                        "Status": "Passed",
                     }
                 ]
-            }
+            },
         }
 
     def test_generate_viewable_report(self):
@@ -116,7 +117,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertTrue(os.path.getsize(report_path) > 0)
 
         # Basic content checks
-        with open(report_path, 'r') as f:
+        with open(report_path, "r") as f:
             content = f.read()
             # Bedrock findings
             self.assertIn("Bedrock Model Access Control", content)
@@ -136,7 +137,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
 
             # New design elements
             self.assertIn("sidebar", content)
-            self.assertIn("service-badge", content)
+            self.assertIn("service-icon", content)
             self.assertIn("theme-toggle", content)
 
             # Verify new features from consolidation
@@ -148,27 +149,57 @@ class TestHtmlReportGeneration(unittest.TestCase):
         """Test multi-account report generation using shared template directly"""
         # Create test data in multi-account format
         all_findings = [
-            {'account_id': '111122223333', 'check_id': 'BR-01', 'finding': 'Test Finding 1', 'details': 'Details 1', 'resolution': 'Fix it', 'reference': 'https://example.com', 'severity': 'High', 'status': 'Failed', '_service': 'bedrock'},
-            {'account_id': '444455556666', 'check_id': 'SM-01', 'finding': 'Test Finding 2', 'details': 'Details 2', 'resolution': 'Fix it', 'reference': 'https://example.com', 'severity': 'Medium', 'status': 'Failed', '_service': 'sagemaker'},
-            {'account_id': '111122223333', 'check_id': 'AC-01', 'finding': 'Test Finding 3', 'details': 'Details 3', 'resolution': 'N/A', 'reference': 'https://example.com', 'severity': 'Low', 'status': 'Passed', '_service': 'agentcore'},
+            {
+                "account_id": "111122223333",
+                "check_id": "BR-01",
+                "finding": "Test Finding 1",
+                "details": "Details 1",
+                "resolution": "Fix it",
+                "reference": "https://example.com",
+                "severity": "High",
+                "status": "Failed",
+                "_service": "bedrock",
+            },
+            {
+                "account_id": "444455556666",
+                "check_id": "SM-01",
+                "finding": "Test Finding 2",
+                "details": "Details 2",
+                "resolution": "Fix it",
+                "reference": "https://example.com",
+                "severity": "Medium",
+                "status": "Failed",
+                "_service": "sagemaker",
+            },
+            {
+                "account_id": "111122223333",
+                "check_id": "AC-01",
+                "finding": "Test Finding 3",
+                "details": "Details 3",
+                "resolution": "N/A",
+                "reference": "https://example.com",
+                "severity": "Low",
+                "status": "Passed",
+                "_service": "agentcore",
+            },
         ]
         service_findings = {
-            'bedrock': [all_findings[0]],
-            'sagemaker': [all_findings[1]],
-            'agentcore': [all_findings[2]]
+            "bedrock": [all_findings[0]],
+            "sagemaker": [all_findings[1]],
+            "agentcore": [all_findings[2]],
         }
         service_stats = {
-            'bedrock': {'passed': 0, 'failed': 1},
-            'sagemaker': {'passed': 0, 'failed': 1},
-            'agentcore': {'passed': 1, 'failed': 0}
+            "bedrock": {"passed": 0, "failed": 1},
+            "sagemaker": {"passed": 0, "failed": 1},
+            "agentcore": {"passed": 1, "failed": 0},
         }
 
         html_content = generate_report_direct(
             all_findings=all_findings,
             service_findings=service_findings,
             service_stats=service_stats,
-            mode='multi',
-            account_ids=['111122223333', '444455556666']
+            mode="multi",
+            account_ids=["111122223333", "444455556666"],
         )
 
         report_path = os.path.join(self.test_dir, "multi_account_report.html")
@@ -179,7 +210,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
 
         self.assertTrue(os.path.exists(report_path))
 
-        with open(report_path, 'r') as f:
+        with open(report_path, "r") as f:
             content = f.read()
             # Multi-account specific
             self.assertIn("Multi-Account", content)
@@ -193,13 +224,12 @@ class TestHtmlReportGeneration(unittest.TestCase):
         incomplete_data = {
             "account_id": "123456789012",
             "bedrock": {
-                "bedrock_report": [{
-                    "Finding": "Incomplete Bedrock Finding",
-                    "Severity": "High"
-                }]
+                "bedrock_report": [
+                    {"Finding": "Incomplete Bedrock Finding", "Severity": "High"}
+                ]
             },
             "sagemaker": {},
-            "agentcore": {}
+            "agentcore": {},
         }
 
         html_content = generate_html_report(incomplete_data)
@@ -221,7 +251,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
             "account_id": "123456789012",
             "bedrock": {},
             "sagemaker": {},
-            "agentcore": {}
+            "agentcore": {},
         }
 
         html_content = generate_html_report(empty_data)
@@ -232,9 +262,52 @@ class TestHtmlReportGeneration(unittest.TestCase):
         print(f"\nEmpty data report generated at: {os.path.abspath(report_path)}")
         self.assertTrue(os.path.exists(report_path))
 
+    def test_finserv_renders_when_present(self):
+        """REQ-1: FinServ findings render as a first-class service in the HTML."""
+        data = dict(self.test_assessment_results)
+        data["finserv"] = {
+            "finserv_security_report": [
+                {
+                    "Account_ID": "123456789012",
+                    "Check_ID": "FS-01",
+                    "Finding": "No Regional WAF Web ACLs Found",
+                    "Finding_Details": "No WAF.",
+                    "Resolution": "Add WAF.",
+                    "Reference": "https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html",
+                    "Severity": "Medium",
+                    "Status": "Failed",
+                },
+                {
+                    "Account_ID": "123456789012",
+                    "Check_ID": "FS-44",
+                    "Finding": "Amazon Macie Enabled",
+                    "Finding_Details": "Macie on.",
+                    "Resolution": "None.",
+                    "Reference": "https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html",
+                    "Severity": "High",
+                    "Status": "Passed",
+                },
+            ]
+        }
+        html = generate_html_report(data)
+        self.assertIn('id="finserv"', html)
+        self.assertIn('id="finservTable"', html)
+        self.assertIn('<option value="finserv">', html)
+        self.assertIn("FS-01", html)
+        self.assertIn('data-service="finserv"', html)
+
+    def test_finserv_omitted_when_absent(self):
+        """REQ-1/REQ-7: with no FinServ data the FinServ section is omitted cleanly."""
+        html = generate_html_report(self.test_assessment_results)
+        self.assertNotIn('id="finserv"', html)
+        self.assertNotIn('<option value="finserv">', html)
+        # Other services still render (regression check).
+        self.assertIn('id="bedrock"', html)
+
     def tearDown(self):
         """Clean up test files after running tests"""
         pass
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

@@ -51,7 +51,7 @@ def parse_csv_content(csv_content: str) -> List[Dict[str, str]]:
 
 def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[str, Any]:
     """
-    Download and parse Bedrock and SageMaker assessment CSV files for a given execution
+    Download and parse Bedrock, SageMaker, AgentCore, and FinServ assessment CSV files for a given execution
 
     Args:
         s3_bucket (str): Source S3 bucket name
@@ -75,6 +75,7 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
             f"bedrock_security_report_{execution_id}",
             f"sagemaker_security_report_{execution_id}",
             f"agentcore_security_report_{execution_id}",
+            f"finserv_security_report_{execution_id}",
         ]
 
         all_objects = []
@@ -93,6 +94,7 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
             "bedrock": {},
             "sagemaker": {},
             "agentcore": {},
+            "finserv": {},
         }
 
         # Process each CSV file
@@ -128,6 +130,8 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
                     category = "sagemaker"
                 elif "agentcore" in s3_key.lower():
                     category = "agentcore"
+                elif "finserv" in s3_key.lower():
+                    category = "finserv"
                 else:
                     logger.warning(f"Unknown assessment type for file: {s3_key}")
                     continue
@@ -148,10 +152,11 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         assessment_results["summary"] = {
             "total_files_processed": len(assessment_results["bedrock"])
             + len(assessment_results["sagemaker"])
-            + len(assessment_results["agentcore"]),
+            + len(assessment_results["agentcore"])
+            + len(assessment_results["finserv"]),
             "categories_found": [
                 cat
-                for cat in ["bedrock", "sagemaker", "agentcore"]
+                for cat in ["bedrock", "sagemaker", "agentcore", "finserv"]
                 if assessment_results[cat]
             ],
             "rows": assessment_results["bedrock"],
@@ -159,6 +164,7 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
                 "bedrock": list(assessment_results["bedrock"].keys()),
                 "sagemaker": list(assessment_results["sagemaker"].keys()),
                 "agentcore": list(assessment_results["agentcore"].keys()),
+                "finserv": list(assessment_results["finserv"].keys()),
             },
         }
 
@@ -187,7 +193,7 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
     expected by the shared report_template module.
 
     Args:
-        assessment_results: Dict containing bedrock, sagemaker, agentcore findings
+        assessment_results: Dict containing bedrock, sagemaker, agentcore, finserv findings
 
     Returns:
         HTML report string
@@ -198,8 +204,9 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
         "bedrock": {"passed": 0, "failed": 0, "na": 0},
         "sagemaker": {"passed": 0, "failed": 0, "na": 0},
         "agentcore": {"passed": 0, "failed": 0, "na": 0},
+        "finserv": {"passed": 0, "failed": 0, "na": 0},
     }
-    service_findings = {"bedrock": [], "sagemaker": [], "agentcore": []}
+    service_findings = {"bedrock": [], "sagemaker": [], "agentcore": [], "finserv": []}
     regions = set()
 
     # Global/IAM findings (Region == "Global", e.g. BR-01, SM-02, AC-09) are
@@ -211,7 +218,7 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
     # account; account is included so a future multi-account merge is unaffected.
     seen_findings = set()
 
-    for service in ["bedrock", "sagemaker", "agentcore"]:
+    for service in ["bedrock", "sagemaker", "agentcore", "finserv"]:
         if service in assessment_results:
             for report_type, findings in assessment_results[service].items():
                 for finding in findings:

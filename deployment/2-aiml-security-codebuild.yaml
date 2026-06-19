@@ -91,6 +91,12 @@ Parameters:
     MaxValue: 2160
     Default: 300
 
+  EnableFinServAssessment:
+    Description: "Run the Financial Services GenAI risk checks (FS-01..FS-69) in every scanned account. Enable only if you must adhere to FinServ compliance; the FinServ findings add a dedicated report section and increase report size."
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
 Conditions:
   CreateMemberRole: !Equals
     - !Ref MultiAccountScan
@@ -163,11 +169,6 @@ Resources:
                   - bedrock:GetModelCustomizationJob
                   - bedrock:ListFlows
                   - bedrock:GetFlow
-                  # Bedrock Agent Permissions (Knowledge Bases, Flows)
-                  - bedrock-agent:ListKnowledgeBases
-                  - bedrock-agent:GetKnowledgeBase
-                  - bedrock-agent:ListFlows
-                  - bedrock-agent:GetFlow
                   # SageMaker Permissions
                   - sagemaker:ListNotebookInstances
                   - sagemaker:DescribeNotebookInstance
@@ -533,6 +534,9 @@ Resources:
             Type: PLAINTEXT
           - Name: BUILD_TIMEOUT_MINUTES
             Value: !Ref CodeBuildTimeout
+            Type: PLAINTEXT
+          - Name: ENABLE_FINSERV
+            Value: !Ref EnableFinServAssessment
             Type: PLAINTEXT
       Description: Run AIML Security multi-account assessment
       ServiceRole: !GetAtt MultiAccountCodeBuildRole.Arn

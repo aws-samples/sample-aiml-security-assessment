@@ -1,12 +1,19 @@
 configure_rules:
   W3037:
-    # cfn-lint's IAM action database doesn't include newer services yet.
-    # These are valid IAM actions used by the assessment framework.
+    # cfn-lint's IAM action database lags behind newer AWS services, so it
+    # cannot recognize a small set of *valid* actions used by the assessment.
     strict: false
 
 ignore_checks:
-  # W3037: IAM action not recognized - cfn-lint's action database lags behind
-  # newer AWS services (bedrock-agent, bedrock-agentcore, s3:GetBucketEncryption, s3:HeadBucket)
+  # W3037: IAM action not recognized. As of the last review the ONLY actions
+  # this suppresses are valid-but-newer ones cfn-lint's DB does not yet list:
+  #   - bedrock-agentcore:*  (Amazon Bedrock AgentCore control plane)
+  #   - s3:GetBucketEncryption, s3:HeadBucket
+  # All Amazon Bedrock Knowledge Base / Data Source / Flow actions use the
+  # `bedrock:` IAM prefix (there is no `bedrock-agent:` IAM namespace — that is
+  # only the boto3 client name); the previously-present invalid `bedrock-agent:*`
+  # grants were removed. IAM-action correctness is now guarded positively by
+  # tests/test_iam_coverage.py rather than by this lint rule.
   - W3037
   # W1030: Parameter default/constraint mismatch - CodeBuildTimeout has MinValue/MaxValue
   # constraints that cfn-lint incorrectly flags when Ref is used

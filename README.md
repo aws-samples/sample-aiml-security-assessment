@@ -1,10 +1,10 @@
-# AWS AI/ML Security Assessment — Amazon Bedrock, Amazon SageMaker AI & Amazon Bedrock AgentCore
+# AWS AI/ML Security Assessment — Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore & Financial Services GenAI Risk
 
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](https://opensource.org/licenses/MIT-0) [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/downloads/) [![AWS SAM](https://img.shields.io/badge/AWS-SAM-orange.svg)](https://aws.amazon.com/serverless/sam/) [![Serverless](https://img.shields.io/badge/Architecture-Serverless-green.svg)](https://aws.amazon.com/serverless/)
 
-**Open-source automated security scanner for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore** — Built on [AWS Well-Architected Framework (Generative AI Lens)](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
+**Open-source automated security scanner for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Financial Services GenAI Risk** — Built on [AWS Well-Architected Framework (Generative AI Lens)](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
 
-Cloud security automation with **[52 security checks](docs/SECURITY_CHECKS.md)** for your generative AI and machine learning workloads. Identify IAM misconfigurations, encryption gaps, network isolation issues, and compliance violations with interactive HTML reports and actionable remediation guidance.
+Cloud security automation with **[116 security checks](docs/SECURITY_CHECKS.md)** for your generative AI and machine learning workloads. Identify IAM misconfigurations, encryption gaps, network isolation issues, and compliance violations with interactive HTML reports and actionable remediation guidance.
 
 ---
 
@@ -35,17 +35,85 @@ The framework generates professional, interactive security assessment reports wi
 
 ### Key Features
 
-- **[52 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore
-- **Multi-Region Support** — parallel scanning across AWS regions with per-region risk breakdown
-- **Multi-Account Support** — consolidated reporting across AWS Organizations
+- **Executive Summary** with severity counts and service breakdown
+- **Priority Recommendations** highlighting critical issues requiring immediate attention
+- **[116 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Financial Services GenAI Risk
+- **Multi-Region Support** for core Bedrock, SageMaker, and AgentCore checks, with per-region risk breakdown
 - **Interactive Filtering** by account, region, service, severity, and status
-- **Light/Dark Mode** with persistent user preference
-- **Fully Automated** — one-click CloudFormation deployment and execution
+- **Light/Dark Mode Toggle** with persistent user preference
+- **Text Search** across all findings with real-time results
+- **Direct AWS Documentation Links** for each finding with remediation guidance
+- **Multi-Account Support** with consolidated reporting across your organization
+- **Fully Automated** deployment and execution through AWS CloudFormation and AWS CodeBuild
+
+---
+
+## Table of Contents
+
+- [What It Does](#what-it-does)
+- [Why Use This Framework?](#why-use-this-framework)
+- [Scope and Limitations](#scope-and-limitations)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Single-Account Deployment](#single-account-deployment)
+- [Multi-Account Deployment](#multi-account-deployment)
+- [How It Works](#how-it-works)
+- [Permissions Required](#permissions-required)
+- [Viewing Assessment Results](#viewing-assessment-results)
+- [Customization](#customization)
+- [Cleanup](#cleanup)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [Security](#security)
+- [License](#license)
+
+---
+
+## What It Does
+
+This serverless assessment framework automatically evaluates your AI/ML workloads against AWS security best practices. It uses AWS serverless services to gather data from the control plane and generate reports containing the status of various security checks, severity levels, and recommended actions.
+
+Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), [Amazon Bedrock AgentCore](https://aws.github.io/bedrock-agentcore-starter-toolkit/), [Amazon SageMaker AI](https://aws.amazon.com/sagemaker/ai/), or the optional Financial Services GenAI risk assessment.
+
+### Why Use This Framework?
+
+| Challenge | How This Framework Helps |
+|-----------|-------------------------|
+| **Manual security audits are time-consuming** | Fully automated scanning with one-click CloudFormation deployment |
+| **Inconsistent security checks across teams** | Standardized 116-check assessment based on AWS Well-Architected best practices and AWS FinServ GenAI Risk guidance |
+| **Difficulty tracking AI/ML security posture** | Interactive HTML dashboards with severity breakdown and per-account visibility |
+| **Multi-account complexity** | Consolidated reporting across AWS Organizations with cross-account role assumption |
+| **Compliance and audit support** | Exportable reports to supplement your compliance program, with remediation guidance linked to AWS documentation |
+| **Generative AI security gaps** | Purpose-built checks for LLM guardrails, model access controls, and prompt injection prevention |
 
 **Services Covered:**
-- **[Amazon Bedrock](docs/SECURITY_CHECKS.md#amazon-bedrock-security-checks-14)** (14 checks) — Guardrails, encryption, VPC endpoints, IAM, model invocation logging
-- **[Amazon SageMaker AI](docs/SECURITY_CHECKS.md#amazon-sagemaker-ai-security-checks-25)** (25 checks) — Security Hub controls, encryption, network isolation, IAM, MLOps
-- **[Amazon Bedrock AgentCore](docs/SECURITY_CHECKS.md#amazon-bedrock-agentcore-security-checks-13)** (13 checks) — VPC configuration, encryption, observability, resource policies
+- **[Amazon Bedrock](docs/SECURITY_CHECKS.md#amazon-bedrock-security-checks-14)** (14 checks) - Guardrails, encryption, Amazon VPC endpoints, AWS IAM permissions, model invocation logging
+- **[Amazon SageMaker AI](docs/SECURITY_CHECKS.md#amazon-sagemaker-ai-security-checks-25)** (25 checks) - AWS Security Hub controls (SageMaker.1-5), encryption, network isolation, AWS IAM, MLOps
+- **[Amazon Bedrock AgentCore](docs/SECURITY_CHECKS.md#amazon-bedrock-agentcore-security-checks-13)** (13 checks) - Amazon VPC configuration, encryption, observability, resource policies
+- **[Financial Services GenAI Risk](docs/SECURITY_CHECKS.md#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)** (64 checks) - Unbounded consumption, excessive agency, supply chain, training data poisoning, hallucination, prompt injection, PII disclosure, and 8 more FinServ-specific risk categories derived from the [AWS FinServ GenAI Risk Guide](https://d1.awsstatic.com/onedam/marketing-channels/website/public/global-FinServ-ComplianceGuide-GenAIRisks-public.pdf)
+
+**Deployment Options:**
+- **Single-Account**: Assess security in one AWS account
+- **Multi-Account**: Scan entire AWS Organizations with consolidated reporting
+
+**How It Works:**
+1. Deploy through AWS CloudFormation (one-click deployment)
+2. Framework automatically scans your AI/ML resources
+3. Generates interactive HTML reports stored in your Amazon S3 bucket
+4. All data stays in your AWS account - no external dependencies
+
+---
+
+## Scope and Limitations
+
+This tool operates within the [AWS Shared Responsibility Model](https://aws.amazon.com/compliance/shared-responsibility-model/). It assesses **your configuration responsibilities** (IAM policies, encryption settings, network isolation, logging) for AI/ML services. It does not assess AWS-managed infrastructure, physical security, or the underlying service platform.
+
+**Point-in-time assessment.** Each run captures your security posture at the moment of execution. Resource configurations can change immediately after an assessment completes. Run assessments regularly and after significant changes to maintain visibility.
+
+**No guarantee of security or compliance.** This framework identifies common misconfigurations based on AWS best practices and the AWS Well-Architected Framework. It does not cover all possible security risks, does not replace formal compliance audits (SOC 2, HIPAA, and similar), and does not guarantee that your workloads are secure. Use the results as one input into your broader security program.
+
+**116 checks across four domains.** The assessment covers Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and optional Financial Services GenAI risk checks. Other AI/ML services (Amazon Comprehend, Amazon Rekognition, Amazon Textract, and others) are not currently assessed.
 
 ---
 
@@ -129,8 +197,26 @@ The HTML report includes a Region column, filter dropdown, and "Risk by Region" 
 
 1. **Deploy** — CloudFormation creates CodeBuild, S3, IAM roles, and a Lambda trigger
 2. **CodeBuild runs** — builds and deploys the SAM assessment stack (per account in multi-account mode)
-3. **Step Functions execute** — orchestrates: S3 cleanup → IAM permission caching → resolve regions → Map state fans out per-region assessments (Bedrock, SageMaker, AgentCore in parallel) → generate consolidated report
+3. **Step Functions execute** — orchestrates: S3 cleanup → IAM permission caching → resolve regions → Map state fans out per-region assessments (Bedrock, SageMaker, AgentCore in parallel) → optionally run FinServ checks → generate consolidated report
 4. **Results** — HTML and CSV reports are stored in your S3 bucket
+
+### Optional: Financial Services GenAI Risk Checks (`EnableFinServAssessment`)
+
+The 64 Financial Services (FS-XX) GenAI risk checks are **opt-in** and default to `false`. Set the
+`EnableFinServAssessment` deployment parameter to `true` only if you must adhere to FinServ
+compliance. When enabled, the FinServ assessment Lambda runs and its findings appear in a dedicated
+**Financial Services** section of the HTML report. When left `false`, no FinServ findings are
+produced and the report omits the FinServ section entirely. The toggle is threaded into the Step
+Functions execution input (`enableFinServ`); the FinServ Lambda is always deployed but is invoked
+only when the flag is `true`.
+
+> **Deployment path note.** The `EnableFinServAssessment` parameter is wired through the CodeBuild-based deployment templates (`deployment/aiml-security-single-account.yaml` and `deployment/2-aiml-security-codebuild.yaml`), which thread it into every Step Functions `start-execution` call as `enableFinServ`. This is the supported install path. If you instead deploy `aiml-security-assessment/template.yaml` directly with `sam deploy` and start executions yourself, the state machine has no built-in trigger, so FinServ stays **off** unless you include `"enableFinServ": "true"` in the execution input you pass to `StartExecution`.
+
+#### Scope and limitations
+
+- **FinServ deployment Region.** Core Bedrock, SageMaker, and AgentCore checks support multi-region scanning. The optional FinServ assessment runs once in the deployment Region to avoid duplicate advisory findings across regional fan-out.
+- **Heuristic and advisory checks.** Some controls cannot be verified through an API (application-layer controls, dataset contents, resource associations); these are reported as `ADVISORY`/`N/A` and require manual review. See [How finding severities are determined](#how-finding-severities-are-determined).
+- **Permissions.** A check that lacks an IAM permission is reported as `COULD NOT ASSESS` (not a failure). Re-deploy the member role after any IAM template change so newer actions take effect.
 
 For detailed architecture, execution flow, and extension guidance, see the [Developer Guide](docs/DEVELOPER_GUIDE.md).
 
@@ -142,6 +228,85 @@ For detailed architecture, execution flow, and extension guidance, see the [Deve
 2. Navigate to that S3 bucket
 3. For single-account, open `{account_id}/security_assessment_single_account_*.html`
 4. For multi-account, open `consolidated-reports/security_assessment_multi_account_*.html`
+
+### Assessment Execution Process
+
+#### Automatic Trigger
+
+- The AWS CodeBuild project starts automatically after central stack creation
+- An AWS Lambda trigger function initiates the assessment workflow
+
+#### Multi-Account Orchestration
+
+1. **Account Discovery**: AWS CodeBuild queries AWS Organizations for active accounts
+2. **Role Assumption**: Assumes `AIMLSecurityMemberRole` in each target account
+3. **Module Deployment**: Deploys the AI/ML assessment module:
+   - Amazon Bedrock Assessment AWS Lambda
+   - Amazon SageMaker AI Assessment AWS Lambda
+   - Amazon Bedrock AgentCore Assessment AWS Lambda
+   - Financial Services GenAI Risk Assessment AWS Lambda
+   - AWS IAM Permission Caching AWS Lambda
+   - Consolidated Report Generation AWS Lambda
+4. **Assessment Execution**: AWS Step Functions orchestrate parallel AWS Lambda execution
+5. **Results Collection**: Individual AWS Lambda functions store results in local Amazon S3 buckets
+6. **Consolidation**: AWS CodeBuild collects and consolidates results from all accounts
+7. **Reporting**: Generates multi-account HTML and CSV reports
+8. **Notification**: Sends completion notification through Amazon SNS (if configured)
+
+## Monitoring and Results
+
+- **Amazon S3 Bucket**: Central storage for all assessment results
+- **Amazon CloudWatch Logs**: AWS CodeBuild execution logs
+- **Amazon SNS Notifications**: Email alerts on completion/failure
+- **Amazon EventBridge Rules**: Automated workflow triggers
+
+You can check the AWS CodeBuild console to confirm the assessment completed successfully before accessing the results.
+
+### Accessing Results
+
+1. **Find the Amazon S3 Bucket Name**:
+   - Navigate to **AWS CloudFormation** > **Stacks** in the AWS Console
+   - For single-account deployments using the standalone template (`aiml-security-single-account.yaml`), select the stack you deployed (for example, `aiml-security-single-account`) and find the `AssessmentBucket` output. Results are synced to this bucket under the `{account_id}/` prefix.
+   - For multi-account deployments, select the `aiml-security-multi-account` stack created in [Step 2: Deploy Central Infrastructure](#step-2-deploy-central-infrastructure) and find the `AssessmentBucket` output
+   - Go to the **Outputs** tab
+   - Copy the Amazon S3 bucket name
+
+   > **Note**: The deployment creates multiple Amazon S3 buckets. Only use the bucket from the `AssessmentBucket` output above. Other buckets (such as `aiml-sec-*-aimlassessmentbucket-*` from nested stacks or `aws-sam-cli-managed-*` for deployment artifacts) are for internal use and can be ignored.
+
+2. **Navigate to the Amazon S3 Bucket**:
+   - Go to **Amazon S3** in the AWS Console
+   - Search for and open your assessment bucket
+   - For single-account deployments, open the `security_assessment_XXXXX.html` report
+   - For multi-account deployments, follow the [Report Structure](#report-structure) guidance below
+
+### Report Structure
+
+#### Consolidated Reports
+
+- **Location**: `consolidated-reports/` folder in the bucket
+- **Content**: Multi-account HTML report combining all account assessments
+- **File Format**: `security_assessment_multi_account_YYYYMMDD_HHMMSS.html`
+- **Features**:
+  - Executive summary with metrics (Total, High, Medium, Low severity counts)
+  - Service breakdown (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, Financial Services GenAI Risk)
+  - Priority recommendations
+  - Light/dark mode toggle (persists through localStorage)
+  - Dropdown filters for Account ID, Region, Service, Severity, Status
+  - Text search filter for findings
+  - "View Docs" buttons for reference links
+
+#### Individual Account Reports
+
+- **Location**: Folders named with account IDs (for example, `123456789012/`)
+- **Content**: Account-specific CSV and HTML files for AI/ML assessments
+- **Files Include**:
+  - `bedrock_security_report_{execution_id}.csv` - Amazon Bedrock security assessment results
+  - `sagemaker_security_report_{execution_id}.csv` - Amazon SageMaker AI security assessment results
+  - `agentcore_security_report_{execution_id}.csv` - Amazon Bedrock AgentCore security assessment results
+  - `finserv_security_report_{execution_id}.csv` - Financial Services GenAI risk assessment results (64 FS-XX checks)
+
+  - `permissions_cache_{execution_id}.json` - IAM permissions cache
+  - `security_assessment_single_account_{timestamp}.html` - Consolidated HTML report (same features as multi-account report)
 
 ### Understanding Results
 
@@ -159,6 +324,32 @@ For detailed architecture, execution flow, and extension guidance, see the [Deve
 | **N/A** | No resources to assess or service not available in region |
 
 ---
+
+### How finding severities are determined
+
+FinServ (`FS-`) check severities are assigned by a documented, reproducible methodology rather than
+per-check intuition. Each control is scored on two axes — **Impact** (harm if the control is absent)
+and **Likelihood** (probability the adverse outcome occurs given the control is absent) — and the
+pair is mapped to a severity via a 3×3 matrix. The labels align with the **AWS Security Hub ASFF**
+severity scale, so findings can be forwarded to Security Hub with consistent severities:
+
+| Label | ASFF normalized | Meaning |
+|-------|-----------------|---------|
+| Informational | 0 | No actionable issue (control not applicable, advisory/manual-review, or could-not-assess context) |
+| Low | 1–39 | Does not require action on its own; compensating controls exist |
+| Medium | 40–69 | Should be addressed, but not urgently |
+| High | 70–89 | Should be addressed as a priority |
+
+Severity is a property of the **control** (its inherent risk), so a check's `Passed` and `Failed`
+rows carry the same severity. The `N/A` family is fixed by disposition: *not-applicable* and
+*advisory* findings are **Informational**; *could-not-assess* (access-denied / unsupported region)
+findings are **Low**. `Critical` is reserved and not currently emitted.
+
+For the full methodology (matrix, factor definitions, disposition rules) and the authoritative
+per-finding assignments, see
+[FinServ Severity Methodology](docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) and the
+[FinServ Severity Register](docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md). Mappings are
+preliminary — validate with your MRM/Legal/Compliance teams before relying on them as audit evidence.
 
 ## Customization
 
@@ -193,9 +384,16 @@ If you need to reduce scope, review the role policies in:
 
 | Document | Description |
 |----------|-------------|
-| [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 52 security checks |
+| [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 116 security checks with severity levels |
+| [FinServ GenAI Risk Checks — Common](docs/SECURITY_CHECKS_FINSERV_COMMON.md) | Shared introduction, severity rubric, upstream-overlap table, and compliance framework mapping for FS-01..69 |
+| [FinServ Part 1 — Infrastructure Controls](docs/SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md) | FS-01..26: Unbounded consumption, excessive agency, supply chain, training data poisoning, vector & embedding weaknesses |
+| [FinServ Part 2 — Guardrails & Content Safety](docs/SECURITY_CHECKS_FINSERV_PART2_GUARDRAILS_CONTENT_SAFETY.md) | FS-27..46: Non-compliant output, misinformation, abusive/harmful output, biased output, PII disclosure |
+| [FinServ Part 3 — App Layer & Gaps](docs/SECURITY_CHECKS_FINSERV_PART3_APP_LAYER_AND_GAPS.md) | FS-47..69: Hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data, cross-category gap checks |
+| [FinServ Severity Methodology](docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) | Likelihood × Impact → ASFF severity model, disposition rules, and research basis for FS check severities |
+| [FinServ Severity Register](docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md) | Authoritative per-finding severity assignments (the single source of truth enforced by the drift-guard test) |
+| [FinServ Compliance Mappings](docs/AIMLSecurityAssessment-MappingsTable.csv) | Machine-readable mapping of FS checks to SR 11-7, FFIEC CAT, NYDFS 500.06, PCI-DSS, DORA, MAS TRM, ISO 27001, OWASP LLM Top 10 |
 | [Troubleshooting Guide](docs/TROUBLESHOOTING.md) | Common issues, stack identification, upgrade guide, debugging |
-| [Developer Guide](docs/DEVELOPER_GUIDE.md) | Architecture details, adding custom checks, contributing |
+| [Developer Guide](docs/DEVELOPER_GUIDE.md) | Architecture details, adding custom checks, and contributing |
 | [Cleanup Guide](docs/CLEANUP.md) | Step-by-step resource removal instructions |
 
 ---
