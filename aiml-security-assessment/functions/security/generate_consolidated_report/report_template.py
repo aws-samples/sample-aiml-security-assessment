@@ -23,9 +23,13 @@ FINSERV_ICON_SMALL = (
     '<path fill="#FFF" d="M40 14 L66 26 L66 31 L14 31 L14 26 Z '
     'M20 35 h6 v23 h-6 z M37 35 h6 v23 h-6 z M54 35 h6 v23 h-6 z M14 62 h52 v5 h-52 z"/></svg></span>'
 )
+GENAI_LENS_URL = (
+    "https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/"
+    "generative-ai-lens.html"
+)
 FINSERV_GUIDE_URL = (
-    "https://d1.awsstatic.com/onedam/marketing-channels/website/public/"
-    "global-FinServ-ComplianceGuide-GenAIRisks-public.pdf"
+    "https://aws.amazon.com/blogs/security/"
+    "introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/"
 )
 
 
@@ -993,16 +997,16 @@ def generate_html_report(
             + '<span style="font-size: 13px; font-weight: 500;">Financial Services GenAI Risk</span></div></div></div>'
         )
         finserv_scope_source = (
-            f' Includes Financial Services GenAI Risk checks derived from the '
-            f'<a href="{FINSERV_GUIDE_URL}" target="_blank">AWS guide for Financial Services risk management of the use of Generative AI</a>.'
+            f' Financial Services GenAI Risk checks are based on '
+            f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>.'
         )
         finserv_section = (
             '<section id="finserv" class="section">'
             '<div class="section-title">'
             + FINSERV_ICON
             + "Financial Services GenAI Risk Findings</div>"
-            '<div class="muted" style="margin:-6px 0 10px;font-size:13px;">Scope: this assessment records findings against each resolved CloudFormation TargetRegions entry. These checks are derived from the '
-            f'<a href="{FINSERV_GUIDE_URL}" target="_blank">AWS guide for Financial Services risk management of the use of Generative AI</a>. '
+            '<div class="muted" style="margin:-6px 0 10px;font-size:13px;">Scope: this assessment records findings against each resolved CloudFormation TargetRegions entry. These checks are based on '
+            f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>. '
             'Severities follow a documented Likelihood &times; Impact methodology (see docs).</div>'
             '<div class="filter-bar">'
             '<div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="finservSearchInput"></div>'
@@ -1088,6 +1092,15 @@ def generate_html_report(
         account_risk_section=account_risk_section,
         region_risk_section=region_risk_section,
     )
+    base_scope_source = (
+        f"Bedrock, SageMaker, and AgentCore checks are based on the "
+        f'<a href="{GENAI_LENS_URL}" target="_blank">AWS Well-Architected Framework Generative AI Lens</a>.'
+    )
+    rendered_html = rendered_html.replace(
+        "Based on AWS Well-Architected Framework (Generative AI Lens) and service-specific security documentation.",
+        base_scope_source,
+        1,
+    )
     if finserv_scope_industry_block:
         rendered_html = rendered_html.replace(
             '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div></div><p style=',
@@ -1098,9 +1111,8 @@ def generate_html_report(
             1,
         )
         rendered_html = rendered_html.replace(
-            "Based on AWS Well-Architected Framework (Generative AI Lens) and service-specific security documentation.",
-            "Based on AWS Well-Architected Framework (Generative AI Lens) and service-specific security documentation."
-            + finserv_scope_source,
+            base_scope_source,
+            base_scope_source + finserv_scope_source,
             1,
         )
     return rendered_html

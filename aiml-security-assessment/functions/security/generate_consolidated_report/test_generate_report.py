@@ -330,7 +330,14 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertIn("Financial Services Risk", html)
         self.assertIn("Assessment Area", html)
         self.assertIn("All Assessment Areas", html)
-        self.assertIn("global-FinServ-ComplianceGuide-GenAIRisks-public.pdf", html)
+        self.assertIn(
+            "wellarchitected/latest/generative-ai-lens/generative-ai-lens.html", html
+        )
+        self.assertIn(
+            "introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption",
+            html,
+        )
+        self.assertNotIn("global-FinServ-ComplianceGuide-GenAIRisks-public.pdf", html)
         self.assertIn("<h3>By Industry</h3>", html)
         by_service_nav = html.split("<h3>By Service</h3>", 1)[1].split(
             "<h3>By Industry</h3>", 1
@@ -346,6 +353,13 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertNotIn('data-scope-service="finserv"', html)
         self.assertNotIn('class="scope-industry"', html)
         self.assertNotIn("Financial Services Risk", html)
+        self.assertIn(
+            "wellarchitected/latest/generative-ai-lens/generative-ai-lens.html", html
+        )
+        self.assertNotIn(
+            "introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption",
+            html,
+        )
         self.assertNotIn("global-FinServ-ComplianceGuide-GenAIRisks-public.pdf", html)
         # Other services still render (regression check).
         self.assertIn('id="bedrock"', html)
