@@ -7,7 +7,7 @@ on:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
       - "consolidate_html_reports.py"
-      - "test_consolidate_finserv.py"
+      - "tests/test_consolidate_finserv.py"
       - ".github/workflows/python-tests.yml"
   pull_request:
     branches: [main]
@@ -15,7 +15,7 @@ on:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
       - "consolidate_html_reports.py"
-      - "test_consolidate_finserv.py"
+      - "tests/test_consolidate_finserv.py"
       - ".github/workflows/python-tests.yml"
 
 jobs:
@@ -81,7 +81,7 @@ jobs:
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing  # pragma: allowlist secret
         run: |
-          python -m pytest test_consolidate_finserv.py -v --tb=short
+          python -m pytest tests/test_consolidate_finserv.py -v --tb=short
           cd aiml-security-assessment/functions/security/generate_consolidated_report
           python -m pytest test_generate_report.py -v --tb=short
 

@@ -2,9 +2,9 @@
 
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](https://opensource.org/licenses/MIT-0) [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/downloads/) [![AWS SAM](https://img.shields.io/badge/AWS-SAM-orange.svg)](https://aws.amazon.com/serverless/sam/) [![Serverless](https://img.shields.io/badge/Architecture-Serverless-green.svg)](https://aws.amazon.com/serverless/)
 
-**Open-source automated security scanner for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Financial Services GenAI Risk** — Built on [AWS Well-Architected Framework (Generative AI Lens)](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
+**Open-source automated security scanner for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Financial Services GenAI Risk** — Built on the [AWS Well-Architected Framework (Generative AI Lens)](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html) and optional Financial Services GenAI risk guidance.
 
-Cloud security automation with **[116 security checks](docs/SECURITY_CHECKS.md)** for your generative AI and machine learning workloads. Identify IAM misconfigurations, encryption gaps, network isolation issues, and compliance violations with interactive HTML reports and actionable remediation guidance.
+Cloud security automation with **[116 security checks](docs/SECURITY_CHECKS.md)** for your generative AI and machine learning workloads. Identify IAM misconfigurations, encryption gaps, network isolation issues, and potential governance or compliance gaps with interactive HTML reports and actionable remediation guidance.
 
 ---
 
@@ -81,7 +81,7 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 | Challenge | How This Framework Helps |
 |-----------|-------------------------|
 | **Manual security audits are time-consuming** | Fully automated scanning with one-click CloudFormation deployment |
-| **Inconsistent security checks across teams** | Standardized 116-check assessment based on AWS Well-Architected best practices and AWS FinServ GenAI Risk guidance |
+| **Inconsistent security checks across teams** | Standardized 116-check assessment based on AWS Well-Architected best practices and AWS Responsible AI governance, risk, and compliance guidance |
 | **Difficulty tracking AI/ML security posture** | Interactive HTML dashboards with severity breakdown and per-account visibility |
 | **Multi-account complexity** | Consolidated reporting across AWS Organizations with cross-account role assumption |
 | **Compliance and audit support** | Exportable reports to supplement your compliance program, with remediation guidance linked to AWS documentation |
@@ -91,7 +91,7 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 - **[Amazon Bedrock](docs/SECURITY_CHECKS.md#amazon-bedrock-security-checks-14)** (14 checks) - Guardrails, encryption, Amazon VPC endpoints, AWS IAM permissions, model invocation logging
 - **[Amazon SageMaker AI](docs/SECURITY_CHECKS.md#amazon-sagemaker-ai-security-checks-25)** (25 checks) - AWS Security Hub controls (SageMaker.1-5), encryption, network isolation, AWS IAM, MLOps
 - **[Amazon Bedrock AgentCore](docs/SECURITY_CHECKS.md#amazon-bedrock-agentcore-security-checks-13)** (13 checks) - Amazon VPC configuration, encryption, observability, resource policies
-- **[Financial Services GenAI Risk](docs/SECURITY_CHECKS.md#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)** (64 checks) - Unbounded consumption, excessive agency, supply chain, training data poisoning, hallucination, prompt injection, PII disclosure, and 8 more FinServ-specific risk categories derived from the [AWS FinServ GenAI Risk Guide](https://d1.awsstatic.com/onedam/marketing-channels/website/public/global-FinServ-ComplianceGuide-GenAIRisks-public.pdf)
+- **[Financial Services GenAI Risk](docs/SECURITY_CHECKS.md#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)** (64 checks) - Unbounded consumption, excessive agency, supply chain, training data poisoning, hallucination, prompt injection, PII disclosure, and 8 more FinServ-specific risk categories derived from the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/)
 
 **Deployment Options:**
 - **Single-Account**: Assess security in one AWS account
@@ -203,8 +203,8 @@ The HTML report includes a Region column, filter dropdown, and "Risk by Region" 
 ### Optional: Financial Services GenAI Risk Checks (`EnableFinServAssessment`)
 
 The 64 Financial Services (FS-XX) GenAI risk checks are **opt-in** and default to `false`. Set the
-`EnableFinServAssessment` deployment parameter to `true` only if you must adhere to FinServ
-compliance. When enabled, the FinServ assessment Lambda runs and its findings appear in a dedicated
+`EnableFinServAssessment` deployment parameter to `true` when you want the additional Financial
+Services GenAI risk assessment. When enabled, the FinServ assessment Lambda runs and its findings appear in a dedicated
 **Financial Services** section of the HTML report. When left `false`, no FinServ findings are
 produced and the report omits the FinServ section entirely. The toggle is threaded into the Step
 Functions execution input (`enableFinServ`); the FinServ Lambda is always deployed but is invoked
@@ -214,7 +214,7 @@ only when the flag is `true`.
 
 #### Scope and limitations
 
-- **FinServ deployment Region.** Core Bedrock, SageMaker, and AgentCore checks support multi-region scanning. The optional FinServ assessment runs once in the deployment Region to avoid duplicate advisory findings across regional fan-out.
+- **FinServ Region scope.** Core Bedrock, SageMaker, AgentCore, and optional FinServ checks use the resolved `TargetRegions` from the deployment parameters. FinServ findings are emitted with Region values so they appear alongside the same regional filter and per-region report views as the core service checks.
 - **Heuristic and advisory checks.** Some controls cannot be verified through an API (application-layer controls, dataset contents, resource associations); these are reported as `ADVISORY`/`N/A` and require manual review. See [How finding severities are determined](#how-finding-severities-are-determined).
 - **Permissions.** A check that lacks an IAM permission is reported as `COULD NOT ASSESS` (not a failure). Re-deploy the member role after any IAM template change so newer actions take effect.
 
@@ -385,13 +385,10 @@ If you need to reduce scope, review the role policies in:
 | Document | Description |
 |----------|-------------|
 | [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 116 security checks with severity levels |
-| [FinServ GenAI Risk Checks — Common](docs/SECURITY_CHECKS_FINSERV_COMMON.md) | Shared introduction, severity rubric, upstream-overlap table, and compliance framework mapping for FS-01..69 |
-| [FinServ Part 1 — Infrastructure Controls](docs/SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md) | FS-01..26: Unbounded consumption, excessive agency, supply chain, training data poisoning, vector & embedding weaknesses |
-| [FinServ Part 2 — Guardrails & Content Safety](docs/SECURITY_CHECKS_FINSERV_PART2_GUARDRAILS_CONTENT_SAFETY.md) | FS-27..46: Non-compliant output, misinformation, abusive/harmful output, biased output, PII disclosure |
-| [FinServ Part 3 — App Layer & Gaps](docs/SECURITY_CHECKS_FINSERV_PART3_APP_LAYER_AND_GAPS.md) | FS-47..69: Hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data, cross-category gap checks |
+| [FinServ GenAI Risk Checks](docs/SECURITY_CHECKS_FINSERV.md) | Complete FS-01..69 reference: shared introduction, severity rubric, upstream-overlap table, compliance framework mapping, and all check definitions (Part 1 infrastructure controls, Part 2 guardrails & content safety, Part 3 app-layer controls & gaps) |
 | [FinServ Severity Methodology](docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) | Likelihood × Impact → ASFF severity model, disposition rules, and research basis for FS check severities |
 | [FinServ Severity Register](docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md) | Authoritative per-finding severity assignments (the single source of truth enforced by the drift-guard test) |
-| [FinServ Compliance Mappings](docs/AIMLSecurityAssessment-MappingsTable.csv) | Machine-readable mapping of FS checks to SR 11-7, FFIEC CAT, NYDFS 500.06, PCI-DSS, DORA, MAS TRM, ISO 27001, OWASP LLM Top 10 |
+| [FinServ Compliance Mappings](docs/SECURITY_CHECKS_FINSERV.md#compliance-framework-mapping) | Preliminary mapping of FS checks to SR 11-7, FFIEC CAT, NYDFS 500, PCI-DSS, DORA, MAS TRM, ISO 27001, ECOA, and OWASP LLM Top 10 |
 | [Troubleshooting Guide](docs/TROUBLESHOOTING.md) | Common issues, stack identification, upgrade guide, debugging |
 | [Developer Guide](docs/DEVELOPER_GUIDE.md) | Architecture details, adding custom checks, and contributing |
 | [Cleanup Guide](docs/CLEANUP.md) | Step-by-step resource removal instructions |
@@ -400,11 +397,12 @@ If you need to reduce scope, review the role policies in:
 
 ## CI/CD
 
-GitHub Actions workflows run automatically on pull requests and pushes to `main`:
+GitHub Actions workflows run automatically on pull requests and selected pushes:
 
 | Workflow | Trigger | What It Checks |
 |----------|---------|----------------|
 | **Python Code Quality** | PR | `ruff check` and `ruff format --check` on changed Python files |
+| **AI/ML Security Assessment Tests** | PR, push to `main`/`develop` | Runs the `pytest` suite (assessment functions and report pipeline) on Python 3.11 and 3.12 |
 | **CloudFormation Lint** | PR | Validates deployment and SAM templates with `cfn-lint` |
 | **SAM Validate & Build** | PR | `sam validate --lint` and `sam build` on SAM templates |
 | **ASH Security Scan** | PR | Scans for secrets, dependency vulnerabilities, and IaC misconfigurations |

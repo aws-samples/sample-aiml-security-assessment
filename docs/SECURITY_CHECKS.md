@@ -353,26 +353,25 @@ Each security check has a unique identifier with a service prefix:
 ## Financial Services GenAI Risk Checks (64 additional, 5 upstream extensions)
 
 These 64 standalone checks (FS-XX) extend the framework with Financial Services
-regulatory controls derived from the
-[AWS guide for Financial Services risk management of the use of Generative AI (March 2026)](https://d1.awsstatic.com/onedam/marketing-channels/website/public/global-FinServ-ComplianceGuide-GenAIRisks-public.pdf).
+risk-management controls derived from the
+[AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/).
 An additional 5 FS checks are contributed as extensions to existing SM-07,
 SM-22, SM-23, BR-04, and BR-06 (see in-file extension notes).
 
-The full catalog is split across three companion files for readability:
+The full catalog is in **[`SECURITY_CHECKS_FINSERV.md`](./SECURITY_CHECKS_FINSERV.md)**,
+organized into three parts:
 
-- **[`SECURITY_CHECKS_FINSERV_COMMON.md`](./SECURITY_CHECKS_FINSERV_COMMON.md)** — shared
-  intro, severity rubric, validation note, upstream-overlap table, compliance framework
-  mapping.
-- **[`SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md`](./SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md)** — FS-01 to FS-26
+- **Part 1 — Infrastructure & Resource Controls** — FS-01 to FS-26
   (Unbounded Consumption, Excessive Agency, Supply Chain, Training Poisoning, Vector
   Weaknesses).
-- **[`SECURITY_CHECKS_FINSERV_PART2_GUARDRAILS_CONTENT_SAFETY.md`](./SECURITY_CHECKS_FINSERV_PART2_GUARDRAILS_CONTENT_SAFETY.md)** — FS-27 to FS-46
+- **Part 2 — Guardrails & Content Safety** — FS-27 to FS-46
   (Non-Compliant Output, Misinformation, Abusive/Harmful Output, Biased Output,
   Sensitive Information Disclosure).
-- **[`SECURITY_CHECKS_FINSERV_PART3_APP_LAYER_AND_GAPS.md`](./SECURITY_CHECKS_FINSERV_PART3_APP_LAYER_AND_GAPS.md)** — FS-47 to FS-69
+- **Part 3 — Application-Layer Controls & Material Gaps** — FS-47 to FS-69
   (Hallucination, Prompt Injection, Improper Output Handling, Off-Topic Output,
   Out-of-Date Training Data, and 6 cross-category material gap checks).
 
-Compliance framework mapping table is in `SECURITY_CHECKS_FINSERV_COMMON.md`
+The same document includes the shared intro, severity rubric, validation note,
+upstream-overlap table, and the compliance framework mapping table
 (SR 11-7, FFIEC CAT, NYDFS 500.06, PCI-DSS 12.3.2, DORA Art.6, MAS TRM 9,
 ISO 27001 A.12, ECOA, OWASP LLM Top 10).

@@ -44,7 +44,7 @@
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 52 security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 52 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, with an optional 64-check Financial Services GenAI risk assessment, generating interactive HTML reports with findings and remediation guidance.
 
 ### Security Design Principles
 
@@ -123,7 +123,6 @@ sample-aiml-security-assessment/
 │   └── *.png                         # Report screenshots
 ├── tests/                            # Unit tests for assessment functions
 ├── buildspec.yml                     # AWS CodeBuild orchestration
-├── buildspec-modular-example.yml     # Modular buildspec example
 └── consolidate_html_reports.py       # Multi-account report consolidation
 ```
 
@@ -196,7 +195,7 @@ sample-aiml-security-assessment/
 
 ## Assessment Structure
 
-The framework includes **52 security checks** across three AI/ML services. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **52 core security checks** across three AI/ML services, plus **64 optional Financial Services GenAI risk checks** when `EnableFinServAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
@@ -531,7 +530,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 ## Development Roadmap
 
 ### Current Status
-- **AI/ML Assessment**: 52 security checks across three services (see [Security Checks Reference](SECURITY_CHECKS.md))
+- **AI/ML Assessment**: 52 core checks across three services, plus 64 optional Financial Services GenAI risk checks (see [Security Checks Reference](SECURITY_CHECKS.md))
 
 ### Potential Additions
 - **Amazon Comprehend**: Data privacy, access controls, entity recognition security

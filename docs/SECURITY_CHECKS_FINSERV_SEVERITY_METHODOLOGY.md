@@ -3,7 +3,7 @@
 **Status:** Proposed (Round 3). This document is the authoritative reference for how every
 FinServ (`FS-`) check is assigned a severity. It answers reviewer Finding 6 ("How are the priorities of the findings determined?") with a concrete reproducible, industry- and AWS-aligned formula — not per-check intuition.
 
-> Scope note: today the FinServ checks and the upstream Bedrock/SageMaker/AgentCore checks all use ad-hoc severities with **no documente methodology** (verified by inspection — the upstream `app.py` files hardcode `severity="High"|"Medium"|...` with no rationale and no rubric doc). This methodology is introduced for the FinServ checks first and is written so it can later be adopted tool-wide.
+> Scope note: today the FinServ checks and the upstream Bedrock/SageMaker/AgentCore checks all use ad-hoc severities with **no documented methodology** (verified by inspection — the upstream `app.py` files hardcode `severity="High"|"Medium"|...` with no rationale and no rubric doc). This methodology is introduced for the FinServ checks first and is written so it can later be adopted tool-wide.
 
 ---
 
@@ -146,8 +146,8 @@ The authoritative per-finding assignments are in
 1. **Per-finding severity register.** A machine-checkable register (`severity-register.csv` or a `SEVERITY_REGISTER` dict in `app.py`) lists every `FS-` finding-name with its `I`, `L`, resulting label, and a one-line justification. This is the single source of truth.
    *(FS-01 emits four finding-names under one Check_ID; the register is keyed by finding-name so Shield=Low and WAF=Medium can coexist under FS-01.)*
 2. **Code matches register.** Every `create_finding(... severity=...)` must equal the register's label for that finding. A unit test enforces this (prevents future drift) — a strong guard for a public tool.
-3. **Docs match register.** The severity columns in `SECURITY_CHECKS_FINSERV_PART1/2/3.md` and the
-   `Severity rubric` section of `SECURITY_CHECKS_FINSERV_COMMON.md` are regenerated/checked against
+3. **Docs match register.** The per-check severity columns and the `Severity rubric` section in
+   `SECURITY_CHECKS_FINSERV.md` are regenerated/checked against
    the register. The "Advisory" tier in the existing rubric is reconciled (Advisory = the Informational disposition for non-verifiable controls).
 4. **Methodology surfaced to users.** A condensed version of §2–§3 is added to the README and
    linked from the FinServ report section so the methodology travels with the artifact (directly answering the reviewer).

@@ -1,7 +1,7 @@
 # FinServ Severity Register (authoritative)
 
 This register is the **single source of truth** for the severity of every FinServ finding. It is
-derived by applying [`severity-methodology.md`](./severity-methodology.md) (Likelihood × Impact →
+derived by applying [`SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) (Likelihood × Impact →
 ASFF label; §3.4 disposition rules; §3.5 family bands) to the **164 `create_finding` rows / 65
 check IDs** extracted from `finserv_assessments/app.py`.
 

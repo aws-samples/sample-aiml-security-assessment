@@ -2126,7 +2126,7 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
 #
 # NOTE: FS-17 (Model Monitor Data Quality → SM-07), FS-18 (Model Drift Detection → SM-23),
 # and FS-19 (Model Registry Approval → SM-22) are merged into upstream checks.
-# See extension notes in SECURITY_CHECKS_FINSERV_PART1_INFRA_CONTROLS.md.
+# See extension notes in SECURITY_CHECKS_FINSERV.md.
 # ===========================================================================
 
 
@@ -5424,7 +5424,7 @@ def check_foundation_model_lifecycle_policy() -> Dict[str, Any]:
 # Mitigations explicitly in the AWS FinServ Guide not covered by FS-01..63
 # or the existing BR/SM/AC checks.
 # NOTE: FS-64 (Guardrail Trace Logging) is merged into upstream BR-04.
-# See extension note in SECURITY_CHECKS_FINSERV_PART3_APP_LAYER_AND_GAPS.md.
+# See extension note in SECURITY_CHECKS_FINSERV.md.
 # ===========================================================================
 
 
