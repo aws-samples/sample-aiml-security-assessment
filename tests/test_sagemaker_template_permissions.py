@@ -30,7 +30,9 @@ def test_sagemaker_lambda_templates_include_required_actions():
     for template_path in TEMPLATE_PATHS:
         template_text = template_path.read_text(encoding="utf-8")
         missing_actions = [
-            action for action in REQUIRED_SAGEMAKER_ACTIONS if action not in template_text
+            action
+            for action in REQUIRED_SAGEMAKER_ACTIONS
+            if action not in template_text
         ]
         assert not missing_actions, (
             f"{template_path.name} is missing SageMaker Lambda permissions: "

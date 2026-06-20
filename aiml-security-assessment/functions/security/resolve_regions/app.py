@@ -36,7 +36,9 @@ def get_available_regions():
 def resolve_regions():
     """Resolve target regions from environment variable."""
     target_regions = os.environ.get("TARGET_REGIONS", "").strip()
-    current_region = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
+    current_region = os.environ.get(
+        "AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    )
 
     if not target_regions:
         return [current_region]

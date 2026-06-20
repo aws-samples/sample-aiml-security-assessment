@@ -110,7 +110,9 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
         total_resources_checked = 0
 
         # Create SageMaker client
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         # Check Notebook Instances
         try:
@@ -270,7 +272,9 @@ def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
     }
 
     try:
-        guardduty_client = boto3.client("guardduty", config=boto3_config, region_name=region)
+        guardduty_client = boto3.client(
+            "guardduty", config=boto3_config, region_name=region
+        )
 
         # Get list of detectors in the current region
         detectors = guardduty_client.list_detectors()
@@ -333,7 +337,9 @@ def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
     return findings
 
 
-def check_sagemaker_iam_permissions(permission_cache, region: str = "") -> Dict[str, Any]:
+def check_sagemaker_iam_permissions(
+    permission_cache, region: str = ""
+) -> Dict[str, Any]:
     """
     Check SageMaker IAM permissions and stale access.
 
@@ -477,7 +483,9 @@ def check_sagemaker_sso_configuration(region: str = "") -> Dict[str, Any]:
         findings = {"csv_data": []}
 
         domains_without_sso = []
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
         paginator = sagemaker_client.get_paginator("list_domains")
 
         for page in paginator.paginate():
@@ -614,7 +622,9 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         # Track resources with encryption issues
         resources_with_aws_managed_keys = []
@@ -849,7 +859,9 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
         }
 
 
-def check_sagemaker_mlops_utilization(permission_cache, region: str = "") -> Dict[str, Any]:
+def check_sagemaker_mlops_utilization(
+    permission_cache, region: str = ""
+) -> Dict[str, Any]:
     """
     Check if SageMaker MLOps features (Model Registry, Feature Store, and Pipelines)
     are being utilized properly
@@ -858,7 +870,9 @@ def check_sagemaker_mlops_utilization(permission_cache, region: str = "") -> Dic
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
         issues_found = []
 
         # Check Model Registry Usage
@@ -1077,7 +1091,9 @@ def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[st
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
         issues_found = []
 
         try:
@@ -1173,7 +1189,9 @@ def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[st
         }
 
 
-def check_sagemaker_model_monitor_usage(permission_cache, region: str = "") -> Dict[str, Any]:
+def check_sagemaker_model_monitor_usage(
+    permission_cache, region: str = ""
+) -> Dict[str, Any]:
     """
     Check if SageMaker Model Monitor is configured and actively monitoring models
     """
@@ -1187,7 +1205,9 @@ def check_sagemaker_model_monitor_usage(permission_cache, region: str = "") -> D
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
         issues_found = []
 
         try:
@@ -1287,7 +1307,9 @@ def check_sagemaker_notebook_root_access(region: str = "") -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         notebooks_with_root = []
         notebooks_without_root = []
@@ -1395,7 +1417,9 @@ def check_sagemaker_notebook_vpc_deployment(region: str = "") -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         notebooks_without_vpc = []
         notebooks_with_vpc = []
@@ -1509,7 +1533,9 @@ def check_sagemaker_model_network_isolation(region: str = "") -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         models_without_isolation = []
         models_with_isolation = []
@@ -1640,7 +1666,9 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         endpoints_single_instance = []
         endpoints_multi_instance = []
@@ -1768,7 +1796,9 @@ def check_sagemaker_monitoring_network_isolation(region: str = "") -> Dict[str, 
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         schedules_without_isolation = []
         schedules_with_isolation = []
@@ -1891,7 +1921,9 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         models_platform_mode = []
         models_vpc_mode = []
@@ -2051,7 +2083,9 @@ def check_sagemaker_feature_store_encryption(region: str = "") -> Dict[str, Any]
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         feature_groups_without_encryption = []
         feature_groups_with_encryption = []
@@ -2172,7 +2206,9 @@ def check_sagemaker_data_quality_encryption(region: str = "") -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         jobs_without_encryption = []
         jobs_with_encryption = []
@@ -2286,7 +2322,9 @@ def check_sagemaker_processing_job_encryption(region: str = "") -> Dict[str, Any
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         jobs_without_encryption = []
         jobs_with_encryption = []
@@ -2417,7 +2455,9 @@ def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         jobs_without_encryption = []
         jobs_with_encryption = []
@@ -2536,7 +2576,9 @@ def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]
         }
 
 
-def check_sagemaker_hyperparameter_tuning_encryption(region: str = "") -> Dict[str, Any]:
+def check_sagemaker_hyperparameter_tuning_encryption(
+    region: str = "",
+) -> Dict[str, Any]:
     """
     Check if SageMaker hyperparameter tuning jobs have volume encryption enabled.
     Aligns with AWS Security Hub control SageMaker.12
@@ -2545,7 +2587,9 @@ def check_sagemaker_hyperparameter_tuning_encryption(region: str = "") -> Dict[s
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         jobs_without_encryption = []
         jobs_with_encryption = []
@@ -2680,7 +2724,9 @@ def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, An
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         jobs_without_encryption = []
         jobs_with_encryption = []
@@ -2806,7 +2852,9 @@ def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         jobs_without_isolation = []
         jobs_with_isolation = []
@@ -2946,7 +2994,9 @@ def check_model_approval_workflow(region: str = "") -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         issues_found = []
         groups_checked = 0
@@ -3096,7 +3146,9 @@ def check_model_drift_detection(region: str = "") -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         endpoints_without_monitoring = []
         endpoints_with_monitoring = []
@@ -3279,7 +3331,9 @@ def check_ab_testing_shadow_deployment(region: str = "") -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         single_variant_endpoints = []
         multi_variant_endpoints = []
@@ -3463,7 +3517,9 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
 
         experiments_found = False
         trials_found = False
@@ -3625,7 +3681,9 @@ def check_model_registry_usage(permission_cache, region: str = "") -> Dict[str, 
     try:
         findings = {"csv_data": []}
 
-        sagemaker_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
         issues_found = []
 
         try:
@@ -3834,7 +3892,9 @@ def get_current_utc_date():
     return datetime.now(timezone.utc).strftime("%Y/%m/%d")
 
 
-def write_to_s3(execution_id, csv_content: str, bucket_name: str, region: str = "") -> Dict[str, str]:
+def write_to_s3(
+    execution_id, csv_content: str, bucket_name: str, region: str = ""
+) -> Dict[str, str]:
     """
     Write CSV reports to S3 bucket
     """
@@ -3900,39 +3960,14 @@ def lambda_handler(event, context):
 
         # Verify SageMaker is available in this region
         try:
-            test_client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+            test_client = boto3.client(
+                "sagemaker", config=boto3_config, region_name=region
+            )
             test_client.list_notebook_instances(MaxResults=1)
         except EndpointConnectionError:
             logger.info(f"SageMaker service not available in region {region}, skipping")
-            all_findings.append({
-                "check_name": "SageMaker Service Availability",
-                "status": "N/A",
-                "details": f"SageMaker is not available in region {region}",
-                "csv_data": [
-                    create_finding(
-                        check_id="SM-00",
-                        finding_name="SageMaker Service Availability",
-                        finding_details=f"Amazon SageMaker is not available in region {region}. No checks performed.",
-                        resolution="No action required. SageMaker is not deployed in this region.",
-                        reference="https://docs.aws.amazon.com/general/latest/gr/sagemaker.html",
-                        severity="Informational",
-                        status="N/A",
-                        region=region,
-                    )
-                ],
-            })
-            csv_content = generate_csv_report(all_findings)
-            bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
-            s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
-            return {"statusCode": 200, "body": {"message": f"SageMaker not available in {region}", "report_url": s3_url}}
-        except ClientError as e:
-            # A region that exists but is not enabled for the account surfaces as
-            # an auth/opt-in error rather than a connection failure. Treat it the
-            # same as "not available" instead of running every check against it.
-            error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code in REGION_UNAVAILABLE_ERROR_CODES:
-                logger.info(f"SageMaker not accessible in region {region} ({error_code}), skipping")
-                all_findings.append({
+            all_findings.append(
+                {
                     "check_name": "SageMaker Service Availability",
                     "status": "N/A",
                     "details": f"SageMaker is not available in region {region}",
@@ -3940,25 +3975,76 @@ def lambda_handler(event, context):
                         create_finding(
                             check_id="SM-00",
                             finding_name="SageMaker Service Availability",
-                            finding_details=f"Amazon SageMaker is not available or not enabled in region {region} ({error_code}). No checks performed.",
-                            resolution="No action required if the region is intentionally disabled. Otherwise enable the region for this account.",
+                            finding_details=f"Amazon SageMaker is not available in region {region}. No checks performed.",
+                            resolution="No action required. SageMaker is not deployed in this region.",
                             reference="https://docs.aws.amazon.com/general/latest/gr/sagemaker.html",
                             severity="Informational",
                             status="N/A",
                             region=region,
                         )
                     ],
-                })
+                }
+            )
+            csv_content = generate_csv_report(all_findings)
+            bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
+            s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
+            return {
+                "statusCode": 200,
+                "body": {
+                    "message": f"SageMaker not available in {region}",
+                    "report_url": s3_url,
+                },
+            }
+        except ClientError as e:
+            # A region that exists but is not enabled for the account surfaces as
+            # an auth/opt-in error rather than a connection failure. Treat it the
+            # same as "not available" instead of running every check against it.
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in REGION_UNAVAILABLE_ERROR_CODES:
+                logger.info(
+                    f"SageMaker not accessible in region {region} ({error_code}), skipping"
+                )
+                all_findings.append(
+                    {
+                        "check_name": "SageMaker Service Availability",
+                        "status": "N/A",
+                        "details": f"SageMaker is not available in region {region}",
+                        "csv_data": [
+                            create_finding(
+                                check_id="SM-00",
+                                finding_name="SageMaker Service Availability",
+                                finding_details=f"Amazon SageMaker is not available or not enabled in region {region} ({error_code}). No checks performed.",
+                                resolution="No action required if the region is intentionally disabled. Otherwise enable the region for this account.",
+                                reference="https://docs.aws.amazon.com/general/latest/gr/sagemaker.html",
+                                severity="Informational",
+                                status="N/A",
+                                region=region,
+                            )
+                        ],
+                    }
+                )
                 csv_content = generate_csv_report(all_findings)
                 bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
-                s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
-                return {"statusCode": 200, "body": {"message": f"SageMaker not available in {region}", "report_url": s3_url}}
+                s3_url = write_to_s3(
+                    execution_id, csv_content, bucket_name, region=region
+                )
+                return {
+                    "statusCode": 200,
+                    "body": {
+                        "message": f"SageMaker not available in {region}",
+                        "report_url": s3_url,
+                    },
+                }
             # Service is reachable but returned another API error (e.g. AccessDenied)
             # — proceed; individual checks handle their own errors.
-            logger.info(f"SageMaker availability probe returned {error_code}; proceeding with checks")
+            logger.info(
+                f"SageMaker availability probe returned {error_code}; proceeding with checks"
+            )
 
         logger.info("Running SageMaker internet access check")
-        sagemaker_internet_access_findings = check_sagemaker_internet_access(region=region)
+        sagemaker_internet_access_findings = check_sagemaker_internet_access(
+            region=region
+        )
         all_findings.append(sagemaker_internet_access_findings)
 
         logger.info("Running SageMaker SSO configuration check")
@@ -3966,7 +4052,9 @@ def lambda_handler(event, context):
         all_findings.append(sagemaker_sso_findings)
 
         logger.info("Running SageMaker data protection check")
-        sagemaker_data_protection_findings = check_sagemaker_data_protection(region=region)
+        sagemaker_data_protection_findings = check_sagemaker_data_protection(
+            region=region
+        )
         all_findings.append(sagemaker_data_protection_findings)
 
         logger.info("Running GuardDuty SageMaker monitoring check")
@@ -3974,15 +4062,21 @@ def lambda_handler(event, context):
         all_findings.append(guardduty_findings)
 
         logger.info("Running SageMaker MLOps features utilization check")
-        mlops_findings = check_sagemaker_mlops_utilization(permission_cache, region=region)
+        mlops_findings = check_sagemaker_mlops_utilization(
+            permission_cache, region=region
+        )
         all_findings.append(mlops_findings)
 
         logger.info("Running SageMaker Clarify usage check")
-        clarify_findings = check_sagemaker_clarify_usage(permission_cache, region=region)
+        clarify_findings = check_sagemaker_clarify_usage(
+            permission_cache, region=region
+        )
         all_findings.append(clarify_findings)
 
         logger.info("Running SageMaker Model Monitor usage check")
-        monitor_findings = check_sagemaker_model_monitor_usage(permission_cache, region=region)
+        monitor_findings = check_sagemaker_model_monitor_usage(
+            permission_cache, region=region
+        )
         all_findings.append(monitor_findings)
 
         logger.info("Running Model Registry usage check")
@@ -3998,36 +4092,52 @@ def lambda_handler(event, context):
         all_findings.append(notebook_vpc_findings)
 
         logger.info("Running SageMaker model network isolation check")
-        model_isolation_findings = check_sagemaker_model_network_isolation(region=region)
+        model_isolation_findings = check_sagemaker_model_network_isolation(
+            region=region
+        )
         all_findings.append(model_isolation_findings)
 
         logger.info("Running SageMaker endpoint instance count check")
-        endpoint_instance_findings = check_sagemaker_endpoint_instance_count(region=region)
+        endpoint_instance_findings = check_sagemaker_endpoint_instance_count(
+            region=region
+        )
         all_findings.append(endpoint_instance_findings)
 
         logger.info("Running SageMaker monitoring network isolation check")
-        monitoring_isolation_findings = check_sagemaker_monitoring_network_isolation(region=region)
+        monitoring_isolation_findings = check_sagemaker_monitoring_network_isolation(
+            region=region
+        )
         all_findings.append(monitoring_isolation_findings)
 
         logger.info("Running SageMaker model container repository check")
-        model_repository_findings = check_sagemaker_model_container_repository(region=region)
+        model_repository_findings = check_sagemaker_model_container_repository(
+            region=region
+        )
         all_findings.append(model_repository_findings)
 
         logger.info("Running SageMaker Feature Store encryption check")
-        feature_store_encryption_findings = check_sagemaker_feature_store_encryption(region=region)
+        feature_store_encryption_findings = check_sagemaker_feature_store_encryption(
+            region=region
+        )
         all_findings.append(feature_store_encryption_findings)
 
         logger.info("Running SageMaker data quality job encryption check")
-        data_quality_encryption_findings = check_sagemaker_data_quality_encryption(region=region)
+        data_quality_encryption_findings = check_sagemaker_data_quality_encryption(
+            region=region
+        )
         all_findings.append(data_quality_encryption_findings)
 
         # Additional AWS Security Hub Controls
         logger.info("Running SageMaker processing job encryption check (SageMaker.10)")
-        processing_job_encryption_findings = check_sagemaker_processing_job_encryption(region=region)
+        processing_job_encryption_findings = check_sagemaker_processing_job_encryption(
+            region=region
+        )
         all_findings.append(processing_job_encryption_findings)
 
         logger.info("Running SageMaker transform job encryption check (SageMaker.11)")
-        transform_job_encryption_findings = check_sagemaker_transform_job_encryption(region=region)
+        transform_job_encryption_findings = check_sagemaker_transform_job_encryption(
+            region=region
+        )
         all_findings.append(transform_job_encryption_findings)
 
         logger.info(
@@ -4047,7 +4157,9 @@ def lambda_handler(event, context):
         logger.info(
             "Running SageMaker AutoML job network isolation check (SageMaker.15)"
         )
-        automl_network_isolation_findings = check_sagemaker_automl_network_isolation(region=region)
+        automl_network_isolation_findings = check_sagemaker_automl_network_isolation(
+            region=region
+        )
         all_findings.append(automl_network_isolation_findings)
 
         # Model Governance Checks

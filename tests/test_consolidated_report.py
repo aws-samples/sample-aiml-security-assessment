@@ -67,7 +67,9 @@ class TestGlobalFindingDedup:
             captured.update(kwargs)
             return "<html></html>"
 
-        monkeypatch.setattr(consolidated_app, "generate_report_from_template", fake_template)
+        monkeypatch.setattr(
+            consolidated_app, "generate_report_from_template", fake_template
+        )
 
         # Same global BR-01 finding written into two different region files.
         results = _build_results(

@@ -179,7 +179,9 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
     return csv_content
 
 
-def write_to_s3(execution_id: str, csv_content: str, bucket_name: str, region: str = "") -> str:
+def write_to_s3(
+    execution_id: str, csv_content: str, bucket_name: str, region: str = ""
+) -> str:
     """
     Upload CSV report to S3.
 
@@ -2316,7 +2318,9 @@ def lambda_handler(event, context):
         ecr_client = boto3.client("ecr", config=boto3_config, region_name=region)
         logs_client = boto3.client("logs", config=boto3_config, region_name=region)
         xray_client = boto3.client("xray", config=boto3_config, region_name=region)
-        cloudwatch_client = boto3.client("cloudwatch", config=boto3_config, region_name=region)
+        cloudwatch_client = boto3.client(
+            "cloudwatch", config=boto3_config, region_name=region
+        )
 
         # Collect all findings
         all_findings = []
@@ -2334,8 +2338,14 @@ def lambda_handler(event, context):
         # not available in the primary region.
         if is_primary_region:
             global_checks = [
-                ("IAM Full Access", lambda: check_agentcore_full_access_roles(permission_cache)),
-                ("Stale Access", lambda: check_stale_agentcore_access(permission_cache)),
+                (
+                    "IAM Full Access",
+                    lambda: check_agentcore_full_access_roles(permission_cache),
+                ),
+                (
+                    "Stale Access",
+                    lambda: check_stale_agentcore_access(permission_cache),
+                ),
                 # AC-09 inspects a global IAM service-linked role, so it is also
                 # run once on the primary region rather than per scanned region.
                 ("Service-Linked Role", check_agentcore_service_linked_role),
@@ -2366,12 +2376,16 @@ def lambda_handler(event, context):
         # region's client if creation below fails.
         agentcore_client = None
         try:
-            agentcore_client = boto3.client("bedrock-agentcore-control", config=boto3_config, region_name=region)
+            agentcore_client = boto3.client(
+                "bedrock-agentcore-control", config=boto3_config, region_name=region
+            )
         except Exception as e:
             # The client could not even be constructed (e.g. the SDK in this
             # runtime does not know the service). This is the one case where the
             # region genuinely cannot be assessed.
-            logger.warning(f"Failed to initialize bedrock-agentcore-control client: {e}")
+            logger.warning(
+                f"Failed to initialize bedrock-agentcore-control client: {e}"
+            )
             agentcore_client = None
 
         if agentcore_client is not None:
@@ -2380,17 +2394,23 @@ def lambda_handler(event, context):
                 agentcore_client.list_agent_runtimes(maxResults=1)
                 logger.info("Successfully initialized bedrock-agentcore-control client")
             except EndpointConnectionError:
-                logger.info(f"AgentCore service not available in region {region}, skipping")
+                logger.info(
+                    f"AgentCore service not available in region {region}, skipping"
+                )
                 agentcore_client = None
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code", "")
                 if error_code in REGION_UNAVAILABLE_ERROR_CODES:
-                    logger.info(f"AgentCore not accessible in region {region} ({error_code}), skipping")
+                    logger.info(
+                        f"AgentCore not accessible in region {region} ({error_code}), skipping"
+                    )
                     agentcore_client = None
                 else:
                     # Service is reachable but returned another API error (e.g. access
                     # denied) — proceed; individual checks handle their own errors.
-                    logger.info(f"AgentCore client initialized (probe returned {error_code})")
+                    logger.info(
+                        f"AgentCore client initialized (probe returned {error_code})"
+                    )
             except Exception as e:
                 # An unexpected probe failure (e.g. a boto3/botocore SDK param or
                 # operation mismatch such as ParamValidationError/AttributeError)
@@ -2425,7 +2445,12 @@ def lambda_handler(event, context):
             s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
             return {
                 "statusCode": 200,
-                "body": json.dumps({"message": f"AgentCore not available in {region}", "s3_url": s3_url}),
+                "body": json.dumps(
+                    {
+                        "message": f"AgentCore not available in {region}",
+                        "s3_url": s3_url,
+                    }
+                ),
             }
 
         logger.info(

@@ -797,10 +797,7 @@ def generate_html_report(
     num_real_regions = len(regions) if regions else 0
     if num_real_regions + (1 if has_global else 0) > 1:
         region_options = "".join(
-            [
-                f'<option value="{r}">{r}</option>'
-                for r in sorted(regions or [])
-            ]
+            [f'<option value="{r}">{r}</option>' for r in sorted(regions or [])]
         )
         if has_global:
             region_options += '<option value="Global">Global</option>'
@@ -888,7 +885,9 @@ def generate_html_report(
         sidebar_subtitle = "Assessment Report"
         account_info = f"Account: {account_id or 'Unknown'}"
         if num_regions > 1:
-            header_account_info = f"Account: {account_id or 'Unknown'} · {num_regions} Regions"
+            header_account_info = (
+                f"Account: {account_id or 'Unknown'} · {num_regions} Regions"
+            )
             findings_sub = f"Across {num_regions} regions"
             security_checks_sub = f"Evaluated across {num_regions} regions"
         else:
@@ -907,21 +906,23 @@ def generate_html_report(
         region_metrics_html = ""
         for reg in sorted(regions):
             reg_findings = [
-                f for f in all_findings
-                if f.get("region", f.get("Region", "")) == reg
+                f for f in all_findings if f.get("region", f.get("Region", "")) == reg
             ]
             reg_high = sum(
-                1 for f in reg_findings
+                1
+                for f in reg_findings
                 if f.get("severity", f.get("Severity", "")).lower() == "high"
                 and f.get("status", f.get("Status", "")).lower() == "failed"
             )
             reg_medium = sum(
-                1 for f in reg_findings
+                1
+                for f in reg_findings
                 if f.get("severity", f.get("Severity", "")).lower() == "medium"
                 and f.get("status", f.get("Status", "")).lower() == "failed"
             )
             reg_low = sum(
-                1 for f in reg_findings
+                1
+                for f in reg_findings
                 if f.get("severity", f.get("Severity", "")).lower() == "low"
                 and f.get("status", f.get("Status", "")).lower() == "failed"
             )
@@ -997,7 +998,7 @@ def generate_html_report(
             + '<span style="font-size: 13px; font-weight: 500;">Financial Services GenAI Risk</span></div></div></div>'
         )
         finserv_scope_source = (
-            f' Financial Services GenAI Risk checks are based on '
+            f" Financial Services GenAI Risk checks are based on "
             f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>.'
         )
         finserv_section = (
@@ -1007,7 +1008,7 @@ def generate_html_report(
             + "Financial Services GenAI Risk Findings</div>"
             '<div class="muted" style="margin:-6px 0 10px;font-size:13px;">Scope: this assessment records findings against each resolved CloudFormation TargetRegions entry. These checks are based on '
             f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>. '
-            'Severities follow a documented Likelihood &times; Impact methodology (see docs).</div>'
+            "Severities follow a documented Likelihood &times; Impact methodology (see docs).</div>"
             '<div class="filter-bar">'
             '<div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="finservSearchInput"></div>'
             + finserv_account_filter
@@ -1107,7 +1108,7 @@ def generate_html_report(
             '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div>'
             + "</div>"
             + finserv_scope_industry_block
-            + '<p style=',
+            + "<p style=",
             1,
         )
         rendered_html = rendered_html.replace(

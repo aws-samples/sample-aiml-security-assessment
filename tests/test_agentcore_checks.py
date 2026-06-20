@@ -669,12 +669,16 @@ class TestAgentCoreHandlerMultiRegion:
                 return agentcore_mock
             return MagicMock()
 
-        with patch("agentcore_app.boto3.client", side_effect=client_dispatch), \
-                patch.object(agentcore_app, "get_permissions_cache", return_value={
-                    "role_permissions": {}, "user_permissions": {}
-                }), \
-                patch.object(agentcore_app, "generate_csv_report", side_effect=fake_csv), \
-                patch.object(agentcore_app, "write_to_s3", return_value="s3://b/r.csv"):
+        with (
+            patch("agentcore_app.boto3.client", side_effect=client_dispatch),
+            patch.object(
+                agentcore_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(agentcore_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(agentcore_app, "write_to_s3", return_value="s3://b/r.csv"),
+        ):
             resp = agentcore_app.lambda_handler(event, None)
 
         return resp, captured.get("findings", [])
@@ -746,7 +750,9 @@ class TestAgentCoreHandlerMultiRegion:
         try:
             from botocore.exceptions import ParamValidationError
 
-            probe_error = ParamValidationError(report="maxResults is not a valid parameter")
+            probe_error = ParamValidationError(
+                report="maxResults is not a valid parameter"
+            )
         except Exception:
             probe_error = TypeError("unexpected SDK signature")
 

@@ -203,9 +203,7 @@ class TestSM02SSOConfiguration:
         mock_sm = MagicMock()
         mock_client.return_value = mock_sm
         mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [
-            {"Domains": [{"DomainId": "d-123"}]}
-        ]
+        mock_paginator.paginate.return_value = [{"Domains": [{"DomainId": "d-123"}]}]
         mock_sm.get_paginator.return_value = mock_paginator
         mock_sm.describe_domain.return_value = {
             "DomainName": "test-domain",
@@ -1428,10 +1426,15 @@ class TestSageMakerHandlerMultiRegion:
         )
         mock_client.return_value = test_client
 
-        with patch.object(sagemaker_app, "get_permissions_cache", return_value={
-            "role_permissions": {}, "user_permissions": {}
-        }), patch.object(sagemaker_app, "generate_csv_report", side_effect=fake_csv), \
-                patch.object(sagemaker_app, "write_to_s3", return_value="s3://b/r.csv"):
+        with (
+            patch.object(
+                sagemaker_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(sagemaker_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(sagemaker_app, "write_to_s3", return_value="s3://b/r.csv"),
+        ):
             resp = sagemaker_app.lambda_handler(event, None)
 
         return resp, captured.get("findings", [])
@@ -1483,10 +1486,15 @@ class TestSageMakerHandlerMultiRegion:
         )
         mock_client.return_value = test_client
 
-        with patch.object(sagemaker_app, "get_permissions_cache", return_value={
-            "role_permissions": {}, "user_permissions": {}
-        }), patch.object(sagemaker_app, "generate_csv_report", side_effect=fake_csv), \
-                patch.object(sagemaker_app, "write_to_s3", return_value="s3://b/r.csv"):
+        with (
+            patch.object(
+                sagemaker_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(sagemaker_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(sagemaker_app, "write_to_s3", return_value="s3://b/r.csv"),
+        ):
             resp = sagemaker_app.lambda_handler(
                 _sagemaker_event(region="ap-east-1", region_index=1), None
             )
@@ -1514,10 +1522,15 @@ class TestSageMakerHandlerMultiRegion:
         )
         mock_client.return_value = test_client
 
-        with patch.object(sagemaker_app, "get_permissions_cache", return_value={
-            "role_permissions": {}, "user_permissions": {}
-        }), patch.object(sagemaker_app, "generate_csv_report", side_effect=fake_csv), \
-                patch.object(sagemaker_app, "write_to_s3", return_value="s3://b/r.csv"):
+        with (
+            patch.object(
+                sagemaker_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(sagemaker_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(sagemaker_app, "write_to_s3", return_value="s3://b/r.csv"),
+        ):
             resp = sagemaker_app.lambda_handler(
                 _sagemaker_event(region="us-east-1", region_index=0), None
             )

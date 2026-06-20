@@ -110,7 +110,11 @@ def consolidate_html_reports():
                             # Map CSV columns to finding structure
                             region = row.get("Region", "")
                             # "Global" tags IAM-only findings; not a scanned region.
-                            if region and region != GLOBAL_REGION_LABEL and "," not in region:
+                            if (
+                                region
+                                and region != GLOBAL_REGION_LABEL
+                                and "," not in region
+                            ):
                                 regions.add(region)
                             finding = {
                                 "account_id": account_id,

@@ -93,7 +93,11 @@ def _probe_bedrock_resource_list(probe_label: str, probe_func) -> Optional[bool]
             )
             return None
 
-        if code == "ValidationException" or "UnknownOperation" in error_text or "Unknown operation" in error_text:
+        if (
+            code == "ValidationException"
+            or "UnknownOperation" in error_text
+            or "Unknown operation" in error_text
+        ):
             logger.info(f"{probe_label} API not available in this region")
             return False
 
@@ -240,7 +244,9 @@ def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def check_marketplace_subscription_access(permission_cache, region: str = "") -> Dict[str, Any]:
+def check_marketplace_subscription_access(
+    permission_cache, region: str = ""
+) -> Dict[str, Any]:
     logger.debug("Starting check for overly permissive Marketplace subscription access")
     try:
         findings = {
@@ -618,7 +624,9 @@ def check_stale_bedrock_access(permission_cache, region: str = "") -> Dict[str, 
         }
 
 
-def check_bedrock_full_access_roles(permission_cache, region: str = "") -> Dict[str, Any]:
+def check_bedrock_full_access_roles(
+    permission_cache, region: str = ""
+) -> Dict[str, Any]:
     """
     Check for roles with AmazonBedrockFullAccess policy using cached permissions
     """
@@ -837,7 +845,9 @@ def handle_aws_throttling(func, *args, **kwargs):
                 raise
 
 
-def check_bedrock_access_and_vpc_endpoints(permission_cache, region: str = "") -> Dict[str, Any]:
+def check_bedrock_access_and_vpc_endpoints(
+    permission_cache, region: str = ""
+) -> Dict[str, Any]:
     logger.debug("Starting check for Bedrock access and VPC endpoints")
     try:
         findings = {
@@ -967,7 +977,9 @@ def check_bedrock_guardrails(region: str = "") -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
+        bedrock_client = boto3.client(
+            "bedrock", config=boto3_config, region_name=region
+        )
 
         try:
             # List all guardrails
@@ -993,7 +1005,9 @@ def check_bedrock_guardrails(region: str = "") -> Dict[str, Any]:
                     )
                 )
             else:
-                bedrock_footprint_found = detect_bedrock_regional_footprint(region=region)
+                bedrock_footprint_found = detect_bedrock_regional_footprint(
+                    region=region
+                )
 
                 if bedrock_footprint_found is False:
                     findings["details"] = "No regional Bedrock resources found"
@@ -1100,7 +1114,9 @@ def check_bedrock_logging_configuration(region: str = "") -> Dict[str, Any]:
             )
             return findings
 
-        bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
+        bedrock_client = boto3.client(
+            "bedrock", config=boto3_config, region_name=region
+        )
 
         try:
             # Get current logging configuration
@@ -1232,7 +1248,9 @@ def check_bedrock_cloudtrail_logging(region: str = "") -> Dict[str, Any]:
             )
             return findings
 
-        cloudtrail_client = boto3.client("cloudtrail", config=boto3_config, region_name=region)
+        cloudtrail_client = boto3.client(
+            "cloudtrail", config=boto3_config, region_name=region
+        )
 
         try:
             # Get all trails
@@ -1379,7 +1397,9 @@ def check_bedrock_prompt_management(region: str = "") -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock-agent", config=boto3_config, region_name=region)
+        bedrock_client = boto3.client(
+            "bedrock-agent", config=boto3_config, region_name=region
+        )
 
         try:
             # List all prompts
@@ -1514,7 +1534,9 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_agent_client = boto3.client("bedrock-agent", config=boto3_config, region_name=region)
+        bedrock_agent_client = boto3.client(
+            "bedrock-agent", config=boto3_config, region_name=region
+        )
 
         try:
             # List all knowledge bases
@@ -1643,7 +1665,9 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
         }
 
 
-def check_bedrock_guardrail_iam_enforcement(permission_cache, region: str = "") -> Dict[str, Any]:
+def check_bedrock_guardrail_iam_enforcement(
+    permission_cache, region: str = ""
+) -> Dict[str, Any]:
     """
     Check if IAM policies enforce the use of specific guardrails via
     the bedrock:GuardrailIdentifier condition key
@@ -1657,7 +1681,9 @@ def check_bedrock_guardrail_iam_enforcement(permission_cache, region: str = "") 
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
+        bedrock_client = boto3.client(
+            "bedrock", config=boto3_config, region_name=region
+        )
 
         # First check if any guardrails exist
         try:
@@ -1845,7 +1871,9 @@ def check_bedrock_custom_model_encryption(region: str = "") -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
+        bedrock_client = boto3.client(
+            "bedrock", config=boto3_config, region_name=region
+        )
 
         try:
             # List custom models
@@ -2003,7 +2031,9 @@ def check_bedrock_invocation_log_encryption(region: str = "") -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock", config=boto3_config, region_name=region)
+        bedrock_client = boto3.client(
+            "bedrock", config=boto3_config, region_name=region
+        )
         s3_client = boto3.client("s3", config=boto3_config, region_name=region)
 
         try:
@@ -2171,7 +2201,9 @@ def check_bedrock_flows_guardrails(region: str = "") -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        bedrock_agent_client = boto3.client("bedrock-agent", config=boto3_config, region_name=region)
+        bedrock_agent_client = boto3.client(
+            "bedrock-agent", config=boto3_config, region_name=region
+        )
 
         try:
             # List all flows
@@ -2362,7 +2394,9 @@ def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, A
             "csv_data": [],
         }
 
-        bedrock_client = boto3.client("bedrock-agent", config=boto3_config, region_name=region)
+        bedrock_client = boto3.client(
+            "bedrock-agent", config=boto3_config, region_name=region
+        )
 
         try:
             # Get all Bedrock agents
@@ -2571,7 +2605,9 @@ def get_current_utc_date():
     return datetime.now(timezone.utc).strftime("%Y/%m/%d")
 
 
-def write_to_s3(execution_id, csv_content: str, bucket_name: str, region: str = "") -> str:
+def write_to_s3(
+    execution_id, csv_content: str, bucket_name: str, region: str = ""
+) -> str:
     """
     Write CSV report to S3 bucket
     """
@@ -2628,12 +2664,16 @@ def lambda_handler(event, context):
         if is_primary_region:
             logger.info("Running global AmazonBedrockFullAccess check (BR-01)")
             all_findings.append(
-                check_bedrock_full_access_roles(permission_cache, region=GLOBAL_REGION_LABEL)
+                check_bedrock_full_access_roles(
+                    permission_cache, region=GLOBAL_REGION_LABEL
+                )
             )
 
             logger.info("Running global marketplace subscription access check (BR-03)")
             all_findings.append(
-                check_marketplace_subscription_access(permission_cache, region=GLOBAL_REGION_LABEL)
+                check_marketplace_subscription_access(
+                    permission_cache, region=GLOBAL_REGION_LABEL
+                )
             )
 
             logger.info("Running global stale Bedrock access check (BR-14)")
@@ -2648,7 +2688,9 @@ def lambda_handler(event, context):
         bedrock_unavailable = False
         unavailable_detail = ""
         try:
-            test_client = boto3.client("bedrock", config=boto3_config, region_name=region)
+            test_client = boto3.client(
+                "bedrock", config=boto3_config, region_name=region
+            )
             test_client.get_model_invocation_logging_configuration()
         except EndpointConnectionError:
             bedrock_unavailable = True
@@ -2661,31 +2703,41 @@ def lambda_handler(event, context):
             else:
                 # Service is reachable (e.g. ValidationException, AccessDenied) —
                 # proceed; individual checks handle their own errors.
-                logger.info(f"Bedrock availability probe returned {error_code}; proceeding with checks")
+                logger.info(
+                    f"Bedrock availability probe returned {error_code}; proceeding with checks"
+                )
 
         if bedrock_unavailable:
             logger.info(f"Bedrock service not available in region {region}, skipping")
-            all_findings.append({
-                "check_name": "Bedrock Service Availability",
-                "status": "N/A",
-                "details": f"Bedrock is not available in region {region}",
-                "csv_data": [
-                    create_finding(
-                        check_id="BR-00",
-                        finding_name="Bedrock Service Availability",
-                        finding_details=unavailable_detail,
-                        resolution="No action required. Bedrock is not deployed in this region.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-regions.html",
-                        severity="Informational",
-                        status="N/A",
-                        region=region,
-                    )
-                ],
-            })
+            all_findings.append(
+                {
+                    "check_name": "Bedrock Service Availability",
+                    "status": "N/A",
+                    "details": f"Bedrock is not available in region {region}",
+                    "csv_data": [
+                        create_finding(
+                            check_id="BR-00",
+                            finding_name="Bedrock Service Availability",
+                            finding_details=unavailable_detail,
+                            resolution="No action required. Bedrock is not deployed in this region.",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-regions.html",
+                            severity="Informational",
+                            status="N/A",
+                            region=region,
+                        )
+                    ],
+                }
+            )
             csv_content = generate_csv_report(all_findings)
             bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
             s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
-            return {"statusCode": 200, "body": {"message": f"Bedrock not available in {region}", "report_url": s3_url}}
+            return {
+                "statusCode": 200,
+                "body": {
+                    "message": f"Bedrock not available in {region}",
+                    "report_url": s3_url,
+                },
+            }
 
         # Run regional checks using the cached permissions
         logger.info("Running Bedrock access and VPC endpoints check")
@@ -2707,11 +2759,15 @@ def lambda_handler(event, context):
         all_findings.append(bedrock_cloudtrail_findings)
 
         logger.info("Running Bedrock Prompt Management check")
-        bedrock_prompt_management_findings = check_bedrock_prompt_management(region=region)
+        bedrock_prompt_management_findings = check_bedrock_prompt_management(
+            region=region
+        )
         all_findings.append(bedrock_prompt_management_findings)
 
         logger.info("Running Bedrock agent IAM roles check")
-        bedrock_agent_roles_findings = check_bedrock_agent_roles(permission_cache, region=region)
+        bedrock_agent_roles_findings = check_bedrock_agent_roles(
+            permission_cache, region=region
+        )
         all_findings.append(bedrock_agent_roles_findings)
 
         logger.info("Running Bedrock Knowledge Base encryption check")
@@ -2725,11 +2781,15 @@ def lambda_handler(event, context):
         all_findings.append(guardrail_iam_findings)
 
         logger.info("Running Bedrock custom model encryption check")
-        custom_model_encryption_findings = check_bedrock_custom_model_encryption(region=region)
+        custom_model_encryption_findings = check_bedrock_custom_model_encryption(
+            region=region
+        )
         all_findings.append(custom_model_encryption_findings)
 
         logger.info("Running Bedrock invocation log encryption check")
-        invocation_log_encryption_findings = check_bedrock_invocation_log_encryption(region=region)
+        invocation_log_encryption_findings = check_bedrock_invocation_log_encryption(
+            region=region
+        )
         all_findings.append(invocation_log_encryption_findings)
 
         logger.info("Running Bedrock Flows guardrails check")

@@ -40,7 +40,9 @@ class Finding(BaseModel):
     Reference: str = Field(..., description="Documentation reference URL")
     Severity: SeverityEnum = Field(..., description="Severity level of the finding")
     Status: StatusEnum = Field(..., description="Current status of the finding")
-    Region: str = Field(default="", description="AWS region where the finding was identified")
+    Region: str = Field(
+        default="", description="AWS region where the finding was identified"
+    )
     Compliance_Frameworks: str = Field(
         default="",
         description=(

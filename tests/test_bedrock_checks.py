@@ -220,9 +220,7 @@ class TestBR04LoggingConfiguration:
 
     @patch("boto3.client")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
-    def test_br04_logging_enabled_s3_returns_passed(
-        self, mock_footprint, mock_client
-    ):
+    def test_br04_logging_enabled_s3_returns_passed(self, mock_footprint, mock_client):
         check = bedrock_app.check_bedrock_logging_configuration
         mock_bedrock = MagicMock()
         mock_client.return_value = mock_bedrock
@@ -240,9 +238,7 @@ class TestBR04LoggingConfiguration:
 
     @patch("boto3.client")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
-    def test_br04_logging_disabled_returns_failed(
-        self, mock_footprint, mock_client
-    ):
+    def test_br04_logging_disabled_returns_failed(self, mock_footprint, mock_client):
         check = bedrock_app.check_bedrock_logging_configuration
         mock_bedrock = MagicMock()
         mock_client.return_value = mock_bedrock
@@ -257,9 +253,7 @@ class TestBR04LoggingConfiguration:
 
     @patch("boto3.client")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=False)
-    def test_br04_no_regional_footprint_returns_na(
-        self, mock_footprint, mock_client
-    ):
+    def test_br04_no_regional_footprint_returns_na(self, mock_footprint, mock_client):
         check = bedrock_app.check_bedrock_logging_configuration
         result = check(region="eu-west-1")
         findings = extract_csv_data(result)
@@ -322,9 +316,7 @@ class TestBR05Guardrails:
         mock_bedrock = MagicMock()
         mock_client.return_value = mock_bedrock
         mock_bedrock.list_guardrails.return_value = {"guardrails": []}
-        with patch(
-            "bedrock_app.detect_bedrock_regional_footprint", return_value=True
-        ):
+        with patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True):
             result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
@@ -337,9 +329,7 @@ class TestBR05Guardrails:
         mock_bedrock = MagicMock()
         mock_client.return_value = mock_bedrock
         mock_bedrock.list_guardrails.return_value = {"guardrails": []}
-        with patch(
-            "bedrock_app.detect_bedrock_regional_footprint", return_value=False
-        ):
+        with patch("bedrock_app.detect_bedrock_regional_footprint", return_value=False):
             result = check(region="eu-west-3")
         findings = extract_csv_data(result)
         assert len(findings) >= 1
@@ -363,9 +353,7 @@ class TestBR05Guardrails:
         mock_bedrock = MagicMock()
         mock_client.return_value = mock_bedrock
         mock_bedrock.list_guardrails.return_value = {"guardrails": []}
-        with patch(
-            "bedrock_app.detect_bedrock_regional_footprint", return_value=True
-        ):
+        with patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True):
             result = check()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
@@ -379,9 +367,7 @@ class TestBR06CloudTrailLogging:
 
     @patch("boto3.client")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
-    def test_br06_trail_is_logging_returns_passed(
-        self, mock_footprint, mock_client
-    ):
+    def test_br06_trail_is_logging_returns_passed(self, mock_footprint, mock_client):
         check = bedrock_app.check_bedrock_cloudtrail_logging
         mock_ct = MagicMock()
         mock_client.return_value = mock_ct
@@ -422,9 +408,7 @@ class TestBR06CloudTrailLogging:
 
     @patch("boto3.client")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
-    def test_br06_trail_not_logging_returns_failed(
-        self, mock_footprint, mock_client
-    ):
+    def test_br06_trail_not_logging_returns_failed(self, mock_footprint, mock_client):
         check = bedrock_app.check_bedrock_cloudtrail_logging
         mock_ct = MagicMock()
         mock_client.return_value = mock_ct
@@ -444,9 +428,7 @@ class TestBR06CloudTrailLogging:
 
     @patch("boto3.client")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=False)
-    def test_br06_no_regional_footprint_returns_na(
-        self, mock_footprint, mock_client
-    ):
+    def test_br06_no_regional_footprint_returns_na(self, mock_footprint, mock_client):
         check = bedrock_app.check_bedrock_cloudtrail_logging
         result = check(region="eu-west-1")
         findings = extract_csv_data(result)
@@ -528,9 +510,7 @@ class TestBR07PromptManagement:
         check = bedrock_app.check_bedrock_prompt_management
         mock_agent = MagicMock()
         mock_client.return_value = mock_agent
-        mock_agent.list_prompts.side_effect = Exception(
-            "InternalServerErrorException"
-        )
+        mock_agent.list_prompts.side_effect = Exception("InternalServerErrorException")
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
@@ -1078,9 +1058,7 @@ class TestBR13FlowsGuardrails:
         check = bedrock_app.check_bedrock_flows_guardrails
         mock_agent = MagicMock()
         mock_client.return_value = mock_agent
-        mock_agent.get_paginator.side_effect = Exception(
-            "UnknownOperationException"
-        )
+        mock_agent.get_paginator.side_effect = Exception("UnknownOperationException")
         result = check(region="us-west-1")
         findings = extract_csv_data(result)
         assert len(findings) >= 1
@@ -1159,10 +1137,17 @@ class TestBedrockHandlerMultiRegion:
         )
         mock_client.return_value = test_client
 
-        with patch.object(bedrock_app, "get_permissions_cache", return_value={
-            "role_permissions": {}, "user_permissions": {}
-        }), patch.object(bedrock_app, "generate_csv_report", side_effect=fake_csv), \
-                patch.object(bedrock_app, "write_to_s3", return_value="s3://bucket/report.csv"):
+        with (
+            patch.object(
+                bedrock_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(bedrock_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(
+                bedrock_app, "write_to_s3", return_value="s3://bucket/report.csv"
+            ),
+        ):
             resp = bedrock_app.lambda_handler(event, None)
 
         return resp, captured.get("findings", [])
@@ -1220,10 +1205,15 @@ class TestBedrockHandlerMultiRegion:
         )
         mock_client.return_value = test_client
 
-        with patch.object(bedrock_app, "get_permissions_cache", return_value={
-            "role_permissions": {}, "user_permissions": {}
-        }), patch.object(bedrock_app, "generate_csv_report", side_effect=fake_csv), \
-                patch.object(bedrock_app, "write_to_s3", return_value="s3://b/r.csv"):
+        with (
+            patch.object(
+                bedrock_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(bedrock_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(bedrock_app, "write_to_s3", return_value="s3://b/r.csv"),
+        ):
             resp = bedrock_app.lambda_handler(
                 _bedrock_event(region="me-south-1", region_index=1), None
             )
@@ -1251,10 +1241,15 @@ class TestBedrockHandlerMultiRegion:
         )
         mock_client.return_value = test_client
 
-        with patch.object(bedrock_app, "get_permissions_cache", return_value={
-            "role_permissions": {}, "user_permissions": {}
-        }), patch.object(bedrock_app, "generate_csv_report", side_effect=fake_csv), \
-                patch.object(bedrock_app, "write_to_s3", return_value="s3://b/r.csv"):
+        with (
+            patch.object(
+                bedrock_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(bedrock_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(bedrock_app, "write_to_s3", return_value="s3://b/r.csv"),
+        ):
             resp = bedrock_app.lambda_handler(
                 _bedrock_event(region="us-east-1", region_index=0), None
             )
