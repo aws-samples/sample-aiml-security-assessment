@@ -9,12 +9,26 @@ Metadata:
         Parameters:
           - EmailAddress
           - TargetRegions
+          - EnableFinServAssessment
       - Label:
           default: Advanced Options
         Parameters:
           - CodeBuildTimeout
           - GitHubRepoUrl
           - GitHubBranch
+    ParameterLabels:
+      EmailAddress:
+        default: Notification email address
+      TargetRegions:
+        default: AWS regions to scan
+      EnableFinServAssessment:
+        default: Financial Services GenAI risk checks
+      CodeBuildTimeout:
+        default: CodeBuild timeout in minutes
+      GitHubRepoUrl:
+        default: GitHub repository URL
+      GitHubBranch:
+        default: GitHub branch
 
 Parameters:
   GitHubRepoUrl:
@@ -26,8 +40,10 @@ Parameters:
 
   GitHubBranch:
     Type: String
-    Description: GitHub branch to build from
+    Description: GitHub branch, tag, or commit to build from.
     Default: main
+    AllowedPattern: "^\\S{1,255}$"
+    ConstraintDescription: Must be 1-255 characters with no whitespace.
 
   EmailAddress:
     Description: "Email address to receive assessment completion notifications (optional)"
@@ -38,10 +54,11 @@ Parameters:
 
   TargetRegions:
     Type: String
-    AllowedPattern: "^[a-zA-Z0-9,-]*$"
+    AllowedPattern: "^$|^all$|^[a-z]{2}(-gov)?-[a-z]+-[0-9](,[a-z]{2}(-gov)?-[a-z]+-[0-9])*$"
     ConstraintDescription: >
-      TargetRegions must be a comma-separated list of region names with no spaces
-      (e.g., us-east-1,us-west-2,eu-west-1), 'all', or empty.
+      TargetRegions must be empty, 'all', or a comma-separated list of AWS
+      region names with no spaces or trailing commas (for example,
+      us-east-1,us-west-2,eu-west-1).
     Description: >
       Comma-separated list of AWS regions to scan (e.g., us-east-1,us-west-2,eu-west-1).
       Use 'all' to scan all regions where the service is available.
@@ -49,14 +66,20 @@ Parameters:
     Default: ""
 
   CodeBuildTimeout:
-    Description: "Timeout for the CodeBuild job in minutes"
+    Description: >
+      Timeout for the CodeBuild assessment job, in minutes. Increase this value
+      for large multi-region scans.
     Type: Number
     MinValue: 5
     MaxValue: 480
     Default: 60
+    ConstraintDescription: Must be between 5 and 480 minutes.
 
   EnableFinServAssessment:
-    Description: "Run the Financial Services GenAI risk checks (FS-01..FS-69). Enable only if you must adhere to FinServ compliance; the FinServ findings add a dedicated report section."
+    Description: >
+      Run the Financial Services GenAI risk checks (FS-01 through FS-69). Enable
+      this only when you need the additional industry risk assessment; the
+      findings add a dedicated report section.
     Type: String
     AllowedValues: ["true", "false"]
     Default: "false"

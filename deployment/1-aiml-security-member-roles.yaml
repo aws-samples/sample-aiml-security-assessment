@@ -1,13 +1,23 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: This template deploys the roles needed for the AIML Security Assessment to run in each member account.
 
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Trust Configuration
+        Parameters:
+          - ManagementAccountID
+    ParameterLabels:
+      ManagementAccountID:
+        default: Management account ID
+
 Parameters:
   ManagementAccountID:
-    Description: "Specifies the account ID where AIML Security Assessment will run from."
+    Description: "The 12-digit AWS account ID where the multi-account AIML Security Assessment CodeBuild project runs."
     Type: String
-    Default: "012345678910"
-    AllowedPattern: \d{12}
-    ConstraintDescription: Enter the 12 digit account ID with no spaces.
+    AllowedPattern: "^\\d{12}$"
+    ConstraintDescription: Enter a 12-digit AWS account ID with no spaces.
 
 Resources:
   MemberRole:

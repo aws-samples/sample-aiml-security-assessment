@@ -10,6 +10,7 @@ Metadata:
           - MultiAccountScan
           - MultiAccountListOverride
           - TargetRegions
+          - EnableFinServAssessment
           - EmailAddress
       - Label:
           default: Advanced Options
@@ -19,6 +20,27 @@ Metadata:
           - MemberRoleName
           - GitHubRepoUrl
           - GitHubBranch
+    ParameterLabels:
+      MultiAccountScan:
+        default: Scan all AWS Organizations accounts
+      MultiAccountListOverride:
+        default: Account IDs to scan
+      TargetRegions:
+        default: AWS regions to scan
+      EnableFinServAssessment:
+        default: Financial Services GenAI risk checks
+      EmailAddress:
+        default: Notification email address
+      ConcurrentAccountScans:
+        default: Concurrent account scans
+      CodeBuildTimeout:
+        default: CodeBuild timeout in minutes
+      MemberRoleName:
+        default: Member account role name
+      GitHubRepoUrl:
+        default: GitHub repository URL
+      GitHubBranch:
+        default: GitHub branch
 
 Parameters:
   GitHubRepoUrl:
@@ -31,13 +53,19 @@ Parameters:
 
   GitHubBranch:
     Type: String
-    Description: GitHub branch to build from
+    Description: GitHub branch, tag, or commit to build from.
     Default: main
+    AllowedPattern: "^\\S{1,255}$"
+    ConstraintDescription: Must be 1-255 characters with no whitespace.
 
   MemberRoleName:
-    Description: "The role that the assessment should assume to perform the assessment."
+    Description: >
+      Name of the IAM role the assessment assumes in each member account. Provide
+      only the role name; the role must exist under the /service-role/ path.
     Type: String
     Default: AIMLSecurityMemberRole
+    AllowedPattern: "^[\\w+=,.@-]{1,64}$"
+    ConstraintDescription: Must be a valid IAM role name, not an ARN or path.
 
   MultiAccountScan:
     Description: "Set this to true if you want to scan all accounts in your organization."
@@ -48,10 +76,14 @@ Parameters:
     Default: "false"
 
   MultiAccountListOverride:
-    Description: "Specify a space delimited list of accounts to scan. Leaving this
-      blank will scan all accounts in your organization."
+    Description: >
+      Optional space-delimited list of 12-digit AWS account IDs to scan. Leave
+      blank to scan all active accounts in your organization when
+      MultiAccountScan is true.
     Type: String
     Default: ""
+    AllowedPattern: "^$|^\\d{12}( \\d{12})*$"
+    ConstraintDescription: Must be empty or a space-delimited list of 12-digit AWS account IDs.
 
   EmailAddress:
     Description: "Specify an address if you want to receive an email when the
@@ -70,13 +102,15 @@ Parameters:
       - "Six"
       - "Twelve"
     Default: "Three"
+    ConstraintDescription: Must be one of Three, Six, or Twelve.
 
   TargetRegions:
     Type: String
-    AllowedPattern: "^[a-zA-Z0-9,-]*$"
+    AllowedPattern: "^$|^all$|^[a-z]{2}(-gov)?-[a-z]+-[0-9](,[a-z]{2}(-gov)?-[a-z]+-[0-9])*$"
     ConstraintDescription: >
-      TargetRegions must be a comma-separated list of region names with no spaces
-      (e.g., us-east-1,us-west-2,eu-west-1), 'all', or empty.
+      TargetRegions must be empty, 'all', or a comma-separated list of AWS
+      region names with no spaces or trailing commas (for example,
+      us-east-1,us-west-2,eu-west-1).
     Description: >
       Comma-separated list of AWS regions to scan (e.g., us-east-1,us-west-2,eu-west-1).
       Use 'all' to scan all regions where the service is available.
@@ -84,15 +118,22 @@ Parameters:
     Default: ""
 
   CodeBuildTimeout:
-    Description: "Set the timeout for the CodeBuild job. The default is 300 minutes
-      (5 hours)."
+    Description: >
+      Timeout for the CodeBuild assessment job, in minutes. The default is 300
+      minutes (5 hours); increase this value for large organizations or
+      all-region scans.
     Type: Number
     MinValue: 5
     MaxValue: 2160
     Default: 300
+    ConstraintDescription: Must be between 5 and 2160 minutes.
 
   EnableFinServAssessment:
-    Description: "Run the Financial Services GenAI risk checks (FS-01..FS-69) in every scanned account. Enable only if you must adhere to FinServ compliance; the FinServ findings add a dedicated report section and increase report size."
+    Description: >
+      Run the Financial Services GenAI risk checks (FS-01 through FS-69) in every
+      scanned account. Enable this only when you need the additional industry
+      risk assessment; the findings add a dedicated report section and increase
+      report size.
     Type: String
     AllowedValues: ["true", "false"]
     Default: "false"

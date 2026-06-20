@@ -5,14 +5,29 @@ Description: >
 
   SAM Template for aiml-security-assessment
 
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Assessment Options
+        Parameters:
+          - TargetRegions
+          - MaxRegionConcurrency
+    ParameterLabels:
+      TargetRegions:
+        default: AWS regions to scan
+      MaxRegionConcurrency:
+        default: Regional scan concurrency
+
 Parameters:
   TargetRegions:
     Type: String
     Default: ""
-    AllowedPattern: "^[a-zA-Z0-9,-]*$"
+    AllowedPattern: "^$|^all$|^[a-z]{2}(-gov)?-[a-z]+-[0-9](,[a-z]{2}(-gov)?-[a-z]+-[0-9])*$"
     ConstraintDescription: >
-      TargetRegions must be a comma-separated list of region names with no spaces
-      (e.g., us-east-1,us-west-2,eu-west-1), 'all', or empty.
+      TargetRegions must be empty, 'all', or a comma-separated list of AWS
+      region names with no spaces or trailing commas (for example,
+      us-east-1,us-west-2,eu-west-1).
     Description: >
       Comma-separated list of AWS regions to scan (e.g., us-east-1,us-west-2,eu-west-1).
       Use 'all' to scan all regions where the service is available.
@@ -26,6 +41,7 @@ Parameters:
       Maximum number of regions scanned in parallel by the Map state. Lower
       values reduce concurrent Lambda usage; higher values speed up large
       multi-region scans. Set to 1 for fully sequential scanning.
+    ConstraintDescription: Must be between 1 and 40.
 
 Resources:
   AIMLAssessmentStateMachine:
