@@ -2,7 +2,7 @@
 
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](https://opensource.org/licenses/MIT-0) [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/downloads/) [![AWS SAM](https://img.shields.io/badge/AWS-SAM-orange.svg)](https://aws.amazon.com/serverless/sam/) [![Serverless](https://img.shields.io/badge/Architecture-Serverless-green.svg)](https://aws.amazon.com/serverless/)
 
-**Open-source automated security scanner for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Financial Services GenAI Risk** — Built on the [AWS Well-Architected Framework (Generative AI Lens)](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html) and optional Financial Services GenAI risk guidance.
+**Open-source automated security scanner for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Financial Services GenAI Risk** — Built on the [AWS Well-Architected Framework (Generative AI Lens)](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html) and optional [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption within Financial Services Industries](https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf) guidance.
 
 Cloud security automation with **[116 security checks](docs/SECURITY_CHECKS.md)** for your generative AI and machine learning workloads. Identify IAM misconfigurations, encryption gaps, network isolation issues, and potential governance or compliance gaps with interactive HTML reports and actionable remediation guidance.
 
@@ -81,7 +81,7 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 | Challenge | How This Framework Helps |
 |-----------|-------------------------|
 | **Manual security audits are time-consuming** | Fully automated scanning with one-click CloudFormation deployment |
-| **Inconsistent security checks across teams** | Standardized 116-check assessment based on AWS Well-Architected best practices and AWS Responsible AI governance, risk, and compliance guidance |
+| **Inconsistent security checks across teams** | Standardized 116-check assessment based on AWS Well-Architected Generative AI Lens best practices and AWS Responsible AI governance, risk, and compliance guidance for financial services |
 | **Difficulty tracking AI/ML security posture** | Interactive HTML dashboards with severity breakdown and per-account visibility |
 | **Multi-account complexity** | Consolidated reporting across AWS Organizations with cross-account role assumption |
 | **Compliance and audit support** | Exportable reports to supplement your compliance program, with remediation guidance linked to AWS documentation |
@@ -91,7 +91,7 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 - **[Amazon Bedrock](docs/SECURITY_CHECKS.md#amazon-bedrock-security-checks-14)** (14 checks) - Guardrails, encryption, Amazon VPC endpoints, AWS IAM permissions, model invocation logging
 - **[Amazon SageMaker AI](docs/SECURITY_CHECKS.md#amazon-sagemaker-ai-security-checks-25)** (25 checks) - AWS Security Hub controls (SageMaker.1-5), encryption, network isolation, AWS IAM, MLOps
 - **[Amazon Bedrock AgentCore](docs/SECURITY_CHECKS.md#amazon-bedrock-agentcore-security-checks-13)** (13 checks) - Amazon VPC configuration, encryption, observability, resource policies
-- **[Financial Services GenAI Risk](docs/SECURITY_CHECKS.md#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)** (64 checks) - Unbounded consumption, excessive agency, supply chain, training data poisoning, hallucination, prompt injection, PII disclosure, and 8 more FinServ-specific risk categories derived from the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/)
+- **[Financial Services GenAI Risk](docs/SECURITY_CHECKS.md#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)** (64 checks) - Unbounded consumption, excessive agency, supply chain, training data poisoning, hallucination, prompt injection, PII disclosure, and 8 more FinServ-specific risk categories derived from the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption within Financial Services Industries](https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf). See the [AWS Security Blog announcement](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/) for context on the updated guide.
 
 **Deployment Options:**
 - **Single-Account**: Assess security in one AWS account
@@ -276,7 +276,7 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
 2. **Navigate to the Amazon S3 Bucket**:
    - Go to **Amazon S3** in the AWS Console
    - Search for and open your assessment bucket
-   - For single-account deployments, open the `security_assessment_XXXXX.html` report
+   - For single-account deployments, open the `{account_id}/` folder and then open the `security_assessment_single_account_YYYYMMDD_HHMMSS.html` report
    - For multi-account deployments, follow the [Report Structure](#report-structure) guidance below
 
 ### Report Structure
@@ -372,11 +372,11 @@ The deployment uses multiple IAM roles with different trust and permission bound
 
 If you need to reduce scope, review the role policies in:
 
-- [deployment/aiml-security-single-account.yaml](/Users/akothurk/Documents/Code/Github/aws-samples/sample-aiml-security-assessment/deployment/aiml-security-single-account.yaml)
-- [deployment/1-aiml-security-member-roles.yaml](/Users/akothurk/Documents/Code/Github/aws-samples/sample-aiml-security-assessment/deployment/1-aiml-security-member-roles.yaml)
-- [deployment/2-aiml-security-codebuild.yaml](/Users/akothurk/Documents/Code/Github/aws-samples/sample-aiml-security-assessment/deployment/2-aiml-security-codebuild.yaml)
-- [aiml-security-assessment/template.yaml](/Users/akothurk/Documents/Code/Github/aws-samples/sample-aiml-security-assessment/aiml-security-assessment/template.yaml)
-- [aiml-security-assessment/template-multi-account.yaml](/Users/akothurk/Documents/Code/Github/aws-samples/sample-aiml-security-assessment/aiml-security-assessment/template-multi-account.yaml)
+- [deployment/aiml-security-single-account.yaml](deployment/aiml-security-single-account.yaml)
+- [deployment/1-aiml-security-member-roles.yaml](deployment/1-aiml-security-member-roles.yaml)
+- [deployment/2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yaml)
+- [aiml-security-assessment/template.yaml](aiml-security-assessment/template.yaml)
+- [aiml-security-assessment/template-multi-account.yaml](aiml-security-assessment/template-multi-account.yaml)
 
 ---
 
