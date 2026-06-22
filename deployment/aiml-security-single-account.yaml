@@ -138,6 +138,8 @@ Resources:
                   - bedrock:ListFlows
                   - bedrock:GetFlow
                   # Bedrock Agent Permissions (Knowledge Bases, Flows)
+                  - bedrock:ListKnowledgeBases
+                  - bedrock:GetKnowledgeBase
                   # SageMaker Permissions
                   - sagemaker:ListNotebookInstances
                   - sagemaker:DescribeNotebookInstance
@@ -225,6 +227,7 @@ Resources:
                   - ec2:DescribeNatGateways
                   # S3 Permissions for encryption checks
                   - s3:GetBucketEncryption
+                  - s3:GetEncryptionConfiguration
                   - s3:ListBucket
                   - s3:GetBucketVersioning
                   - s3:GetBucketTagging

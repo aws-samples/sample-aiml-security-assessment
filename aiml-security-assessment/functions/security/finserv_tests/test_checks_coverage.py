@@ -6,24 +6,12 @@ Each class targets a specific uncovered branch identified from coverage.json.
 """
 
 import json
-import os
-import sys
 from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch
 from botocore.exceptions import ClientError
+from unittest.mock import MagicMock, patch
 
-
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-# Ensure tests/ directory is importable (for conftest helpers)
-TESTS_DIR = os.path.dirname(__file__)
-if TESTS_DIR not in sys.path:
-    sys.path.insert(0, TESTS_DIR)
-
-import app  # noqa: E402  (import must follow sys.path setup above)
-from conftest import make_resource_inventory  # noqa: E402
+from .support import finserv_app as app
+from .support import make_resource_inventory
 
 
 def _client_error(code="AccessDeniedException", message="Access Denied"):
@@ -50,7 +38,7 @@ class TestFS01ShieldClientError:
                 detail_by_id={},
             )
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "shield":
@@ -80,7 +68,7 @@ class TestFS01ShieldClientError:
 
 
 class TestFS07AgentBoundariesNewPaths:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_get_agent_client_error_skips_agent(self, mock_client):
         """Lines 532-534: get_agent raises ClientError → agent is skipped gracefully."""
         c = MagicMock()
@@ -94,7 +82,7 @@ class TestFS07AgentBoundariesNewPaths:
         # Should PASS (no issues found, agent was skipped)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_agent_no_role_arn_skipped(self, mock_client):
         """Line 537: agent with no agentResourceRoleArn → continue."""
         c = MagicMock()
@@ -107,7 +95,7 @@ class TestFS07AgentBoundariesNewPaths:
         _assert_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_policy_doc_as_string_is_parsed(self, mock_client):
         """Line 543: policy document stored as JSON string → json.loads branch."""
         c = MagicMock()
@@ -144,7 +132,7 @@ class TestFS07AgentBoundariesNewPaths:
         _assert_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_deny_effect_statement_skipped(self, mock_client):
         """Line 546: Deny effect → continue (not counted as issue)."""
         c = MagicMock()
@@ -186,7 +174,7 @@ class TestFS07AgentBoundariesNewPaths:
 
 
 class TestFS08AgentcoreReraise:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_non_access_denied_error_propagates_to_outer_except(self, mock_client):
         """Line 622: ClientError that is NOT AccessDenied/Unrecognized → re-raised → ERROR."""
         c = MagicMock()
@@ -203,7 +191,7 @@ class TestFS08AgentcoreReraise:
 
 
 class TestFS09ConcurrencyClientError:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_get_concurrency_client_error_adds_to_warn_list(self, mock_client):
         """Lines 704-705: get_function_concurrency raises ClientError → appended to warn list."""
         c = MagicMock()
@@ -223,7 +211,7 @@ class TestFS09ConcurrencyClientError:
 
 
 class TestFS12ScpPaths:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_access_denied_returns_na(self, mock_client):
         """Lines 902-915: AccessDeniedException → N/A finding."""
         c = MagicMock()
@@ -233,7 +221,7 @@ class TestFS12ScpPaths:
         _assert_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_orgs_not_in_use_returns_na(self, mock_client):
         """Lines 902-915: AWSOrganizationsNotInUseException → N/A finding."""
         c = MagicMock()
@@ -243,7 +231,7 @@ class TestFS12ScpPaths:
         _assert_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_non_access_denied_reraises(self, mock_client):
         """Line 916: non-AccessDenied ClientError → re-raised → ERROR."""
         c = MagicMock()
@@ -253,7 +241,7 @@ class TestFS12ScpPaths:
         _assert_structure(result)
         assert result["status"] == "ERROR"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_bedrock_scps(self, mock_client):
         """Lines 920-923, 925-945: policies exist but none reference bedrock → WARN."""
         c = MagicMock()
@@ -272,7 +260,7 @@ class TestFS12ScpPaths:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_bedrock_scp_found(self, mock_client):
         """Line 947: bedrock SCP found → Passed finding."""
         c = MagicMock()
@@ -310,7 +298,7 @@ class TestFS12ScpPaths:
 
 
 class TestFS13ModelTaggingPaths:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_bedrock_model_missing_tags(self, mock_client):
         """Lines 979-983, 998-999: Bedrock custom model missing required tags → WARN."""
 
@@ -338,7 +326,7 @@ class TestFS13ModelTaggingPaths:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_sagemaker_model_missing_tags(self, mock_client):
         """Lines 989-993: SageMaker model missing required tags → WARN."""
 
@@ -373,7 +361,7 @@ class TestFS13ModelTaggingPaths:
 
 
 class TestFS14ModelGovernancePass:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_config_rules_found(self, mock_client):
         """Line 1072: bedrock-related Config rules found → Passed."""
         c = MagicMock()
@@ -392,7 +380,7 @@ class TestFS14ModelGovernancePass:
 
 
 class TestFS15BedrockEvalPass:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_eval_jobs_found(self, mock_client):
         """Line 1119: evaluation jobs exist → Passed finding."""
         c = MagicMock()
@@ -411,7 +399,7 @@ class TestFS15BedrockEvalPass:
 
 
 class TestFS16EcrScanningWarn:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_repos_without_scanning(self, mock_client):
         """Lines 1167-1168: repos exist but scan-on-push disabled → WARN."""
         c = MagicMock()
@@ -435,7 +423,7 @@ class TestFS16EcrScanningWarn:
 
 
 class TestFS20FeatureStoreWarnPass:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_groups_without_offline_store(self, mock_client):
         """Lines 1244-1246: feature groups without active offline store → WARN."""
         c = MagicMock()
@@ -452,7 +440,7 @@ class TestFS20FeatureStoreWarnPass:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_all_groups_have_offline_store(self, mock_client):
         """Line 1266: all feature groups have active offline store → Passed."""
         c = MagicMock()
@@ -476,7 +464,7 @@ class TestFS20FeatureStoreWarnPass:
 
 
 class TestFS21TrainingDataVersioningPaths:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_unversioned_training_buckets(self, mock_client):
         """Lines 1312-1316, 1318-1320: training buckets without versioning → WARN."""
         inv = make_resource_inventory(buckets=[{"Name": "training-data-bucket"}])
@@ -491,7 +479,7 @@ class TestFS21TrainingDataVersioningPaths:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_all_training_buckets_versioned(self, mock_client):
         """Line 1338: all training buckets versioned → Passed."""
         inv = make_resource_inventory(buckets=[{"Name": "training-data-bucket"}])
@@ -506,7 +494,7 @@ class TestFS21TrainingDataVersioningPaths:
         _assert_structure(result)
         assert any(r["Status"] == "Passed" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_access_error_surfaces_as_could_not_assess(self, mock_client):
         """AccessDenied on get_bucket_versioning re-raises → ERROR (could-not-assess),
         not a false 'no versioning' finding."""
@@ -519,7 +507,7 @@ class TestFS21TrainingDataVersioningPaths:
         _assert_structure(result)
         assert result["status"] == "ERROR"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_nonaccess_error_flags_bucket(self, mock_client):
         """A non-access ClientError on get_bucket_versioning flags the bucket
         (WARN) without aborting the whole check."""
@@ -535,7 +523,7 @@ class TestFS21TrainingDataVersioningPaths:
             "(error)" in r.get("Finding_Details", "") for r in result["csv_data"]
         )
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_multi_page_buckets_completeness(self, mock_client):
         """Pagination completeness: buckets from multiple pages are all checked.
 
@@ -566,7 +554,7 @@ class TestFS21TrainingDataVersioningPaths:
         # Verify all 4 were checked (versioning call per training bucket)
         assert c.get_bucket_versioning.call_count == 4
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_single_page_unchanged_vs_baseline(self, mock_client):
         """Single-page case: result is identical to pre-migration behavior (baseline).
 
@@ -755,7 +743,7 @@ class TestFS24MetadataFilteringPass:
 
 
 class TestFS25OssEncryptionPaths:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_policies_with_cmk(self, mock_client):
         """Lines 1509-1511: encryption policies exist with CMK → Passed."""
         c = MagicMock()
@@ -774,7 +762,7 @@ class TestFS25OssEncryptionPaths:
         _assert_structure(result)
         assert any(r["Status"] == "Passed" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_no_policies(self, mock_client):
         """Line 1488: no encryption policies → N/A finding."""
         c = MagicMock()
@@ -784,7 +772,7 @@ class TestFS25OssEncryptionPaths:
         _assert_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_fail_policies_without_cmk(self, mock_client):
         """Encryption policies exist but all use AWS-owned keys → WARN/Failed
         (the customer-managed-key control is absent), not a false Pass."""
@@ -812,7 +800,7 @@ class TestFS25OssEncryptionPaths:
 
 
 class TestFS26VpcAccessPaths:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_network_policies(self, mock_client):
         """Lines 1546-1547: no network policies → WARN."""
         c = MagicMock()
@@ -822,7 +810,7 @@ class TestFS26VpcAccessPaths:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_policies_without_vpc(self, mock_client):
         """Lines 1567-1569: network policies exist but no VPC restriction → WARN."""
         c = MagicMock()
@@ -839,7 +827,7 @@ class TestFS26VpcAccessPaths:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_vpc_restricted_policies(self, mock_client):
         """Line 1591: network policies with VPC restriction → Passed."""
         c = MagicMock()
@@ -988,7 +976,7 @@ class TestFS31KbSyncPaths:
 
 
 class TestFS33KbIntegrityPaths:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_bucket_without_versioning(self, mock_client):
         """Lines 1976-2003: KB data source bucket without versioning → WARN."""
         inv = make_resource_inventory(
@@ -1021,7 +1009,7 @@ class TestFS33KbIntegrityPaths:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_bucket_with_versioning(self, mock_client):
         """Line 2021: all KB buckets have versioning → Passed."""
         inv = make_resource_inventory(
@@ -1054,7 +1042,7 @@ class TestFS33KbIntegrityPaths:
         _assert_structure(result)
         assert any(r["Status"] == "Passed" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_deleted_bucket_reported_separately(self, mock_client):
         """A NoSuchBucket on get_bucket_versioning → distinct 'deleted bucket'
         finding (High), NOT conflated with 'without versioning' or labeled
@@ -1106,7 +1094,7 @@ class TestFS33KbIntegrityPaths:
             for r in result["csv_data"]
         )
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_bucket_nonaccess_nonmissing_error_treated_as_unversioned(
         self, mock_client
     ):
@@ -1146,7 +1134,7 @@ class TestFS33KbIntegrityPaths:
             "(error)" in r.get("Finding_Details", "") for r in result["csv_data"]
         )
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_bucket_access_error_surfaces_as_could_not_assess(self, mock_client):
         """An AccessDenied on get_bucket_versioning must re-raise → ERROR envelope
         (could-not-assess), NOT a false 'no versioning' finding."""
@@ -1187,7 +1175,7 @@ class TestFS33KbIntegrityPaths:
 
 
 class TestFS34FmVersionPass:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_no_legacy_models_in_use(self, mock_client):
         """Lines 2056-2057: no legacy models in use → Passed."""
         c = MagicMock()
@@ -1289,7 +1277,7 @@ class TestFS38WordFiltersPaths:
 
 
 class TestFS39ClarifyBiasPass:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_bias_schedules_found(self, mock_client):
         """Line 2352: bias monitoring schedules found → Passed."""
         c = MagicMock()
@@ -1331,7 +1319,7 @@ class TestFS40BiasEvalPass:
 
 
 class TestFS41ClarifyExplainabilityPass:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_explainability_schedules_found(self, mock_client):
         """Line 2452: explainability monitoring schedules found → Passed."""
         c = MagicMock()
@@ -1355,7 +1343,7 @@ class TestFS41ClarifyExplainabilityPass:
 
 
 class TestFS42ModelCardsPass:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_model_cards_found(self, mock_client):
         """Line 2501: model cards exist → Passed (key is ModelCardSummaryList)."""
         c = MagicMock()
@@ -1374,7 +1362,7 @@ class TestFS42ModelCardsPass:
 
 
 class TestFS43CloudwatchPiiPaths:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_data_protection_policies(self, mock_client):
         """Lines 2540-2541: no data protection policies → WARN."""
         c = MagicMock()
@@ -1384,7 +1372,7 @@ class TestFS43CloudwatchPiiPaths:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_client_error_on_describe_policies_treated_as_no_policies(
         self, mock_client
     ):
@@ -1403,7 +1391,7 @@ class TestFS43CloudwatchPiiPaths:
 
 
 class TestFS44MaciePaths:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_macie_not_enabled(self, mock_client):
         """Lines 2593-2595: Macie session status not ENABLED → WARN."""
         c = MagicMock()
@@ -1413,7 +1401,7 @@ class TestFS44MaciePaths:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_macie_client_error(self, mock_client):
         """Lines 2590-2591: ClientError on get_macie_session → macie_enabled=False → WARN."""
         c = MagicMock()
@@ -1423,7 +1411,7 @@ class TestFS44MaciePaths:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_macie_enabled(self, mock_client):
         """Line 2615: Macie enabled → Passed."""
         c = MagicMock()
@@ -1461,7 +1449,7 @@ class TestFS45PiiFiltersWarn:
 
 
 class TestFS46DataClassificationPaths:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_buckets_without_classification_tags(self, mock_client):
         """Lines 2734-2746: AI/ML buckets without classification tags → WARN."""
         inv = make_resource_inventory(buckets=[{"Name": "aiml-training-data"}])
@@ -1475,7 +1463,7 @@ class TestFS46DataClassificationPaths:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_tagging_client_error_treated_as_unclassified(self, mock_client):
         """Line 2741-2742: ClientError on get_bucket_tagging → bucket added as unclassified."""
         inv = make_resource_inventory(buckets=[{"Name": "aiml-training-data"}])
@@ -1487,7 +1475,7 @@ class TestFS46DataClassificationPaths:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_tagging_access_error_surfaces_as_could_not_assess(self, mock_client):
         """AccessDenied on get_bucket_tagging re-raises → ERROR (could-not-assess),
         NOT a false 'unclassified' finding."""
@@ -1500,7 +1488,7 @@ class TestFS46DataClassificationPaths:
         _assert_structure(result)
         assert result["status"] == "ERROR"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_all_buckets_classified(self, mock_client):
         """Line 2765: all AI/ML buckets have classification tags → Passed."""
         inv = make_resource_inventory(buckets=[{"Name": "aiml-training-data"}])
@@ -1514,7 +1502,7 @@ class TestFS46DataClassificationPaths:
         _assert_structure(result)
         assert any(r["Status"] == "Passed" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_multi_page_buckets_completeness(self, mock_client):
         """Pagination completeness: buckets from multiple pages are all assessed.
 
@@ -1540,7 +1528,7 @@ class TestFS46DataClassificationPaths:
         # Verify all 4 were assessed (tagging call per AI/ML bucket)
         assert c.get_bucket_tagging.call_count == 4
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_single_page_unchanged_vs_baseline(self, mock_client):
         """Single-page case: result is identical to pre-migration behavior (baseline).
 
@@ -1801,7 +1789,7 @@ class TestFS65S3EventNotificationEdgeCases:
         # No buckets to check → PASS
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_s3_notification_access_error_surfaces_as_could_not_assess(
         self, mock_client
     ):
@@ -1839,7 +1827,7 @@ class TestFS65S3EventNotificationEdgeCases:
         _assert_structure(result)
         assert result["status"] == "ERROR"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_deleted_bucket_reported_separately(self, mock_client):
         """A NoSuchBucket on get_bucket_notification_configuration → distinct
         'deleted bucket' finding (High), not conflated with 'missing
@@ -1894,7 +1882,7 @@ class TestFS65S3EventNotificationEdgeCases:
 
 
 class TestFS66AgentcoreIdentityReraise:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_non_access_denied_reraises(self, mock_client):
         """Line 3849: non-AccessDenied ClientError → re-raised → ERROR."""
         c = MagicMock()
@@ -1916,7 +1904,7 @@ class TestFS68BodySizeLimitWarnPaths:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=[], detail_by_id={})
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -1951,7 +1939,7 @@ class TestFS68BodySizeLimitWarnPaths:
                 detail_by_id={"id1": acl_detail},
             )
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -1972,7 +1960,7 @@ class TestFS68BodySizeLimitWarnPaths:
 
 
 class TestFS34FmVersionWarn:
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_legacy_models_available(self, mock_client):
         """Legacy foundation models available in region → WARN wrapper with an N/A
         finding (availability is not usage, so it is surfaced for review, not failed)."""

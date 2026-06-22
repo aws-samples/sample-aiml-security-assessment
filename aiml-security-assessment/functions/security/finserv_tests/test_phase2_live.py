@@ -30,16 +30,17 @@ import sys
 import time
 from datetime import datetime
 
-# Make finserv_assessments importable
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
 # Set env var if not already set
 if not os.environ.get("AIML_ASSESSMENT_BUCKET_NAME"):
     os.environ["AIML_ASSESSMENT_BUCKET_NAME"] = "mehta-test-v55"
 
-import app  # noqa: E402  (import must follow sys.path + env setup above)
+try:
+    from .support import finserv_app as app
+except ImportError:
+    TEST_DIR = os.path.dirname(__file__)
+    if TEST_DIR not in sys.path:
+        sys.path.insert(0, TEST_DIR)
+    from support import finserv_app as app
 
 
 # ---------------------------------------------------------------------------

@@ -4,17 +4,11 @@ Unit tests for collect_resource_inventory() and the _safe_collect_* helpers.
 Validates: Requirements REQ-1, REQ-2, REQ-3.4, REQ-4, REQ-7.5, REQ-9.2
 """
 
-import sys
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-import app  # noqa: E402  (import follows sys.path bootstrap above)
+from .support import finserv_app as app
 
 
 # ---------------------------------------------------------------------------
@@ -54,13 +48,13 @@ class TestSafeCollectLambdaFunctions:
     def test_single_page_returns_functions(self):
         fn = {"FunctionName": "my-fn", "Runtime": "python3.12"}
         client = _make_client({"list_functions": {"Functions": [fn]}})
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_lambda_functions()
         assert result == [fn]
 
     def test_single_listing_call(self):
         client = _make_client({"list_functions": {"Functions": []}})
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             app._safe_collect_lambda_functions()
         assert client.list_functions.call_count == 1
 
@@ -76,7 +70,7 @@ class TestSafeCollectLambdaFunctions:
                 ]
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_lambda_functions()
         assert result == [fn1, fn2]
         assert client.list_functions.call_count == 2
@@ -88,14 +82,14 @@ class TestSafeCollectLambdaFunctions:
         err = PermissionError("AccessDenied")
         client = _make_client({})
         client.list_functions.side_effect = err
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_lambda_functions()
         assert isinstance(result, app._Unavailable)
         assert result.error is err
 
     def test_client_constructed_without_region_or_endpoint(self):
         client = _make_client({"list_functions": {"Functions": []}})
-        with patch("app.boto3.client", return_value=client) as mock_boto:
+        with patch("finserv_app.boto3.client", return_value=client) as mock_boto:
             app._safe_collect_lambda_functions()
         mock_boto.assert_called_once()
         _, kwargs = mock_boto.call_args
@@ -118,7 +112,7 @@ class TestSafeCollectGuardrails:
                 "get_guardrail": detail,
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_guardrails()
         assert isinstance(result, app.GuardrailInventory)
         assert result.summaries == [g1]
@@ -130,7 +124,7 @@ class TestSafeCollectGuardrails:
                 "list_guardrails": {"guardrails": []},
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             app._safe_collect_guardrails()
         assert client.list_guardrails.call_count == 1
 
@@ -146,7 +140,7 @@ class TestSafeCollectGuardrails:
                 "get_guardrail": {"guardrailId": "gx"},
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_guardrails()
         assert len(result.summaries) == 2
         assert client.list_guardrails.call_count == 2
@@ -161,7 +155,7 @@ class TestSafeCollectGuardrails:
                 "get_guardrail": detail,
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             app._safe_collect_guardrails()
         client.get_guardrail.assert_called_once_with(
             guardrailIdentifier="g-001", guardrailVersion="DRAFT"
@@ -171,7 +165,7 @@ class TestSafeCollectGuardrails:
         err = PermissionError("AccessDenied on list_guardrails")
         client = _make_client({})
         client.list_guardrails.side_effect = err
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_guardrails()
         assert isinstance(result, app._Unavailable)
         assert result.error is err
@@ -190,7 +184,7 @@ class TestSafeCollectGuardrails:
 
         client = _make_client({"list_guardrails": {"guardrails": [g1, g2]}})
         client.get_guardrail.side_effect = detail_side_effect
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_guardrails()
         assert isinstance(result, app.GuardrailInventory)
         assert result.detail_by_id["g-ok"] is ok_detail
@@ -199,7 +193,7 @@ class TestSafeCollectGuardrails:
 
     def test_client_constructed_without_region_or_endpoint(self):
         client = _make_client({"list_guardrails": {"guardrails": []}})
-        with patch("app.boto3.client", return_value=client) as mock_boto:
+        with patch("finserv_app.boto3.client", return_value=client) as mock_boto:
             app._safe_collect_guardrails()
         mock_boto.assert_called_once()
         _, kwargs = mock_boto.call_args
@@ -245,7 +239,7 @@ class TestSafeCollectKnowledgeBases:
         ds1 = {"dataSourceId": "ds-1"}
         detail = {"dataSource": {"dataSourceId": "ds-1"}}
         client = self._setup_client([kb1], {"kb-1": [ds1]}, {("kb-1", "ds-1"): detail})
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_knowledge_bases()
         assert isinstance(result, app.KbInventory)
         assert result.summaries == [kb1]
@@ -254,7 +248,7 @@ class TestSafeCollectKnowledgeBases:
 
     def test_single_listing_call(self):
         client = self._setup_client([])
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             app._safe_collect_knowledge_bases()
         assert client.list_knowledge_bases.call_count == 1
 
@@ -267,7 +261,7 @@ class TestSafeCollectKnowledgeBases:
             {"knowledgeBaseSummaries": [kb2]},
         ]
         client.list_data_sources.return_value = {"dataSourceSummaries": []}
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_knowledge_bases()
         assert len(result.summaries) == 2
         assert client.list_knowledge_bases.call_count == 2
@@ -276,7 +270,7 @@ class TestSafeCollectKnowledgeBases:
         err = PermissionError("denied")
         client = MagicMock()
         client.list_knowledge_bases.side_effect = err
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_knowledge_bases()
         assert isinstance(result, app._Unavailable)
         assert result.error is err
@@ -298,7 +292,7 @@ class TestSafeCollectKnowledgeBases:
             return {"dataSourceSummaries": []}
 
         client.list_data_sources.side_effect = list_ds
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_knowledge_bases()
         assert isinstance(result, app.KbInventory)
         assert result.data_sources_by_kb["kb-ok"] == []
@@ -318,7 +312,7 @@ class TestSafeCollectKnowledgeBases:
             {"kb-1": [ds_ok, ds_bad]},
             {("kb-1", "ds-ok"): ok_detail, ("kb-1", "ds-bad"): err},
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_knowledge_bases()
         assert result.data_source_detail[("kb-1", "ds-ok")] is ok_detail
         assert isinstance(
@@ -327,7 +321,7 @@ class TestSafeCollectKnowledgeBases:
 
     def test_client_constructed_without_region_or_endpoint(self):
         client = self._setup_client([])
-        with patch("app.boto3.client", return_value=client) as mock_boto:
+        with patch("finserv_app.boto3.client", return_value=client) as mock_boto:
             app._safe_collect_knowledge_bases()
         mock_boto.assert_called_once()
         _, kwargs = mock_boto.call_args
@@ -344,13 +338,13 @@ class TestSafeCollectBuckets:
     def test_single_page_returns_buckets(self):
         b1 = {"Name": "my-bucket"}
         client = _make_client({"list_buckets": {"Buckets": [b1]}})
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_buckets()
         assert result == [b1]
 
     def test_single_listing_call(self):
         client = _make_client({"list_buckets": {"Buckets": []}})
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             app._safe_collect_buckets()
         assert client.list_buckets.call_count == 1
 
@@ -366,7 +360,7 @@ class TestSafeCollectBuckets:
                 ]
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_buckets()
         assert result == [b1, b2]
         assert client.list_buckets.call_count == 2
@@ -377,7 +371,7 @@ class TestSafeCollectBuckets:
     def test_max_buckets_parameter_sent_on_first_call(self):
         """MaxBuckets must be included on the first call to engage pagination."""
         client = _make_client({"list_buckets": {"Buckets": []}})
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             app._safe_collect_buckets()
         first_call_kwargs = client.list_buckets.call_args_list[0][1]
         assert first_call_kwargs.get("MaxBuckets") == 1000
@@ -386,14 +380,14 @@ class TestSafeCollectBuckets:
         err = PermissionError("AccessDenied")
         client = MagicMock()
         client.list_buckets.side_effect = err
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_buckets()
         assert isinstance(result, app._Unavailable)
         assert result.error is err
 
     def test_client_constructed_without_region_or_endpoint(self):
         client = _make_client({"list_buckets": {"Buckets": []}})
-        with patch("app.boto3.client", return_value=client) as mock_boto:
+        with patch("finserv_app.boto3.client", return_value=client) as mock_boto:
             app._safe_collect_buckets()
         mock_boto.assert_called_once()
         _, kwargs = mock_boto.call_args
@@ -416,7 +410,7 @@ class TestSafeCollectWebAcls:
                 "get_web_acl": detail,
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_web_acls()
         assert isinstance(result, app.WebAclInventory)
         assert result.summaries == [acl1]
@@ -430,14 +424,14 @@ class TestSafeCollectWebAcls:
                 "list_web_acls": {"WebACLs": []},
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             app._safe_collect_web_acls()
         assert client.list_web_acls.call_count == 1
 
     def test_list_web_acls_called_with_scope_regional(self):
         """Scope='REGIONAL' must be passed on every list_web_acls call (REQ-7.2)."""
         client = _make_client({"list_web_acls": {"WebACLs": []}})
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             app._safe_collect_web_acls()
         client.list_web_acls.assert_called_once()
         _, kwargs = client.list_web_acls.call_args
@@ -457,7 +451,7 @@ class TestSafeCollectWebAcls:
                 "get_web_acl": detail,
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_web_acls()
         assert len(result.summaries) == 2
         assert client.list_web_acls.call_count == 2
@@ -477,7 +471,7 @@ class TestSafeCollectWebAcls:
                 "get_web_acl": detail,
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             app._safe_collect_web_acls()
         client.get_web_acl.assert_called_once_with(
             Name="acl-name", Scope="REGIONAL", Id="acl-1"
@@ -487,7 +481,7 @@ class TestSafeCollectWebAcls:
         err = PermissionError("AccessDenied")
         client = MagicMock()
         client.list_web_acls.side_effect = err
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_web_acls()
         assert isinstance(result, app._Unavailable)
         assert result.error is err
@@ -509,7 +503,7 @@ class TestSafeCollectWebAcls:
             }
         )
         client.get_web_acl.side_effect = get_web_acl
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_web_acls()
         # Collector extracts ["WebACL"] — verify the stored dict matches the inner value
         assert result.detail_by_id["acl-ok"] == ok_detail["WebACL"]
@@ -518,7 +512,7 @@ class TestSafeCollectWebAcls:
 
     def test_client_constructed_without_region_or_endpoint(self):
         client = _make_client({"list_web_acls": {"WebACLs": []}})
-        with patch("app.boto3.client", return_value=client) as mock_boto:
+        with patch("finserv_app.boto3.client", return_value=client) as mock_boto:
             app._safe_collect_web_acls()
         mock_boto.assert_called_once()
         _, kwargs = mock_boto.call_args
@@ -549,11 +543,11 @@ class TestCollectResourceInventory:
             bk = [{"Name": "bkt-1"}]
             wi = app.WebAclInventory(summaries=[{"Id": "acl-1"}], detail_by_id={})
             with (
-                patch("app._safe_collect_lambda_functions", return_value=lf) as p1,
-                patch("app._safe_collect_guardrails", return_value=gi) as p2,
-                patch("app._safe_collect_knowledge_bases", return_value=ki) as p3,
-                patch("app._safe_collect_buckets", return_value=bk) as p4,
-                patch("app._safe_collect_web_acls", return_value=wi) as p5,
+                patch("finserv_app._safe_collect_lambda_functions", return_value=lf) as p1,
+                patch("finserv_app._safe_collect_guardrails", return_value=gi) as p2,
+                patch("finserv_app._safe_collect_knowledge_bases", return_value=ki) as p3,
+                patch("finserv_app._safe_collect_buckets", return_value=bk) as p4,
+                patch("finserv_app._safe_collect_web_acls", return_value=wi) as p5,
             ):
                 yield p1, p2, p3, p4, p5
 
@@ -582,19 +576,21 @@ class TestCollectResourceInventory:
         err = PermissionError("denied")
         with (
             patch(
-                "app._safe_collect_lambda_functions", return_value=app._Unavailable(err)
+                "finserv_app._safe_collect_lambda_functions",
+                return_value=app._Unavailable(err),
             ),
             patch(
-                "app._safe_collect_guardrails",
+                "finserv_app._safe_collect_guardrails",
                 return_value=app.GuardrailInventory([], {}),
             ),
             patch(
-                "app._safe_collect_knowledge_bases",
+                "finserv_app._safe_collect_knowledge_bases",
                 return_value=app.KbInventory([], {}, {}),
             ),
-            patch("app._safe_collect_buckets", return_value=[]),
+            patch("finserv_app._safe_collect_buckets", return_value=[]),
             patch(
-                "app._safe_collect_web_acls", return_value=app.WebAclInventory([], {})
+                "finserv_app._safe_collect_web_acls",
+                return_value=app.WebAclInventory([], {}),
             ),
         ):
             inv = app.collect_resource_inventory()
@@ -607,11 +603,11 @@ class TestCollectResourceInventory:
         err = RuntimeError("all down")
         unav = app._Unavailable(err)
         with (
-            patch("app._safe_collect_lambda_functions", return_value=unav),
-            patch("app._safe_collect_guardrails", return_value=unav),
-            patch("app._safe_collect_knowledge_bases", return_value=unav),
-            patch("app._safe_collect_buckets", return_value=unav),
-            patch("app._safe_collect_web_acls", return_value=unav),
+            patch("finserv_app._safe_collect_lambda_functions", return_value=unav),
+            patch("finserv_app._safe_collect_guardrails", return_value=unav),
+            patch("finserv_app._safe_collect_knowledge_bases", return_value=unav),
+            patch("finserv_app._safe_collect_buckets", return_value=unav),
+            patch("finserv_app._safe_collect_web_acls", return_value=unav),
         ):
             inv = app.collect_resource_inventory()
         assert isinstance(inv, app.ResourceInventory)
@@ -649,7 +645,7 @@ class TestOrderPreservation:
     def test_lambda_functions_order_preserved(self):
         fns = [{"FunctionName": f"fn-{i}"} for i in range(5)]
         client = _make_client({"list_functions": {"Functions": fns}})
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_lambda_functions()
         assert result == fns
 
@@ -665,7 +661,7 @@ class TestOrderPreservation:
                 "get_web_acl": {"WebACL": {}},
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_web_acls()
         assert result.summaries == acls_p1 + acls_p2
 
@@ -680,6 +676,6 @@ class TestOrderPreservation:
                 ]
             }
         )
-        with patch("app.boto3.client", return_value=client):
+        with patch("finserv_app.boto3.client", return_value=client):
             result = app._safe_collect_buckets()
         assert result == bkts_p1 + bkts_p2

@@ -4,17 +4,9 @@ Unit tests for ResourceInventory data model and accessors.
 Validates: Requirements REQ-4.1, REQ-4.2, REQ-9.2
 """
 
-import sys
-import os
-
 import pytest
 
-# Ensure finserv_assessments is importable
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-import app  # noqa: E402  (import follows sys.path bootstrap above)
+from .support import finserv_app as app
 
 
 # ---------------------------------------------------------------------------
