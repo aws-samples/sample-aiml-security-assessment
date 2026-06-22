@@ -13,15 +13,9 @@ still emits its finding rows (or is caught), so we can collect the (finding_name
 pairs the code actually produces without real AWS access.
 """
 
-import sys
-import os
 from unittest.mock import MagicMock, patch
 
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-import app  # noqa: E402
+from .support import finserv_app as app
 
 ALLOWED = {"High", "Medium", "Low", "Informational"}
 

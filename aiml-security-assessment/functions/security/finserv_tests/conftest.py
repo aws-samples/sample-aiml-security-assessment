@@ -1,24 +1,6 @@
-"""
-Shared fixtures and mock helpers for finserv_assessments tests.
-
-All boto3 clients are patched at the module level so check functions
-never make real AWS API calls.
-"""
-
-import os
-import sys
+"""Shared fixtures for FinServ assessment tests."""
 
 import pytest
-
-# ---------------------------------------------------------------------------
-# Make finserv_assessments importable — the Lambda runtime adds the package
-# root to sys.path, so we replicate that here.
-# ---------------------------------------------------------------------------
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-import app  # noqa: E402  (imported after sys.path manipulation)
 
 
 # ---------------------------------------------------------------------------
@@ -100,36 +82,3 @@ def lambda_event():
             "Id": "arn:aws:states:us-east-1:123456789012:stateMachine:test"
         },
     }
-
-
-# ---------------------------------------------------------------------------
-# ResourceInventory test builder (REQ-6.4, REQ-9.3)
-# ---------------------------------------------------------------------------
-
-
-def make_resource_inventory(**overrides) -> app.ResourceInventory:
-    """Build a fully-available ``ResourceInventory`` with sensible empty defaults.
-
-    Any field can be replaced via keyword arguments.  Pass an
-    ``app._Unavailable(exc)`` value to simulate a per-inventory collection
-    failure.
-
-    Examples::
-
-        inv = make_resource_inventory()                         # fully available
-        inv = make_resource_inventory(lambda_functions=[...])  # real data
-        inv = make_resource_inventory(
-            guardrails=app._Unavailable(PermissionError("AccessDenied"))
-        )                                                       # failed field
-    """
-    defaults: dict = dict(
-        lambda_functions=[],
-        guardrails=app.GuardrailInventory(summaries=[], detail_by_id={}),
-        knowledge_bases=app.KbInventory(
-            summaries=[], data_sources_by_kb={}, data_source_detail={}
-        ),
-        buckets=[],
-        web_acls=app.WebAclInventory(summaries=[], detail_by_id={}),
-    )
-    defaults.update(overrides)
-    return app.ResourceInventory(**defaults)

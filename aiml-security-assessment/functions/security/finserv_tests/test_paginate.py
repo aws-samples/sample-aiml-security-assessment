@@ -17,19 +17,9 @@ Coverage
 
 from __future__ import annotations
 
-import os
-import sys
 from unittest.mock import MagicMock, call
 
-
-# ---------------------------------------------------------------------------
-# Make finserv_assessments importable (mirrors conftest.py / test_inventory_equivalence.py)
-# ---------------------------------------------------------------------------
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-import app  # noqa: E402
+from .support import finserv_app as app
 
 
 # ===========================================================================

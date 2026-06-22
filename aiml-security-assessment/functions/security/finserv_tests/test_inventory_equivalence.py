@@ -25,21 +25,12 @@ must produce the identical tuple sequence (Task 13 / REQ-5.3).
 
 from __future__ import annotations
 
-import os
-import sys
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Make finserv_assessments importable (mirrors conftest.py)
-# ---------------------------------------------------------------------------
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-import app  # noqa: E402
+from .support import finserv_app as app
 
 
 # ===========================================================================
@@ -567,9 +558,9 @@ def _run_handler_and_extract_tuples(mock_client_side_effect, event):
     portable across Python versions.
     """
     with (
-        patch("app.boto3.client") as mock_client,
-        patch("app.get_permissions_cache") as mock_cache,
-        patch("app.write_to_s3") as mock_s3,
+        patch("finserv_app.boto3.client") as mock_client,
+        patch("finserv_app.get_permissions_cache") as mock_cache,
+        patch("finserv_app.write_to_s3") as mock_s3,
     ):
         mock_client.side_effect = mock_client_side_effect
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -725,9 +716,9 @@ class TestGoldenEquivalenceBaseline:
     def test_handler_produces_65_findings(self, account_state_mock, lambda_event):
         """Smoke test: all 65 registry entries produce at least one finding."""
         with (
-            patch("app.boto3.client") as mock_client,
-            patch("app.get_permissions_cache") as mock_cache,
-            patch("app.write_to_s3") as mock_s3,
+            patch("finserv_app.boto3.client") as mock_client,
+            patch("finserv_app.get_permissions_cache") as mock_cache,
+            patch("finserv_app.write_to_s3") as mock_s3,
         ):
             mock_client.side_effect = account_state_mock
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -742,9 +733,9 @@ class TestGoldenEquivalenceBaseline:
     def test_all_findings_have_rows(self, account_state_mock, lambda_event):
         """Every registry entry emits at least one CSV row (no silent drops)."""
         with (
-            patch("app.boto3.client") as mock_client,
-            patch("app.get_permissions_cache") as mock_cache,
-            patch("app.write_to_s3") as mock_s3,
+            patch("finserv_app.boto3.client") as mock_client,
+            patch("finserv_app.get_permissions_cache") as mock_cache,
+            patch("finserv_app.write_to_s3") as mock_s3,
         ):
             mock_client.side_effect = account_state_mock
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -760,9 +751,9 @@ class TestGoldenEquivalenceBaseline:
     def test_fixture_covers_pass_paths(self, account_state_mock, lambda_event):
         """The fixture exercises PASS paths for the inventory-consuming checks."""
         with (
-            patch("app.boto3.client") as mock_client,
-            patch("app.get_permissions_cache") as mock_cache,
-            patch("app.write_to_s3") as mock_s3,
+            patch("finserv_app.boto3.client") as mock_client,
+            patch("finserv_app.get_permissions_cache") as mock_cache,
+            patch("finserv_app.write_to_s3") as mock_s3,
         ):
             mock_client.side_effect = account_state_mock
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -785,9 +776,9 @@ class TestGoldenEquivalenceBaseline:
     def test_fixture_covers_na_paths(self, account_state_mock, lambda_event):
         """The fixture exercises N/A paths (advisory checks emit Status='N/A')."""
         with (
-            patch("app.boto3.client") as mock_client,
-            patch("app.get_permissions_cache") as mock_cache,
-            patch("app.write_to_s3") as mock_s3,
+            patch("finserv_app.boto3.client") as mock_client,
+            patch("finserv_app.get_permissions_cache") as mock_cache,
+            patch("finserv_app.write_to_s3") as mock_s3,
         ):
             mock_client.side_effect = account_state_mock
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -821,9 +812,9 @@ class TestGoldenEquivalenceBaseline:
         fail_mock = _build_mock_client(guardrail_detail=guardrail_without_pii)
 
         with (
-            patch("app.boto3.client") as mock_client,
-            patch("app.get_permissions_cache") as mock_cache,
-            patch("app.write_to_s3") as mock_s3,
+            patch("finserv_app.boto3.client") as mock_client,
+            patch("finserv_app.get_permissions_cache") as mock_cache,
+            patch("finserv_app.write_to_s3") as mock_s3,
         ):
             mock_client.side_effect = fail_mock
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -944,9 +935,9 @@ class TestPermittedMultiPageDeltas:
             return c
 
         with (
-            patch("app.boto3.client") as mock_client,
-            patch("app.get_permissions_cache") as mock_cache,
-            patch("app.write_to_s3"),
+            patch("finserv_app.boto3.client") as mock_client,
+            patch("finserv_app.get_permissions_cache") as mock_cache,
+            patch("finserv_app.write_to_s3"),
         ):
             mock_client.side_effect = mock_with_two_page_wafv2
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -1036,9 +1027,9 @@ class TestPermittedMultiPageDeltas:
             return c
 
         with (
-            patch("app.boto3.client") as mock_client,
-            patch("app.get_permissions_cache") as mock_cache,
-            patch("app.write_to_s3"),
+            patch("finserv_app.boto3.client") as mock_client,
+            patch("finserv_app.get_permissions_cache") as mock_cache,
+            patch("finserv_app.write_to_s3"),
         ):
             mock_client.side_effect = mock_with_two_page_s3
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}

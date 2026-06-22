@@ -11,17 +11,11 @@ These tests verify:
 """
 
 import json
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-import app  # noqa: E402  (import must follow sys.path setup above)
+from .support import finserv_app as app
 
 
 # =========================================================================
@@ -32,9 +26,9 @@ import app  # noqa: E402  (import must follow sys.path setup above)
 class TestLambdaHandler:
     """End-to-end handler tests with fully mocked AWS clients."""
 
-    @patch("app.write_to_s3")
-    @patch("app.get_permissions_cache")
-    @patch("app.boto3.client")
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app.boto3.client")
     def test_handler_returns_200(self, mock_client, mock_cache, mock_s3, lambda_event):
         """Smoke test: handler completes and returns 200."""
         # Return a generic mock for every boto3 client
@@ -91,9 +85,9 @@ class TestLambdaHandler:
         # FS-27 ARC policies check that shares the FS-27 check_id).
         assert len(result["body"]["findings"]) == 65
 
-    @patch("app.write_to_s3")
-    @patch("app.get_permissions_cache")
-    @patch("app.boto3.client")
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app.boto3.client")
     def test_handler_findings_all_have_check_name(
         self, mock_client, mock_cache, mock_s3, lambda_event
     ):
@@ -155,8 +149,8 @@ class TestLambdaHandler:
 
         # We need to mock all boto3 calls so the checks themselves don't fail
         with (
-            patch("app.boto3.client") as mock_client,
-            patch("app.get_permissions_cache") as mock_cache,
+            patch("finserv_app.boto3.client") as mock_client,
+            patch("finserv_app.get_permissions_cache") as mock_cache,
         ):
             generic = MagicMock()
             paginator = MagicMock()
@@ -220,10 +214,10 @@ class TestInventoryCollectedAndPassed:
     Validates: REQ-6.5
     """
 
-    @patch("app.write_to_s3")
-    @patch("app.get_permissions_cache")
-    @patch("app.build_finserv_checks")
-    @patch("app.collect_resource_inventory")
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app.build_finserv_checks")
+    @patch("finserv_app.collect_resource_inventory")
     def test_handler_calls_collect_inventory_exactly_once(
         self,
         mock_collect,
@@ -243,10 +237,10 @@ class TestInventoryCollectedAndPassed:
 
         mock_collect.assert_called_once_with()
 
-    @patch("app.write_to_s3")
-    @patch("app.get_permissions_cache")
-    @patch("app.build_finserv_checks")
-    @patch("app.collect_resource_inventory")
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app.build_finserv_checks")
+    @patch("finserv_app.collect_resource_inventory")
     def test_handler_passes_inventory_to_build_finserv_checks(
         self,
         mock_collect,
@@ -284,7 +278,7 @@ class TestInventoryCollectedAndPassed:
 class TestWriteToS3:
     """Test the write_to_s3 helper."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_writes_csv_to_s3(self, mock_client):
         s3 = MagicMock()
         mock_client.return_value = s3
@@ -300,7 +294,7 @@ class TestWriteToS3:
         assert "my-bucket" in url
         assert "exec-123" in url
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_s3_error_propagates(self, mock_client):
         s3 = MagicMock()
         s3.put_object.side_effect = RuntimeError("S3 write failed")
@@ -313,7 +307,7 @@ class TestWriteToS3:
 class TestGetPermissionsCache:
     """Test the get_permissions_cache helper."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_returns_parsed_json(self, mock_client):
         s3 = MagicMock()
         body = MagicMock()
@@ -324,7 +318,7 @@ class TestGetPermissionsCache:
         result = app.get_permissions_cache("exec-123")
         assert result == {"role_permissions": {"r1": {}}}
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_returns_none_on_client_error(self, mock_client):
         from botocore.exceptions import ClientError
 
@@ -338,7 +332,7 @@ class TestGetPermissionsCache:
         result = app.get_permissions_cache("exec-123")
         assert result is None
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_returns_none_on_unexpected_error(self, mock_client):
         s3 = MagicMock()
         s3.get_object.side_effect = RuntimeError("unexpected")

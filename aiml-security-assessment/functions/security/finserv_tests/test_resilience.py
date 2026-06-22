@@ -11,21 +11,10 @@ Verifies:
 Validates: Requirements REQ-4.2, REQ-4.3, REQ-4.6, REQ-8
 """
 
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
-
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-TESTS_DIR = os.path.dirname(__file__)
-if TESTS_DIR not in sys.path:
-    sys.path.insert(0, TESTS_DIR)
-
-import app  # noqa: E402
-from conftest import make_resource_inventory  # noqa: E402
+from .support import finserv_app as app
+from .support import make_resource_inventory
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +125,8 @@ class TestLambdaInventoryUnavailable:
         """REQ-4.3 / REQ-8: WAFv2 check is unaffected by lambda unavailability."""
         inv = self._make_inv()
         with patch(
-            "app.boto3.client", return_value=_make_shield_mock_no_subscription()
+            "finserv_app.boto3.client",
+            return_value=_make_shield_mock_no_subscription(),
         ):
             result = app.check_waf_shield_on_bedrock_endpoints(inv)
         assert result["status"] != "ERROR", (
@@ -147,7 +137,7 @@ class TestLambdaInventoryUnavailable:
     def test_s3_check_unaffected(self):
         """REQ-4.3 / REQ-8: S3 check is unaffected by lambda unavailability."""
         inv = self._make_inv()
-        with patch("app.boto3.client") as mock_boto:
+        with patch("finserv_app.boto3.client") as mock_boto:
             mock_boto.return_value = MagicMock()
             result = app.check_training_data_s3_versioning(inv)
         assert result["status"] != "ERROR", (
@@ -206,7 +196,7 @@ class TestGuardrailInventoryUnavailable:
     def test_lambda_check_unaffected(self):
         """REQ-4.3: Lambda check is unaffected by guardrail inventory failure."""
         inv = self._make_inv()
-        with patch("app.boto3.client") as mock_boto:
+        with patch("finserv_app.boto3.client") as mock_boto:
             mock_boto.return_value = MagicMock(
                 get_function_concurrency=MagicMock(
                     return_value={"ReservedConcurrentExecutions": 5}
@@ -230,7 +220,7 @@ class TestGuardrailInventoryUnavailable:
     def test_s3_check_unaffected(self):
         """REQ-4.3: S3 check is unaffected by guardrail inventory failure."""
         inv = self._make_inv()
-        with patch("app.boto3.client") as mock_boto:
+        with patch("finserv_app.boto3.client") as mock_boto:
             mock_boto.return_value = MagicMock()
             result = app.check_training_data_s3_versioning(inv)
         assert result["status"] != "ERROR", (
@@ -305,7 +295,8 @@ class TestWafInventoryUnavailable:
     def test_fs01_becomes_could_not_assess(self):
         """Validates: Requirements REQ-4.2"""
         with patch(
-            "app.boto3.client", return_value=_make_shield_mock_no_subscription()
+            "finserv_app.boto3.client",
+            return_value=_make_shield_mock_no_subscription(),
         ):
             result = app.check_waf_shield_on_bedrock_endpoints(self._make_inv())
         assert _is_could_not_assess(result), (
@@ -332,7 +323,7 @@ class TestWafInventoryUnavailable:
     def test_lambda_check_unaffected(self):
         """REQ-4.3 / REQ-8: Lambda check is unaffected by WAFv2 inventory failure."""
         inv = self._make_inv()
-        with patch("app.boto3.client") as mock_boto:
+        with patch("finserv_app.boto3.client") as mock_boto:
             mock_boto.return_value = MagicMock(
                 get_function_concurrency=MagicMock(
                     return_value={"ReservedConcurrentExecutions": 5}
@@ -356,7 +347,7 @@ class TestWafInventoryUnavailable:
     def test_s3_check_unaffected(self):
         """REQ-4.3 / REQ-8: S3 check is unaffected by WAFv2 inventory failure."""
         inv = self._make_inv()
-        with patch("app.boto3.client") as mock_boto:
+        with patch("finserv_app.boto3.client") as mock_boto:
             mock_boto.return_value = MagicMock()
             result = app.check_training_data_s3_versioning(inv)
         assert result["status"] != "ERROR", (
@@ -417,7 +408,7 @@ class TestKbInventoryUnavailable:
     def test_lambda_check_unaffected(self):
         """REQ-4.3 / REQ-8: Lambda check is unaffected by KB inventory failure."""
         inv = self._make_inv()
-        with patch("app.boto3.client") as mock_boto:
+        with patch("finserv_app.boto3.client") as mock_boto:
             mock_boto.return_value = MagicMock(
                 get_function_concurrency=MagicMock(
                     return_value={"ReservedConcurrentExecutions": 5}
@@ -432,7 +423,7 @@ class TestKbInventoryUnavailable:
     def test_s3_check_unaffected(self):
         """REQ-4.3 / REQ-8: S3 check is unaffected by KB inventory failure."""
         inv = self._make_inv()
-        with patch("app.boto3.client") as mock_boto:
+        with patch("finserv_app.boto3.client") as mock_boto:
             mock_boto.return_value = MagicMock()
             result = app.check_training_data_s3_versioning(inv)
         assert result["status"] != "ERROR", (
@@ -444,7 +435,8 @@ class TestKbInventoryUnavailable:
         """REQ-4.3 / REQ-8: WAFv2 check is unaffected by KB inventory failure."""
         inv = self._make_inv()
         with patch(
-            "app.boto3.client", return_value=_make_shield_mock_no_subscription()
+            "finserv_app.boto3.client",
+            return_value=_make_shield_mock_no_subscription(),
         ):
             result = app.check_waf_shield_on_bedrock_endpoints(inv)
         assert result["status"] != "ERROR", (
@@ -509,7 +501,7 @@ class TestMultipleInventoryFailure:
     def test_s3_check_normal_when_guardrails_and_waf_unavailable(self):
         """REQ-4.3: S3 check is unaffected by guardrail and WAFv2 failures."""
         inv = self._make_inv_guardrails_and_web_acls_unavailable()
-        with patch("app.boto3.client") as mock_boto:
+        with patch("finserv_app.boto3.client") as mock_boto:
             mock_boto.return_value = MagicMock()
             result = app.check_training_data_s3_versioning(inv)
         assert result["status"] != "ERROR", (
@@ -554,7 +546,8 @@ class TestMultipleInventoryFailure:
         """REQ-4.3: WAFv2 check is unaffected by lambda+S3 failures."""
         inv = self._make_inv_lambda_and_s3_unavailable()
         with patch(
-            "app.boto3.client", return_value=_make_shield_mock_no_subscription()
+            "finserv_app.boto3.client",
+            return_value=_make_shield_mock_no_subscription(),
         ):
             result = app.check_waf_shield_on_bedrock_endpoints(inv)
         assert result["status"] != "ERROR", (
@@ -669,10 +662,10 @@ class TestHandlerWithPartialInventory:
         }
         return generic
 
-    @patch("app.write_to_s3")
-    @patch("app.get_permissions_cache")
-    @patch("app.collect_resource_inventory")
-    @patch("app.boto3.client")
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app.collect_resource_inventory")
+    @patch("finserv_app.boto3.client")
     def test_handler_completes_with_lambda_inventory_unavailable(
         self,
         mock_boto_client,
@@ -730,10 +723,10 @@ class TestHandlerWithPartialInventory:
                     f"got {rows[0]['Status']!r}"
                 )
 
-    @patch("app.write_to_s3")
-    @patch("app.get_permissions_cache")
-    @patch("app.collect_resource_inventory")
-    @patch("app.boto3.client")
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app.collect_resource_inventory")
+    @patch("finserv_app.boto3.client")
     def test_handler_completes_with_guardrails_and_waf_unavailable(
         self,
         mock_boto_client,

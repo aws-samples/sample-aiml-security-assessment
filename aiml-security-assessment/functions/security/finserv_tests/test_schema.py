@@ -10,8 +10,16 @@ Covers:
 """
 
 import pytest
-from schema import Finding, SeverityEnum, StatusEnum, create_finding
-from app import COMPLIANCE_MAP, build_finserv_checks
+
+from .support import finserv_app, finserv_schema
+
+
+Finding = finserv_schema.Finding
+SeverityEnum = finserv_schema.SeverityEnum
+StatusEnum = finserv_schema.StatusEnum
+create_finding = finserv_schema.create_finding
+COMPLIANCE_MAP = finserv_app.COMPLIANCE_MAP
+build_finserv_checks = finserv_app.build_finserv_checks
 
 
 # =========================================================================

@@ -21,9 +21,7 @@ from unittest.mock import patch
 from botocore.exceptions import ClientError
 
 sys.path.insert(0, "aiml-security-assessment/functions/security/agentcore_assessments")
-sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
-
-from conftest import extract_csv_data, assert_finding_schema
+from tests.test_helpers import extract_csv_data, assert_finding_schema
 
 # Load agentcore app module directly to avoid name collisions with other app.py files
 _ac_dir = os.path.abspath(
@@ -182,25 +180,41 @@ class TestAC02FullAccessRoles:
 class TestAC03StaleAccess:
     """AC-03: Check stale AgentCore access."""
 
+    @patch("agentcore_app.boto3.client")
     @patch("agentcore_app.agentcore_client", None)
-    def test_ac03_client_unavailable_returns_na(self, empty_permission_cache):
+    def test_ac03_client_unavailable_returns_na(
+        self, mock_boto_client, empty_permission_cache
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
         result = agentcore_app.check_stale_agentcore_access(empty_permission_cache)
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Check_ID"] == "AC-03"
 
+    @patch("agentcore_app.boto3.client")
     @patch("agentcore_app.iam_client")
     @patch("agentcore_app.agentcore_client")
     def test_ac03_empty_cache_returns_findings(
-        self, mock_ac, mock_iam, empty_permission_cache
+        self, mock_ac, mock_iam, mock_boto_client, empty_permission_cache
     ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
         result = agentcore_app.check_stale_agentcore_access(empty_permission_cache)
         findings = extract_csv_data(result)
         assert len(findings) >= 1
 
+    @patch("agentcore_app.boto3.client")
     @patch("agentcore_app.iam_client")
     @patch("agentcore_app.agentcore_client")
-    def test_ac03_schema_valid(self, mock_ac, mock_iam, empty_permission_cache):
+    def test_ac03_schema_valid(
+        self, mock_ac, mock_iam, mock_boto_client, empty_permission_cache
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
         result = agentcore_app.check_stale_agentcore_access(empty_permission_cache)
         for f in extract_csv_data(result):
             assert_finding_schema(f)
@@ -250,8 +264,10 @@ class TestAC04Observability:
 class TestAC05Encryption:
     """AC-05: Check AgentCore ECR encryption."""
 
+    @patch("agentcore_app.ecr_client")
     @patch("agentcore_app.agentcore_client", None)
-    def test_ac05_client_unavailable_returns_na(self):
+    def test_ac05_client_unavailable_returns_na(self, mock_ecr):
+        mock_ecr.describe_repositories.return_value = {"repositories": []}
         result = agentcore_app.check_agentcore_encryption()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
@@ -275,8 +291,10 @@ class TestAC05Encryption:
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Failed"
 
+    @patch("agentcore_app.ecr_client")
     @patch("agentcore_app.agentcore_client", None)
-    def test_ac05_schema_valid(self):
+    def test_ac05_schema_valid(self, mock_ecr):
+        mock_ecr.describe_repositories.return_value = {"repositories": []}
         result = agentcore_app.check_agentcore_encryption()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
@@ -338,6 +356,22 @@ class TestAC07MemoryConfiguration:
         assert len(findings) >= 1
 
     @patch("agentcore_app.agentcore_client")
+    def test_ac07_memory_with_wrapped_kms_key_returns_passed(self, mock_ac):
+        mock_ac.list_memories.return_value = {
+            "memories": [{"id": "mem-123456789012", "name": "TestMemory"}]
+        }
+        mock_ac.get_memory.return_value = {
+            "memory": {
+                "id": "mem-123456789012",
+                "encryptionKeyArn": "arn:aws:kms:us-east-1:123:key/abc",
+            }
+        }
+        result = agentcore_app.check_agentcore_memory_configuration()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+    @patch("agentcore_app.agentcore_client")
     def test_ac07_exception_returns_error_finding(self, mock_ac):
         mock_ac.list_memories.side_effect = Exception("Memory error")
         result = agentcore_app.check_agentcore_memory_configuration()
@@ -358,8 +392,10 @@ class TestAC07MemoryConfiguration:
 class TestAC08VPCEndpoints:
     """AC-08: Check VPC endpoints for AgentCore."""
 
+    @patch("agentcore_app.ec2_client")
     @patch("agentcore_app.agentcore_client", None)
-    def test_ac08_client_unavailable_returns_na(self):
+    def test_ac08_client_unavailable_returns_na(self, mock_ec2):
+        mock_ec2.describe_vpcs.return_value = {"Vpcs": []}
         result = agentcore_app.check_agentcore_vpc_endpoints()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
@@ -373,16 +409,19 @@ class TestAC08VPCEndpoints:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
 
+    @patch("agentcore_app.ec2_client")
     @patch("agentcore_app.agentcore_client")
-    def test_ac08_exception_returns_error_finding(self, mock_ac):
-        mock_ac.list_agent_runtimes.side_effect = Exception("VPC endpoint error")
+    def test_ac08_exception_returns_error_finding(self, mock_ac, mock_ec2):
+        mock_ec2.describe_vpcs.side_effect = Exception("VPC endpoint error")
         result = agentcore_app.check_agentcore_vpc_endpoints()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Failed"
 
+    @patch("agentcore_app.ec2_client")
     @patch("agentcore_app.agentcore_client", None)
-    def test_ac08_schema_valid(self):
+    def test_ac08_schema_valid(self, mock_ec2):
+        mock_ec2.describe_vpcs.return_value = {"Vpcs": []}
         result = agentcore_app.check_agentcore_vpc_endpoints()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
@@ -394,8 +433,13 @@ class TestAC08VPCEndpoints:
 class TestAC09ServiceLinkedRole:
     """AC-09: Check AgentCore service-linked role."""
 
+    @patch("agentcore_app.iam_client")
     @patch("agentcore_app.agentcore_client", None)
-    def test_ac09_client_unavailable_returns_na(self):
+    def test_ac09_client_unavailable_returns_na(self, mock_iam):
+        mock_iam.get_role.side_effect = _make_client_error(
+            "NoSuchEntity", "Role not found"
+        )
+        mock_iam.exceptions.NoSuchEntityException = ClientError
         result = agentcore_app.check_agentcore_service_linked_role()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
@@ -406,27 +450,21 @@ class TestAC09ServiceLinkedRole:
     def test_ac09_slr_exists_returns_passed(self, mock_ac, mock_iam):
         mock_iam.get_role.return_value = {
             "Role": {
-                "RoleName": "AWSServiceRoleForBedrockAgentCore",
-                "Arn": "arn:aws:iam::123:role/aws-service-role/agentcore.bedrock.amazonaws.com/AWSServiceRoleForBedrockAgentCore",
-                "Path": "/aws-service-role/agentcore.bedrock.amazonaws.com/",
+                "RoleName": "AWSServiceRoleForBedrockAgentCoreNetwork",
+                "Arn": "arn:aws:iam::123:role/aws-service-role/network.bedrock-agentcore.amazonaws.com/AWSServiceRoleForBedrockAgentCoreNetwork",
+                "Path": "/aws-service-role/network.bedrock-agentcore.amazonaws.com/",
                 "AssumeRolePolicyDocument": {
                     "Statement": [
                         {
                             "Effect": "Allow",
-                            "Principal": {"Service": "agentcore.bedrock.amazonaws.com"},
+                            "Principal": {
+                                "Service": "network.bedrock-agentcore.amazonaws.com"
+                            },
                             "Action": "sts:AssumeRole",
                         }
                     ]
                 },
             }
-        }
-        mock_iam.list_attached_role_policies.return_value = {
-            "AttachedPolicies": [
-                {
-                    "PolicyName": "AWSBedrockAgentCoreServiceRolePolicy",
-                    "PolicyArn": "arn:aws:iam::aws:policy/aws-service-role/AWSBedrockAgentCoreServiceRolePolicy",
-                }
-            ]
         }
         result = agentcore_app.check_agentcore_service_linked_role()
         findings = extract_csv_data(result)
@@ -454,8 +492,13 @@ class TestAC09ServiceLinkedRole:
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Failed"
 
+    @patch("agentcore_app.iam_client")
     @patch("agentcore_app.agentcore_client", None)
-    def test_ac09_schema_valid(self):
+    def test_ac09_schema_valid(self, mock_iam):
+        mock_iam.get_role.side_effect = _make_client_error(
+            "NoSuchEntity", "Role not found"
+        )
+        mock_iam.exceptions.NoSuchEntityException = ClientError
         result = agentcore_app.check_agentcore_service_linked_role()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
@@ -477,9 +520,87 @@ class TestAC10ResourceBasedPolicies:
     @patch("agentcore_app.agentcore_client")
     def test_ac10_no_runtimes_returns_na(self, mock_ac):
         mock_ac.list_agent_runtimes.return_value = {"agentRuntimes": []}
+        mock_ac.list_gateways.return_value = {"items": []}
         result = agentcore_app.check_agentcore_resource_based_policies()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac10_uses_generic_resource_policy_api(self, mock_ac):
+        mock_ac.list_agent_runtimes.return_value = {
+            "agentRuntimes": [
+                {
+                    "agentRuntimeId": "rt-1",
+                    "agentRuntimeName": "TestRuntime",
+                    "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-1",
+                }
+            ]
+        }
+        mock_ac.list_gateways.return_value = {"items": []}
+        mock_ac.get_resource_policy.return_value = {
+            "policy": '{"Version":"2012-10-17"}'
+        }
+
+        result = agentcore_app.check_agentcore_resource_based_policies()
+        findings = extract_csv_data(result)
+
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+        mock_ac.get_resource_policy.assert_called_once_with(
+            resourceArn="arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-1"
+        )
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac10_access_denied_policy_read_returns_na_finding(self, mock_ac):
+        mock_ac.list_agent_runtimes.return_value = {
+            "agentRuntimes": [
+                {
+                    "agentRuntimeId": "rt-1",
+                    "agentRuntimeName": "TestRuntime",
+                    "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-1",
+                }
+            ]
+        }
+        mock_ac.list_gateways.return_value = {"items": []}
+        mock_ac.get_resource_policy.side_effect = _make_client_error(
+            "AccessDeniedException", "Denied"
+        )
+
+        result = agentcore_app.check_agentcore_resource_based_policies()
+        findings = extract_csv_data(result)
+
+        assert len(findings) >= 1
+        assert any(
+            f["Finding"] == "AgentCore Resource-Based Policy Assessment Access Denied"
+            and f["Status"] == "N/A"
+            for f in findings
+        )
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac10_policy_read_throttling_returns_incomplete_finding(self, mock_ac):
+        mock_ac.list_agent_runtimes.return_value = {
+            "agentRuntimes": [
+                {
+                    "agentRuntimeId": "rt-1",
+                    "agentRuntimeName": "TestRuntime",
+                    "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-1",
+                }
+            ]
+        }
+        mock_ac.list_gateways.return_value = {"items": []}
+        mock_ac.get_resource_policy.side_effect = _make_client_error(
+            "ThrottlingException", "Try again"
+        )
+
+        result = agentcore_app.check_agentcore_resource_based_policies()
+        findings = extract_csv_data(result)
+
+        assert len(findings) >= 1
+        assert any(
+            f["Finding"] == "AgentCore Resource-Based Policy Assessment Incomplete"
+            and f["Status"] == "N/A"
+            for f in findings
+        )
 
     @patch("agentcore_app.agentcore_client")
     def test_ac10_exception_returns_error_finding(self, mock_ac):
@@ -546,10 +667,25 @@ class TestAC12GatewayEncryption:
 
     @patch("agentcore_app.agentcore_client")
     def test_ac12_no_gateways_returns_na(self, mock_ac):
-        mock_ac.list_gateways.return_value = {"gateways": []}
+        mock_ac.list_gateways.return_value = {"items": []}
         result = agentcore_app.check_agentcore_gateway_encryption()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac12_gateway_with_kms_key_returns_passed(self, mock_ac):
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        mock_ac.get_gateway.return_value = {
+            "gatewayId": "gw-1",
+            "name": "TestGateway",
+            "kmsKeyArn": "arn:aws:kms:us-east-1:123:key/abc",
+        }
+        result = agentcore_app.check_agentcore_gateway_encryption()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
 
     @patch("agentcore_app.agentcore_client")
     def test_ac12_exception_returns_error_finding(self, mock_ac):
@@ -581,10 +717,20 @@ class TestAC13GatewayConfiguration:
 
     @patch("agentcore_app.agentcore_client")
     def test_ac13_no_gateways_returns_na(self, mock_ac):
-        mock_ac.list_gateways.return_value = {"gateways": []}
+        mock_ac.list_gateways.return_value = {"items": []}
         result = agentcore_app.check_agentcore_gateway_configuration()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac13_items_gateway_shape_returns_passed(self, mock_ac):
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        result = agentcore_app.check_agentcore_gateway_configuration()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
 
     @patch("agentcore_app.agentcore_client")
     def test_ac13_exception_returns_error_finding(self, mock_ac):

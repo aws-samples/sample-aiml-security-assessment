@@ -14,8 +14,7 @@ import os
 import importlib.util
 from unittest.mock import patch, MagicMock
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
-from conftest import extract_csv_data, assert_finding_schema
+from tests.test_helpers import extract_csv_data, assert_finding_schema
 
 # Load sagemaker app module directly to avoid name collisions
 _sm_dir = os.path.abspath(

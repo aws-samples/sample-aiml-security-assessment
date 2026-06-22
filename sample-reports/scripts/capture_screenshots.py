@@ -18,7 +18,6 @@ Usage:
     python sample-reports/scripts/capture_screenshots.py
 """
 
-import os
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -92,23 +91,25 @@ def optimize_png(image_path: Path, max_size_kb: int = 300) -> None:
     img = Image.open(image_path)
 
     # Convert RGBA to RGB if needed (reduces size)
-    if img.mode == 'RGBA':
-        background = Image.new('RGB', img.size, (255, 255, 255))
+    if img.mode == "RGBA":
+        background = Image.new("RGB", img.size, (255, 255, 255))
         background.paste(img, mask=img.split()[3])  # Use alpha channel as mask
         img = background
 
     # Save with optimization
-    img.save(image_path, 'PNG', optimize=True)
+    img.save(image_path, "PNG", optimize=True)
 
     # Check file size
     file_size_kb = image_path.stat().st_size / 1024
 
     # If still too large, reduce quality by converting to JPEG
     if file_size_kb > max_size_kb:
-        jpeg_path = image_path.with_suffix('.jpg')
-        img.save(jpeg_path, 'JPEG', quality=JPEG_QUALITY, optimize=True)
+        jpeg_path = image_path.with_suffix(".jpg")
+        img.save(jpeg_path, "JPEG", quality=JPEG_QUALITY, optimize=True)
         image_path.unlink()  # Remove PNG
-        print(f"  Converted to JPEG: {jpeg_path.name} ({jpeg_path.stat().st_size / 1024:.1f} KB)")
+        print(
+            f"  Converted to JPEG: {jpeg_path.name} ({jpeg_path.stat().st_size / 1024:.1f} KB)"
+        )
         return jpeg_path
 
     print(f"  Optimized PNG: {image_path.name} ({file_size_kb:.1f} KB)")
@@ -136,7 +137,9 @@ def capture_screenshot(browser, screenshot_config: dict) -> Path:
     print(f"  Source: {screenshot_config['file']}")
 
     # Create a new page
-    page = browser.new_page(viewport={"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT})
+    page = browser.new_page(
+        viewport={"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT}
+    )
 
     # Navigate to the HTML file
     page.goto(f"file://{html_file.absolute()}")
@@ -144,7 +147,9 @@ def capture_screenshot(browser, screenshot_config: dict) -> Path:
     # Execute actions
     for action in screenshot_config["actions"]:
         if action["type"] == "wait":
-            page.wait_for_selector(action["selector"], timeout=action.get("timeout", 5000))
+            page.wait_for_selector(
+                action["selector"], timeout=action.get("timeout", 5000)
+            )
         elif action["type"] == "click":
             page.click(action["selector"])
         elif action["type"] == "scroll":
@@ -225,7 +230,7 @@ def main():
             print("  3. Commit the screenshots to the repository")
 
     except ImportError as e:
-        print(f"\nERROR: Required library not installed")
+        print("\nERROR: Required library not installed")
         print(f"   {e}")
         print("\nPlease install required dependencies:")
         print("   source .venv/bin/activate")
