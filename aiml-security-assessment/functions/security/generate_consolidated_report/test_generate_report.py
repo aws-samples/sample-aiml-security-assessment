@@ -1,8 +1,40 @@
-# test_generate_report.py
 import unittest
 import os
-from app import generate_html_report
-from report_template import generate_html_report as generate_report_direct
+import sys
+import importlib.util
+
+
+_THIS_DIR = os.path.dirname(__file__)
+_SAVED_SYS_PATH = list(sys.path)
+_SAVED_REPORT_TEMPLATE = sys.modules.get("report_template")
+
+try:
+    if _THIS_DIR not in sys.path:
+        sys.path.insert(0, _THIS_DIR)
+
+    _template_spec = importlib.util.spec_from_file_location(
+        "generate_report_template", os.path.join(_THIS_DIR, "report_template.py")
+    )
+    generate_report_template = importlib.util.module_from_spec(_template_spec)
+    sys.modules["report_template"] = generate_report_template
+    _template_spec.loader.exec_module(generate_report_template)
+
+    _app_spec = importlib.util.spec_from_file_location(
+        "generate_consolidated_report_app", os.path.join(_THIS_DIR, "app.py")
+    )
+    generate_report_app = importlib.util.module_from_spec(_app_spec)
+    sys.modules["generate_consolidated_report_app"] = generate_report_app
+    _app_spec.loader.exec_module(generate_report_app)
+finally:
+    sys.path[:] = _SAVED_SYS_PATH
+    if _SAVED_REPORT_TEMPLATE is None:
+        sys.modules.pop("report_template", None)
+    else:
+        sys.modules["report_template"] = _SAVED_REPORT_TEMPLATE
+
+
+generate_html_report = generate_report_app.generate_html_report
+generate_report_direct = generate_report_template.generate_html_report
 
 
 class TestHtmlReportGeneration(unittest.TestCase):

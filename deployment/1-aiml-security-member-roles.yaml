@@ -78,6 +78,8 @@ Resources:
                   - bedrock:GetPrompt
                   - bedrock:ListAgents
                   - bedrock:GetAgent
+                  - bedrock:ListKnowledgeBases
+                  - bedrock:GetKnowledgeBase
                 Resource: "*"
               # Bedrock AgentCore Permissions
               - Effect: Allow
@@ -90,8 +92,7 @@ Resources:
                   - bedrock-agentcore:GetGateway
                   - bedrock-agentcore:ListPolicyEngines
                   - bedrock-agentcore:GetPolicyEngine
-                  - bedrock-agentcore:GetAgentRuntimeResourcePolicy
-                  - bedrock-agentcore:GetGatewayResourcePolicy
+                  - bedrock-agentcore:GetResourcePolicy
                 Resource: "*"
               # SageMaker Assessment Permissions
               - Effect: Allow
@@ -180,6 +181,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetBucketEncryption
+                  - s3:GetEncryptionConfiguration
                   - s3:GetBucketVersioning
                   - s3:GetBucketTagging
                   - s3:HeadBucket

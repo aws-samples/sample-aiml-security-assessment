@@ -22,22 +22,13 @@ Design reference: design.md §9.3
 
 from __future__ import annotations
 
-import os
-import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Make finserv_assessments importable
-# ---------------------------------------------------------------------------
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-import app  # noqa: E402
+from .support import finserv_app as app
 
 
 # ===========================================================================
@@ -549,9 +540,9 @@ def _run_with_counting_mocks(event=None):
     side_effect, tracker = _build_counting_client_factory()
 
     with (
-        patch("app.boto3.client") as mock_client,
-        patch("app.get_permissions_cache") as mock_cache,
-        patch("app.write_to_s3") as mock_s3,
+        patch("finserv_app.boto3.client") as mock_client,
+        patch("finserv_app.get_permissions_cache") as mock_cache,
+        patch("finserv_app.write_to_s3") as mock_s3,
     ):
         mock_client.side_effect = side_effect
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}

@@ -15,9 +15,7 @@ import importlib.util
 from unittest.mock import patch, MagicMock
 from botocore.exceptions import EndpointConnectionError, ClientError
 
-# Add tests dir so we can import helpers
-sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
-from conftest import extract_csv_data, assert_finding_schema
+from tests.test_helpers import extract_csv_data, assert_finding_schema
 
 # Load bedrock app module directly to avoid name collisions with other app.py files
 _bedrock_dir = os.path.abspath(
@@ -226,7 +224,7 @@ class TestBR04LoggingConfiguration:
         mock_client.return_value = mock_bedrock
         mock_bedrock.get_model_invocation_logging_configuration.return_value = {
             "loggingConfig": {
-                "s3Config": {"s3BucketName": "my-log-bucket"},
+                "s3Config": {"bucketName": "my-log-bucket"},
                 "cloudWatchConfig": {},
             }
         }
@@ -281,13 +279,29 @@ class TestBR04LoggingConfiguration:
         mock_client.return_value = mock_bedrock
         mock_bedrock.get_model_invocation_logging_configuration.return_value = {
             "loggingConfig": {
-                "s3Config": {"s3BucketName": "bucket"},
+                "s3Config": {"bucketName": "bucket"},
                 "cloudWatchConfig": {},
             }
         }
         result = check()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
+
+    @patch("boto3.client")
+    def test_br04_logging_enabled_s3_legacy_key_returns_passed(self, mock_client):
+        check = bedrock_app.check_bedrock_logging_configuration
+        mock_bedrock = MagicMock()
+        mock_client.return_value = mock_bedrock
+        mock_bedrock.get_model_invocation_logging_configuration.return_value = {
+            "loggingConfig": {
+                "s3Config": {"s3BucketName": "legacy-log-bucket"},
+                "cloudWatchConfig": {},
+            }
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
 
 
 # ===================================================================
@@ -470,25 +484,47 @@ class TestBR07PromptManagement:
     def test_br07_prompts_exist_returns_passed(self, mock_client):
         check = bedrock_app.check_bedrock_prompt_management
         mock_agent = MagicMock()
+        paginator = MagicMock()
         mock_client.return_value = mock_agent
-        mock_agent.list_prompts.return_value = {
-            "promptSummaries": [
-                {"name": "prompt1", "promptId": "p1", "status": "ACTIVE"}
-            ]
-        }
+        mock_agent.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"promptSummaries": [{"name": "prompt1", "id": "p1"}]}
+        ]
         mock_agent.get_prompt.return_value = {"variants": ["v1", "v2"]}
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Passed"
         assert findings[0]["Check_ID"] == "BR-07"
+        mock_agent.get_prompt.assert_called_once_with(promptIdentifier="p1")
+
+    @patch("boto3.client")
+    def test_br07_legacy_prompt_id_fallback_still_supported(self, mock_client):
+        check = bedrock_app.check_bedrock_prompt_management
+        mock_agent = MagicMock()
+        paginator = MagicMock()
+        mock_client.return_value = mock_agent
+        mock_agent.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"promptSummaries": [{"name": "prompt1", "promptId": "p1"}]}
+        ]
+        mock_agent.get_prompt.return_value = {"variants": ["v1", "v2"]}
+
+        result = check()
+        findings = extract_csv_data(result)
+
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+        mock_agent.get_prompt.assert_called_once_with(promptIdentifier="p1")
 
     @patch("boto3.client")
     def test_br07_no_prompts_returns_na(self, mock_client):
         check = bedrock_app.check_bedrock_prompt_management
         mock_agent = MagicMock()
+        paginator = MagicMock()
         mock_client.return_value = mock_agent
-        mock_agent.list_prompts.return_value = {"promptSummaries": []}
+        mock_agent.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{"promptSummaries": []}]
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
@@ -521,8 +557,10 @@ class TestBR07PromptManagement:
     def test_br07_schema_valid(self, mock_client):
         check = bedrock_app.check_bedrock_prompt_management
         mock_agent = MagicMock()
+        paginator = MagicMock()
         mock_client.return_value = mock_agent
-        mock_agent.list_prompts.return_value = {"promptSummaries": []}
+        mock_agent.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{"promptSummaries": []}]
         result = check()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
@@ -538,8 +576,10 @@ class TestBR08AgentRoles:
     def test_br08_no_agents_returns_na(self, mock_client, empty_permission_cache):
         check = bedrock_app.check_bedrock_agent_roles
         mock_agent = MagicMock()
+        paginator = MagicMock()
         mock_client.return_value = mock_agent
-        mock_agent.list_agents.return_value = {"agents": []}
+        mock_agent.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{"agentSummaries": []}]
         result = check(empty_permission_cache)
         findings = extract_csv_data(result)
         assert len(findings) >= 1
@@ -552,17 +592,43 @@ class TestBR08AgentRoles:
     ):
         check = bedrock_app.check_bedrock_agent_roles
         mock_agent = MagicMock()
+        paginator = MagicMock()
         mock_client.return_value = mock_agent
-        mock_agent.list_agents.return_value = {
-            "agents": [{"agentId": "a1", "agentName": "TestAgent"}]
-        }
+        mock_agent.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"agentSummaries": [{"agentId": "a1", "agentName": "TestAgent"}]}
+        ]
         mock_agent.get_agent.return_value = {
-            "agentResourceRoleArn": "arn:aws:iam::123456789012:role/LeastPrivilegeRole"
+            "agent": {
+                "agentResourceRoleArn": "arn:aws:iam::123456789012:role/LeastPrivilegeRole"
+            }
         }
         result = check(permission_cache_compliant)
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        # With permission boundary and specific resources, should pass or have minimal issues
+        mock_agent.get_agent.assert_called_once_with(agentId="a1")
+
+    @patch("boto3.client")
+    def test_br08_legacy_role_arn_shape_still_supported(
+        self, mock_client, permission_cache_compliant
+    ):
+        check = bedrock_app.check_bedrock_agent_roles
+        mock_agent = MagicMock()
+        paginator = MagicMock()
+        mock_client.return_value = mock_agent
+        mock_agent.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"agentSummaries": [{"agentId": "a1", "agentName": "TestAgent"}]}
+        ]
+        mock_agent.get_agent.return_value = {
+            "agentResourceRoleArn": "arn:aws:iam::123456789012:role/LeastPrivilegeRole"
+        }
+
+        result = check(permission_cache_compliant)
+        findings = extract_csv_data(result)
+
+        assert len(findings) >= 1
+        mock_agent.get_agent.assert_called_once_with(agentId="a1")
 
     @patch("boto3.client")
     def test_br08_exception_returns_error_finding(
@@ -579,8 +645,10 @@ class TestBR08AgentRoles:
     def test_br08_schema_valid(self, mock_client, empty_permission_cache):
         check = bedrock_app.check_bedrock_agent_roles
         mock_agent = MagicMock()
+        paginator = MagicMock()
         mock_client.return_value = mock_agent
-        mock_agent.list_agents.return_value = {"agents": []}
+        mock_agent.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{"agentSummaries": []}]
         result = check(empty_permission_cache)
         for f in extract_csv_data(result):
             assert_finding_schema(f)
@@ -654,6 +722,23 @@ class TestBR09KBEncryption:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Failed"
+
+    @patch("boto3.client")
+    def test_br09_access_denied_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_knowledge_base_encryption
+        mock_agent = MagicMock()
+        mock_client.return_value = mock_agent
+        paginator = MagicMock()
+        mock_agent.get_paginator.return_value = paginator
+        paginator.paginate.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+            "ListKnowledgeBases",
+        )
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
 
     @patch("boto3.client")
     def test_br09_schema_valid(self, mock_client):
@@ -937,6 +1022,31 @@ class TestBR12InvocationLogEncryption:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Failed"
+
+    @patch("boto3.client")
+    def test_br12_access_denied_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_invocation_log_encryption
+        mock_bedrock = MagicMock()
+        mock_s3 = MagicMock()
+
+        def client_factory(service, **kwargs):
+            if service == "bedrock":
+                return mock_bedrock
+            return mock_s3
+
+        mock_client.side_effect = client_factory
+        mock_bedrock.get_model_invocation_logging_configuration.return_value = {
+            "loggingConfig": {"s3Config": {"bucketName": "log-bucket"}}
+        }
+        mock_s3.get_bucket_encryption.side_effect = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "denied"}},
+            "GetBucketEncryption",
+        )
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
 
     @patch("boto3.client")
     def test_br12_schema_valid(self, mock_client):

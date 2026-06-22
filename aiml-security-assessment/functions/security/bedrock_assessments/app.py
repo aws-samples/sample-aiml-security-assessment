@@ -191,6 +191,23 @@ def detect_bedrock_regional_footprint(region: str = "") -> Optional[bool]:
     return None if indeterminate else False
 
 
+def _extract_s3_bucket_name(s3_config: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Support both the documented field name and the legacy test fixture key."""
+    if not s3_config:
+        return None
+
+    return s3_config.get("bucketName") or s3_config.get("s3BucketName")
+
+
+def _is_access_denied_client_error(error: Exception) -> bool:
+    """Normalize AccessDenied checks across Bedrock and S3 client errors."""
+    if not isinstance(error, ClientError):
+        return False
+
+    error_code = error.response.get("Error", {}).get("Code")
+    return error_code in {"AccessDenied", "AccessDeniedException"}
+
+
 def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
     """
     Retrieve and parse the permissions cache JSON file from S3
@@ -1127,7 +1144,7 @@ def check_bedrock_logging_configuration(region: str = "") -> Dict[str, Any]:
 
             # Check S3 logging configuration
             s3_config = response.get("loggingConfig", {}).get("s3Config")
-            if s3_config and s3_config.get("s3BucketName"):
+            if _extract_s3_bucket_name(s3_config):
                 logging_enabled = True
                 enabled_destinations.append("Amazon S3")
 
@@ -1403,22 +1420,18 @@ def check_bedrock_prompt_management(region: str = "") -> Dict[str, Any]:
 
         try:
             # List all prompts
-            response = bedrock_client.list_prompts()
-            prompts = response.get("promptSummaries", [])
+            paginator = bedrock_client.get_paginator("list_prompts")
+            prompts = []
+            for page in paginator.paginate():
+                prompts.extend(page.get("promptSummaries", []))
 
             if prompts:
-                # Count prompts by status
-                active_prompts = [p for p in prompts if p.get("status") == "ACTIVE"]
-                draft_prompts = [p for p in prompts if p.get("status") == "DRAFT"]
-
-                findings["details"] = (
-                    f"Found {len(prompts)} prompts ({len(active_prompts)} active, {len(draft_prompts)} draft)"
-                )
+                findings["details"] = f"Found {len(prompts)} prompts"
                 findings["csv_data"].append(
                     create_finding(
                         check_id="BR-07",
                         finding_name="Bedrock Prompt Management Check",
-                        finding_details=f"Prompt Management is being used with {len(prompts)} prompts ({len(active_prompts)} active, {len(draft_prompts)} draft)",
+                        finding_details=f"Prompt Management is being used with {len(prompts)} prompts",
                         resolution="No action required. Continue using Prompt Management for consistent and optimized prompts.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management.html",
                         severity="Low",
@@ -1430,15 +1443,24 @@ def check_bedrock_prompt_management(region: str = "") -> Dict[str, Any]:
                 # Additional check for prompt variants
                 prompts_without_variants = []
                 for prompt in prompts:
+                    prompt_id = prompt.get("id") or prompt.get("promptId")
+                    prompt_name = prompt.get("name") or prompt_id or "unknown"
+                    if not prompt_id:
+                        logger.warning(
+                            "Skipping prompt without identifier in Prompt Management check"
+                        )
+                        continue
+
                     try:
                         prompt_details = bedrock_client.get_prompt(
-                            promptId=prompt["promptId"]
+                            promptIdentifier=prompt_id
                         )
-                        if len(prompt_details.get("variants", [])) <= 1:
-                            prompts_without_variants.append(prompt["name"])
+                        prompt_config = prompt_details.get("prompt", prompt_details)
+                        if len(prompt_config.get("variants", [])) <= 1:
+                            prompts_without_variants.append(prompt_name)
                     except Exception as e:
                         logger.warning(
-                            f"Could not get details for prompt {prompt['name']}: {str(e)}"
+                            f"Could not get details for prompt {prompt_name}: {str(e)}"
                         )
 
                 if prompts_without_variants:
@@ -1562,6 +1584,7 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
                 return findings
 
             kb_without_cmk = []
+            kb_access_denied = []
 
             for kb in knowledge_bases:
                 kb_id = kb.get("knowledgeBaseId")
@@ -1585,13 +1608,26 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
                         {"id": kb_id, "name": kb_name, "storage_type": storage_type}
                     )
 
+                except ClientError as e:
+                    if _is_access_denied_client_error(e):
+                        kb_access_denied.append({"id": kb_id, "name": kb_name})
+                        continue
+
+                    logger.warning(f"Error checking knowledge base {kb_id}: {str(e)}")
                 except Exception as e:
                     logger.warning(f"Error checking knowledge base {kb_id}: {str(e)}")
 
-            if kb_without_cmk:
-                findings["details"] = (
-                    f"Found {len(kb_without_cmk)} Knowledge Bases - encryption validated at storage layer"
-                )
+            if kb_without_cmk or kb_access_denied:
+                detail_parts = []
+                if kb_without_cmk:
+                    detail_parts.append(
+                        f"Found {len(kb_without_cmk)} Knowledge Bases - encryption validated at storage layer"
+                    )
+                if kb_access_denied:
+                    detail_parts.append(
+                        f"Could not assess {len(kb_access_denied)} Knowledge Bases due to access denied"
+                    )
+                findings["details"] = "; ".join(detail_parts)
 
                 for kb in kb_without_cmk:
                     findings["csv_data"].append(
@@ -1600,6 +1636,20 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
                             finding_name="Bedrock Knowledge Base Encryption Review",
                             finding_details=f"Knowledge Base '{kb['name']}' ({kb['id']}) uses '{kb['storage_type']}' storage. Encryption is managed at the storage layer and cannot be validated from the KB API. Verify encryption configuration on the underlying storage resource.",
                             resolution="1. For OpenSearch Serverless: Verify encryption with CMK at collection level\n2. For S3 data sources: Verify CMK-encrypted S3 buckets\n3. For RDS: Verify KMS encryption on the database\n4. Consider using CMK for transient data during ingestion",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                            severity="Informational",
+                            status="N/A",
+                            region=region,
+                        )
+                    )
+
+                for kb in kb_access_denied:
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-09",
+                            finding_name="Bedrock Knowledge Base Encryption Check",
+                            finding_details=f"Unable to assess Knowledge Base '{kb['name']}' ({kb['id']}) because access to Knowledge Base metadata was denied.",
+                            resolution="Ensure the assessment role can call bedrock:ListKnowledgeBases and bedrock:GetKnowledgeBase for the target account.",
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
                             severity="Informational",
                             status="N/A",
@@ -1620,25 +1670,45 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
                     )
                 )
 
-        except Exception as e:
-            findings["status"] = "WARN"
-            findings["details"] = describe_api_error(
-                e, "Bedrock Knowledge Base API", region
-            )
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="BR-09",
-                    finding_name="Bedrock Knowledge Base Encryption Check",
-                    finding_details=describe_api_error(
-                        e, "Bedrock Knowledge Base API", region
-                    ),
-                    resolution="Verify your AWS credentials and permissions to access Bedrock Knowledge Bases, then retry the assessment.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
-                    severity="Informational",
-                    status="N/A",
-                    region=region,
+        except ClientError as e:
+            if _is_access_denied_client_error(e):
+                findings["status"] = "WARN"
+                findings["details"] = (
+                    "Unable to assess Knowledge Base encryption because access was denied"
                 )
-            )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-09",
+                        finding_name="Bedrock Knowledge Base Encryption Check",
+                        finding_details="Unable to assess Knowledge Base encryption because access to Knowledge Base metadata was denied.",
+                        resolution="Ensure the assessment role can call bedrock:ListKnowledgeBases and bedrock:GetKnowledgeBase for the target account.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            else:
+                error_code = e.response.get("Error", {}).get("Code")
+                if error_code == "ValidationException":
+                    findings["status"] = "ERROR"
+                    findings["details"] = (
+                        f"Error validating Knowledge Base configuration: {str(e)}"
+                    )
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-09",
+                            finding_name="Bedrock Knowledge Base Encryption Check",
+                            finding_details=f"Error checking Knowledge Base encryption: {str(e)}",
+                            resolution="Verify your AWS credentials and permissions to access Bedrock Knowledge Bases",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                            severity="High",
+                            status="Failed",
+                            region=region,
+                        )
+                    )
+                else:
+                    raise
 
         return findings
 
@@ -2043,7 +2113,9 @@ def check_bedrock_invocation_log_encryption(region: str = "") -> Dict[str, Any]:
 
             s3_config = logging_config.get("s3Config")
 
-            if not s3_config or not s3_config.get("bucketName"):
+            bucket_name = _extract_s3_bucket_name(s3_config)
+
+            if not bucket_name:
                 findings["csv_data"].append(
                     create_finding(
                         check_id="BR-12",
@@ -2057,8 +2129,6 @@ def check_bedrock_invocation_log_encryption(region: str = "") -> Dict[str, Any]:
                     )
                 )
                 return findings
-
-            bucket_name = s3_config.get("bucketName")
 
             # Check S3 bucket encryption
             try:
@@ -2133,16 +2203,20 @@ def check_bedrock_invocation_log_encryption(region: str = "") -> Dict[str, Any]:
                             region=region,
                         )
                     )
-                elif e.response["Error"]["Code"] == "AccessDenied":
+                elif _is_access_denied_client_error(e):
+                    findings["status"] = "WARN"
+                    findings["details"] = (
+                        f"Unable to assess encryption for bucket '{bucket_name}' due to access denied"
+                    )
                     findings["csv_data"].append(
                         create_finding(
                             check_id="BR-12",
                             finding_name="Bedrock Invocation Log Encryption Check",
-                            finding_details=f"Unable to check encryption for bucket '{bucket_name}' - access denied",
-                            resolution="Ensure Lambda execution role has s3:GetEncryptionConfiguration permission",
+                            finding_details=f"Unable to assess encryption for bucket '{bucket_name}' because access to the bucket encryption configuration was denied.",
+                            resolution="Ensure the assessment role and bucket policy allow s3:GetEncryptionConfiguration for the logging bucket.",
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
-                            severity="Medium",
-                            status="Failed",
+                            severity="Informational",
+                            status="N/A",
                             region=region,
                         )
                     )
@@ -2400,8 +2474,10 @@ def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, A
 
         try:
             # Get all Bedrock agents
-            response = bedrock_client.list_agents()
-            agents = response.get("agents", [])
+            paginator = bedrock_client.get_paginator("list_agents")
+            agents = []
+            for page in paginator.paginate():
+                agents.extend(page.get("agentSummaries", page.get("agents", [])))
 
             if not agents:
                 findings["details"] = "No Bedrock agents found"
@@ -2423,12 +2499,19 @@ def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, A
 
             for agent in agents:
                 agent_id = agent.get("agentId")
-                agent_name = agent.get("agentName")
+                agent_name = agent.get("agentName") or agent_id or "unknown"
+                if not agent_id:
+                    logger.warning(
+                        "Skipping Bedrock agent without agentId in IAM role check"
+                    )
+                    continue
 
                 # Get agent details including role ARN
                 agent_details = bedrock_client.get_agent(agentId=agent_id)
 
-                role_arn = agent_details.get("agentResourceRoleArn")
+                role_arn = agent_details.get("agent", {}).get(
+                    "agentResourceRoleArn"
+                ) or agent_details.get("agentResourceRoleArn")
                 if not role_arn:
                     continue
 

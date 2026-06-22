@@ -15,19 +15,13 @@ app.collect_resource_inventory to return it, then runs lambda_handler end-to-end
 a generic MagicMock for every non-inventory boto3 client.
 """
 
-import os
-import sys
 import time
 import tracemalloc
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-import app  # noqa: E402
+from .support import finserv_app as app
 
 
 # ---------------------------------------------------------------------------
@@ -262,10 +256,10 @@ class TestLargeEstatePerformance:
     Validates: REQ-10.1, REQ-10.2, REQ-10.3, REQ-11.1, REQ-11.3
     """
 
-    @patch("app.write_to_s3")
-    @patch("app.get_permissions_cache")
-    @patch("app.boto3.client")
-    @patch("app.collect_resource_inventory")
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app.boto3.client")
+    @patch("finserv_app.collect_resource_inventory")
     def test_large_estate_single_listing_and_memory(
         self,
         mock_collect_inventory,
@@ -378,10 +372,10 @@ class TestLargeEstatePerformance:
             f"Peak memory {peak_mb:.1f} MB — must be well under 1024 MB"
         )
 
-    @patch("app.write_to_s3")
-    @patch("app.get_permissions_cache")
-    @patch("app.boto3.client")
-    @patch("app.collect_resource_inventory")
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app.boto3.client")
+    @patch("finserv_app.collect_resource_inventory")
     def test_large_estate_timing_budget(
         self,
         mock_collect_inventory,
@@ -416,10 +410,10 @@ class TestLargeEstatePerformance:
             f"(900 s hard budget leaves {900 - elapsed:.0f}s headroom)"
         )
 
-    @patch("app.write_to_s3")
-    @patch("app.get_permissions_cache")
-    @patch("app.boto3.client")
-    @patch("app.collect_resource_inventory")
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app.boto3.client")
+    @patch("finserv_app.collect_resource_inventory")
     def test_large_estate_memory_footprint(
         self,
         mock_collect_inventory,

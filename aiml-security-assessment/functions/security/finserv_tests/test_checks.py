@@ -14,24 +14,13 @@ All boto3 clients are patched via unittest.mock so no real AWS calls are made.
 """
 
 import json
-import sys
 import os
 from unittest.mock import MagicMock, patch
 
 from botocore.exceptions import ClientError
 
-# Ensure finserv_assessments is importable
-FINSERV_DIR = os.path.join(os.path.dirname(__file__), "..", "finserv_assessments")
-if FINSERV_DIR not in sys.path:
-    sys.path.insert(0, FINSERV_DIR)
-
-# Ensure tests/ directory is importable (for conftest helpers)
-TESTS_DIR = os.path.dirname(__file__)
-if TESTS_DIR not in sys.path:
-    sys.path.insert(0, TESTS_DIR)
-
-import app  # noqa: E402  (import must follow sys.path setup above)
-from conftest import make_resource_inventory  # noqa: E402
+from .support import finserv_app as app
+from .support import make_resource_inventory
 
 
 # =========================================================================
@@ -97,7 +86,7 @@ class TestFS01WafShield:
                 detail_by_id={},
             )
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
             shield_mock = MagicMock()
             shield_mock.describe_subscription.return_value = {}
             shield_mock.exceptions.ResourceNotFoundException = type(
@@ -120,7 +109,7 @@ class TestFS01WafShield:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=[], detail_by_id={})
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
             shield_mock = MagicMock()
             shield_mock.describe_subscription.side_effect = ClientError(
                 {"Error": {"Code": "ResourceNotFoundException", "Message": ""}},
@@ -148,7 +137,7 @@ class TestFS01WafShield:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=[], detail_by_id={})
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
             shield_mock = MagicMock()
             shield_mock.describe_subscription.side_effect = ClientError(
                 {"Error": {"Code": "ResourceNotFoundException", "Message": ""}},
@@ -166,7 +155,7 @@ class TestFS01WafShield:
     def test_error_on_exception(self):
         """Unavailable inventory → COULD_NOT_ASSESS (ERROR envelope)."""
         inv = make_resource_inventory(web_acls=app._Unavailable(RuntimeError("boom")))
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
             shield_mock = MagicMock()
             shield_mock.describe_subscription.return_value = {}
             shield_mock.exceptions.ResourceNotFoundException = type(
@@ -182,7 +171,7 @@ class TestFS01WafShield:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=[], detail_by_id={})
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
             mock_client.side_effect = RuntimeError("boom")
             result = app.check_waf_shield_on_bedrock_endpoints(inv)
         assert result["status"] == "ERROR"
@@ -195,7 +184,7 @@ class TestFS01WafShield:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=acls, detail_by_id={})
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
             shield_mock = MagicMock()
             shield_mock.describe_subscription.return_value = {}
             shield_mock.exceptions.ResourceNotFoundException = type(
@@ -219,7 +208,7 @@ class TestFS01WafShield:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=acls, detail_by_id={})
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
             shield_mock = MagicMock()
             shield_mock.describe_subscription.return_value = {}
             shield_mock.exceptions.ResourceNotFoundException = type(
@@ -237,7 +226,7 @@ class TestFS01WafShield:
 class TestFS02ApiGatewayRateLimiting:
     """FS-02 — API Gateway Rate Limiting Check."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_all_plans_have_throttle(self, mock_client):
         c = MagicMock()
         c.get_usage_plans.return_value = {
@@ -250,7 +239,7 @@ class TestFS02ApiGatewayRateLimiting:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_plan_missing_throttle(self, mock_client):
         c = MagicMock()
         c.get_usage_plans.return_value = {
@@ -263,7 +252,7 @@ class TestFS02ApiGatewayRateLimiting:
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_no_plans_returns_na(self, mock_client):
         c = MagicMock()
         c.get_usage_plans.return_value = {"items": []}
@@ -273,7 +262,7 @@ class TestFS02ApiGatewayRateLimiting:
         # No plans → advisory finding, status stays PASS
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("api error")
         result = app.check_api_gateway_rate_limiting()
@@ -301,7 +290,7 @@ class TestFS03BedrockTokenQuotas:
         c.get_paginator.side_effect = get_paginator
         return c
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_customized_quota(self, mock_client):
         # Applied value (200000) exceeds AWS default (100000) → customized → PASS/Passed
         applied = [
@@ -318,7 +307,7 @@ class TestFS03BedrockTokenQuotas:
         assert result["status"] == "PASS"
         assert any(r["Status"] == "Passed" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_default_quota(self, mock_client):
         # Applied value == AWS default → still at default → WARN/N-A (soft, not a failure)
         applied = [
@@ -337,7 +326,7 @@ class TestFS03BedrockTokenQuotas:
         # At-default is NOT a failure.
         assert not any(r["Status"] == "Failed" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_token_only_no_rpm(self, mock_client):
         # Only token-based quotas present (no "request"/RPM quota). RPM is deprecated
         # on bedrock-runtime; its absence must not drive a Failed verdict.
@@ -355,7 +344,7 @@ class TestFS03BedrockTokenQuotas:
         # Customized token quota → PASS, regardless of any RPM quota existing.
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_empty_applied_quotas(self, mock_client):
         # No token quotas returned at all → WARN/Failed + explanatory details.
         mock_client.return_value = self._sq_client([], [])
@@ -368,7 +357,7 @@ class TestFS03BedrockTokenQuotas:
             for r in result["csv_data"]
         )
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_default_lookup_fail(self, mock_client):
         # Applied token quotas exist but defaults could not be retrieved →
         # WARN/Failed + "undetermined" (NOT a silent value-vs-itself comparison).
@@ -390,7 +379,7 @@ class TestFS03BedrockTokenQuotas:
             for r in result["csv_data"]
         )
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("quota error")
         result = app.check_bedrock_token_quotas()
@@ -400,7 +389,7 @@ class TestFS03BedrockTokenQuotas:
 class TestFS04CostAnomalyDetection:
     """FS-04 — Cost Anomaly Detection Check."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_monitors_exist(self, mock_client):
         c = MagicMock()
         c.get_anomaly_monitors.return_value = {
@@ -417,7 +406,7 @@ class TestFS04CostAnomalyDetection:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_monitors_without_bedrock_coverage(self, mock_client):
         # A DIMENSIONAL monitor scoped to LINKED_ACCOUNT does NOT provide
         # Bedrock service-level coverage → non-PASS (previously masked false positive).
@@ -437,7 +426,7 @@ class TestFS04CostAnomalyDetection:
         assert result["status"] != "PASS"
         assert any(r["Status"] == "Failed" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_monitors(self, mock_client):
         c = MagicMock()
         c.get_anomaly_monitors.return_value = {"AnomalyMonitors": []}
@@ -446,7 +435,7 @@ class TestFS04CostAnomalyDetection:
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pagination_finds_bedrock_monitor_on_second_page(self, mock_client):
         # The Bedrock-covering monitor is on page 2. The check must paginate via
         # NextPageToken and still find it (otherwise a false "no coverage" finding).
@@ -480,7 +469,7 @@ class TestFS04CostAnomalyDetection:
         assert c.get_anomaly_monitors.call_count == 2
         c.get_anomaly_monitors.assert_any_call(NextPageToken="page2")
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("ce error")
         result = app.check_cost_anomaly_detection()
@@ -490,7 +479,7 @@ class TestFS04CostAnomalyDetection:
 class TestFS05CloudWatchTokenAlarms:
     """FS-05 — CloudWatch Token Usage Alarms Check."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_bedrock_alarms_exist(self, mock_client):
         c = MagicMock()
         paginator = MagicMock()
@@ -511,7 +500,7 @@ class TestFS05CloudWatchTokenAlarms:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_bedrock_alarms(self, mock_client):
         c = MagicMock()
         paginator = MagicMock()
@@ -532,7 +521,7 @@ class TestFS05CloudWatchTokenAlarms:
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("cw error")
         result = app.check_cloudwatch_token_alarms()
@@ -578,7 +567,7 @@ class TestFS06AwsBudgets:
 
         return side_effect
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_aiml_budgets_exist(self, mock_client):
         capture = []
         mock_client.side_effect = self._client_factory(
@@ -591,7 +580,7 @@ class TestFS06AwsBudgets:
         # Regression guard: the call MUST pass ShowFilterExpression=True.
         assert any(kw.get("ShowFilterExpression") is True for kw in capture)
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_aiml_budgets(self, mock_client):
         mock_client.side_effect = self._client_factory(
             [{"BudgetName": "general", "CostFilters": {"Service": ["ec2"]}}]
@@ -600,7 +589,7 @@ class TestFS06AwsBudgets:
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_filterexpression_budget(self, mock_client):
         # New-style budget using only FilterExpression (no CostFilters) → detected.
         mock_client.side_effect = self._client_factory(
@@ -618,7 +607,7 @@ class TestFS06AwsBudgets:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_param_validation_fallback(self, mock_client):
         # Old botocore: ShowFilterExpression rejected with ParamValidationError.
         # FS-06 must degrade to CostFilters-only (non-ERROR) and still match.
@@ -636,7 +625,7 @@ class TestFS06AwsBudgets:
         assert any("ShowFilterExpression" in kw for kw in capture)
         assert any("ShowFilterExpression" not in kw for kw in capture)
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("budgets error")
         result = app.check_aws_budgets_for_aiml()
@@ -651,7 +640,7 @@ class TestFS06AwsBudgets:
 class TestFS07AgentActionBoundaries:
     """FS-07 — Agent Action Boundary Check (takes permission_cache)."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_no_agents(self, mock_client):
         c = MagicMock()
         c.list_agents.return_value = {"agentSummaries": []}
@@ -660,7 +649,7 @@ class TestFS07AgentActionBoundaries:
         _assert_finding_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_wildcard_permissions(
         self, mock_client, permission_cache_with_wildcard
     ):
@@ -678,7 +667,7 @@ class TestFS07AgentActionBoundaries:
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_narrow_permissions(self, mock_client, permission_cache_safe):
         c = MagicMock()
         c.list_agents.return_value = {
@@ -692,7 +681,7 @@ class TestFS07AgentActionBoundaries:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("agent error")
         result = app.check_bedrock_agent_action_boundaries({})
@@ -702,7 +691,7 @@ class TestFS07AgentActionBoundaries:
 class TestFS08AgentcorePolicyEngine:
     """FS-08 — AgentCore Policy Engine Check."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_runtimes_with_authorizer(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {
@@ -718,7 +707,7 @@ class TestFS08AgentcorePolicyEngine:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_runtimes_without_authorizer(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {
@@ -729,7 +718,7 @@ class TestFS08AgentcorePolicyEngine:
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_na_no_runtimes(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {"agentRuntimes": []}
@@ -738,7 +727,7 @@ class TestFS08AgentcorePolicyEngine:
         _assert_finding_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_access_denied_returns_na(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.side_effect = _client_error("AccessDeniedException")
@@ -747,7 +736,7 @@ class TestFS08AgentcorePolicyEngine:
         _assert_finding_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("agentcore error")
         result = app.check_agentcore_policy_engine()
@@ -757,7 +746,7 @@ class TestFS08AgentcorePolicyEngine:
 class TestFS09AgentTransactionLimits:
     """FS-09 — Agent Transaction Limits Check."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_concurrency_set(self, mock_client):
         c = MagicMock()
         c.get_function_concurrency.return_value = {"ReservedConcurrentExecutions": 10}
@@ -769,7 +758,7 @@ class TestFS09AgentTransactionLimits:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_concurrency(self, mock_client):
         c = MagicMock()
         c.get_function_concurrency.return_value = {}
@@ -792,7 +781,7 @@ class TestFS09AgentTransactionLimits:
 class TestFS10HumanInTheLoop:
     """FS-10 — Human-in-the-Loop Approval Check."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_wait_for_task_token(self, mock_client):
         c = MagicMock()
         c.list_state_machines.return_value = {
@@ -824,7 +813,7 @@ class TestFS10HumanInTheLoop:
         assert result["status"] == "PASS"
         assert len(result["csv_data"]) >= 1
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_wait_token(self, mock_client):
         c = MagicMock()
         c.list_state_machines.return_value = {
@@ -843,7 +832,7 @@ class TestFS10HumanInTheLoop:
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("sfn error")
         result = app.check_human_in_the_loop_for_high_risk_actions()
@@ -853,7 +842,7 @@ class TestFS10HumanInTheLoop:
 class TestFS11AgentRateAlarms:
     """FS-11 — Agent Rate Alarms Check."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_agent_alarms_exist(self, mock_client):
         c = MagicMock()
         paginator = MagicMock()
@@ -875,7 +864,7 @@ class TestFS11AgentRateAlarms:
         # The function looks for agent-related alarms
         assert result["status"] in ("PASS", "WARN")
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("cw error")
         result = app.check_agent_rate_alarms()
@@ -890,13 +879,13 @@ class TestFS11AgentRateAlarms:
 class TestFS12ScpModelAccess:
     """FS-12 — SCP Model Access Restrictions."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("org error")
         result = app.check_scp_model_access_restrictions()
         assert result["status"] == "ERROR"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_returns_valid_structure(self, mock_client):
         c = MagicMock()
         c.list_policies.return_value = {"Policies": []}
@@ -908,13 +897,13 @@ class TestFS12ScpModelAccess:
 class TestFS13ModelInventoryTagging:
     """FS-13 — Model Inventory Tagging."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("tagging error")
         result = app.check_model_inventory_tagging()
         assert result["status"] == "ERROR"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_returns_valid_structure(self, mock_client):
         c = MagicMock()
         c.list_custom_models.return_value = {"modelSummaries": []}
@@ -927,13 +916,13 @@ class TestFS13ModelInventoryTagging:
 class TestFS14ModelOnboardingGovernance:
     """FS-14 — Model Onboarding Governance."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("config error")
         result = app.check_model_onboarding_governance()
         assert result["status"] == "ERROR"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_returns_valid_structure(self, mock_client):
         c = MagicMock()
         c.describe_config_rules.return_value = {"ConfigRules": []}
@@ -945,13 +934,13 @@ class TestFS14ModelOnboardingGovernance:
 class TestFS15BedrockModelEvalAdversarial:
     """FS-15 — Bedrock Model Evaluation Adversarial."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("eval error")
         result = app.check_bedrock_model_evaluation_adversarial()
         assert result["status"] == "ERROR"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_returns_valid_structure(self, mock_client):
         c = MagicMock()
         c.list_evaluation_jobs.return_value = {"jobSummaries": []}
@@ -959,7 +948,7 @@ class TestFS15BedrockModelEvalAdversarial:
         result = app.check_bedrock_model_evaluation_adversarial()
         _assert_finding_structure(result)
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_fail_no_eval_jobs(self, mock_client):
         """REQ-10a: no Bedrock evaluation jobs → Failed/Medium (was N/A)."""
         c = MagicMock()
@@ -974,7 +963,7 @@ class TestFS15BedrockModelEvalAdversarial:
             for r in result["csv_data"]
         )
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_eval_jobs_present(self, mock_client):
         """Eval jobs present → Passed/Medium."""
         c = MagicMock()
@@ -994,7 +983,7 @@ class TestFS15BedrockModelEvalAdversarial:
 class TestFS16EcrImageScanning:
     """FS-16 — ECR Image Scanning."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_scanning_enabled(self, mock_client):
         c = MagicMock()
         c.describe_repositories.return_value = {
@@ -1009,7 +998,7 @@ class TestFS16EcrImageScanning:
         result = app.check_ecr_image_scanning()
         _assert_finding_structure(result)
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("ecr error")
         result = app.check_ecr_image_scanning()
@@ -1024,13 +1013,13 @@ class TestFS16EcrImageScanning:
 class TestFS20FeatureStoreRollback:
     """FS-20 — Feature Store Rollback Capability."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("fs error")
         result = app.check_feature_store_rollback_capability()
         assert result["status"] == "ERROR"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_returns_valid_structure(self, mock_client):
         c = MagicMock()
         c.list_feature_groups.return_value = {"FeatureGroupSummaries": []}
@@ -1050,7 +1039,7 @@ class TestFS21TrainingDataS3Versioning:
         result = app.check_training_data_s3_versioning(inv)
         assert result["status"] == "ERROR"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_returns_valid_structure(self, mock_client):
         """Empty bucket list → N/A finding (no training buckets identified)."""
         inv = make_resource_inventory(buckets=[])
@@ -1074,7 +1063,7 @@ class TestFS22KnowledgeBaseIamLeastPrivilege:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         """FS-22 only reads permission_cache (no boto3 calls). To trigger
         the error path, pass a cache that causes an exception during iteration."""
@@ -1097,7 +1086,7 @@ class TestFS22KnowledgeBaseIamLeastPrivilege:
                                 "Version": "2012-10-17",
                                 "Statement": {
                                     "Effect": "Allow",
-                                    "Action": "bedrock-agent:*",
+                                    "Action": "bedrock:*",
                                     "Resource": "*",
                                 },
                             },
@@ -1147,7 +1136,7 @@ class TestFS22KnowledgeBaseIamLeastPrivilege:
         )
 
     def test_partial_wildcard_flagged(self):
-        """REQ-14/D: a partial wildcard (e.g. 'bedrock-agent:Get*') is over-broad
+        """REQ-14/D: a partial wildcard (e.g. 'bedrock:Get*') is over-broad
         and must be flagged, not just the three exact full wildcards."""
         cache = {
             "role_permissions": {
@@ -1160,7 +1149,7 @@ class TestFS22KnowledgeBaseIamLeastPrivilege:
                                 "Statement": [
                                     {
                                         "Effect": "Allow",
-                                        "Action": "bedrock-agent:Get*",
+                                        "Action": "bedrock:Get*",
                                         "Resource": "arn:aws:bedrock:*:*:knowledge-base/kb-1",
                                     }
                                 ]
@@ -1308,7 +1297,7 @@ class TestFS24KnowledgeBaseMetadataFiltering:
 class TestFS25OpensearchServerlessEncryption:
     """FS-25 — OpenSearch Serverless Encryption."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("oss error")
         result = app.check_opensearch_serverless_encryption()
@@ -1318,7 +1307,7 @@ class TestFS25OpensearchServerlessEncryption:
 class TestFS26KnowledgeBaseVpcAccess:
     """FS-26 — Knowledge Base VPC Access."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("vpc error")
         result = app.check_knowledge_base_vpc_access()
@@ -1372,7 +1361,7 @@ class TestFS27GuardrailContextualGrounding:
 class TestFS27AutomatedReasoningPolicies:
     """FS-27b — Automated Reasoning Policies Check (new, GA August 2025)."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_policies_exist(self, mock_client):
         c = MagicMock()
         c.list_automated_reasoning_policies.return_value = {
@@ -1385,7 +1374,7 @@ class TestFS27AutomatedReasoningPolicies:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_policies(self, mock_client):
         c = MagicMock()
         c.list_automated_reasoning_policies.return_value = {
@@ -1396,7 +1385,7 @@ class TestFS27AutomatedReasoningPolicies:
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_access_denied_returns_na(self, mock_client):
         c = MagicMock()
         c.list_automated_reasoning_policies.side_effect = _client_error(
@@ -1407,7 +1396,7 @@ class TestFS27AutomatedReasoningPolicies:
         _assert_finding_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("arc error")
         result = app.check_automated_reasoning_policies()
@@ -1549,7 +1538,7 @@ class TestFS33KnowledgeBaseIntegrityMonitoring:
 class TestFS34FmVersionCurrency:
     """FS-34 — FM Version Currency Advisory."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("fm error")
         result = app.check_fm_version_currency()
@@ -1649,7 +1638,7 @@ class TestFS38GuardrailWordFilters:
 class TestFS39SagemakerClarifyBias:
     """FS-39 — SageMaker Clarify Bias."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("clarify error")
         result = app.check_sagemaker_clarify_bias()
@@ -1669,7 +1658,7 @@ class TestFS40BedrockEvalBiasDatasets:
 class TestFS41SagemakerClarifyExplainability:
     """FS-41 — SageMaker Clarify Explainability."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("explain error")
         result = app.check_sagemaker_clarify_explainability()
@@ -1679,7 +1668,7 @@ class TestFS41SagemakerClarifyExplainability:
 class TestFS42AiServiceCards:
     """FS-42 — AI Service Cards Documentation Advisory."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_returns_valid_structure(self, mock_client):
         c = MagicMock()
         c.list_model_cards.return_value = {"ModelCardSummaries": []}
@@ -1687,7 +1676,7 @@ class TestFS42AiServiceCards:
         result = app.check_ai_service_cards_documentation()
         _assert_finding_structure(result)
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("cards error")
         result = app.check_ai_service_cards_documentation()
@@ -1702,7 +1691,7 @@ class TestFS42AiServiceCards:
 class TestFS43CloudwatchLogPiiMasking:
     """FS-43 — CloudWatch Log PII Masking."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("logs error")
         result = app.check_cloudwatch_log_pii_masking()
@@ -1712,7 +1701,7 @@ class TestFS43CloudwatchLogPiiMasking:
 class TestFS44MacieOnTrainingDataBuckets:
     """FS-44 — Macie on Training Data Buckets."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("macie error")
         result = app.check_macie_on_training_data_buckets()
@@ -2381,7 +2370,7 @@ class TestFS60ContextualGroundingForOfftopic:
 class TestFS61KnowledgeBaseSyncSchedule:
     """FS-61 — Knowledge Base Sync Schedule Check."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_sync_rules_exist(self, mock_client):
         inv = make_resource_inventory(
             knowledge_bases=app.KbInventory(
@@ -2409,7 +2398,7 @@ class TestFS61KnowledgeBaseSyncSchedule:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_scheduler_schedule_exists(self, mock_client):
         # No legacy EventBridge rule, but an EventBridge Scheduler schedule targets
         # KB sync — the AWS-recommended approach must be detected (no false WARN).
@@ -2446,7 +2435,7 @@ class TestFS61KnowledgeBaseSyncSchedule:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_sync_rules(self, mock_client):
         inv = make_resource_inventory(
             knowledge_bases=app.KbInventory(
@@ -2476,7 +2465,7 @@ class TestFS61KnowledgeBaseSyncSchedule:
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_scheduler_access_denied_falls_back_to_rules(self, mock_client):
         # scheduler:ListSchedules denied → fall back to EventBridge rules only,
         # do NOT error the whole check.
@@ -2507,7 +2496,7 @@ class TestFS61KnowledgeBaseSyncSchedule:
         # EventBridge rule still matched → PASS despite scheduler access denial.
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_scheduler_access_denied_no_rules_could_not_assess(self, mock_client):
         """REQ-11/A3: scheduler:ListSchedules denied AND no matching EventBridge
         rule → we cannot conclude absence → COULD_NOT_ASSESS (check returns ERROR
@@ -2559,7 +2548,7 @@ class TestFS62DataCurrencyDisclaimer:
 class TestFS63FoundationModelLifecyclePolicy:
     """FS-63 — Foundation Model Lifecycle Policy Check."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_no_legacy_models(self, mock_client):
         c = MagicMock()
         c.list_foundation_models.return_value = {
@@ -2575,7 +2564,7 @@ class TestFS63FoundationModelLifecyclePolicy:
         result = app.check_foundation_model_lifecycle_policy()
         _assert_finding_structure(result)
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_legacy_models_no_rules(self, mock_client):
         c = MagicMock()
         c.list_foundation_models.return_value = {
@@ -2589,7 +2578,7 @@ class TestFS63FoundationModelLifecyclePolicy:
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("lifecycle error")
         result = app.check_foundation_model_lifecycle_policy()
@@ -2614,7 +2603,7 @@ class TestFS65KbDatasourceS3EventNotifications:
         _assert_finding_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_notifications_configured(self, mock_client):
         inv = make_resource_inventory(
             knowledge_bases=app.KbInventory(
@@ -2648,7 +2637,7 @@ class TestFS65KbDatasourceS3EventNotifications:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_notifications(self, mock_client):
         inv = make_resource_inventory(
             knowledge_bases=app.KbInventory(
@@ -2691,7 +2680,7 @@ class TestFS65KbDatasourceS3EventNotifications:
 class TestFS66AgentcoreEndUserIdentityPropagation:
     """FS-66 — AgentCore End-User Identity Propagation Check."""
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_pass_authorizer_configured(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {
@@ -2709,7 +2698,7 @@ class TestFS66AgentcoreEndUserIdentityPropagation:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_warn_no_authorizer(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {
@@ -2722,7 +2711,7 @@ class TestFS66AgentcoreEndUserIdentityPropagation:
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_access_denied_returns_na(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.side_effect = _client_error("AccessDeniedException")
@@ -2731,7 +2720,7 @@ class TestFS66AgentcoreEndUserIdentityPropagation:
         _assert_finding_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("identity error")
         result = app.check_agentcore_end_user_identity_propagation()
@@ -2811,7 +2800,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
                 detail_by_id={"id1": acl_detail},
             )
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -2835,7 +2824,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=[], detail_by_id={})
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -2860,7 +2849,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=[], detail_by_id={})
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -2887,7 +2876,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=[], detail_by_id={})
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -2925,7 +2914,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=[], detail_by_id={})
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -2978,7 +2967,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
                 detail_by_id={"id1": bad_detail},
             )
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -3018,7 +3007,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
                 detail_by_id={"id1": xss_detail},
             )
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -3041,7 +3030,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
         inv = make_resource_inventory(
             web_acls=app._Unavailable(RuntimeError("apigw error"))
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -3059,7 +3048,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=[], detail_by_id={})
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
             mock_client.side_effect = RuntimeError("apigw error")
             result = app.check_api_gateway_request_body_size_limits(inv)
         assert result["status"] == "ERROR"
@@ -3073,7 +3062,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(summaries=summaries, detail_by_id=detail_by_id)
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -3090,7 +3079,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
     # --- ≤1-page equivalence: 2-ACL case matches Wave-0 baseline ---
     def test_two_acl_case_unchanged(self):
         """The 2-ACL PASS scenario is unchanged vs the pre-refactor baseline."""
-        from test_inventory_equivalence import _acl_detail as _baseline_acl_detail
+        from .test_inventory_equivalence import _acl_detail as _baseline_acl_detail
 
         inv = make_resource_inventory(
             web_acls=app.WebAclInventory(
@@ -3108,7 +3097,7 @@ class TestFS68ApiGatewayRequestBodySizeLimits:
                 },
             )
         )
-        with patch("app.boto3.client") as mock_client:
+        with patch("finserv_app.boto3.client") as mock_client:
 
             def side_effect(service, **kwargs):
                 if service == "apigateway":
@@ -3218,14 +3207,17 @@ class TestFinservChecksRegistry:
         # The two permission-cache checks are present.
         assert "FS-07" in ids and "FS-22" in ids
 
-    @patch("app.write_to_s3", return_value="https://example.com/report.csv")
+    @patch("finserv_app.write_to_s3", return_value="https://example.com/report.csv")
     @patch.dict(os.environ, {"AIML_ASSESSMENT_BUCKET_NAME": "test-bucket"})
-    @patch("app.get_permissions_cache", return_value=None)
-    @patch("app.build_finserv_checks")
+    @patch("finserv_app.get_permissions_cache", return_value=None)
+    @patch("finserv_app.collect_resource_inventory")
+    @patch("finserv_app.build_finserv_checks")
     def test_errored_check_emits_could_not_assess_row(
-        self, mock_build, mock_cache, mock_write
+        self, mock_build, mock_collect, mock_cache, mock_write
     ):
         # One check raises (uncaught) → handler synthesizes one could-not-assess row.
+        mock_collect.return_value = make_resource_inventory()
+
         def boom():
             return app._error_findings("Boom Check", RuntimeError("AccessDenied: nope"))
 
@@ -3263,17 +3255,20 @@ class TestFinservChecksRegistry:
         assert len(normal_result["csv_data"]) == 1
         assert normal_result["csv_data"][0]["Finding"] == "Normal Finding"
 
-    @patch("app.write_to_s3", return_value="https://example.com/report.csv")
+    @patch("finserv_app.write_to_s3", return_value="https://example.com/report.csv")
     @patch.dict(os.environ, {"AIML_ASSESSMENT_BUCKET_NAME": "test-bucket"})
-    @patch("app.get_permissions_cache", return_value=None)
-    @patch("app.build_finserv_checks")
+    @patch("finserv_app.get_permissions_cache", return_value=None)
+    @patch("finserv_app.collect_resource_inventory")
+    @patch("finserv_app.build_finserv_checks")
     def test_non_error_empty_result_still_emits_could_not_assess_row(
-        self, mock_build, mock_cache, mock_write
+        self, mock_build, mock_collect, mock_cache, mock_write
     ):
         # A check that returns a NON-error wrapper status but zero csv_data must
         # NOT silently vanish — the handler synthesizes a could-not-assess row for
         # any empty result, not only ERROR ones. This guards the no-silent-drop
         # invariant structurally (Property 7) rather than by data coincidence.
+        mock_collect.return_value = make_resource_inventory()
+
         def empty_pass():
             return {"check_name": "Empty Pass Check", "status": "PASS", "csv_data": []}
 
@@ -3289,13 +3284,17 @@ class TestFinservChecksRegistry:
         assert row["Severity"] == "Low"
         assert row["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
 
-    @patch("app.write_to_s3", return_value="https://example.com/report.csv")
+    @patch("finserv_app.write_to_s3", return_value="https://example.com/report.csv")
     @patch.dict(os.environ, {"AIML_ASSESSMENT_BUCKET_NAME": "test-bucket"})
-    @patch("app.get_permissions_cache", return_value=None)
-    def test_no_check_contributes_zero_rows(self, mock_cache, mock_write):
+    @patch("finserv_app.get_permissions_cache", return_value=None)
+    @patch("finserv_app.collect_resource_inventory")
+    def test_no_check_contributes_zero_rows(self, mock_collect, mock_cache, mock_write):
         # Full handler run with mocked AWS (all clients raise) — every check must
         # still contribute at least one row (real rows or a could-not-assess row).
-        with patch("app.boto3.client", side_effect=RuntimeError("AccessDenied")):
+        mock_collect.return_value = make_resource_inventory()
+        with patch(
+            "finserv_app.boto3.client", side_effect=RuntimeError("AccessDenied")
+        ):
             resp = app.lambda_handler({"Execution": {"Name": "exec-2"}}, None)
         findings = resp["body"]["findings"]
         for f in findings:

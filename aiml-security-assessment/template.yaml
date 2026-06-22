@@ -216,11 +216,14 @@ Resources:
                 - bedrock:GetModelCustomizationJob
                 - bedrock:ListFlows
                 - bedrock:GetFlow
+                - bedrock:ListKnowledgeBases
+                - bedrock:GetKnowledgeBase
               Resource: '*'
             - Sid: S3BucketEncryptionPermissions
               Effect: Allow
               Action:
                 - s3:GetBucketEncryption
+                - s3:GetEncryptionConfiguration
               Resource: 'arn:aws:s3:::*'
             - Sid: CloudTrailPermissions
               Effect: Allow
@@ -403,8 +406,7 @@ Resources:
                 - bedrock-agentcore:GetGateway
                 - bedrock-agentcore:ListPolicyEngines
                 - bedrock-agentcore:GetPolicyEngine
-                - bedrock-agentcore:GetAgentRuntimeResourcePolicy
-                - bedrock-agentcore:GetGatewayResourcePolicy
+                - bedrock-agentcore:GetResourcePolicy
               Resource: '*'
             - Sid: IAMRolePermissions
               Effect: Allow
