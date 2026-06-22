@@ -19,9 +19,7 @@ _SECTION_CHECKS = [
         },
     },
     {
-        "path": os.path.join(
-            _REPO_ROOT, "aiml-security-assessment", "template.yaml"
-        ),
+        "path": os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
         "start": "- Sid: S3BucketEncryptionPermissions",
         "end": "- Sid: CloudTrailPermissions",
         "required": {"s3:GetEncryptionConfiguration"},
@@ -63,7 +61,7 @@ _SECTION_CHECKS = [
             _REPO_ROOT, "deployment", "aiml-security-single-account.yaml"
         ),
         "start": "# S3 Permissions for encryption checks",
-        "end": "Resource: \"*\"",
+        "end": 'Resource: "*"',
         "required": {"s3:GetEncryptionConfiguration"},
     },
     {
@@ -83,7 +81,7 @@ _SECTION_CHECKS = [
             _REPO_ROOT, "deployment", "2-aiml-security-codebuild.yaml"
         ),
         "start": "# S3 Permissions for encryption checks",
-        "end": "Resource: \"*\"",
+        "end": 'Resource: "*"',
         "required": {"s3:GetEncryptionConfiguration"},
     },
     {
@@ -91,7 +89,7 @@ _SECTION_CHECKS = [
             _REPO_ROOT, "deployment", "1-aiml-security-member-roles.yaml"
         ),
         "start": "# Bedrock Agent Permissions (Agents for Amazon Bedrock)",
-        "end": "Resource: \"*\"",
+        "end": 'Resource: "*"',
         "required": {"bedrock:ListKnowledgeBases", "bedrock:GetKnowledgeBase"},
     },
     {
@@ -99,7 +97,7 @@ _SECTION_CHECKS = [
             _REPO_ROOT, "deployment", "1-aiml-security-member-roles.yaml"
         ),
         "start": "# S3 Bucket Permissions for encryption checks",
-        "end": "Resource: \"arn:aws:s3:::*\"",
+        "end": 'Resource: "arn:aws:s3:::*"',
         "required": {"s3:GetEncryptionConfiguration"},
     },
 ]

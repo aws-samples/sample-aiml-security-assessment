@@ -3292,7 +3292,9 @@ class TestFinservChecksRegistry:
         # Full handler run with mocked AWS (all clients raise) — every check must
         # still contribute at least one row (real rows or a could-not-assess row).
         mock_collect.return_value = make_resource_inventory()
-        with patch("finserv_app.boto3.client", side_effect=RuntimeError("AccessDenied")):
+        with patch(
+            "finserv_app.boto3.client", side_effect=RuntimeError("AccessDenied")
+        ):
             resp = app.lambda_handler({"Execution": {"Name": "exec-2"}}, None)
         findings = resp["body"]["findings"]
         for f in findings:

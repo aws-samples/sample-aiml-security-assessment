@@ -543,9 +543,13 @@ class TestCollectResourceInventory:
             bk = [{"Name": "bkt-1"}]
             wi = app.WebAclInventory(summaries=[{"Id": "acl-1"}], detail_by_id={})
             with (
-                patch("finserv_app._safe_collect_lambda_functions", return_value=lf) as p1,
+                patch(
+                    "finserv_app._safe_collect_lambda_functions", return_value=lf
+                ) as p1,
                 patch("finserv_app._safe_collect_guardrails", return_value=gi) as p2,
-                patch("finserv_app._safe_collect_knowledge_bases", return_value=ki) as p3,
+                patch(
+                    "finserv_app._safe_collect_knowledge_bases", return_value=ki
+                ) as p3,
                 patch("finserv_app._safe_collect_buckets", return_value=bk) as p4,
                 patch("finserv_app._safe_collect_web_acls", return_value=wi) as p5,
             ):

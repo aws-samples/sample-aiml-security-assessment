@@ -112,7 +112,9 @@ def check_timeout() -> bool:
     return elapsed < 540  # 9 minutes hard stop
 
 
-def _agentcore_list_all(list_method_name: str, result_keys: List[str]) -> List[Dict[str, Any]]:
+def _agentcore_list_all(
+    list_method_name: str, result_keys: List[str]
+) -> List[Dict[str, Any]]:
     """Collect all items from an AgentCore list API, following nextToken."""
     if agentcore_client is None:
         return []
@@ -1425,9 +1427,9 @@ def check_agentcore_memory_configuration() -> List[Dict[str, Any]]:
                 )
 
                 # Check encryption configuration
-                encryption_key_arn = memory_details.get("encryptionKeyArn") or memory_details.get(
-                    "kmsKeyArn"
-                )
+                encryption_key_arn = memory_details.get(
+                    "encryptionKeyArn"
+                ) or memory_details.get("kmsKeyArn")
 
                 if not encryption_key_arn:
                     findings.append(

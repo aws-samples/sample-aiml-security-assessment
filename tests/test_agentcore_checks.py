@@ -361,7 +361,10 @@ class TestAC07MemoryConfiguration:
             "memories": [{"id": "mem-123456789012", "name": "TestMemory"}]
         }
         mock_ac.get_memory.return_value = {
-            "memory": {"id": "mem-123456789012", "encryptionKeyArn": "arn:aws:kms:us-east-1:123:key/abc"}
+            "memory": {
+                "id": "mem-123456789012",
+                "encryptionKeyArn": "arn:aws:kms:us-east-1:123:key/abc",
+            }
         }
         result = agentcore_app.check_agentcore_memory_configuration()
         findings = extract_csv_data(result)
@@ -433,7 +436,9 @@ class TestAC09ServiceLinkedRole:
     @patch("agentcore_app.iam_client")
     @patch("agentcore_app.agentcore_client", None)
     def test_ac09_client_unavailable_returns_na(self, mock_iam):
-        mock_iam.get_role.side_effect = _make_client_error("NoSuchEntity", "Role not found")
+        mock_iam.get_role.side_effect = _make_client_error(
+            "NoSuchEntity", "Role not found"
+        )
         mock_iam.exceptions.NoSuchEntityException = ClientError
         result = agentcore_app.check_agentcore_service_linked_role()
         findings = extract_csv_data(result)
@@ -490,7 +495,9 @@ class TestAC09ServiceLinkedRole:
     @patch("agentcore_app.iam_client")
     @patch("agentcore_app.agentcore_client", None)
     def test_ac09_schema_valid(self, mock_iam):
-        mock_iam.get_role.side_effect = _make_client_error("NoSuchEntity", "Role not found")
+        mock_iam.get_role.side_effect = _make_client_error(
+            "NoSuchEntity", "Role not found"
+        )
         mock_iam.exceptions.NoSuchEntityException = ClientError
         result = agentcore_app.check_agentcore_service_linked_role()
         for f in extract_csv_data(result):
@@ -530,7 +537,9 @@ class TestAC10ResourceBasedPolicies:
             ]
         }
         mock_ac.list_gateways.return_value = {"items": []}
-        mock_ac.get_resource_policy.return_value = {"policy": "{\"Version\":\"2012-10-17\"}"}
+        mock_ac.get_resource_policy.return_value = {
+            "policy": '{"Version":"2012-10-17"}'
+        }
 
         result = agentcore_app.check_agentcore_resource_based_policies()
         findings = extract_csv_data(result)
