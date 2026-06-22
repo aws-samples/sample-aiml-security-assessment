@@ -551,6 +551,58 @@ class TestAC10ResourceBasedPolicies:
         )
 
     @patch("agentcore_app.agentcore_client")
+    def test_ac10_access_denied_policy_read_returns_na_finding(self, mock_ac):
+        mock_ac.list_agent_runtimes.return_value = {
+            "agentRuntimes": [
+                {
+                    "agentRuntimeId": "rt-1",
+                    "agentRuntimeName": "TestRuntime",
+                    "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-1",
+                }
+            ]
+        }
+        mock_ac.list_gateways.return_value = {"items": []}
+        mock_ac.get_resource_policy.side_effect = _make_client_error(
+            "AccessDeniedException", "Denied"
+        )
+
+        result = agentcore_app.check_agentcore_resource_based_policies()
+        findings = extract_csv_data(result)
+
+        assert len(findings) >= 1
+        assert any(
+            f["Finding"] == "AgentCore Resource-Based Policy Assessment Access Denied"
+            and f["Status"] == "N/A"
+            for f in findings
+        )
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac10_policy_read_throttling_returns_incomplete_finding(self, mock_ac):
+        mock_ac.list_agent_runtimes.return_value = {
+            "agentRuntimes": [
+                {
+                    "agentRuntimeId": "rt-1",
+                    "agentRuntimeName": "TestRuntime",
+                    "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-1",
+                }
+            ]
+        }
+        mock_ac.list_gateways.return_value = {"items": []}
+        mock_ac.get_resource_policy.side_effect = _make_client_error(
+            "ThrottlingException", "Try again"
+        )
+
+        result = agentcore_app.check_agentcore_resource_based_policies()
+        findings = extract_csv_data(result)
+
+        assert len(findings) >= 1
+        assert any(
+            f["Finding"] == "AgentCore Resource-Based Policy Assessment Incomplete"
+            and f["Status"] == "N/A"
+            for f in findings
+        )
+
+    @patch("agentcore_app.agentcore_client")
     def test_ac10_exception_returns_error_finding(self, mock_ac):
         mock_ac.list_agent_runtimes.side_effect = Exception("RBP error")
         result = agentcore_app.check_agentcore_resource_based_policies()

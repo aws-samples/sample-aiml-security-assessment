@@ -82,8 +82,7 @@ Resources:
                   - bedrock-agentcore:GetGateway
                   - bedrock-agentcore:ListPolicyEngines
                   - bedrock-agentcore:GetPolicyEngine
-                  - bedrock-agentcore:GetAgentRuntimeResourcePolicy
-                  - bedrock-agentcore:GetGatewayResourcePolicy
+                  - bedrock-agentcore:GetResourcePolicy
                 Resource: "*"
               # SageMaker Assessment Permissions
               - Effect: Allow

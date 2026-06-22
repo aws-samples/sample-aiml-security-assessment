@@ -149,7 +149,7 @@ Resources:
               Action:
                 - bedrock:ListGuardrails
                 - bedrock:GetGuardrail
-                - bedrock:ListModelInvocations
+                - bedrock:ListModelInvocationJobs
                 - bedrock:GetModelInvocationLoggingConfiguration
                 - bedrock:ListPrompts
                 - bedrock:GetPrompt
@@ -264,6 +264,17 @@ Resources:
                 - sagemaker:DescribeEndpoint
                 - sagemaker:ListDataQualityJobDefinitions
                 - sagemaker:DescribeDataQualityJobDefinition
+                - sagemaker:ListTransformJobs
+                - sagemaker:DescribeTransformJob
+                - sagemaker:ListHyperParameterTuningJobs
+                - sagemaker:DescribeHyperParameterTuningJob
+                - sagemaker:ListCompilationJobs
+                - sagemaker:DescribeCompilationJob
+                - sagemaker:ListAutoMLJobs
+                - sagemaker:DescribeAutoMLJob
+                - sagemaker:ListExperiments
+                - sagemaker:ListTrials
+                - sagemaker:ListAssociations
               Resource: '*'
         - Statement:
             - Sid: GuardDutyPermissions
@@ -335,8 +346,7 @@ Resources:
                 - bedrock-agentcore:GetGateway
                 - bedrock-agentcore:ListPolicyEngines
                 - bedrock-agentcore:GetPolicyEngine
-                - bedrock-agentcore:GetAgentRuntimeResourcePolicy
-                - bedrock-agentcore:GetGatewayResourcePolicy
+                - bedrock-agentcore:GetResourcePolicy
               Resource: '*'
             - Sid: IAMRolePermissions
               Effect: Allow
@@ -461,6 +471,8 @@ Resources:
                 - bedrock:ListCustomModels
                 - bedrock:ListEvaluationJobs
                 - bedrock:GetModelInvocationLoggingConfiguration
+                - bedrock:ListTagsForResource
+                - bedrock:ListAutomatedReasoningPolicies
               Resource: '*'
             - Sid: BedrockAgentPermissions
               Effect: Allow
@@ -531,6 +543,7 @@ Resources:
               Effect: Allow
               Action:
                 - events:ListRules
+                - scheduler:ListSchedules
                 - config:DescribeConfigRules
               Resource: '*'
             - Sid: S3BucketPermissions

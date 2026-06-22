@@ -1,8 +1,9 @@
 """IAM coverage guard (REQ-12 / Wave 5.5 T5h.6).
 
-Asserts that every IAM action the FinServ checks require is granted in ALL three
+Asserts that every IAM action the FinServ checks require is granted in all runtime
 grant sources:
   - aiml-security-assessment/template.yaml          (SAM single-account roles)
+  - aiml-security-assessment/template-multi-account.yaml
   - deployment/1-aiml-security-member-roles.yaml    (multi-account member role)
   - deployment/aiml-security-single-account.yaml    (single-account CFN wrapper)
 
@@ -21,8 +22,14 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 _TEMPLATES = [
     os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
+    os.path.join(_REPO_ROOT, "aiml-security-assessment", "template-multi-account.yaml"),
     os.path.join(_REPO_ROOT, "deployment", "1-aiml-security-member-roles.yaml"),
     os.path.join(_REPO_ROOT, "deployment", "aiml-security-single-account.yaml"),
+]
+
+_AGENTCORE_PERMISSION_TEMPLATES = [
+    *_TEMPLATES,
+    os.path.join(_REPO_ROOT, "deployment", "2-aiml-security-codebuild.yaml"),
 ]
 
 # IAM actions the FinServ checks (FS-01..FS-69) require, by the check(s) that call
@@ -74,6 +81,56 @@ REQUIRED_FINSERV_ACTIONS = {
     "bedrock:GetModelInvocationLoggingConfiguration",
 }
 
+# IAM actions the standalone SageMaker assessment calls. Keep this in sync with
+# sagemaker_assessments/app.py.
+REQUIRED_SAGEMAKER_ACTIONS = {
+    "sagemaker:ListNotebookInstances",
+    "sagemaker:DescribeNotebookInstance",
+    "sagemaker:ListDomains",
+    "sagemaker:DescribeDomain",
+    "sagemaker:ListTrainingJobs",
+    "sagemaker:DescribeTrainingJob",
+    "sagemaker:ListModelPackageGroups",
+    "sagemaker:ListModelPackages",
+    "sagemaker:ListFeatureGroups",
+    "sagemaker:DescribeFeatureGroup",
+    "sagemaker:ListPipelines",
+    "sagemaker:ListPipelineExecutions",
+    "sagemaker:ListProcessingJobs",
+    "sagemaker:DescribeProcessingJob",
+    "sagemaker:ListMonitoringSchedules",
+    "sagemaker:DescribeMonitoringSchedule",
+    "sagemaker:ListModels",
+    "sagemaker:DescribeModel",
+    "sagemaker:ListEndpoints",
+    "sagemaker:DescribeEndpoint",
+    "sagemaker:ListDataQualityJobDefinitions",
+    "sagemaker:DescribeDataQualityJobDefinition",
+    "sagemaker:ListTransformJobs",
+    "sagemaker:DescribeTransformJob",
+    "sagemaker:ListHyperParameterTuningJobs",
+    "sagemaker:DescribeHyperParameterTuningJob",
+    "sagemaker:ListCompilationJobs",
+    "sagemaker:DescribeCompilationJob",
+    "sagemaker:ListAutoMLJobs",
+    "sagemaker:DescribeAutoMLJob",
+    "sagemaker:ListExperiments",
+    "sagemaker:ListTrials",
+    "sagemaker:ListAssociations",
+}
+
+REQUIRED_AGENTCORE_ACTIONS = {
+    "bedrock-agentcore:ListAgentRuntimes",
+    "bedrock-agentcore:GetAgentRuntime",
+    "bedrock-agentcore:ListMemories",
+    "bedrock-agentcore:GetMemory",
+    "bedrock-agentcore:ListGateways",
+    "bedrock-agentcore:GetGateway",
+    "bedrock-agentcore:ListPolicyEngines",
+    "bedrock-agentcore:GetPolicyEngine",
+    "bedrock-agentcore:GetResourcePolicy",
+}
+
 _ACTION_RE = re.compile(r"-\s+([a-z0-9-]+:[A-Za-z0-9]+)")
 
 
@@ -101,14 +158,49 @@ def test_guard_detects_a_removed_action(monkeypatch):
     assert "bedrock:ListTagsForResource" in missing
 
 
+@pytest.mark.parametrize("template", _TEMPLATES, ids=lambda p: os.path.basename(p))
+def test_required_sagemaker_actions_are_granted(template):
+    assert os.path.exists(template), f"template not found: {template}"
+    granted = _granted_actions(template)
+    missing = sorted(a for a in REQUIRED_SAGEMAKER_ACTIONS if a not in granted)
+    assert not missing, (
+        f"{os.path.basename(template)} is missing required SageMaker IAM action(s): "
+        f"{missing}. Add them or a SageMaker check will hit AccessDenied."
+    )
+
+
+@pytest.mark.parametrize(
+    "template",
+    _AGENTCORE_PERMISSION_TEMPLATES,
+    ids=lambda p: os.path.basename(p),
+)
+def test_required_agentcore_actions_are_granted(template):
+    assert os.path.exists(template), f"template not found: {template}"
+    granted = _granted_actions(template)
+    missing = sorted(a for a in REQUIRED_AGENTCORE_ACTIONS if a not in granted)
+    assert not missing, (
+        f"{os.path.basename(template)} is missing required AgentCore IAM action(s): "
+        f"{missing}. Add them or an AgentCore check will hit AccessDenied."
+    )
+
+
 # Known service prefixes used by this tool. `bedrock-agent:` is intentionally
 # absent: it is NOT a valid IAM namespace. Amazon Bedrock Knowledge Base / Data
 # Source / Flow / Agent actions all use the `bedrock:` prefix; AgentCore uses
 # `bedrock-agentcore:`. A `bedrock-agent:` grant silently authorizes nothing.
-_INVALID_ACTION_PREFIXES = ("bedrock-agent:",)
+_INVALID_ACTION_PREFIXES = ("bedrock-agent:", "bedrock-agentcore-control:")
+_INVALID_ACTION_NAMES = {
+    "bedrock:ListModelInvocations",
+    "bedrock-agentcore:GetAgentRuntimeResourcePolicy",
+    "bedrock-agentcore:GetGatewayResourcePolicy",
+}
 
 
-@pytest.mark.parametrize("template", _TEMPLATES, ids=lambda p: os.path.basename(p))
+@pytest.mark.parametrize(
+    "template",
+    _AGENTCORE_PERMISSION_TEMPLATES,
+    ids=lambda p: os.path.basename(p),
+)
 def test_no_invalid_iam_action_prefixes(template):
     """Guard against reintroducing the invalid `bedrock-agent:` IAM prefix.
 
@@ -118,18 +210,37 @@ def test_no_invalid_iam_action_prefixes(template):
     """
     granted = _granted_actions(template)
     bad = sorted(
-        a for a in granted if any(a.startswith(p) for p in _INVALID_ACTION_PREFIXES)
+        a
+        for a in granted
+        if any(a.startswith(p) for p in _INVALID_ACTION_PREFIXES)
+        or a in _INVALID_ACTION_NAMES
     )
     assert not bad, (
-        f"{os.path.basename(template)} uses invalid IAM action prefix(es): {bad}. "
+        f"{os.path.basename(template)} uses invalid IAM action(s): {bad}. "
         "Bedrock KB/DataSource/Flow/Agent actions use the 'bedrock:' prefix "
-        "(AgentCore uses 'bedrock-agentcore:'); 'bedrock-agent:' is not a real "
-        "IAM namespace and grants nothing."
+        "(AgentCore uses 'bedrock-agentcore:'); boto3 client names such as "
+        "'bedrock-agent' and 'bedrock-agentcore-control' are not IAM namespaces. "
+        "AgentCore resource policies use the generic bedrock-agentcore:GetResourcePolicy "
+        "action."
     )
 
 
 def test_invalid_prefix_guard_detects_a_bad_action():
     """Self-test: the invalid-prefix guard trips on a `bedrock-agent:` action."""
-    sample = {"bedrock:ListKnowledgeBases", "bedrock-agent:ListKnowledgeBases"}
-    bad = [a for a in sample if any(a.startswith(p) for p in _INVALID_ACTION_PREFIXES)]
-    assert bad == ["bedrock-agent:ListKnowledgeBases"]
+    sample = {
+        "bedrock:ListKnowledgeBases",
+        "bedrock-agent:ListKnowledgeBases",
+        "bedrock-agentcore-control:GetResourcePolicy",
+        "bedrock-agentcore:GetGatewayResourcePolicy",
+    }
+    bad = sorted(
+        a
+        for a in sample
+        if any(a.startswith(p) for p in _INVALID_ACTION_PREFIXES)
+        or a in _INVALID_ACTION_NAMES
+    )
+    assert bad == [
+        "bedrock-agent:ListKnowledgeBases",
+        "bedrock-agentcore-control:GetResourcePolicy",
+        "bedrock-agentcore:GetGatewayResourcePolicy",
+    ]

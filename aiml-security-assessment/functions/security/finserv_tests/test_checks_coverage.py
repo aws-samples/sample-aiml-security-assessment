@@ -579,8 +579,8 @@ class TestFS21TrainingDataVersioningPaths:
 
 
 class TestFS22KbIamWarnPath:
-    def test_warn_wildcard_bedrock_agent_permission(self):
-        """Lines 1370-1386: role with bedrock-agent:* → WARN."""
+    def test_invalid_bedrock_agent_namespace_not_treated_as_kb_access(self):
+        """bedrock-agent is a boto3 client name, not an IAM action namespace."""
         cache = {
             "role_permissions": {
                 "KBAccessRole": {
@@ -603,7 +603,7 @@ class TestFS22KbIamWarnPath:
         }
         result = app.check_knowledge_base_iam_least_privilege(cache)
         _assert_structure(result)
-        assert result["status"] == "WARN"
+        assert result["status"] == "PASS"
 
     def test_warn_wildcard_bedrock_permission(self):
         """Lines 1370-1386: role with bedrock:* → WARN."""
@@ -670,7 +670,7 @@ class TestFS22KbIamWarnPath:
                                 "Statement": [
                                     {
                                         "Effect": "Deny",
-                                        "Action": "bedrock-agent:*",
+                                        "Action": "bedrock:*",
                                         "Resource": "*",
                                     }
                                 ]

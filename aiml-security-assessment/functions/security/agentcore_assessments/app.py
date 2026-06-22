@@ -163,6 +163,19 @@ def _get_agentcore_resource_policy(resource_arn: str) -> str:
     return response.get("policy") or response.get("resourcePolicy") or ""
 
 
+def _is_access_denied_client_error(error: ClientError) -> bool:
+    """Normalize access-denied checks across AgentCore control plane APIs."""
+    if not isinstance(error, ClientError):
+        return False
+
+    error_code = error.response.get("Error", {}).get("Code")
+    return error_code in {
+        "AccessDenied",
+        "AccessDeniedException",
+        "UnauthorizedOperation",
+    }
+
+
 def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
     """
     Generate CSV report from findings.
@@ -1728,6 +1741,8 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
 
         resources_without_rbp = []
         resources_with_rbp = []
+        policy_access_denied = []
+        policy_check_errors = []
 
         # Check Agent Runtimes
         try:
@@ -1759,7 +1774,21 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                         resources_without_rbp.append(
                             {"type": "Runtime", "name": runtime_name, "id": runtime_id}
                         )
+                    elif _is_access_denied_client_error(e):
+                        policy_access_denied.append(
+                            {"type": "Runtime", "name": runtime_name, "id": runtime_id}
+                        )
                     else:
+                        policy_check_errors.append(
+                            {
+                                "type": "Runtime",
+                                "name": runtime_name,
+                                "id": runtime_id,
+                                "error_code": e.response.get("Error", {}).get(
+                                    "Code", "Unknown"
+                                ),
+                            }
+                        )
                         logger.warning(
                             f"Error checking policy for runtime {runtime_id}: {e}"
                         )
@@ -1800,6 +1829,24 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                         resources_without_rbp.append(
                             {"type": "Gateway", "name": gateway_name, "id": gateway_id}
                         )
+                    elif _is_access_denied_client_error(e):
+                        policy_access_denied.append(
+                            {"type": "Gateway", "name": gateway_name, "id": gateway_id}
+                        )
+                    else:
+                        policy_check_errors.append(
+                            {
+                                "type": "Gateway",
+                                "name": gateway_name,
+                                "id": gateway_id,
+                                "error_code": e.response.get("Error", {}).get(
+                                    "Code", "Unknown"
+                                ),
+                            }
+                        )
+                        logger.warning(
+                            f"Error checking policy for gateway {gateway_id}: {e}"
+                        )
 
         except (ClientError, AttributeError) as e:
             logger.info(f"Gateway APIs not available: {e}")
@@ -1825,6 +1872,57 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
+                )
+            )
+
+        if policy_access_denied:
+            resource_list = ", ".join(
+                [f"{r['type']} '{r['name']}'" for r in policy_access_denied[:5]]
+            )
+            if len(policy_access_denied) > 5:
+                resource_list += f" and {len(policy_access_denied) - 5} more"
+
+            findings.append(
+                create_finding(
+                    check_id="AC-10",
+                    finding_name="AgentCore Resource-Based Policy Assessment Access Denied",
+                    finding_details=(
+                        f"Unable to assess resource-based policies for {resource_list} "
+                        "because access to AgentCore resource policy metadata was denied."
+                    ),
+                    resolution=(
+                        "Ensure the assessment role can call "
+                        "bedrock-agentcore:GetResourcePolicy for AgentCore resources."
+                    ),
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+
+        if policy_check_errors:
+            resource_list = ", ".join(
+                [f"{r['type']} '{r['name']}'" for r in policy_check_errors[:5]]
+            )
+            if len(policy_check_errors) > 5:
+                resource_list += f" and {len(policy_check_errors) - 5} more"
+
+            error_codes = sorted({r["error_code"] for r in policy_check_errors})
+            findings.append(
+                create_finding(
+                    check_id="AC-10",
+                    finding_name="AgentCore Resource-Based Policy Assessment Incomplete",
+                    finding_details=(
+                        f"Unable to fully assess resource-based policies for {resource_list} "
+                        f"due to AgentCore API errors: {', '.join(error_codes)}."
+                    ),
+                    resolution=(
+                        "Re-run the assessment. If the issue persists, review AgentCore "
+                        "service health and the assessment role's control plane permissions."
+                    ),
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                    severity=SeverityEnum.LOW,
+                    status=StatusEnum.NA,
                 )
             )
 

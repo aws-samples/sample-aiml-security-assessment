@@ -213,8 +213,7 @@ Resources:
                   - bedrock-agentcore:GetGateway
                   - bedrock-agentcore:ListPolicyEngines
                   - bedrock-agentcore:GetPolicyEngine
-                  - bedrock-agentcore:GetAgentRuntimeResourcePolicy
-                  - bedrock-agentcore:GetGatewayResourcePolicy
+                  - bedrock-agentcore:GetResourcePolicy
                   # ECR Permissions for AgentCore encryption checks
                   - ecr:DescribeRepositories
                   - ecr:GetRepositoryPolicy

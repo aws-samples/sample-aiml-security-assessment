@@ -2277,15 +2277,14 @@ def check_training_data_s3_versioning(inventory) -> Dict[str, Any]:
 
 def _is_overbroad_kb_action(action: Any) -> bool:
     """True if an IAM action grants overly broad Bedrock/Knowledge Base access:
-    the full wildcard, a service-wide bedrock(-agent) wildcard, or ANY partial
-    wildcard within those namespaces (e.g., 'bedrock-agent:Get*', 'bedrock:Invoke*').
-    Round-3 fixed the crash; this widens detection beyond the three exact wildcards."""
+    the full wildcard, a service-wide Bedrock wildcard, or ANY partial wildcard
+    within the Bedrock IAM namespace (for example, 'bedrock:Invoke*')."""
     if not isinstance(action, str):
         return False
     a = action.lower()
-    if a in ("*", "bedrock:*", "bedrock-agent:*"):
+    if a in ("*", "bedrock:*"):
         return True
-    if a.endswith("*") and (a.startswith("bedrock:") or a.startswith("bedrock-agent:")):
+    if a.endswith("*") and a.startswith("bedrock:"):
         return True
     return False
 
@@ -2293,7 +2292,7 @@ def _is_overbroad_kb_action(action: Any) -> bool:
 def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]:
     """
     FS-22 — Verify IAM roles accessing Bedrock Knowledge Bases follow
-    least privilege (no wildcard bedrock-agent:* permissions).
+    least privilege (no wildcard bedrock:* permissions).
     COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, PCI-DSS 12.3.2]
     """
     findings = _empty_findings("Knowledge Base IAM Least Privilege Check")
@@ -2348,10 +2347,7 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                         elif (
                             unscoped_resource
                             and isinstance(action, str)
-                            and (
-                                action.lower().startswith("bedrock:")
-                                or action.lower().startswith("bedrock-agent:")
-                            )
+                            and action.lower().startswith("bedrock:")
                         ):
                             issues.append(
                                 f"Role '{role_name}' allows '{action}' on Resource '*' "
@@ -2369,7 +2365,7 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                         + "\n".join(f"- {i}" for i in issues[:10])
                     ),
                     resolution=(
-                        "Replace wildcard bedrock-agent:* with specific actions: "
+                        "Replace wildcard bedrock:* with specific actions such as "
                         "bedrock:Retrieve, bedrock:RetrieveAndGenerate. "
                         "Scope resources to specific Knowledge Base ARNs."
                     ),

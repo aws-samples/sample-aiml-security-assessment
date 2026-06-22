@@ -1086,7 +1086,7 @@ class TestFS22KnowledgeBaseIamLeastPrivilege:
                                 "Version": "2012-10-17",
                                 "Statement": {
                                     "Effect": "Allow",
-                                    "Action": "bedrock-agent:*",
+                                    "Action": "bedrock:*",
                                     "Resource": "*",
                                 },
                             },
@@ -1136,7 +1136,7 @@ class TestFS22KnowledgeBaseIamLeastPrivilege:
         )
 
     def test_partial_wildcard_flagged(self):
-        """REQ-14/D: a partial wildcard (e.g. 'bedrock-agent:Get*') is over-broad
+        """REQ-14/D: a partial wildcard (e.g. 'bedrock:Get*') is over-broad
         and must be flagged, not just the three exact full wildcards."""
         cache = {
             "role_permissions": {
@@ -1149,7 +1149,7 @@ class TestFS22KnowledgeBaseIamLeastPrivilege:
                                 "Statement": [
                                     {
                                         "Effect": "Allow",
-                                        "Action": "bedrock-agent:Get*",
+                                        "Action": "bedrock:Get*",
                                         "Resource": "arn:aws:bedrock:*:*:knowledge-base/kb-1",
                                     }
                                 ]
