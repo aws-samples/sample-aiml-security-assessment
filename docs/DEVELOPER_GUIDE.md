@@ -50,7 +50,7 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 
 - Runtime assessment Lambda roles are read-oriented and scoped to the APIs needed by each assessment
 - AWS CodeBuild and member-account roles require deployment permissions because they create or update the SAM assessment stacks before running checks
-- Cross-account trust is limited to the specific AWS CodeBuild role in the management account
+- Cross-account trust is limited to the specific AWS CodeBuild role in the central assessment account
 - Amazon S3 buckets enforce SSL-only access
 - Assessment data is encrypted in transit and at rest
 - No persistent credentials are stored in AWS CodeBuild
@@ -72,7 +72,7 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 
 #### Step 1: Member Account Roles (`1-aiml-security-member-roles.yaml`)
 - **AWS CloudFormation StackSets Deployment**: Deploys `AIMLSecurityMemberRole` to all target accounts
-- **Cross-Account Trust**: Establishes trust relationship with central management account
+- **Cross-Account Trust**: Establishes trust relationship with the central assessment account
 - **Assessment and Deployment Permissions**: Grants read-oriented service permissions for assessment checks and deployment permissions needed for CodeBuild to create or update per-account SAM stacks
 
 #### Step 2: Central Infrastructure (`2-aiml-security-codebuild.yaml`)

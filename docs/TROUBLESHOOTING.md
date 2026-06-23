@@ -23,7 +23,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 
 **Solutions:**
 - Check that service-linked roles exist for AWS CloudFormation StackSets
-- Verify the management account has AWS Organizations permissions
+- Verify the account running the central CodeBuild project has AWS Organizations permissions, if it is discovering accounts automatically
 - Verify target OUs contain active accounts
 - Review the StackSet operation history for specific error messages
 
@@ -34,7 +34,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 **Solutions:**
 - Verify the `AIMLSecurityMemberRole` exists in target accounts
 - Check the trust relationship allows the central CodeBuild role
-- Confirm the `ManagementAccountID` parameter matches your management account
+- Confirm the `ManagementAccountID` parameter matches the account where the central `MultiAccountCodeBuildRole` runs
 - Verify the StackSet deployment completed successfully in all accounts
 
 ### 3. AWS SAM Deployment Failures
@@ -47,7 +47,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 - Verify the S3 bucket for SAM artifacts exists and is accessible. If the `aws-sam-cli-managed-default` stack is stuck in `ROLLBACK_COMPLETE` or `DELETE_FAILED`, delete it and re-run CodeBuild
 - Look for IAM permission errors in the logs
 - Check if a previous deployment left orphaned resources
-- Check whether `TARGET_REGIONS` failed validation. It must be empty, `all`, or a comma-separated list such as `us-east-1,us-west-2`
+- Check whether `TARGET_REGIONS` failed validation. It must be empty, `all`, or a comma- or space-separated list such as `us-east-1,us-west-2` or `us-east-1 us-west-2`
 
 ### 4. AWS Step Functions Execution Failures
 
@@ -118,7 +118,7 @@ For full bucket cleanup guidance, see [Cleanup Guide](CLEANUP.md#emptying-and-de
 **Solutions:**
 - Leave `TargetRegions` empty to scan only the deployment region
 - Use `all` to scan the union of regions returned by boto3 for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore
-- Use a comma-separated list with no spaces, such as `us-east-1,us-west-2,eu-west-1`. CloudFormation validation rejects spaces and trailing commas
+- Use a comma- or space-separated list, such as `us-east-1,us-west-2,eu-west-1` or `us-east-1 us-west-2 eu-west-1`. The deployment normalizes the value before passing it to SAM
 - Confirm the services being assessed are available in each target region. If a service is unavailable or has no resources in a region, the report can show `N/A` or no resource-specific findings for that service and region
 - Confirm the account is opted in to any opt-in regions you include
 
@@ -148,7 +148,7 @@ For full bucket cleanup guidance, see [Cleanup Guide](CLEANUP.md#emptying-and-de
 - For organizations with fewer than 10 accounts, the default "Three" is usually sufficient
 - If builds timeout, increase `ConcurrentAccountScans` to process more accounts in parallel -- but be aware this also increases the per-minute CodeBuild cost
 - If builds timeout even at "Twelve," increase the `CodeBuildTimeout` parameter (default is 300 minutes for multi-account)
-- For very large organizations (100+ accounts), consider using `MultiAccountListOverride` to split assessments into batches
+- For very large organizations (100+ accounts), consider using `MultiAccountListOverride` to split assessments into batches. It accepts comma- or space-separated account IDs
 
 ### 10. No Reports in S3 Bucket
 
@@ -183,7 +183,7 @@ For full bucket cleanup guidance, see [Cleanup Guide](CLEANUP.md#emptying-and-de
 1. Navigate to **AWS CloudFormation** > **Stacks**
 2. Select your infrastructure stack (for example, `aiml-security-single-account` or `aiml-security-multi-account`)
 3. Click **Update** > **Use current template**
-4. Set the `TargetRegions` parameter (for example, `us-east-1,us-west-2,eu-west-1` or `all`)
+4. Set the `TargetRegions` parameter (for example, `us-east-1,us-west-2,eu-west-1`, `us-east-1 us-west-2 eu-west-1`, or `all`)
 5. Click through to **Submit**
 6. The next assessment run will scan the specified regions in parallel
 
@@ -217,12 +217,12 @@ The trust policy should allow the central CodeBuild role:
 {
   "Effect": "Allow",
   "Principal": {
-    "AWS": "arn:aws:iam::<management-account-id>:root"
+    "AWS": "arn:aws:iam::<central-assessment-account-id>:root"
   },
   "Action": "sts:AssumeRole",
   "Condition": {
     "ArnEquals": {
-      "aws:PrincipalArn": "arn:aws:iam::<management-account-id>:role/service-role/MultiAccountCodeBuildRole"
+      "aws:PrincipalArn": "arn:aws:iam::<central-assessment-account-id>:role/service-role/MultiAccountCodeBuildRole"
     }
   }
 }
@@ -280,7 +280,7 @@ You can automate regular assessments using Amazon EventBridge scheduled rules.
 
 **Q: What AWS regions are supported?**
 
-A: The framework is designed for standard AWS commercial regions where Amazon Bedrock, Amazon SageMaker AI, or Amazon Bedrock AgentCore are available. Leave `TargetRegions` empty for the deployment region, set it to `all` to resolve the union of assessed-service regions, or provide an explicit comma-separated list. AWS GovCloud and AWS China regions may require template modifications.
+A: The framework is designed for standard AWS commercial regions where Amazon Bedrock, Amazon SageMaker AI, or Amazon Bedrock AgentCore are available. Leave `TargetRegions` empty for the deployment region, set it to `all` to resolve the union of assessed-service regions, or provide an explicit comma- or space-separated list. AWS GovCloud and AWS China regions may require template modifications.
 
 **Q: Does this work if I don't have any AI/ML resources deployed yet?**
 

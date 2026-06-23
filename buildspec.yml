@@ -46,19 +46,38 @@ phases:
           exit 1
         fi
       - |
-        # Normalize TARGET_REGIONS: strip all whitespace so the comma-separated
-        # value survives 'sam deploy --parameter-overrides', which re-splits its
-        # argument on spaces and would otherwise drop every region after the first.
-        TARGET_REGIONS=$(echo "${TARGET_REGIONS:-}" | tr -d '[:space:]')
+        normalize_delimited_list() {
+          local value="$1"
+          value=$(printf '%s' "$value" | sed -E 's/[[:space:]]*,[[:space:]]*/,/g; s/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/,/g; s/,+/,/g; s/^,//; s/,$//')
+          printf '%s' "$value"
+        }
+
+        # Accept comma- or whitespace-delimited input from CloudFormation, then
+        # normalize to comma-delimited values for SAM and Lambda configuration.
+        TARGET_REGIONS=$(normalize_delimited_list "${TARGET_REGIONS:-}")
+        if [[ "$(printf '%s' "$TARGET_REGIONS" | tr '[:upper:]' '[:lower:]')" == "all" ]]; then
+          TARGET_REGIONS="all"
+        fi
         export TARGET_REGIONS
 
+        MULTI_ACCOUNT_LIST_OVERRIDE=$(normalize_delimited_list "${MULTI_ACCOUNT_LIST_OVERRIDE:-}")
+        export MULTI_ACCOUNT_LIST_OVERRIDE
+
         # Validate the normalized value matches the CloudFormation AllowedPattern.
-        if [[ -n "$TARGET_REGIONS" && ! "$TARGET_REGIONS" =~ ^[a-zA-Z0-9,-]+$ ]]; then
+        region_pattern='^all$|^[a-z]{2}(-gov)?-[a-z]+-[0-9](,[a-z]{2}(-gov)?-[a-z]+-[0-9])*$'
+        if [[ -n "$TARGET_REGIONS" && ! "$TARGET_REGIONS" =~ $region_pattern ]]; then
           echo "ERROR: TARGET_REGIONS contains invalid characters: '$TARGET_REGIONS'"
-          echo "Expected a comma-separated list of region names (e.g., us-east-1,us-west-2), 'all', or empty."
+          echo "Expected a comma- or space-separated list of region names (e.g., us-east-1,us-west-2), 'all', or empty."
           exit 1
         fi
         echo "Using TARGET_REGIONS: '${TARGET_REGIONS:-<deployment region only>}'"
+
+        account_list_pattern='^[0-9]{12}(,[0-9]{12})*$'
+        if [[ -n "$MULTI_ACCOUNT_LIST_OVERRIDE" && ! "$MULTI_ACCOUNT_LIST_OVERRIDE" =~ $account_list_pattern ]]; then
+          echo "ERROR: MULTI_ACCOUNT_LIST_OVERRIDE contains invalid account IDs: '$MULTI_ACCOUNT_LIST_OVERRIDE'"
+          echo "Expected a comma- or space-separated list of 12-digit AWS account IDs, or empty."
+          exit 1
+        fi
 
         # Use the long-form SAM parameter syntax so an intentionally empty
         # TargetRegions value is accepted and clears any previous stack value.
@@ -88,7 +107,7 @@ phases:
           echo "Getting list of accounts to scan"
           if [[ $MULTI_ACCOUNT_LIST_OVERRIDE != '' ]]; then
             echo "Using account overrides."
-            account_list=$MULTI_ACCOUNT_LIST_OVERRIDE
+            account_list=${MULTI_ACCOUNT_LIST_OVERRIDE//,/ }
           else
             echo "Using accounts from AWS Organizations."
             if ! account_list=$(aws organizations list-accounts --query 'Accounts[?Status==`ACTIVE`].Id' --output text); then
@@ -245,7 +264,7 @@ phases:
         if [[ $MULTI_ACCOUNT_SCAN = 'true' ]]; then
           echo "Getting list of accounts for post-build processing"
           if [[ $MULTI_ACCOUNT_LIST_OVERRIDE != '' ]]; then
-            account_list=$MULTI_ACCOUNT_LIST_OVERRIDE
+            account_list=${MULTI_ACCOUNT_LIST_OVERRIDE//,/ }
           else
             if ! account_list=$(aws organizations list-accounts --query 'Accounts[?Status==`ACTIVE`].Id' --output text); then
               echo "ERROR: Failed to retrieve account list from AWS Organizations"

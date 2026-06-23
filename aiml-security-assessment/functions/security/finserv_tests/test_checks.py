@@ -3640,6 +3640,16 @@ class TestGenerateCsvReport:
             "region-b",
         ]
 
+    def test_region_scopes_accept_whitespace_delimited_target_regions(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("TARGET_REGIONS", "region-a region-b")
+
+        assert app._get_region_scopes({"Region": "fallback-region"}) == [
+            "region-a",
+            "region-b",
+        ]
+
     def test_stamp_regions_expands_missing_csv_regions(self):
         findings = [
             {

@@ -23,13 +23,14 @@ Parameters:
   TargetRegions:
     Type: String
     Default: ""
-    AllowedPattern: "^$|^all$|^[a-z]{2}(-gov)?-[a-z]+-[0-9](,[a-z]{2}(-gov)?-[a-z]+-[0-9])*$"
+    AllowedPattern: "^$|^all$|^[a-z]{2}(-gov)?-[a-z]+-[0-9]([,\\s]+[a-z]{2}(-gov)?-[a-z]+-[0-9])*$"
     ConstraintDescription: >
-      TargetRegions must be empty, 'all', or a comma-separated list of AWS
-      region names with no spaces or trailing commas (for example,
-      us-east-1,us-west-2,eu-west-1).
+      TargetRegions must be empty, 'all', or a comma- or space-separated list of AWS
+      region names (for example, us-east-1,us-west-2,eu-west-1 or
+      us-east-1 us-west-2 eu-west-1).
     Description: >
-      Comma-separated list of AWS regions to scan (e.g., us-east-1,us-west-2,eu-west-1).
+      Comma- or space-separated list of AWS regions to scan (e.g.,
+      us-east-1,us-west-2,eu-west-1 or us-east-1 us-west-2 eu-west-1).
       Use 'all' to scan all regions where the service is available.
       Leave empty to scan only the deployment region.
   MaxRegionConcurrency:

@@ -8,6 +8,7 @@ to iterate over.
 
 import os
 import logging
+import re
 import boto3
 
 logger = logging.getLogger()
@@ -50,7 +51,7 @@ def resolve_regions():
             return [current_region]
         return regions
 
-    return [r.strip() for r in target_regions.split(",") if r.strip()]
+    return [r.strip() for r in re.split(r"[,\s]+", target_regions) if r.strip()]
 
 
 def lambda_handler(event, context):

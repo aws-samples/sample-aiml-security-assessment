@@ -142,7 +142,7 @@ This tool operates within the [AWS Shared Responsibility Model](https://aws.amaz
 4. Optionally specify your email address to receive notifications.
 5. **(Optional) Multi-Region**: Set `TargetRegions` to scan multiple regions:
    - Leave empty to scan only the deployment region (default)
-   - Comma-separated list (for example, `us-east-1,us-west-2,eu-west-1`)
+   - Comma- or space-separated list (for example, `us-east-1,us-west-2,eu-west-1` or `us-east-1 us-west-2 eu-west-1`)
    - `all` to scan all regions where the services are available
 6. Acknowledge IAM capabilities and click **Submit**.
 7. Once complete, CodeBuild automatically runs the assessment.
@@ -158,14 +158,14 @@ This tool operates within the [AWS Shared Responsibility Model](https://aws.amaz
 
 Deploy [1-aiml-security-member-roles.yaml](deployment/1-aiml-security-member-roles.yaml) to all target accounts using CloudFormation StackSets with service-managed permissions.
 
-1. Navigate to **CloudFormation** > **StackSets** in the management account
-2. Upload the template and set `ManagementAccountID` to your management account
+1. Navigate to **CloudFormation** > **StackSets** in the AWS Organizations management account or delegated administrator account
+2. Upload the template and set `ManagementAccountID` to the account ID where the central multi-account CodeBuild project runs
 3. Select **Service-managed permissions** and target your OUs
 4. Select your target region and submit
 
 ### Step 2: Deploy Central Infrastructure
 
-Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yaml) in your management account.
+Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yaml) in your central assessment account. This can be your AWS Organizations management account or a delegated administrator/central tooling account.
 
 1. Upload the template and set `MultiAccountScan` to `true`
 2. Optionally set `TargetRegions` for multi-region scanning
@@ -182,7 +182,7 @@ Both deployment modes support scanning multiple AWS regions in parallel via the 
 | Value | Behavior |
 |-------|----------|
 | Empty (default) | Scans deployment region only — fully backward compatible |
-| Comma-separated (for example, `us-east-1,us-west-2`) | Scans those regions in parallel |
+| Comma- or space-separated (for example, `us-east-1,us-west-2` or `us-east-1 us-west-2`) | Scans those regions in parallel |
 | `all` | Discovers and scans all regions where assessed services are available |
 
 Scanning uses a Step Functions Map state, so multiple regions execute in parallel with no additional time cost. Services unavailable in a region produce an informational N/A finding.

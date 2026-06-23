@@ -10,11 +10,14 @@ Metadata:
           - ManagementAccountID
     ParameterLabels:
       ManagementAccountID:
-        default: Management account ID
+        default: Central assessment account ID
 
 Parameters:
   ManagementAccountID:
-    Description: "The 12-digit AWS account ID where the multi-account AIML Security Assessment CodeBuild project runs."
+    Description: >
+      The 12-digit AWS account ID where the multi-account AIML Security
+      Assessment CodeBuild project runs. This can be the AWS Organizations
+      management account or a delegated administrator/central tooling account.
     Type: String
     AllowedPattern: "^\\d{12}$"
     ConstraintDescription: Enter a 12-digit AWS account ID with no spaces.

@@ -57,6 +57,7 @@ import functools
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from io import StringIO
@@ -6107,7 +6108,7 @@ def _normalized_target_regions(value: str) -> List[str]:
     value = (value or "").strip()
     if not value or value.lower() == "all":
         return []
-    return [region.strip() for region in value.split(",") if region.strip()]
+    return [region.strip() for region in re.split(r"[,\s]+", value) if region.strip()]
 
 
 def _get_region_scopes(event: Dict[str, Any]) -> List[str]:
