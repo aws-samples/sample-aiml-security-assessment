@@ -140,6 +140,12 @@ def _agentcore_list_all(
             kwargs["nextToken"] = next_token
 
         response = list_method(**kwargs)
+        if not isinstance(response, dict):
+            logger.warning(
+                f"{list_method_name} returned unexpected response type: "
+                f"{type(response).__name__}"
+            )
+            break
 
         for result_key in result_keys:
             page_items = response.get(result_key)
@@ -148,6 +154,12 @@ def _agentcore_list_all(
                 break
 
         next_token = response.get("nextToken")
+        if next_token is not None and not isinstance(next_token, str):
+            logger.warning(
+                f"{list_method_name} returned non-string nextToken: "
+                f"{type(next_token).__name__}"
+            )
+            break
         if not next_token:
             break
 

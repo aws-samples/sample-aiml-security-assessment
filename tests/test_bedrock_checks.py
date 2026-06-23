@@ -712,7 +712,11 @@ class TestBR09KBEncryption:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "N/A"
-        assert "Bedrock Knowledge Base API" in findings[0]["Finding_Details"]
+        assert (
+            "access to Knowledge Base metadata was denied"
+            in findings[0]["Finding_Details"]
+        )
+        assert findings[0]["Region"] == "eu-west-1"
 
     @patch("boto3.client")
     def test_br09_exception_returns_error_finding(self, mock_client):
