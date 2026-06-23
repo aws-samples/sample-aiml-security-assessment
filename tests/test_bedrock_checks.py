@@ -693,7 +693,7 @@ class TestBR09KBEncryption:
         assert findings[0]["Check_ID"] == "BR-09"
 
     @patch("boto3.client")
-    def test_br09_access_denied_returns_na(self, mock_client):
+    def test_br09_access_denied_in_region_returns_na(self, mock_client):
         check = bedrock_app.check_bedrock_knowledge_base_encryption
         mock_agent = MagicMock()
         mock_client.return_value = mock_agent
