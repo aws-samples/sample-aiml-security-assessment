@@ -274,11 +274,11 @@ class TestInventoryCollectedAndPassed:
             "lambda_handler must never pass None as the inventory argument"
         )
 
-    @patch("app.write_to_s3")
-    @patch("app.get_permissions_cache")
-    @patch("app._apply_region_scope")
-    @patch("app.build_finserv_checks")
-    @patch("app.collect_resource_inventory")
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app._apply_region_scope")
+    @patch("finserv_app.build_finserv_checks")
+    @patch("finserv_app.collect_resource_inventory")
     def test_handler_scopes_findings_with_target_regions_from_event(
         self,
         mock_collect,

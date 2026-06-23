@@ -3507,7 +3507,7 @@ class TestFinservRegionalFootprint:
 
         return factory
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_detect_returns_true_when_any_genai_resource_exists(self, mock_client):
         bedrock = MagicMock()
         bedrock.list_guardrails.return_value = {"guardrails": [{"id": "gr-1"}]}
@@ -3524,7 +3524,7 @@ class TestFinservRegionalFootprint:
             "bedrock", config=app.boto3_config, region_name="us-east-1"
         )
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_detect_returns_false_when_all_supported_probes_are_empty(
         self, mock_client
     ):
@@ -3550,7 +3550,7 @@ class TestFinservRegionalFootprint:
 
         assert app.detect_finserv_regional_footprint("us-west-2") is False
 
-    @patch("app.boto3.client")
+    @patch("finserv_app.boto3.client")
     def test_detect_returns_none_when_footprint_is_indeterminate(self, mock_client):
         bedrock = MagicMock()
         bedrock.list_guardrails.side_effect = _client_error("AccessDeniedException")
@@ -3580,7 +3580,7 @@ class TestFinservRegionalFootprint:
 
         assert app.detect_finserv_regional_footprint("eu-west-1") is None
 
-    @patch("app.detect_finserv_regional_footprint")
+    @patch("finserv_app.detect_finserv_regional_footprint")
     def test_partition_keeps_indeterminate_regions_in_scope(self, mock_detect):
         mock_detect.side_effect = [None, False, True]
 
@@ -3694,7 +3694,7 @@ class TestGenerateCsvReport:
         ]
 
         with patch(
-            "app._partition_regions_by_finserv_footprint",
+            "finserv_app._partition_regions_by_finserv_footprint",
             return_value=(["region-with-resources"], ["region-without-resources"]),
         ):
             app._apply_region_scope(
@@ -3729,7 +3729,7 @@ class TestGenerateCsvReport:
         ]
 
         with patch(
-            "app._partition_regions_by_finserv_footprint",
+            "finserv_app._partition_regions_by_finserv_footprint",
             return_value=([], ["region-a", "region-b"]),
         ):
             app._apply_region_scope(findings, ["region-a", "region-b"])
