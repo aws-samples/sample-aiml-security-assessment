@@ -1868,7 +1868,9 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                 gateway_name = gateway.get("name", gateway_id)
 
                 try:
-                    gateway_details = agentcore_client.get_gateway(gatewayId=gateway_id)
+                    gateway_details = agentcore_client.get_gateway(
+                        gatewayIdentifier=gateway_id
+                    )
                     gateway_arn = gateway_details.get("gatewayArn")
 
                     if not gateway_arn:
@@ -2233,7 +2235,9 @@ def check_agentcore_gateway_encryption() -> List[Dict[str, Any]]:
                 gateway_name = gateway.get("name", gateway_id)
 
                 try:
-                    gateway_details = agentcore_client.get_gateway(gatewayId=gateway_id)
+                    gateway_details = agentcore_client.get_gateway(
+                        gatewayIdentifier=gateway_id
+                    )
 
                     # Check for customer-managed KMS key
                     encryption_key_arn = gateway_details.get(

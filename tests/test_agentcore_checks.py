@@ -553,6 +553,29 @@ class TestAC10ResourceBasedPolicies:
         )
 
     @patch("agentcore_app.agentcore_client")
+    def test_ac10_gets_gateway_by_gateway_identifier(self, mock_ac):
+        mock_ac.list_agent_runtimes.return_value = {"agentRuntimes": []}
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        mock_ac.get_gateway.return_value = {
+            "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/gw-1"
+        }
+        mock_ac.get_resource_policy.return_value = {
+            "policy": '{"Version":"2012-10-17"}'
+        }
+
+        result = agentcore_app.check_agentcore_resource_based_policies()
+        findings = extract_csv_data(result)
+
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+        mock_ac.get_gateway.assert_called_once_with(gatewayIdentifier="gw-1")
+        mock_ac.get_resource_policy.assert_called_once_with(
+            resourceArn="arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/gw-1"
+        )
+
+    @patch("agentcore_app.agentcore_client")
     def test_ac10_access_denied_policy_read_returns_na_finding(self, mock_ac):
         mock_ac.list_agent_runtimes.return_value = {
             "agentRuntimes": [
@@ -688,6 +711,7 @@ class TestAC12GatewayEncryption:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Passed"
+        mock_ac.get_gateway.assert_called_once_with(gatewayIdentifier="gw-1")
 
     @patch("agentcore_app.agentcore_client")
     def test_ac12_exception_returns_error_finding(self, mock_ac):
