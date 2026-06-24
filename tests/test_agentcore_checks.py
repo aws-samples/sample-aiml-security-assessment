@@ -17,8 +17,8 @@ Each check is tested for:
 import sys
 import os
 import importlib.util
-from unittest.mock import patch
-from botocore.exceptions import ClientError
+from unittest.mock import patch, MagicMock
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 sys.path.insert(0, "aiml-security-assessment/functions/security/agentcore_assessments")
 from tests.test_helpers import extract_csv_data, assert_finding_schema
@@ -408,6 +408,8 @@ class TestAC08VPCEndpoints:
         result = agentcore_app.check_agentcore_vpc_endpoints()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Finding_Details"] == "No AgentCore resources found"
 
     @patch("agentcore_app.ec2_client")
     @patch("agentcore_app.agentcore_client")
@@ -551,6 +553,29 @@ class TestAC10ResourceBasedPolicies:
         )
 
     @patch("agentcore_app.agentcore_client")
+    def test_ac10_gets_gateway_by_gateway_identifier(self, mock_ac):
+        mock_ac.list_agent_runtimes.return_value = {"agentRuntimes": []}
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        mock_ac.get_gateway.return_value = {
+            "gatewayArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/gw-1"
+        }
+        mock_ac.get_resource_policy.return_value = {
+            "policy": '{"Version":"2012-10-17"}'
+        }
+
+        result = agentcore_app.check_agentcore_resource_based_policies()
+        findings = extract_csv_data(result)
+
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+        mock_ac.get_gateway.assert_called_once_with(gatewayIdentifier="gw-1")
+        mock_ac.get_resource_policy.assert_called_once_with(
+            resourceArn="arn:aws:bedrock-agentcore:us-east-1:123456789012:gateway/gw-1"
+        )
+
+    @patch("agentcore_app.agentcore_client")
     def test_ac10_access_denied_policy_read_returns_na_finding(self, mock_ac):
         mock_ac.list_agent_runtimes.return_value = {
             "agentRuntimes": [
@@ -686,6 +711,7 @@ class TestAC12GatewayEncryption:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Passed"
+        mock_ac.get_gateway.assert_called_once_with(gatewayIdentifier="gw-1")
 
     @patch("agentcore_app.agentcore_client")
     def test_ac12_exception_returns_error_finding(self, mock_ac):
@@ -745,3 +771,167 @@ class TestAC13GatewayConfiguration:
         result = agentcore_app.check_agentcore_gateway_configuration()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
+
+
+# ===================================================================
+# lambda_handler: multi-region gating and availability probe
+# ===================================================================
+def _agentcore_event(region="us-east-1", region_index=0):
+    return {
+        "Region": region,
+        "RegionIndex": region_index,
+        "Execution": {"Name": "test-execution-1"},
+        "StateMachine": {"Name": "test-sm"},
+    }
+
+
+def _valid_slr_role():
+    """A valid service-linked-role get_role response so AC-09 passes cleanly."""
+    return {
+        "Role": {
+            "RoleName": "AWSServiceRoleForBedrockAgentCoreNetwork",
+            "AssumeRolePolicyDocument": {
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "agentcore.bedrock.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ]
+            },
+        }
+    }
+
+
+class TestAgentCoreHandlerMultiRegion:
+    """lambda_handler primary-region gating (AC-02/AC-03/AC-09) + availability probe (AC-00)."""
+
+    def _run_handler(self, agentcore_side_effect, event):
+        """Run the handler with a per-service boto3.client dispatch. The
+        bedrock-agentcore-control probe (list_agent_runtimes) uses
+        agentcore_side_effect to simulate availability; iam is given a valid SLR
+        response. Returns (response, findings) where findings is the flat list
+        passed to generate_csv_report."""
+        captured = {}
+
+        def fake_csv(findings):
+            captured["findings"] = findings
+            return "csv"
+
+        iam_mock = MagicMock()
+        iam_mock.get_role.return_value = _valid_slr_role()
+        iam_mock.exceptions.NoSuchEntityException = type(
+            "NoSuchEntityException", (Exception,), {}
+        )
+
+        sts_mock = MagicMock()
+        sts_mock.get_caller_identity.return_value = {"Account": "123456789012"}
+
+        agentcore_mock = MagicMock()
+        agentcore_mock.list_agent_runtimes.side_effect = agentcore_side_effect
+
+        def client_dispatch(service, *args, **kwargs):
+            if service == "iam":
+                return iam_mock
+            if service == "sts":
+                return sts_mock
+            if service == "bedrock-agentcore-control":
+                return agentcore_mock
+            return MagicMock()
+
+        with (
+            patch("agentcore_app.boto3.client", side_effect=client_dispatch),
+            patch.object(
+                agentcore_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(agentcore_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(agentcore_app, "write_to_s3", return_value="s3://b/r.csv"),
+        ):
+            resp = agentcore_app.lambda_handler(event, None)
+
+        return resp, captured.get("findings", [])
+
+    def test_primary_region_emits_global_iam_checks_tagged_global(self):
+        # On the primary region, AC-02, AC-03 and AC-09 (all IAM-global) must be
+        # emitted and tagged "Global", even when AgentCore is unavailable.
+        resp, findings = self._run_handler(
+            EndpointConnectionError(endpoint_url="https://agentcore.invalid"),
+            _agentcore_event(region="ap-south-2", region_index=0),
+        )
+        assert resp["statusCode"] == 200
+
+        check_ids = {f["Check_ID"] for f in findings}
+        assert "AC-02" in check_ids
+        assert "AC-03" in check_ids
+        assert "AC-09" in check_ids
+        for f in findings:
+            if f["Check_ID"] in ("AC-02", "AC-03", "AC-09"):
+                assert f["Region"] == "Global"
+        # The availability finding is tagged with the scanned region.
+        ac00 = [f for f in findings if f["Check_ID"] == "AC-00"]
+        assert ac00 and ac00[0]["Region"] == "ap-south-2"
+
+    def test_non_primary_region_skips_global_iam_checks(self):
+        # On a non-primary region the IAM-global checks must NOT run.
+        resp, findings = self._run_handler(
+            EndpointConnectionError(endpoint_url="https://agentcore.invalid"),
+            _agentcore_event(region="eu-west-1", region_index=3),
+        )
+        assert resp["statusCode"] == 200
+
+        check_ids = {f["Check_ID"] for f in findings}
+        assert "AC-02" not in check_ids
+        assert "AC-03" not in check_ids
+        assert "AC-09" not in check_ids
+        assert check_ids == {"AC-00"}
+
+    def test_optin_region_error_treated_as_unavailable(self):
+        # A region-not-enabled ClientError code makes agentcore_client None, so
+        # the handler emits the AC-00 availability finding and exits early.
+        resp, findings = self._run_handler(
+            _make_client_error("UnrecognizedClientException"),
+            _agentcore_event(region="me-south-1", region_index=1),
+        )
+        assert resp["statusCode"] == 200
+        ac00 = [f for f in findings if f["Check_ID"] == "AC-00"]
+        assert ac00 and ac00[0]["Status"] == "N/A"
+
+    def test_access_denied_probe_proceeds_with_checks(self):
+        # AccessDenied is NOT a region-unavailable code: the service is reachable,
+        # so the handler proceeds and runs regional checks (no AC-00 emitted).
+        resp, findings = self._run_handler(
+            _make_client_error("AccessDeniedException"),
+            _agentcore_event(region="us-east-1", region_index=0),
+        )
+        assert resp["statusCode"] == 200
+        check_ids = {f["Check_ID"] for f in findings}
+        assert "AC-00" not in check_ids
+        # Regional checks ran (e.g. AC-01 VPC, AC-04 observability present).
+        assert len(check_ids) > 3
+
+    def test_unexpected_probe_error_proceeds_with_checks(self):
+        # An unexpected, non-ClientError probe failure (e.g. a boto3/botocore SDK
+        # param/operation mismatch surfacing as ParamValidationError) says nothing
+        # about regional availability. The handler must NOT treat it as
+        # unavailable (which would emit a false AC-00 N/A and skip every check);
+        # it should proceed and run the regional checks.
+        try:
+            from botocore.exceptions import ParamValidationError
+
+            probe_error = ParamValidationError(
+                report="maxResults is not a valid parameter"
+            )
+        except Exception:
+            probe_error = TypeError("unexpected SDK signature")
+
+        resp, findings = self._run_handler(
+            probe_error,
+            _agentcore_event(region="us-east-1", region_index=0),
+        )
+        assert resp["statusCode"] == 200
+        check_ids = {f["Check_ID"] for f in findings}
+        # No false "not available" finding, and the regional checks executed.
+        assert "AC-00" not in check_ids
+        assert len(check_ids) > 3

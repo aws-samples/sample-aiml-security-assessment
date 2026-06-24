@@ -23,6 +23,14 @@ FINSERV_ICON_SMALL = (
     '<path fill="#FFF" d="M40 14 L66 26 L66 31 L14 31 L14 26 Z '
     'M20 35 h6 v23 h-6 z M37 35 h6 v23 h-6 z M54 35 h6 v23 h-6 z M14 62 h52 v5 h-52 z"/></svg></span>'
 )
+GENAI_LENS_URL = (
+    "https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/"
+    "generative-ai-lens.html"
+)
+FINSERV_GUIDE_URL = (
+    "https://aws.amazon.com/blogs/security/"
+    "introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/"
+)
 
 
 def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -> str:
@@ -48,6 +56,7 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
         )
         service = finding.get("_service", "bedrock")
         account_id = finding.get("account_id", finding.get("Account_ID", ""))
+        region = finding.get("region", finding.get("Region", ""))
         check_id = finding.get("check_id", finding.get("Check_ID", ""))
         finding_name = finding.get("finding", finding.get("Finding", ""))
         details = finding.get("details", finding.get("Finding_Details", ""))
@@ -60,7 +69,7 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
             ref_html = '<span style="color: var(--text-3);">-</span>'
 
         data_attrs = (
-            f'data-service="{service}" data-severity="{severity}" data-status="{status}" data-account="{account_id}"'
+            f'data-service="{service}" data-severity="{severity}" data-status="{status}" data-account="{account_id}" data-region="{region}"'
             if include_data_attrs
             else ""
         )
@@ -72,6 +81,7 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
 
         row = f"""<tr {data_attrs}>
             <td><code>{account_id}</code></td>
+            <td><code>{region}</code></td>
             <td><code>{check_id}</code></td>
             <td class="col-domain">{finding_name}</td>
             <td class="finding-details">{details}</td>
@@ -85,7 +95,7 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
     return (
         "\n".join(rows)
         if rows
-        else '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-3);">No findings to display</td></tr>'
+        else '<tr><td colspan="9" style="text-align: center; padding: 40px; color: var(--text-3);">No findings to display</td></tr>'
     )
 
 
@@ -163,6 +173,11 @@ def get_html_template() -> str:
         .section-title .service-icon svg {{ border-radius: 8px; }}
         .nav-item .count {{ margin-left: auto; font-size: 12px; font-weight: 600; background: var(--surface-2); padding: 2px 8px; border-radius: 10px; }}
         .nav-item.active .count {{ background: var(--accent); color: #fff; }}
+        .nav-section.industry-nav {{ border-top: 1px solid var(--border); padding-top: 16px; margin-top: -8px; }}
+        .industry-nav .nav-item {{ background: var(--accent-soft); color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }}
+        .industry-nav .nav-item:hover {{ background: var(--accent-soft); color: var(--accent); }}
+        .industry-nav .nav-item.active {{ background: var(--accent-soft); color: var(--accent); }}
+        .industry-nav .nav-item .count {{ background: var(--accent); color: #fff; }}
         .sidebar-footer {{ margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-3); }}
         .sidebar-footer a {{ color: var(--accent); text-decoration: none; }}
         .main {{ padding: 32px 40px; max-width: 1400px; }}
@@ -179,6 +194,11 @@ def get_html_template() -> str:
         .metric.highlight .metric-value {{ color: var(--success); }}
         .metric.danger .metric-value {{ color: var(--danger); }}
         .metric.warning .metric-value {{ color: var(--warning); }}
+        .scope-industry {{ margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }}
+        .scope-industry-label {{ font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }}
+        .scope-chip-row {{ display: flex; gap: 12px; flex-wrap: wrap; }}
+        .scope-chip {{ display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-2); border-radius: 6px; }}
+        .scope-chip.industry-chip {{ background: var(--accent-soft); border: 1px solid var(--accent); }}
         .card {{ background: var(--surface); border: 2px solid var(--border); border-radius: 12px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }}
         .card-header {{ padding: 16px 20px; border-bottom: 2px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--surface-2); }}
         .card-header h3 {{ font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; }}
@@ -195,15 +215,16 @@ def get_html_template() -> str:
         .alert-domain {{ font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
         .alert-category {{ font-size: 12px; color: var(--text-2); margin-top: 2px; }}
         .table-wrap {{ overflow-x: auto; max-height: 900px; overflow-y: auto; }}
-        table {{ width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; min-width: 900px; }}
-        table th:nth-child(1) {{ width: 11%; }}
-        table th:nth-child(2) {{ width: 7%; }}
-        table th:nth-child(3) {{ width: 13%; }}
-        table th:nth-child(4) {{ width: 20%; }}
-        table th:nth-child(5) {{ width: 20%; }}
-        table th:nth-child(6) {{ width: 7%; }}
-        table th:nth-child(7) {{ width: 10%; }}
-        table th:nth-child(8) {{ width: 10%; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; min-width: 1000px; }}
+        table th:nth-child(1) {{ width: 10%; }}
+        table th:nth-child(2) {{ width: 9%; }}
+        table th:nth-child(3) {{ width: 6%; }}
+        table th:nth-child(4) {{ width: 12%; }}
+        table th:nth-child(5) {{ width: 18%; }}
+        table th:nth-child(6) {{ width: 18%; }}
+        table th:nth-child(7) {{ width: 6%; }}
+        table th:nth-child(8) {{ width: 9%; }}
+        table th:nth-child(9) {{ width: 9%; }}
         th {{ text-align: left; padding: 14px 16px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text); background: var(--surface-2); border-bottom: 3px solid var(--accent); white-space: nowrap; position: sticky; top: 0; }}
         th.sortable {{ cursor: pointer; user-select: none; transition: background 0.15s; }}
         th.sortable:hover {{ background: var(--border); }}
@@ -293,14 +314,14 @@ def get_html_template() -> str:
                 </a>
                 <a href="#agentcore" class="nav-item">
                     <span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" d="M67.372,28.073L64.178,26.792 62.933,23.634C62.781,23.252 62.412,23.001 62.002,23.001 61.591,23.001 61.222,23.253 61.071,23.636L59.814,26.838 56.638,28.071C56.253,28.22 55.999,28.592 56,29.005 56.001,29.419 56.257,29.79 56.643,29.937L59.89,31.178 61.063,34.348C61.205,34.735 61.572,34.995 61.985,35.001L62,35.001C62.407,35.001 62.774,34.754 62.928,34.375L64.231,31.142 67.36,29.934C67.743,29.786 67.997,29.418 68,29.007 68.003,28.597 67.754,28.226 67.372,28.073ZM63.106,29.432C62.849,29.532 62.643,29.734 62.539,29.991L62.04,31.228 61.607,30.058C61.508,29.788 61.296,29.574 61.027,29.471L59.782,28.996 60.947,28.543C61.207,28.442 61.414,28.237 61.516,27.977L62.004,26.732 62.435,27.822C62.523,28.142 62.767,28.398 63.079,28.506L64.269,28.983 63.106,29.432ZM64.053,38.6L54.914,34.935 51.351,25.902C51.123,25.325 50.575,24.953 49.955,24.953 49.335,24.954 48.786,25.327 48.56,25.905L44.958,35.083 42,36.23 42,16C42,15.569 41.725,15.188 41.316,15.051L32.316,12.051C32.042,11.961 31.744,11.991 31.496,12.136L19.496,19.136C19.189,19.315 19,19.645 19,20L19,29.42 12.504,33.132C12.192,33.31 12,33.641 12,34L12,46C12,46.359 12.192,46.69 12.504,46.868L19,50.58 19,60C19,60.355 19.189,60.685 19.496,60.864L31.496,67.864C31.65,67.954 31.825,68 32,68 32.106,68 32.213,67.983 32.316,67.949L41.316,64.949C41.725,64.813 42,64.431 42,64L42,43.738 45.2,44.961 48.561,54.046C48.777,54.632 49.32,55.017 49.945,55.026L49.969,55.026C50.584,55.026 51.128,54.66 51.359,54.087L55.089,44.845 64.035,41.392C64.614,41.168 64.991,40.623 64.995,40.001 64.999,39.381 64.629,38.831 64.053,38.6ZM32.113,65.908L28.865,64.014 35.53,59.848 34.47,58.186 26.913,62.759 21,58.441 21,50.566 26.555,46.832 25.445,45.168 19.959,48.825 14,45.42 14,40.58 20.496,36.868 19.504,35.132 14,38.277 14,34.58 20,31.152 26,34.58 26,38.434 21.485,41.143 22.515,42.857 27,40.166 31.485,42.857 32.515,41.143 28,38.434 28,34.535 33.555,30.832C33.833,30.646 34,30.334 34,30L34,24 32,24 32,29.465 26.959,32.825 21,29.42 21,20.574 26,17.658 26,27 28,27 28,16.491 32.113,14.092 40,16.721 40,45.434 25.485,54.143 26.515,55.857 40,47.766 40,63.279 32.113,65.908ZM53.964,43.135C53.706,43.235 53.501,43.438 53.397,43.694L49.988,52.14 46.918,43.842C46.818,43.572 46.607,43.358 46.338,43.255L42,41.597 42,38.375 46.09,36.788C46.351,36.687 46.558,36.481 46.659,36.221L49.957,27.818 53.14,35.886C53.209,36.252 53.486,36.548 53.84,36.659L62.129,39.983 53.964,43.135Z"/></svg></span>
-                    AgentCore
-                    <span class="count">{agentcore_total}</span>
-                </a>
-                {finserv_nav}
-            </nav>
-            <div class="sidebar-footer">
-                <p>Generated: {date_display}</p>
-                <p>{account_info}</p>
+	                    AgentCore
+	                    <span class="count">{agentcore_total}</span>
+	                </a>
+	            </nav>
+	            {industry_nav}
+	            <div class="sidebar-footer">
+	                <p>Generated: {date_display}</p>
+	                <p>{account_info}</p>
                 <p style="margin-top: 8px;"><a href="https://github.com/aws-samples/sample-aiml-security-assessment">GitHub Repository</a></p>
             </div>
         </aside>
@@ -314,7 +335,7 @@ def get_html_template() -> str:
                     </div>
                 </div>
                 <div class="metrics">
-                    <div class="metric"><div class="metric-label">Security Checks</div><div class="metric-value">{security_checks}</div><div class="metric-sub">Evaluated per account</div></div>
+                    <div class="metric"><div class="metric-label">Security Checks</div><div class="metric-value">{security_checks}</div><div class="metric-sub">{security_checks_sub}</div></div>
                     <div class="metric"><div class="metric-label">Total Findings</div><div class="metric-value">{total_findings}</div><div class="metric-sub">{findings_sub}</div></div>
                     <div class="metric danger"><div class="metric-label">Actionable Findings</div><div class="metric-value">{actionable_findings}</div><div class="metric-sub">High, Medium, and Low severity</div></div>
                     <div class="metric danger"><div class="metric-label">High Severity</div><div class="metric-value">{high_passed}/{high_count}</div><div class="metric-sub">{high_pass_rate}% passed · Immediate action required</div></div>
@@ -342,12 +363,13 @@ def get_html_template() -> str:
                 <div class="filter-bar">
                     <div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="searchInput"></div>
                     {account_filter}
-                    <div class="filter-group"><label>Service</label><select id="serviceFilter"><option value="">All Services</option><option value="bedrock">Bedrock</option><option value="sagemaker">SageMaker</option><option value="agentcore">AgentCore</option>{finserv_filter_option}</select></div>
+                    {region_filter}
+                    <div class="filter-group"><label>Assessment Area</label><select id="serviceFilter"><option value="">All Assessment Areas</option><option value="bedrock">Bedrock</option><option value="sagemaker">SageMaker</option><option value="agentcore">AgentCore</option>{finserv_filter_option}</select></div>
                     <div class="filter-group"><label>Severity</label><select id="severityFilter"><option value="">All Severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="informational">Informational</option></select></div>
                     <div class="filter-group"><label>Status</label><select id="statusFilter"><option value="">All Statuses</option><option value="failed">Failed</option><option value="passed">Passed</option><option value="n/a">N/A</option></select></div>
                     <button class="btn btn-reset" id="resetFilters"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>
                 </div>
-                <div class="card"><div class="table-wrap"><table id="findingsTable"><thead><tr><th class="sortable" data-sort="account">Account ID</th><th class="sortable" data-sort="checkId">Check ID</th><th class="sortable" data-sort="finding">Finding</th><th>Details</th><th>Resolution</th><th>Reference</th><th class="sortable" data-sort="severity">Severity</th><th class="sortable" data-sort="status">Status</th></tr></thead><tbody>{all_rows}</tbody></table></div></div>
+                <div class="card"><div class="table-wrap"><table id="findingsTable"><thead><tr><th class="sortable" data-sort="account">Account ID</th><th class="sortable" data-sort="region">Region</th><th class="sortable" data-sort="checkId">Check ID</th><th class="sortable" data-sort="finding">Finding</th><th>Details</th><th>Resolution</th><th>Reference</th><th class="sortable" data-sort="severity">Severity</th><th class="sortable" data-sort="status">Status</th></tr></thead><tbody>{all_rows}</tbody></table></div></div>
             </section>
             <section id="risk" class="section">
                 <div class="section-title"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Risk Distribution</div>
@@ -359,6 +381,7 @@ def get_html_template() -> str:
                     <div class="metric"><div class="metric-label">Overall</div><div class="metric-value">{pass_rate}%</div><div class="metric-sub">{passed_count} of {actionable_findings} actionable checks</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {pass_rate}%; height: 100%; background: var(--text-3);"></div></div></div>
                 </div>
                 {account_risk_section}
+                {region_risk_section}
                 <h4 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Findings by Service</h4>
                 <div class="metrics">
                     <div class="metric"><div class="metric-label"><span class="service-icon" style="width: 18px; height: 18px;"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" transform="translate(12,12)" d="M52,26.999C50.897,26.999 50,26.103 50,25 50,23.897 50.897,23 52,23 53.103,23 54,23.897 54,25 54,26.103 53.103,26.999 52,26.999L52,26.999ZM20.113,53.908L16.865,52.014 23.53,47.848 22.47,46.152 14.913,50.875 9,47.426 9,38.535 14.555,34.832 13.445,33.168 7.959,36.825 2,33.42 2,28.58 8.496,24.868 7.504,23.132 2,26.277 2,22.58 8,19.152 14,22.58 14,26.434 9.485,29.143 10.515,30.857 15,28.166 19.485,30.857 20.515,29.143 16,26.434 16,22.535 21.555,18.832C21.833,18.646 22,18.334 22,18L22,11 20,11 20,17.465 14.959,20.825 9,17.42 9,8.574 14,5.658 14,14 16,14 16,4.491 20.113,2.092 28,4.721 28,33.434 13.485,42.143 14.515,43.857 28,35.766 28,51.279 20.113,53.908ZM50,38C50,39.103 49.103,40 48,40 46.897,40 46,39.103 46,38 46,36.897 46.897,36 48,36 49.103,36 50,36.897 50,38L50,38ZM40,48C40,49.103 39.103,50 38,50 36.897,50 36,49.103 36,48 36,46.897 36.897,46 38,46 39.103,46 40,46.897 40,48L40,48ZM39,8C39,6.897 39.897,6 41,6 42.103,6 43,6.897 43,8 43,9.103 42.103,10 41,10 39.897,10 39,9.103 39,8L39,8ZM52,21C50.141,21 48.589,22.28 48.142,24L30,24 30,19 41,19C41.553,19 42,18.552 42,18L42,11.858C43.72,11.411 45,9.858 45,8 45,5.794 43.206,4 41,4 38.794,4 37,5.794 37,8 37,9.858 38.28,11.411 40,11.858L40,17 30,17 30,4C30,3.569 29.725,3.188 29.316,3.051L20.316,0.051C20.042,-0.039 19.744,-0.009 19.496,0.136L7.496,7.136C7.188,7.315 7,7.645 7,8L7,17.42 0.504,21.132C0.192,21.31 0,21.641 0,22L0,34C0,34.359 0.192,34.69 0.504,34.868L7,38.58 7,48C7,48.355 7.188,48.685 7.496,48.864L19.496,55.864C19.65,55.954 19.825,56 20,56 20.106,56 20.213,55.983 20.316,55.949L29.316,52.949C29.725,52.812 30,52.431 30,52L30,40 37,40 37,44.142C35.28,44.589 34,46.142 34,48 34,50.206 35.794,52 38,52 40.206,52 42,50.206 42,48 42,46.142 40.72,44.589 39,44.142L39,39C39,38.448 38.553,38 38,38L30,38 30,33 42.5,33 44.638,35.85C44.239,36.472 44,37.207 44,38 44,40.206 45.794,42 48,42 50.206,42 52,40.206 52,38 52,35.794 50.206,34 48,34 47.316,34 46.682,34.188 46.119,34.492L43.8,31.4C43.611,31.148 43.314,31 43,31L30,31 30,26 48.142,26C48.589,27.72 50.141,29 52,29 54.206,29 56,27.206 56,25 56,22.794 54.206,21 52,21L52,21Z"/></svg></span> Bedrock</div><div class="metric-value">{bedrock_total}</div><div class="metric-sub">{bedrock_failed} Failed · {bedrock_passed} Passed</div></div>
@@ -372,33 +395,36 @@ def get_html_template() -> str:
                 <div class="filter-bar">
                     <div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="bedrockSearchInput"></div>
                     {bedrock_account_filter}
+                    {bedrock_region_filter}
                     <div class="filter-group"><label>Severity</label><select id="bedrockSeverityFilter"><option value="">All Severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="informational">Informational</option></select></div>
                     <div class="filter-group"><label>Status</label><select id="bedrockStatusFilter"><option value="">All Statuses</option><option value="failed">Failed</option><option value="passed">Passed</option><option value="n/a">N/A</option></select></div>
                     <button class="btn btn-reset" id="bedrockResetFilters"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>
                 </div>
-                <div class="card"><div class="table-wrap"><table id="bedrockTable"><thead><tr><th>Account ID</th><th>Check ID</th><th>Finding</th><th>Details</th><th>Resolution</th><th>Reference</th><th>Severity</th><th>Status</th></tr></thead><tbody>{bedrock_rows}</tbody></table></div></div>
+                <div class="card"><div class="table-wrap"><table id="bedrockTable"><thead><tr><th>Account ID</th><th>Region</th><th>Check ID</th><th>Finding</th><th>Details</th><th>Resolution</th><th>Reference</th><th>Severity</th><th>Status</th></tr></thead><tbody>{bedrock_rows}</tbody></table></div></div>
             </section>
             <section id="sagemaker" class="section">
                 <div class="section-title"><span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" d="M54.034,26.034C54.034,26.594 53.578,27.05 53.017,27.05 52.458,27.05 52.002,26.594 52.002,26.034 52.002,25.474 52.458,25.018 53.017,25.018 53.578,25.018 54.034,25.474 54.034,26.034L54.034,26.034ZM48.002,36C48.002,35.449 48.45,35 49.002,35 49.554,35 50.002,35.449 50.002,36 50.002,36.551 49.554,37 49.002,37 48.45,37 48.002,36.551 48.002,36L48.002,36ZM48.002,55C48.002,54.449 48.45,54 49.002,54 49.554,54 50.002,54.449 50.002,55 50.002,55.551 49.554,56 49.002,56 48.45,56 48.002,55.551 48.002,55L48.002,55ZM58.002,42C58.002,42.551 57.554,43 57.002,43 56.45,43 56.002,42.551 56.002,42 56.002,41.449 56.45,41 57.002,41 57.554,41 58.002,41.449 58.002,42L58.002,42ZM65,45.272L59.963,42.382C59.979,42.256 60.002,42.131 60.002,42 60.002,40.346 58.656,39 57.002,39 55.347,39 54.002,40.346 54.002,42 54.002,43.654 55.347,45 57.002,45 57.801,45 58.523,44.681 59.061,44.171L63.886,46.939 59.555,49.105C59.216,49.275 59.002,49.621 59.002,50L59.002,58.441 46.983,65.837 41.003,62.42 41.003,56 46.186,56C46.6,57.161 47.7,58 49.002,58 50.656,58 52.002,56.654 52.002,55 52.002,53.345 50.656,52 49.002,52 47.7,52 46.6,52.838 46.186,54L41.003,54 41.003,40C41.003,39.649 40.818,39.323 40.517,39.142L35.516,36.142 34.487,37.857 39.003,40.566 39.003,43.507 33.002,48.123 33.002,44C33.002,43.696 32.864,43.408 32.627,43.219L28.002,39.519 28.002,34.535 33.556,30.832C33.835,30.646 34.002,30.334 34.002,30L34.002,24 32.002,24 32.002,29.465 27.013,32.79 22.002,29.464 22.002,21.575 27.002,18.659 27.002,27 29.002,27 29.002,17.492 33.005,15.157 39.001,18.616 39.002,31C39.002,31.359 39.194,31.69 39.506,31.868L46.042,35.603C46.024,35.734 46.002,35.864 46.002,36 46.002,37.654 47.347,39 49.002,39 50.656,39 52.002,37.654 52.002,36 52.002,34.346 50.656,33 49.002,33 48.208,33 47.49,33.315 46.953,33.82L41.002,30.419 41.001,18.618 46.964,15.177 58.002,22.536 58.002,25 55.851,25C55.429,23.845 54.318,23.018 53.017,23.018 51.354,23.018 50.002,24.371 50.002,26.034 50.002,27.697 51.354,29.05 53.017,29.05 54.343,29.05 55.471,28.191 55.875,27L58.002,27 58.002,30C58.002,30.36 58.194,30.691 58.506,30.869L65,34.58 65,45.272ZM33.02,65.837L29.867,63.897 35.583,59.814 34.421,58.186 28.018,62.759 21.002,58.441 21.002,50.566 25.516,47.857 24.487,46.142 19.958,48.86 15.002,46.383 15.001,40.617 20.449,37.894 19.555,36.105 15.001,38.381 15.002,34.58 20.963,31.175 26.002,34.519 26.002,39.48 20.449,43.167 21.555,44.833 26.958,41.245 31.002,44.48 31.002,49.662 26.392,53.207 27.611,54.792 39.003,46.03 39.003,62.419 33.02,65.837ZM66.496,33.132L60.002,29.42 60.002,22C60.002,21.666 59.835,21.354 59.556,21.169L47.556,13.169C47.24,12.959 46.832,12.945 46.502,13.135L40.004,16.885 33.502,13.135C33.19,12.955 32.807,12.955 32.498,13.137L20.498,20.137C20.19,20.316 20.002,20.645 20.002,21L20.002,29.42 13.506,33.132C13.194,33.31 13.002,33.641 13.002,34L13.002,34.417C13.001,34.438 13,34.458 13,34.479L13,45.363C13,45.383 13.001,45.403 13.002,45.422L13.002,47C13.002,47.379 13.216,47.725 13.555,47.894L19.002,50.618 19.002,59C19.002,59.347 19.181,59.669 19.477,59.851L32.477,67.851C32.638,67.95 32.82,68 33.002,68 33.173,68 33.344,67.956 33.498,67.868L40.003,64.152 46.506,67.868C46.821,68.049 47.213,68.042 47.526,67.851L60.526,59.851C60.822,59.669 61.002,59.347 61.002,59L61.002,50.618 66.447,47.894C66.786,47.725 67,47.379 67,47L67,34C67,33.641 66.807,33.31 66.496,33.132L66.496,33.132Z"/></svg></span>Amazon SageMaker Findings</div>
                 <div class="filter-bar">
                     <div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="sagemakerSearchInput"></div>
                     {sagemaker_account_filter}
+                    {sagemaker_region_filter}
                     <div class="filter-group"><label>Severity</label><select id="sagemakerSeverityFilter"><option value="">All Severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="informational">Informational</option></select></div>
                     <div class="filter-group"><label>Status</label><select id="sagemakerStatusFilter"><option value="">All Statuses</option><option value="failed">Failed</option><option value="passed">Passed</option><option value="n/a">N/A</option></select></div>
                     <button class="btn btn-reset" id="sagemakerResetFilters"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>
                 </div>
-                <div class="card"><div class="table-wrap"><table id="sagemakerTable"><thead><tr><th>Account ID</th><th>Check ID</th><th>Finding</th><th>Details</th><th>Resolution</th><th>Reference</th><th>Severity</th><th>Status</th></tr></thead><tbody>{sagemaker_rows}</tbody></table></div></div>
+                <div class="card"><div class="table-wrap"><table id="sagemakerTable"><thead><tr><th>Account ID</th><th>Region</th><th>Check ID</th><th>Finding</th><th>Details</th><th>Resolution</th><th>Reference</th><th>Severity</th><th>Status</th></tr></thead><tbody>{sagemaker_rows}</tbody></table></div></div>
             </section>
             <section id="agentcore" class="section">
                 <div class="section-title"><span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" d="M67.372,28.073L64.178,26.792 62.933,23.634C62.781,23.252 62.412,23.001 62.002,23.001 61.591,23.001 61.222,23.253 61.071,23.636L59.814,26.838 56.638,28.071C56.253,28.22 55.999,28.592 56,29.005 56.001,29.419 56.257,29.79 56.643,29.937L59.89,31.178 61.063,34.348C61.205,34.735 61.572,34.995 61.985,35.001L62,35.001C62.407,35.001 62.774,34.754 62.928,34.375L64.231,31.142 67.36,29.934C67.743,29.786 67.997,29.418 68,29.007 68.003,28.597 67.754,28.226 67.372,28.073ZM63.106,29.432C62.849,29.532 62.643,29.734 62.539,29.991L62.04,31.228 61.607,30.058C61.508,29.788 61.296,29.574 61.027,29.471L59.782,28.996 60.947,28.543C61.207,28.442 61.414,28.237 61.516,27.977L62.004,26.732 62.435,27.822C62.523,28.142 62.767,28.398 63.079,28.506L64.269,28.983 63.106,29.432ZM64.053,38.6L54.914,34.935 51.351,25.902C51.123,25.325 50.575,24.953 49.955,24.953 49.335,24.954 48.786,25.327 48.56,25.905L44.958,35.083 42,36.23 42,16C42,15.569 41.725,15.188 41.316,15.051L32.316,12.051C32.042,11.961 31.744,11.991 31.496,12.136L19.496,19.136C19.189,19.315 19,19.645 19,20L19,29.42 12.504,33.132C12.192,33.31 12,33.641 12,34L12,46C12,46.359 12.192,46.69 12.504,46.868L19,50.58 19,60C19,60.355 19.189,60.685 19.496,60.864L31.496,67.864C31.65,67.954 31.825,68 32,68 32.106,68 32.213,67.983 32.316,67.949L41.316,64.949C41.725,64.813 42,64.431 42,64L42,43.738 45.2,44.961 48.561,54.046C48.777,54.632 49.32,55.017 49.945,55.026L49.969,55.026C50.584,55.026 51.128,54.66 51.359,54.087L55.089,44.845 64.035,41.392C64.614,41.168 64.991,40.623 64.995,40.001 64.999,39.381 64.629,38.831 64.053,38.6ZM32.113,65.908L28.865,64.014 35.53,59.848 34.47,58.186 26.913,62.759 21,58.441 21,50.566 26.555,46.832 25.445,45.168 19.959,48.825 14,45.42 14,40.58 20.496,36.868 19.504,35.132 14,38.277 14,34.58 20,31.152 26,34.58 26,38.434 21.485,41.143 22.515,42.857 27,40.166 31.485,42.857 32.515,41.143 28,38.434 28,34.535 33.555,30.832C33.833,30.646 34,30.334 34,30L34,24 32,24 32,29.465 26.959,32.825 21,29.42 21,20.574 26,17.658 26,27 28,27 28,16.491 32.113,14.092 40,16.721 40,45.434 25.485,54.143 26.515,55.857 40,47.766 40,63.279 32.113,65.908ZM53.964,43.135C53.706,43.235 53.501,43.438 53.397,43.694L49.988,52.14 46.918,43.842C46.818,43.572 46.607,43.358 46.338,43.255L42,41.597 42,38.375 46.09,36.788C46.351,36.687 46.558,36.481 46.659,36.221L49.957,27.818 53.14,35.886C53.209,36.252 53.486,36.548 53.84,36.659L62.129,39.983 53.964,43.135Z"/></svg></span>Amazon Bedrock AgentCore Findings</div>
                 <div class="filter-bar">
                     <div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="agentcoreSearchInput"></div>
                     {agentcore_account_filter}
+                    {agentcore_region_filter}
                     <div class="filter-group"><label>Severity</label><select id="agentcoreSeverityFilter"><option value="">All Severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="informational">Informational</option></select></div>
                     <div class="filter-group"><label>Status</label><select id="agentcoreStatusFilter"><option value="">All Statuses</option><option value="failed">Failed</option><option value="passed">Passed</option><option value="n/a">N/A</option></select></div>
                     <button class="btn btn-reset" id="agentcoreResetFilters"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>
                 </div>
-                <div class="card"><div class="table-wrap"><table id="agentcoreTable"><thead><tr><th>Account ID</th><th>Check ID</th><th>Finding</th><th>Details</th><th>Resolution</th><th>Reference</th><th>Severity</th><th>Status</th></tr></thead><tbody>{agentcore_rows}</tbody></table></div></div>
+                <div class="card"><div class="table-wrap"><table id="agentcoreTable"><thead><tr><th>Account ID</th><th>Region</th><th>Check ID</th><th>Finding</th><th>Details</th><th>Resolution</th><th>Reference</th><th>Severity</th><th>Status</th></tr></thead><tbody>{agentcore_rows}</tbody></table></div></div>
             </section>
             {finserv_section}
             <section id="methodology" class="section">
@@ -435,6 +461,7 @@ def get_html_template() -> str:
         function applyFilters() {{
             const searchText = document.getElementById('searchInput').value.toLowerCase();
             const accountFilter = document.getElementById('accountFilter')?.value.toLowerCase() || '';
+            const regionFilter = document.getElementById('regionFilter')?.value.toLowerCase() || '';
             const serviceFilter = document.getElementById('serviceFilter').value.toLowerCase();
             const severityFilter = document.getElementById('severityFilter').value.toLowerCase();
             const statusFilter = document.getElementById('statusFilter').value.toLowerCase();
@@ -442,12 +469,14 @@ def get_html_template() -> str:
             rows.forEach(row => {{
                 const rowText = row.textContent.toLowerCase();
                 const rowAccount = row.dataset.account || '';
+                const rowRegion = row.dataset.region || '';
                 const rowService = row.dataset.service || '';
                 const rowSeverity = row.dataset.severity || '';
                 const rowStatus = row.dataset.status || '';
                 let show = true;
                 if (searchText && !rowText.includes(searchText)) show = false;
                 if (accountFilter && rowAccount !== accountFilter) show = false;
+                if (regionFilter && rowRegion.toLowerCase() !== regionFilter) show = false;
                 if (serviceFilter && rowService !== serviceFilter) show = false;
                 if (severityFilter && rowSeverity !== severityFilter) show = false;
                 if (statusFilter && rowStatus !== statusFilter) show = false;
@@ -457,6 +486,7 @@ def get_html_template() -> str:
         document.getElementById('resetFilters').addEventListener('click', function() {{
             document.getElementById('searchInput').value = '';
             if (document.getElementById('accountFilter')) document.getElementById('accountFilter').value = '';
+            if (document.getElementById('regionFilter')) document.getElementById('regionFilter').value = '';
             document.getElementById('serviceFilter').value = '';
             document.getElementById('severityFilter').value = '';
             document.getElementById('statusFilter').value = '';
@@ -464,6 +494,7 @@ def get_html_template() -> str:
         }});
         document.getElementById('searchInput').addEventListener('input', applyFilters);
         if (document.getElementById('accountFilter')) document.getElementById('accountFilter').addEventListener('change', applyFilters);
+        if (document.getElementById('regionFilter')) document.getElementById('regionFilter').addEventListener('change', applyFilters);
         document.getElementById('serviceFilter').addEventListener('change', applyFilters);
         document.getElementById('severityFilter').addEventListener('change', applyFilters);
         document.getElementById('statusFilter').addEventListener('change', applyFilters);
@@ -504,9 +535,13 @@ def get_html_template() -> str:
                             aVal = a.dataset.account || '';
                             bVal = b.dataset.account || '';
                             break;
+                        case 'region':
+                            aVal = a.dataset.region || '';
+                            bVal = b.dataset.region || '';
+                            break;
                         case 'checkId':
-                            aVal = a.querySelector('td:nth-child(2) code')?.textContent || '';
-                            bVal = b.querySelector('td:nth-child(2) code')?.textContent || '';
+                            aVal = a.querySelector('td:nth-child(3) code')?.textContent || '';
+                            bVal = b.querySelector('td:nth-child(3) code')?.textContent || '';
                             break;
                         case 'finding':
                             aVal = a.querySelector('.col-domain')?.textContent.toLowerCase() || '';
@@ -529,28 +564,32 @@ def get_html_template() -> str:
             }});
         }});
         // Service-specific filter functions
-        function createServiceFilter(tableId, searchId, accountId, severityId, statusId, resetId) {{
+        function createServiceFilter(tableId, searchId, accountId, regionId, severityId, statusId, resetId) {{
             const table = document.getElementById(tableId);
             if (!table) return;
             const searchInput = document.getElementById(searchId);
             const accountFilter = document.getElementById(accountId);
+            const regionFilter = document.getElementById(regionId);
             const severityFilter = document.getElementById(severityId);
             const statusFilter = document.getElementById(statusId);
             const resetBtn = document.getElementById(resetId);
             function applyServiceFilters() {{
                 const searchText = searchInput?.value.toLowerCase() || '';
                 const accountValue = accountFilter?.value.toLowerCase() || '';
+                const regionValue = regionFilter?.value.toLowerCase() || '';
                 const severityValue = severityFilter?.value.toLowerCase() || '';
                 const statusValue = statusFilter?.value.toLowerCase() || '';
                 const rows = table.querySelectorAll('tbody tr');
                 rows.forEach(row => {{
                     const rowText = row.textContent.toLowerCase();
                     const rowAccount = row.dataset.account || '';
+                    const rowRegion = row.dataset.region || '';
                     const rowSeverity = row.dataset.severity || '';
                     const rowStatus = row.dataset.status || '';
                     let show = true;
                     if (searchText && !rowText.includes(searchText)) show = false;
                     if (accountValue && rowAccount !== accountValue) show = false;
+                    if (regionValue && rowRegion.toLowerCase() !== regionValue) show = false;
                     if (severityValue && rowSeverity !== severityValue) show = false;
                     if (statusValue && rowStatus !== statusValue) show = false;
                     row.style.display = show ? '' : 'none';
@@ -558,20 +597,22 @@ def get_html_template() -> str:
             }}
             searchInput?.addEventListener('input', applyServiceFilters);
             accountFilter?.addEventListener('change', applyServiceFilters);
+            regionFilter?.addEventListener('change', applyServiceFilters);
             severityFilter?.addEventListener('change', applyServiceFilters);
             statusFilter?.addEventListener('change', applyServiceFilters);
             resetBtn?.addEventListener('click', function() {{
                 if (searchInput) searchInput.value = '';
                 if (accountFilter) accountFilter.value = '';
+                if (regionFilter) regionFilter.value = '';
                 if (severityFilter) severityFilter.value = '';
                 if (statusFilter) statusFilter.value = '';
                 applyServiceFilters();
             }});
         }}
-        createServiceFilter('bedrockTable', 'bedrockSearchInput', 'bedrockAccountFilter', 'bedrockSeverityFilter', 'bedrockStatusFilter', 'bedrockResetFilters');
-        createServiceFilter('sagemakerTable', 'sagemakerSearchInput', 'sagemakerAccountFilter', 'sagemakerSeverityFilter', 'sagemakerStatusFilter', 'sagemakerResetFilters');
-        createServiceFilter('agentcoreTable', 'agentcoreSearchInput', 'agentcoreAccountFilter', 'agentcoreSeverityFilter', 'agentcoreStatusFilter', 'agentcoreResetFilters');
-        createServiceFilter('finservTable', 'finservSearchInput', 'finservAccountFilter', 'finservSeverityFilter', 'finservStatusFilter', 'finservResetFilters');
+        createServiceFilter('bedrockTable', 'bedrockSearchInput', 'bedrockAccountFilter', 'bedrockRegionFilter', 'bedrockSeverityFilter', 'bedrockStatusFilter', 'bedrockResetFilters');
+        createServiceFilter('sagemakerTable', 'sagemakerSearchInput', 'sagemakerAccountFilter', 'sagemakerRegionFilter', 'sagemakerSeverityFilter', 'sagemakerStatusFilter', 'sagemakerResetFilters');
+        createServiceFilter('agentcoreTable', 'agentcoreSearchInput', 'agentcoreAccountFilter', 'agentcoreRegionFilter', 'agentcoreSeverityFilter', 'agentcoreStatusFilter', 'agentcoreResetFilters');
+        createServiceFilter('finservTable', 'finservSearchInput', 'finservAccountFilter', 'finservRegionFilter', 'finservSeverityFilter', 'finservStatusFilter', 'finservResetFilters');
 
         // Apply initial filters for main table
         applyFilters();
@@ -588,6 +629,7 @@ def generate_html_report(
     account_id: Optional[str] = None,
     account_ids: Optional[List[str]] = None,
     timestamp: Optional[str] = None,
+    regions: list = None,
 ) -> str:
     """
     Generate HTML report from findings data.
@@ -600,6 +642,7 @@ def generate_html_report(
         account_id: Account ID (for single-account mode)
         account_ids: List of account IDs (for multi-account mode)
         timestamp: Optional timestamp string
+        regions: Optional list of region strings for multi-region filtering
 
     Returns:
         Complete HTML report string
@@ -742,14 +785,46 @@ def generate_html_report(
         service_findings.get("finserv", []), include_data_attrs=True
     )
 
+    # Build region filter HTML (shared across modes, only shown when multiple regions).
+    # "Global" tags IAM-only findings and is intentionally excluded from `regions`
+    # (it must not inflate the region count / tiles), but those findings still appear
+    # in the tables, so surface a "Global" filter option when any are present.
+    has_global = any(
+        (f.get("region") or f.get("Region")) == "Global" for f in all_findings
+    )
+    # Show the filter when there is more than one distinct value to choose from:
+    # multiple scanned regions, or a single scanned region alongside Global findings.
+    num_real_regions = len(regions) if regions else 0
+    if num_real_regions + (1 if has_global else 0) > 1:
+        region_options = "".join(
+            [f'<option value="{r}">{r}</option>' for r in sorted(regions or [])]
+        )
+        if has_global:
+            region_options += '<option value="Global">Global</option>'
+        region_filter = f'<div class="filter-group"><label for="regionFilter">Region</label><select id="regionFilter" onchange="applyFilters()"><option value="">All Regions</option>{region_options}</select></div>'
+        bedrock_region_filter = f'<div class="filter-group"><label for="bedrockRegionFilter">Region</label><select id="bedrockRegionFilter"><option value="">All Regions</option>{region_options}</select></div>'
+        sagemaker_region_filter = f'<div class="filter-group"><label for="sagemakerRegionFilter">Region</label><select id="sagemakerRegionFilter"><option value="">All Regions</option>{region_options}</select></div>'
+        agentcore_region_filter = f'<div class="filter-group"><label for="agentcoreRegionFilter">Region</label><select id="agentcoreRegionFilter"><option value="">All Regions</option>{region_options}</select></div>'
+    else:
+        region_filter = ""
+        bedrock_region_filter = ""
+        sagemaker_region_filter = ""
+        agentcore_region_filter = ""
+
     # Mode-specific content
     num_accounts = len(account_ids) if account_ids else 1
+    num_regions = len(regions) if regions else 1
     if mode == "multi":
         title = "Multi-Account AI/ML Security Assessment Report"
         sidebar_subtitle = "Multi-Account Assessment"
         account_info = f"Accounts: {num_accounts}"
         header_account_info = f"{num_accounts} Accounts"
-        findings_sub = f"Across {num_accounts} accounts"
+        if num_regions > 1:
+            findings_sub = f"Across {num_accounts} accounts · {num_regions} regions"
+            security_checks_sub = f"Evaluated across {num_regions} regions"
+        else:
+            findings_sub = f"Across {num_accounts} accounts"
+            security_checks_sub = "Evaluated per account"
         account_options = "".join(
             [
                 f'<option value="{acc}">{acc}</option>'
@@ -809,8 +884,16 @@ def generate_html_report(
         title = "AI/ML Security Assessment Report"
         sidebar_subtitle = "Assessment Report"
         account_info = f"Account: {account_id or 'Unknown'}"
-        header_account_info = f"Account: {account_id or 'Unknown'}"
-        findings_sub = "Across 1 account"
+        if num_regions > 1:
+            header_account_info = (
+                f"Account: {account_id or 'Unknown'} · {num_regions} Regions"
+            )
+            findings_sub = f"Across {num_regions} regions"
+            security_checks_sub = f"Evaluated across {num_regions} regions"
+        else:
+            header_account_info = f"Account: {account_id or 'Unknown'}"
+            findings_sub = "Across 1 account"
+            security_checks_sub = "Evaluated per account"
         account_filter = ""
         bedrock_account_filter = ""
         sagemaker_account_filter = ""
@@ -818,7 +901,51 @@ def generate_html_report(
         finserv_account_filter = ""
         account_risk_section = ""
 
-    # FinServ (FS-*) — first-class service, rendered only when findings exist
+    # Build region risk section (shown when multiple regions)
+    if regions and len(regions) > 1:
+        region_metrics_html = ""
+        for reg in sorted(regions):
+            reg_findings = [
+                f for f in all_findings if f.get("region", f.get("Region", "")) == reg
+            ]
+            reg_high = sum(
+                1
+                for f in reg_findings
+                if f.get("severity", f.get("Severity", "")).lower() == "high"
+                and f.get("status", f.get("Status", "")).lower() == "failed"
+            )
+            reg_medium = sum(
+                1
+                for f in reg_findings
+                if f.get("severity", f.get("Severity", "")).lower() == "medium"
+                and f.get("status", f.get("Status", "")).lower() == "failed"
+            )
+            reg_low = sum(
+                1
+                for f in reg_findings
+                if f.get("severity", f.get("Severity", "")).lower() == "low"
+                and f.get("status", f.get("Status", "")).lower() == "failed"
+            )
+            reg_total_failed = reg_high + reg_medium + reg_low
+
+            if reg_high > 0:
+                risk_class = "danger"
+                border_color = "var(--danger)"
+            elif reg_medium > 0:
+                risk_class = "warning"
+                border_color = "var(--warning)"
+            else:
+                risk_class = ""
+                border_color = "var(--success)"
+
+            region_metrics_html += f"""<div class="metric {risk_class}" style="border-left: 3px solid {border_color};"><div class="metric-label" style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">{reg}</div><div class="metric-value">{reg_total_failed}</div><div class="metric-sub"><span style="color: var(--danger);">{reg_high} High</span> · <span style="color: var(--warning);">{reg_medium} Med</span> · <span style="color: var(--accent);">{reg_low} Low</span></div></div>"""
+
+        region_risk_section = f"""<h4 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Risk by Region</h4>
+                <div class="metrics" style="margin-bottom: 32px;">{region_metrics_html}</div>"""
+    else:
+        region_risk_section = ""
+
+    # FinServ (FS-*) — first-class industry assessment, rendered only when findings exist
     # (so non-FinServ accounts and EnableFinServAssessment=false deploys stay clean).
     finserv_total = (
         service_stats.get("finserv", {}).get("passed", 0)
@@ -828,55 +955,96 @@ def generate_html_report(
     finserv_failed = service_stats.get("finserv", {}).get("failed", 0)
     finserv_passed = service_stats.get("finserv", {}).get("passed", 0)
     if finserv_total > 0:
+        finserv_regions = sorted(
+            {
+                f.get("region", f.get("Region", ""))
+                for f in service_findings.get("finserv", [])
+                if f.get("region", f.get("Region", ""))
+            }
+        )
+        finserv_region_options = "".join(
+            [f'<option value="{r}">{r}</option>' for r in finserv_regions]
+        )
+        finserv_region_filter = (
+            '<div class="filter-group"><label>Region</label>'
+            '<select id="finservRegionFilter">'
+            f'<option value="">All Regions</option>{finserv_region_options}</select></div>'
+            if finserv_regions
+            else ""
+        )
         finserv_nav = (
-            '<a href="#finserv" class="nav-item">'
+            '<a href="#finserv" class="nav-item industry-item">'
             + FINSERV_ICON
             + " Financial Services"
             + f'<span class="count">{finserv_total}</span></a>'
+        )
+        industry_nav = (
+            '<nav class="nav-section industry-nav"><h3>By Industry</h3>'
+            + finserv_nav
+            + "</nav>"
         )
         finserv_filter_option = '<option value="finserv">Financial Services</option>'
         finserv_service_card = (
             '<div class="metric"><div class="metric-label">'
             + FINSERV_ICON_SMALL
-            + f' FinServ</div><div class="metric-value">{finserv_total}</div>'
+            + f' Financial Services Risk</div><div class="metric-value">{finserv_total}</div>'
             + f'<div class="metric-sub">{finserv_failed} Failed \u00b7 {finserv_passed} Passed</div></div>'
+        )
+        finserv_scope_industry_block = (
+            '<div class="scope-industry" data-scope-service="finserv">'
+            '<div class="scope-industry-label">Industry</div>'
+            '<div class="scope-chip-row"><div class="scope-chip industry-chip">'
+            + FINSERV_ICON_SMALL
+            + '<span style="font-size: 13px; font-weight: 500;">Financial Services GenAI Risk</span></div></div></div>'
+        )
+        finserv_scope_source = (
+            f" Financial Services GenAI Risk checks are based on "
+            f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>.'
         )
         finserv_section = (
             '<section id="finserv" class="section">'
             '<div class="section-title">'
             + FINSERV_ICON
             + "Financial Services GenAI Risk Findings</div>"
-            '<div class="muted" style="margin:-6px 0 10px;font-size:13px;">Scope: this assessment evaluates the deployment Region only — run it per Region for multi-Region GenAI workloads. Severities follow a documented Likelihood &times; Impact methodology (see docs).</div>'
+            '<div class="muted" style="margin:-6px 0 10px;font-size:13px;">Scope: this assessment records findings against each resolved CloudFormation TargetRegions entry. These checks are based on '
+            f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>. '
+            "Severities follow a documented Likelihood &times; Impact methodology (see docs).</div>"
             '<div class="filter-bar">'
             '<div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="finservSearchInput"></div>'
             + finserv_account_filter
+            + finserv_region_filter
             + '<div class="filter-group"><label>Severity</label><select id="finservSeverityFilter"><option value="">All Severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="informational">Informational</option></select></div>'
             '<div class="filter-group"><label>Status</label><select id="finservStatusFilter"><option value="">All Statuses</option><option value="failed">Failed</option><option value="passed">Passed</option><option value="n/a">N/A</option></select></div>'
             '<button class="btn btn-reset" id="finservResetFilters"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>'
             "</div>"
-            '<div class="card"><div class="table-wrap"><table id="finservTable"><thead><tr><th>Account ID</th><th>Check ID</th><th>Finding</th><th>Details</th><th>Resolution</th><th>Reference</th><th>Severity</th><th>Status</th></tr></thead><tbody>'
+            '<div class="card"><div class="table-wrap"><table id="finservTable"><thead><tr><th>Account ID</th><th>Region</th><th>Check ID</th><th>Finding</th><th>Details</th><th>Resolution</th><th>Reference</th><th>Severity</th><th>Status</th></tr></thead><tbody>'
             + finserv_rows
             + "</tbody></table></div></div>"
             "</section>"
         )
     else:
         finserv_nav = ""
+        industry_nav = ""
         finserv_filter_option = ""
         finserv_service_card = ""
+        finserv_scope_industry_block = ""
+        finserv_scope_source = ""
         finserv_section = ""
 
     # Fill template
     html_template = get_html_template()
 
-    return html_template.format(
+    rendered_html = html_template.format(
         title=title,
         sidebar_subtitle=sidebar_subtitle,
         account_info=account_info,
         header_account_info=header_account_info,
         account_filter=account_filter,
+        region_filter=region_filter,
         timestamp=timestamp,
         date_display=date_display,
         security_checks=security_checks,
+        security_checks_sub=security_checks_sub,
         total_findings=total_findings,
         findings_sub=findings_sub,
         actionable_findings=actionable_findings,
@@ -915,9 +1083,37 @@ def generate_html_report(
         bedrock_account_filter=bedrock_account_filter,
         sagemaker_account_filter=sagemaker_account_filter,
         agentcore_account_filter=agentcore_account_filter,
-        finserv_nav=finserv_nav,
+        bedrock_region_filter=bedrock_region_filter,
+        sagemaker_region_filter=sagemaker_region_filter,
+        agentcore_region_filter=agentcore_region_filter,
+        industry_nav=industry_nav,
         finserv_filter_option=finserv_filter_option,
         finserv_service_card=finserv_service_card,
         finserv_section=finserv_section,
         account_risk_section=account_risk_section,
+        region_risk_section=region_risk_section,
     )
+    base_scope_source = (
+        f"Bedrock, SageMaker, and AgentCore checks are based on the "
+        f'<a href="{GENAI_LENS_URL}" target="_blank">AWS Well-Architected Framework Generative AI Lens</a>.'
+    )
+    rendered_html = rendered_html.replace(
+        "Based on AWS Well-Architected Framework (Generative AI Lens) and service-specific security documentation.",
+        base_scope_source,
+        1,
+    )
+    if finserv_scope_industry_block:
+        rendered_html = rendered_html.replace(
+            '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div></div><p style=',
+            '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div>'
+            + "</div>"
+            + finserv_scope_industry_block
+            + "<p style=",
+            1,
+        )
+        rendered_html = rendered_html.replace(
+            base_scope_source,
+            base_scope_source + finserv_scope_source,
+            1,
+        )
+    return rendered_html

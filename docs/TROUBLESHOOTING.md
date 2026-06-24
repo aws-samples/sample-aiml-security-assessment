@@ -23,7 +23,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 
 **Solutions:**
 - Check that service-linked roles exist for AWS CloudFormation StackSets
-- Verify the management account has AWS Organizations permissions
+- Verify the account running the central CodeBuild project has AWS Organizations permissions, if it is discovering accounts automatically
 - Verify target OUs contain active accounts
 - Review the StackSet operation history for specific error messages
 
@@ -34,7 +34,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 **Solutions:**
 - Verify the `AIMLSecurityMemberRole` exists in target accounts
 - Check the trust relationship allows the central CodeBuild role
-- Confirm the `ManagementAccountID` parameter matches your management account
+- Confirm the `ManagementAccountID` parameter matches the account where the central `MultiAccountCodeBuildRole` runs
 - Verify the StackSet deployment completed successfully in all accounts
 
 ### 3. AWS SAM Deployment Failures
@@ -43,9 +43,11 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 
 **Solutions:**
 - Check CodeBuild logs in CloudWatch for specific errors
-- Verify the S3 bucket for SAM artifacts exists and is accessible
+- Verify the GitHub repository URL and `GitHubBranch` parameter point to a branch, tag, or commit that CodeBuild can clone
+- Verify the S3 bucket for SAM artifacts exists and is accessible. If the `aws-sam-cli-managed-default` stack is stuck in `ROLLBACK_COMPLETE` or `DELETE_FAILED`, delete it and re-run CodeBuild
 - Look for IAM permission errors in the logs
 - Check if a previous deployment left orphaned resources
+- Check whether `TARGET_REGIONS` failed validation. It must be empty, `all`, or a comma- or space-separated list such as `us-east-1,us-west-2` or `us-east-1 us-west-2`
 
 ### 4. AWS Step Functions Execution Failures
 
@@ -54,8 +56,9 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 **Solutions:**
 - Monitor state machine executions in each account
 - Check Lambda function logs for errors
-- Verify Lambda has sufficient timeout (default 10 minutes)
+- Verify Lambda has sufficient timeout. Most assessment Lambdas default to 10 minutes; FinServ has its own timeout in the SAM templates
 - Verify AWS IAM permissions allow Lambda to access required services
+- In multi-region scans, review each region's Map state iteration. A single service branch can be marked incomplete while the state machine still generates a report for the remaining services and regions
 
 ### 5. EarlyValidation::ResourceExistenceCheck Error
 
@@ -64,25 +67,72 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 **Cause:** A resource with the same physical name already exists outside of CloudFormation management, typically from a failed deployment.
 
 **Solution:**
+The versioned bucket cleanup command requires `jq`.
+
 ```bash
-# Find the orphaned bucket
+# Find likely orphaned buckets
 aws s3 ls | grep aiml-security
 
-# Empty the bucket
-aws s3 rm s3://<bucket-name> --recursive
+BUCKET_NAME="<bucket-name>"
 
-# Delete version markers if versioned
-aws s3api delete-objects --bucket <bucket-name> --delete \
-  "$(aws s3api list-object-versions --bucket <bucket-name> \
-  --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}')"
+aws s3 rm "s3://${BUCKET_NAME}" --recursive
 
-# Delete the bucket
-aws s3 rb s3://<bucket-name>
+while true; do
+  delete_payload=$(aws s3api list-object-versions \
+    --bucket "${BUCKET_NAME}" \
+    --output json \
+    | jq '{Objects: (((.Versions // []) + (.DeleteMarkers // [])) | map({Key, VersionId}) | .[0:1000])}')
+
+  object_count=$(echo "${delete_payload}" | jq '.Objects | length')
+  if [ "${object_count}" -eq 0 ]; then
+    break
+  fi
+
+  aws s3api delete-objects \
+    --bucket "${BUCKET_NAME}" \
+    --delete "${delete_payload}"
+done
+
+aws s3 rb "s3://${BUCKET_NAME}"
 
 # Re-run the CodeBuild project
 ```
 
-### 6. CodeBuild Timeout or Out-of-Memory with Many Accounts
+For full bucket cleanup guidance, see [Cleanup Guide](CLEANUP.md#emptying-and-deleting-versioned-s3-buckets).
+
+### 6. Financial Services Checks Do Not Appear in the Report
+
+**Symptoms:** The report does not include the **Financial Services** section or any `FS-` findings.
+
+**Solutions:**
+- Confirm the infrastructure stack parameter `EnableFinServAssessment` is set to `true`
+- Confirm CodeBuild logs show `FinServ assessment enabled is true`
+- If you updated an existing deployment, re-run the CodeBuild project after the CloudFormation update completes. The parameter is passed to the Step Functions execution input when CodeBuild starts the assessment
+- Use the CodeBuild-based deployment templates for normal operation. If you deploy the SAM template directly and start Step Functions manually, include `"enableFinServ": "true"` in the `StartExecution` input
+- Check the Step Functions execution for the `FinServ Enabled?` choice state and `FinServ Security Assessment` task
+
+### 7. TargetRegions Validation or Unexpected Region Coverage
+
+**Symptoms:** CodeBuild fails with a `TARGET_REGIONS` validation error, or the report scans fewer or different regions than expected.
+
+**Solutions:**
+- Leave `TargetRegions` empty to scan only the deployment region
+- Use `all` to scan the union of regions returned by boto3 for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore
+- Use a comma- or space-separated list, such as `us-east-1,us-west-2,eu-west-1` or `us-east-1 us-west-2 eu-west-1`. The deployment normalizes the value before passing it to SAM
+- Confirm the services being assessed are available in each target region. If a service is unavailable or has no resources in a region, the report can show `N/A` or no resource-specific findings for that service and region
+- Confirm the account is opted in to any opt-in regions you include
+
+### 8. CodeBuild Source or GitHub Branch Failures
+
+**Symptoms:** CodeBuild fails before SAM build, or the logs show repository clone/source errors.
+
+**Solutions:**
+- Confirm `GitHubRepoUrl` is reachable by CodeBuild
+- Confirm `GitHubBranch` is a valid branch, tag, or commit
+- If you use a fork or feature branch, make sure the infrastructure stack points at that branch before starting CodeBuild
+- For private repositories, configure CodeBuild source credentials before deployment or use a source location CodeBuild can access
+
+### 9. CodeBuild Timeout or Out-of-Memory with Many Accounts
 
 **Symptoms:** CodeBuild job times out or runs slowly when scanning a large number of accounts concurrently.
 
@@ -98,17 +148,51 @@ aws s3 rb s3://<bucket-name>
 - For organizations with fewer than 10 accounts, the default "Three" is usually sufficient
 - If builds timeout, increase `ConcurrentAccountScans` to process more accounts in parallel -- but be aware this also increases the per-minute CodeBuild cost
 - If builds timeout even at "Twelve," increase the `CodeBuildTimeout` parameter (default is 300 minutes for multi-account)
-- For very large organizations (100+ accounts), consider using `MultiAccountListOverride` to split assessments into batches
+- For very large organizations (100+ accounts), consider using `MultiAccountListOverride` to split assessments into batches. It accepts comma- or space-separated account IDs
 
-### 7. No Reports in S3 Bucket
+### 10. No Reports in S3 Bucket
 
 **Symptoms:** Assessment completes but no HTML/CSV files appear.
 
 **Solutions:**
 1. **Wrong bucket**: Use the bucket from the **Infrastructure Stack** outputs, not the assessment stack
-2. **Still running**: Check CodeBuild console - assessment typically takes 5-10 minutes
-3. **Wrong prefix**: Look under `{account_id}/` for single-account, `consolidated-reports/` for multi-account
-4. **Permissions**: Check CloudWatch Logs for Lambda execution errors
+2. **Still running**: Check CodeBuild console. Multi-region, multi-account, or FinServ-enabled assessments can take longer than a single-region run
+3. **Wrong prefix**: Look under `{account_id}/` for per-account reports and `consolidated-reports/` for the multi-account consolidated HTML report
+4. **Post-build copy failed**: In multi-account mode, CodeBuild copies CSV/HTML files from each account's SAM assessment bucket into the central infrastructure bucket. Search CodeBuild logs for `Copying files from`, `Failed to list bucket contents`, or `No files to copy`
+5. **Permissions**: Check CloudWatch Logs for Lambda execution errors and CodeBuild logs for S3 sync errors
+
+### 11. Confused by Multiple CloudFormation Stacks
+
+**Symptoms:** You see multiple stacks and aren't sure which one has your results.
+
+**Explanation:** The deployment creates an infrastructure stack and one or more SAM assessment stacks. The infrastructure stack is the user-facing stack for report access.
+
+| Stack Type | How to Identify | What to Do |
+|------------|-----------------|------------|
+| **Infrastructure Stack** (yours) | The name you chose (for example, `aiml-security-single-account`) | Use this — go to Outputs tab, copy `AssessmentBucket` |
+| **Assessment Stack** (auto-generated) | `aiml-sec-{account_id}` (single), `aiml-security-{account_id}` (multi), or `aiml-security-mgmt` | Internal execution stack. Its `AssessmentBucketName` output is useful for debugging raw per-account reports and retained buckets |
+
+**Quick Check**: If a stack name starts with `aiml-sec-` or `aiml-security-` followed by numbers (or `aiml-security-mgmt`), it's auto-generated. Look for the name you chose during deployment.
+
+### 12. Upgrading an Existing Deployment to Multi-Region
+
+**Symptoms:** You have an existing single-region deployment and want to enable multi-region scanning.
+
+**Solution:** Update your existing CloudFormation stack — no teardown required.
+
+1. Navigate to **AWS CloudFormation** > **Stacks**
+2. Select your infrastructure stack (for example, `aiml-security-single-account` or `aiml-security-multi-account`)
+3. Click **Update** > **Use current template**
+4. Set the `TargetRegions` parameter (for example, `us-east-1,us-west-2,eu-west-1`, `us-east-1 us-west-2 eu-west-1`, or `all`)
+5. Click through to **Submit**
+6. The next assessment run will scan the specified regions in parallel
+
+**What happens during the upgrade:**
+- CloudFormation updates the `TARGET_REGIONS` environment variable on the CodeBuild project in the infrastructure stack
+- On the next CodeBuild run, SAM deploy updates the assessment stack and passes the new `TargetRegions` value into the assessment Lambdas and state machine
+- The Step Functions `Resolve Target Regions` state resolves the region list, then the Map state scans those regions in parallel
+- No data is lost — the S3 bucket retains all previous reports
+- Fully backward compatible — leaving `TargetRegions` empty preserves single-region behavior
 
 ---
 
@@ -133,12 +217,12 @@ The trust policy should allow the central CodeBuild role:
 {
   "Effect": "Allow",
   "Principal": {
-    "AWS": "arn:aws:iam::<management-account-id>:root"
+    "AWS": "arn:aws:iam::<central-assessment-account-id>:root"
   },
   "Action": "sts:AssumeRole",
   "Condition": {
     "ArnEquals": {
-      "aws:PrincipalArn": "arn:aws:iam::<management-account-id>:role/service-role/MultiAccountCodeBuildRole"
+      "aws:PrincipalArn": "arn:aws:iam::<central-assessment-account-id>:role/service-role/MultiAccountCodeBuildRole"
     }
   }
 }
@@ -146,11 +230,15 @@ The trust policy should allow the central CodeBuild role:
 
 ### Check S3 Bucket Permissions
 
-Verify the bucket policy allows cross-account writes for multi-account deployments:
+The central infrastructure bucket is the user-facing report bucket. In multi-account mode, member accounts do not write directly to this bucket. CodeBuild assumes into each account, copies report files from that account's SAM assessment bucket, then uploads them to the central infrastructure bucket.
+
+Verify the central bucket policy and CodeBuild S3 permissions if report upload fails:
 
 ```bash
-aws s3api get-bucket-policy --bucket <assessment-bucket-name>
+aws s3api get-bucket-policy --bucket <infrastructure-assessment-bucket-name>
 ```
+
+If per-account reports are missing, also check the SAM assessment stack's `AssessmentBucketName` output for that account and confirm the files were created there.
 
 ### Monitor AWS Step Functions Executions
 
@@ -167,7 +255,9 @@ aws s3api get-bucket-policy --bucket <assessment-bucket-name>
 
 **Q: Does this assessment make any changes to my AWS resources?**
 
-A: No. All security checks are **read-only**. The framework only queries your resources to evaluate their configurations. It does not create, modify, or delete any of your AI/ML workloads or data.
+A: The security checks do not modify your AI/ML workloads or data. They query resource configuration and write assessment artifacts to framework-owned S3 buckets.
+
+The framework itself does create and manage its own deployment resources, including CloudFormation stacks, IAM roles, Lambda functions, Step Functions state machines, CodeBuild projects, S3 buckets, EventBridge rules, and optional SNS notifications. At the start of each assessment run, it also cleans old objects from its own SAM assessment bucket before writing the new report artifacts.
 
 **Q: How long does an assessment take to run?**
 
@@ -190,7 +280,7 @@ You can automate regular assessments using Amazon EventBridge scheduled rules.
 
 **Q: What AWS regions are supported?**
 
-A: The framework supports all standard AWS commercial regions where Amazon Bedrock, Amazon SageMaker AI, or Amazon Bedrock AgentCore are available. AWS GovCloud and AWS China regions may require template modifications.
+A: The framework is designed for standard AWS commercial regions where Amazon Bedrock, Amazon SageMaker AI, or Amazon Bedrock AgentCore are available. Leave `TargetRegions` empty for the deployment region, set it to `all` to resolve the union of assessed-service regions, or provide an explicit comma- or space-separated list. AWS GovCloud and AWS China regions may require template modifications.
 
 **Q: Does this work if I don't have any AI/ML resources deployed yet?**
 
@@ -233,7 +323,7 @@ A: Minimal ongoing costs:
 
 **Q: Can I customize which security checks are included?**
 
-A: Currently, all 52 checks run by default to provide comprehensive coverage. You can filter results in the generated HTML reports by severity, status, or service. Future versions may support selective check execution.
+A: Currently, all 52 core checks run by default to provide comprehensive coverage. If `EnableFinServAssessment` is enabled, the 64 optional Financial Services GenAI risk checks also run. You can filter results in the generated HTML reports by severity, status, service, industry, or region. Future versions may support selective check execution.
 
 **Q: Can I add custom security checks?**
 
@@ -259,8 +349,14 @@ aws events put-rule \
 
 aws events put-targets \
   --rule "WeeklyAIMLAssessment" \
-  --targets "Id"="1","Arn"="arn:aws:codebuild:region:account:project/your-project"
+  --targets '[{
+    "Id": "1",
+    "Arn": "arn:aws:codebuild:<region>:<account-id>:project/<project-name>",
+    "RoleArn": "arn:aws:iam::<account-id>:role/<eventbridge-codebuild-start-role>"
+  }]'
 ```
+
+The target role must trust `events.amazonaws.com` and allow `codebuild:StartBuild` on the assessment CodeBuild project. For new schedules, Amazon EventBridge Scheduler is also a good option.
 
 ---
 
@@ -270,9 +366,10 @@ aws events put-targets \
 
 A: Common causes:
 1. **Wrong bucket**: Verify you're looking at the bucket from the **Infrastructure Stack** outputs (not the assessment stack)
-2. **Still running**: Check AWS CodeBuild console - the assessment may still be in progress (typically takes 5-10 minutes)
-3. **Permissions issue**: Check AWS CloudWatch Logs for AWS Lambda execution errors
-4. **Wrong prefix**: Look under `{account_id}/` prefix for single-account, `consolidated-reports/` for multi-account
+2. **Still running**: Check AWS CodeBuild console. Multi-region, multi-account, or FinServ-enabled assessments can take longer than a single-region run
+3. **Wrong prefix**: Look under `{account_id}/` for per-account reports and `consolidated-reports/` for the multi-account consolidated HTML report
+4. **Post-build copy failed**: Search CodeBuild logs for `Copying files from`, `Failed to list bucket contents`, `No files to copy`, or S3 sync errors
+5. **Permissions issue**: Check AWS CloudWatch Logs for Lambda errors and CodeBuild logs for S3 access errors
 
 **Q: I see "Access Denied" errors in the AWS CodeBuild logs.**
 
@@ -289,8 +386,10 @@ A: Performance factors:
 - **Number of resources**: Accounts with hundreds of Amazon SageMaker notebooks or Amazon Bedrock models take longer
 - **API throttling**: AWS API rate limits may slow down assessments in large environments
 - **Concurrent executions**: Multi-account assessments run in parallel (configurable through the `ConcurrentAccountScans` parameter)
+- **Region scope**: Multi-region scans multiply the amount of service inventory collected
+- **Financial Services checks**: Enabling `EnableFinServAssessment` adds the optional `FS-` checks and can increase run time
 
-If assessments consistently timeout, increase the AWS Lambda timeout in the AWS SAM template or reduce concurrent account scans.
+If assessments consistently timeout, increase `CodeBuildTimeout`, reduce `TargetRegions`, reduce the account batch size with `MultiAccountListOverride`, or lower concurrency if throttling is the bottleneck. Lambda timeout changes require editing the SAM templates.
 
 ---
 
@@ -303,14 +402,14 @@ A: All assessment data remains **entirely within your AWS account**:
 - Logs in **your Amazon CloudWatch Logs** (configurable retention)
 - No data is sent to external services or third parties
 
-**Q: What IAM permissions does the assessment role need?**
+**Q: What IAM permissions does the framework need?**
 
-A: The framework uses **read-only permissions** only:
-- AI/ML services: `List*`, `Describe*`, `Get*` actions
-- AWS IAM: Read permissions for policy analysis
-- Supporting services: AWS CloudTrail, Amazon GuardDuty, Amazon VPC (read-only)
+A: The framework uses multiple roles, and only the Lambda runtime roles are close to read-only:
+- **CodeBuild orchestration roles** (`CodeBuildRole`, `MultiAccountCodeBuildRole`) need deployment permissions to build SAM, create or update stacks, and start Step Functions executions.
+- **`AIMLSecurityMemberRole`** in the target account is also not read-only in the multi-account flow, because it must allow the central CodeBuild project to deploy or update the per-account SAM stack before the assessment runs.
+- **Assessment Lambda execution roles** are primarily read-oriented. They use AI/ML service `List*`, `Describe*`, and `Get*` APIs plus supporting read APIs, and S3 access to read the IAM cache and write reports.
 
-See the main [README](../README.md#permissions-required) for the complete permission list.
+See [README - Permissions Required](../README.md#permissions-required) for the role breakdown and the template files that define each policy.
 
 **Q: Is this assessment sufficient for compliance requirements (SOC 2, HIPAA, and similar)?**
 

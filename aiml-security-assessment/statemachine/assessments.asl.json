@@ -1,325 +1,390 @@
 {
-  "Comment": "A state machine that performs AI/ML security assessments.",
-  "StartAt": "Cleanup S3 Bucket",
-  "States": {
-    "Cleanup S3 Bucket": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
-        "FunctionName": "${CleanupBucketFunction}",
-        "Payload": {
-          "Execution.$": "$$.Execution",
-          "StateMachine.$": "$$.StateMachine"
-        }
-      },
-      "Retry": [
-        {
-          "ErrorEquals": [
-            "Lambda.ServiceException",
-            "Lambda.AWSLambdaException",
-            "Lambda.SdkClientException",
-            "Lambda.TooManyRequestsException"
-          ],
-          "IntervalSeconds": 1,
-          "MaxAttempts": 3,
-          "BackoffRate": 2,
-          "JitterStrategy": "FULL"
-        }
-      ],
-      "ResultPath": null,
-      "Next": "IAM Permission Caching"
-    },
-    "IAM Permission Caching": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
-        "FunctionName": "${IAMPermissionCachingFunction}",
-        "Payload": {
-          "Execution.$": "$$.Execution",
-          "StateMachine.$": "$$.StateMachine"
-        }
-      },
-      "Retry": [
-        {
-          "ErrorEquals": [
-            "Lambda.ServiceException",
-            "Lambda.AWSLambdaException",
-            "Lambda.SdkClientException",
-            "Lambda.TooManyRequestsException"
-          ],
-          "IntervalSeconds": 1,
-          "MaxAttempts": 3,
-          "BackoffRate": 2,
-          "JitterStrategy": "FULL"
-        }
-      ],
-      "ResultPath": null,
-      "Next": "Run Security Assessments"
-    },
-    "Run Security Assessments": {
-      "Type": "Parallel",
-      "Branches": [
-        {
-          "StartAt": "Bedrock Security Assessment",
-          "States": {
-            "Bedrock Security Assessment": {
-              "Type": "Task",
-              "Resource": "arn:aws:states:::lambda:invoke",
-              "Parameters": {
-                "FunctionName": "${BedrockSecurityAssessmentFunction}",
+    "Comment": "A state machine that performs AI/ML security assessments across multiple regions.",
+    "StartAt": "Cleanup S3 Bucket",
+    "States": {
+        "Cleanup S3 Bucket": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": "${CleanupBucketFunction}",
                 "Payload": {
-                  "Execution.$": "$$.Execution",
-                  "StateMachine.$": "$$.StateMachine"
+                    "Execution.$": "$$.Execution",
+                    "StateMachine.$": "$$.StateMachine"
                 }
-              },
-              "Retry": [
-                {
-                  "ErrorEquals": [
-                    "Lambda.ServiceException",
-                    "Lambda.AWSLambdaException",
-                    "Lambda.SdkClientException",
-                    "Lambda.TooManyRequestsException"
-                  ],
-                  "IntervalSeconds": 1,
-                  "MaxAttempts": 3,
-                  "BackoffRate": 2,
-                  "JitterStrategy": "FULL"
-                }
-              ],
-              "Catch": [
-                {
-                  "ErrorEquals": [
-                    "States.ALL"
-                  ],
-                  "ResultPath": "$.assessmentError",
-                  "Next": "Bedrock Assessment Incomplete"
-                }
-              ],
-              "End": true
             },
-            "Bedrock Assessment Incomplete": {
-              "Type": "Pass",
-              "Result": {
-                "statusCode": 207,
-                "incomplete": true,
-                "body": {
-                  "findings": []
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2,
+                    "JitterStrategy": "FULL"
                 }
-              },
-              "End": true
-            }
-          }
+            ],
+            "ResultPath": null,
+            "Next": "IAM Permission Caching"
         },
-        {
-          "StartAt": "Sagemaker Security Assessment",
-          "States": {
-            "Sagemaker Security Assessment": {
-              "Type": "Task",
-              "Resource": "arn:aws:states:::lambda:invoke",
-              "Parameters": {
-                "FunctionName": "${SagemakerSecurityAssessmentFunction}",
+        "IAM Permission Caching": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": "${IAMPermissionCachingFunction}",
                 "Payload": {
-                  "Execution.$": "$$.Execution",
-                  "StateMachine.$": "$$.StateMachine"
+                    "Execution.$": "$$.Execution",
+                    "StateMachine.$": "$$.StateMachine"
                 }
-              },
-              "Retry": [
-                {
-                  "ErrorEquals": [
-                    "Lambda.ServiceException",
-                    "Lambda.AWSLambdaException",
-                    "Lambda.SdkClientException",
-                    "Lambda.TooManyRequestsException"
-                  ],
-                  "IntervalSeconds": 1,
-                  "MaxAttempts": 3,
-                  "BackoffRate": 2,
-                  "JitterStrategy": "FULL"
-                }
-              ],
-              "Catch": [
-                {
-                  "ErrorEquals": [
-                    "States.ALL"
-                  ],
-                  "ResultPath": "$.assessmentError",
-                  "Next": "Sagemaker Assessment Incomplete"
-                }
-              ],
-              "End": true
             },
-            "Sagemaker Assessment Incomplete": {
-              "Type": "Pass",
-              "Result": {
-                "statusCode": 207,
-                "incomplete": true,
-                "body": {
-                  "findings": []
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2,
+                    "JitterStrategy": "FULL"
                 }
-              },
-              "End": true
-            }
-          }
+            ],
+            "ResultPath": null,
+            "Next": "Resolve Target Regions"
         },
-        {
-          "StartAt": "AgentCore Security Assessment",
-          "States": {
-            "AgentCore Security Assessment": {
-              "Type": "Task",
-              "Resource": "arn:aws:states:::lambda:invoke",
-              "Parameters": {
-                "FunctionName": "${AgentCoreSecurityAssessmentFunction}",
+        "Resolve Target Regions": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": "${ResolveRegionsFunction}",
                 "Payload": {
-                  "Execution.$": "$$.Execution",
-                  "StateMachine.$": "$$.StateMachine"
+                    "Execution.$": "$$.Execution",
+                    "StateMachine.$": "$$.StateMachine"
                 }
-              },
-              "Retry": [
-                {
-                  "ErrorEquals": [
-                    "Lambda.ServiceException",
-                    "Lambda.AWSLambdaException",
-                    "Lambda.SdkClientException",
-                    "Lambda.TooManyRequestsException"
-                  ],
-                  "IntervalSeconds": 1,
-                  "MaxAttempts": 3,
-                  "BackoffRate": 2,
-                  "JitterStrategy": "FULL"
-                }
-              ],
-              "Catch": [
-                {
-                  "ErrorEquals": [
-                    "States.ALL"
-                  ],
-                  "ResultPath": "$.assessmentError",
-                  "Next": "AgentCore Assessment Incomplete"
-                }
-              ],
-              "End": true
             },
-            "AgentCore Assessment Incomplete": {
-              "Type": "Pass",
-              "Result": {
-                "statusCode": 207,
-                "incomplete": true,
-                "body": {
-                  "findings": []
-                }
-              },
-              "End": true
-            }
-          }
-        },
-        {
-          "StartAt": "FinServ Enabled?",
-          "States": {
-            "FinServ Enabled?": {
-              "Type": "Choice",
-              "Choices": [
+            "Retry": [
                 {
-                  "And": [
-                    {
-                      "Variable": "$.enableFinServ",
-                      "IsPresent": true
-                    },
-                    {
-                      "Variable": "$.enableFinServ",
-                      "StringEquals": "true"
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2,
+                    "JitterStrategy": "FULL"
+                }
+            ],
+            "ResultPath": "$.ResolvedRegions",
+            "ResultSelector": {
+                "regions.$": "$.Payload.regions"
+            },
+            "Next": "Scan Regions"
+        },
+        "Scan Regions": {
+            "Type": "Map",
+            "ItemsPath": "$.ResolvedRegions.regions",
+            "ItemSelector": {
+                "Region.$": "$$.Map.Item.Value",
+                "RegionIndex.$": "$$.Map.Item.Index",
+                "Execution.$": "$$.Execution",
+                "StateMachine.$": "$$.StateMachine",
+                "OriginalInput.$": "$"
+            },
+            "MaxConcurrency": ${MaxRegionConcurrency},
+            "ItemProcessor": {
+                "ProcessorConfig": {
+                    "Mode": "INLINE"
+                },
+                "StartAt": "Run Security Assessments",
+                "States": {
+                    "Run Security Assessments": {
+                        "Type": "Parallel",
+                        "Branches": [
+                            {
+                                "StartAt": "Bedrock Security Assessment",
+                                "States": {
+                                    "Bedrock Security Assessment": {
+                                        "Type": "Task",
+                                        "Resource": "arn:aws:states:::lambda:invoke",
+                                        "Parameters": {
+                                            "FunctionName": "${BedrockSecurityAssessmentFunction}",
+                                            "Payload": {
+                                                "Execution.$": "$.Execution",
+                                                "StateMachine.$": "$.StateMachine",
+                                                "Region.$": "$.Region",
+                                                "RegionIndex.$": "$.RegionIndex"
+                                            }
+                                        },
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "Lambda.ServiceException",
+                                                    "Lambda.AWSLambdaException",
+                                                    "Lambda.SdkClientException",
+                                                    "Lambda.TooManyRequestsException"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 3,
+                                                "BackoffRate": 2,
+                                                "JitterStrategy": "FULL"
+                                            }
+                                        ],
+                                        "Catch": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "ResultPath": "$.assessmentError",
+                                                "Next": "Bedrock Assessment Incomplete"
+                                            }
+                                        ],
+                                        "End": true
+                                    },
+                                    "Bedrock Assessment Incomplete": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 207,
+                                            "incomplete": true,
+                                            "body": {
+                                                "findings": []
+                                            }
+                                        },
+                                        "End": true
+                                    }
+                                }
+                            },
+                            {
+                                "StartAt": "Sagemaker Security Assessment",
+                                "States": {
+                                    "Sagemaker Security Assessment": {
+                                        "Type": "Task",
+                                        "Resource": "arn:aws:states:::lambda:invoke",
+                                        "Parameters": {
+                                            "FunctionName": "${SagemakerSecurityAssessmentFunction}",
+                                            "Payload": {
+                                                "Execution.$": "$.Execution",
+                                                "StateMachine.$": "$.StateMachine",
+                                                "Region.$": "$.Region",
+                                                "RegionIndex.$": "$.RegionIndex"
+                                            }
+                                        },
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "Lambda.ServiceException",
+                                                    "Lambda.AWSLambdaException",
+                                                    "Lambda.SdkClientException",
+                                                    "Lambda.TooManyRequestsException"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 3,
+                                                "BackoffRate": 2,
+                                                "JitterStrategy": "FULL"
+                                            }
+                                        ],
+                                        "Catch": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "ResultPath": "$.assessmentError",
+                                                "Next": "Sagemaker Assessment Incomplete"
+                                            }
+                                        ],
+                                        "End": true
+                                    },
+                                    "Sagemaker Assessment Incomplete": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 207,
+                                            "incomplete": true,
+                                            "body": {
+                                                "findings": []
+                                            }
+                                        },
+                                        "End": true
+                                    }
+                                }
+                            },
+                            {
+                                "StartAt": "AgentCore Security Assessment",
+                                "States": {
+                                    "AgentCore Security Assessment": {
+                                        "Type": "Task",
+                                        "Resource": "arn:aws:states:::lambda:invoke",
+                                        "Parameters": {
+                                            "FunctionName": "${AgentCoreSecurityAssessmentFunction}",
+                                            "Payload": {
+                                                "Execution.$": "$.Execution",
+                                                "StateMachine.$": "$.StateMachine",
+                                                "Region.$": "$.Region",
+                                                "RegionIndex.$": "$.RegionIndex"
+                                            }
+                                        },
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "Lambda.ServiceException",
+                                                    "Lambda.AWSLambdaException",
+                                                    "Lambda.SdkClientException",
+                                                    "Lambda.TooManyRequestsException"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 3,
+                                                "BackoffRate": 2,
+                                                "JitterStrategy": "FULL"
+                                            }
+                                        ],
+                                        "Catch": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "ResultPath": "$.assessmentError",
+                                                "Next": "AgentCore Assessment Incomplete"
+                                            }
+                                        ],
+                                        "End": true
+                                    },
+                                    "AgentCore Assessment Incomplete": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 207,
+                                            "incomplete": true,
+                                            "body": {
+                                                "findings": []
+                                            }
+                                        },
+                                        "End": true
+                                    }
+                                }
+                            },
+                            {
+                                "StartAt": "FinServ Enabled?",
+                                "States": {
+                                    "FinServ Enabled?": {
+                                        "Type": "Choice",
+                                        "Choices": [
+                                            {
+                                                "And": [
+                                                    {
+                                                        "Variable": "$.OriginalInput.enableFinServ",
+                                                        "IsPresent": true
+                                                    },
+                                                    {
+                                                        "Variable": "$.OriginalInput.enableFinServ",
+                                                        "StringEquals": "true"
+                                                    },
+                                                    {
+                                                        "Variable": "$.RegionIndex",
+                                                        "NumericEquals": 0
+                                                    }
+                                                ],
+                                                "Next": "FinServ Security Assessment"
+                                            }
+                                        ],
+                                        "Default": "FinServ Assessment Skipped"
+                                    },
+                                    "FinServ Security Assessment": {
+                                        "Type": "Task",
+                                        "Resource": "arn:aws:states:::lambda:invoke",
+                                        "Parameters": {
+                                            "FunctionName": "${FinServSecurityAssessmentFunction}",
+                                            "Payload": {
+                                                "Execution.$": "$.Execution",
+                                                "StateMachine.$": "$.StateMachine",
+                                                "Region.$": "$.Region",
+                                                "RegionIndex.$": "$.RegionIndex",
+                                                "TargetRegions.$": "$.OriginalInput.ResolvedRegions.regions"
+                                            }
+                                        },
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "Lambda.ServiceException",
+                                                    "Lambda.AWSLambdaException",
+                                                    "Lambda.SdkClientException",
+                                                    "Lambda.TooManyRequestsException"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 3,
+                                                "BackoffRate": 2,
+                                                "JitterStrategy": "FULL"
+                                            }
+                                        ],
+                                        "Catch": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "ResultPath": "$.finservError",
+                                                "Next": "FinServ Assessment Incomplete"
+                                            }
+                                        ],
+                                        "End": true
+                                    },
+                                    "FinServ Assessment Incomplete": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 207,
+                                            "incomplete": true,
+                                            "body": {
+                                                "findings": []
+                                            }
+                                        },
+                                        "End": true
+                                    },
+                                    "FinServ Assessment Skipped": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 200,
+                                            "skipped": true,
+                                            "body": {
+                                                "findings": []
+                                            }
+                                        },
+                                        "End": true
+                                    }
+                                }
+                            }
+                        ],
+                        "End": true
                     }
-                  ],
-                  "Next": "FinServ Security Assessment"
                 }
-              ],
-              "Default": "FinServ Assessment Skipped"
             },
-            "FinServ Security Assessment": {
-              "Type": "Task",
-              "Resource": "arn:aws:states:::lambda:invoke",
-              "Parameters": {
-                "FunctionName": "${FinServSecurityAssessmentFunction}",
+            "ResultPath": null,
+            "Next": "Generate Consolidated Report"
+        },
+        "Generate Consolidated Report": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+                "FunctionName": "${GenerateConsolidatedReportFunction}",
                 "Payload": {
-                  "Execution.$": "$$.Execution",
-                  "StateMachine.$": "$$.StateMachine"
+                    "Execution.$": "$$.Execution"
                 }
-              },
-              "Retry": [
-                {
-                  "ErrorEquals": [
-                    "Lambda.ServiceException",
-                    "Lambda.AWSLambdaException",
-                    "Lambda.SdkClientException",
-                    "Lambda.TooManyRequestsException"
-                  ],
-                  "IntervalSeconds": 1,
-                  "MaxAttempts": 3,
-                  "BackoffRate": 2,
-                  "JitterStrategy": "FULL"
-                }
-              ],
-              "Catch": [
-                {
-                  "ErrorEquals": [
-                    "States.ALL"
-                  ],
-                  "ResultPath": "$.finservError",
-                  "Next": "FinServ Assessment Incomplete"
-                }
-              ],
-              "End": true
             },
-            "FinServ Assessment Incomplete": {
-              "Type": "Pass",
-              "Result": {
-                "statusCode": 207,
-                "incomplete": true,
-                "body": {
-                  "findings": []
+            "Retry": [
+                {
+                    "ErrorEquals": [
+                        "Lambda.ServiceException",
+                        "Lambda.AWSLambdaException",
+                        "Lambda.SdkClientException",
+                        "Lambda.TooManyRequestsException"
+                    ],
+                    "IntervalSeconds": 1,
+                    "MaxAttempts": 3,
+                    "BackoffRate": 2,
+                    "JitterStrategy": "FULL"
                 }
-              },
-              "End": true
-            },
-            "FinServ Assessment Skipped": {
-              "Type": "Pass",
-              "Result": {
-                "statusCode": 200,
-                "skipped": true,
-                "body": {
-                  "findings": []
-                }
-              },
-              "End": true
-            }
-          }
+            ],
+            "End": true
         }
-      ],
-      "Next": "Generate Consolidated Report"
-    },
-    "Generate Consolidated Report": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
-        "FunctionName": "${GenerateConsolidatedReportFunction}",
-        "Payload": {
-          "Execution.$": "$$.Execution"
-        }
-      },
-      "Retry": [
-        {
-          "ErrorEquals": [
-            "Lambda.ServiceException",
-            "Lambda.AWSLambdaException",
-            "Lambda.SdkClientException",
-            "Lambda.TooManyRequestsException"
-          ],
-          "IntervalSeconds": 1,
-          "MaxAttempts": 3,
-          "BackoffRate": 2,
-          "JitterStrategy": "FULL"
-        }
-      ],
-      "End": true
     }
-  }
 }

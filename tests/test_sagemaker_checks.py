@@ -13,6 +13,7 @@ import sys
 import os
 import importlib.util
 from unittest.mock import patch, MagicMock
+from botocore.exceptions import EndpointConnectionError, ClientError
 
 from tests.test_helpers import extract_csv_data, assert_finding_schema
 
@@ -159,6 +160,69 @@ class TestSM02IAMPermissions:
     def test_sm02_schema_valid(self, empty_permission_cache):
         check = sagemaker_app.check_sagemaker_iam_permissions
         result = check(empty_permission_cache)
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+    def test_sm02_iam_check_does_not_query_domains(
+        self, permission_cache_sagemaker_full_access
+    ):
+        # The IAM-global SM-02 check must NOT call regional SageMaker domain APIs;
+        # domain/SSO inspection lives in check_sagemaker_sso_configuration so it is
+        # not duplicated per region. Only IAM findings should be produced here.
+        check = sagemaker_app.check_sagemaker_iam_permissions
+        result = check(permission_cache_sagemaker_full_access, region="Global")
+        findings = extract_csv_data(result)
+        # No SSO finding should be emitted from the IAM-global check
+        assert all("SSO" not in f["Finding"] for f in findings)
+
+
+# ===================================================================
+# SM-02b: check_sagemaker_sso_configuration (regional)
+# ===================================================================
+class TestSM02SSOConfiguration:
+    """SM-02: Regional SageMaker domain SSO configuration check."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sso_no_domains_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_sso_configuration
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [{"Domains": []}]
+        mock_sm.get_paginator.return_value = mock_paginator
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-02"
+        assert findings[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sso_non_sso_domain_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_sso_configuration
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [{"Domains": [{"DomainId": "d-123"}]}]
+        mock_sm.get_paginator.return_value = mock_paginator
+        mock_sm.describe_domain.return_value = {
+            "DomainName": "test-domain",
+            "AuthMode": "IAM",
+        }
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert "SSO" in findings[0]["Finding"]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sso_schema_valid(self, mock_client):
+        check = sagemaker_app.check_sagemaker_sso_configuration
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [{"Domains": []}]
+        mock_sm.get_paginator.return_value = mock_paginator
+        result = check(region="us-east-1")
         for f in extract_csv_data(result):
             assert_finding_schema(f)
 
@@ -1324,3 +1388,155 @@ class TestSM25LineageTracking:
         result = check()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
+
+
+# ===================================================================
+# lambda_handler: multi-region gating and availability probe
+# ===================================================================
+def _make_client_error(code, message="error"):
+    return ClientError({"Error": {"Code": code, "Message": message}}, "operation")
+
+
+def _sagemaker_event(region="us-east-1", region_index=0):
+    return {
+        "Region": region,
+        "RegionIndex": region_index,
+        "Execution": {"Name": "test-execution-1"},
+        "StateMachine": {"Name": "test-sm"},
+    }
+
+
+class TestSageMakerHandlerMultiRegion:
+    """lambda_handler primary-region gating (SM-02) + availability probe (SM-00)."""
+
+    def _run_handler_unavailable(self, mock_client, event):
+        """Drive the handler down the 'SageMaker unavailable' early-return path.
+        The availability probe raises EndpointConnectionError so no regional
+        checks run; only global IAM checks (if primary) plus SM-00 are emitted."""
+        captured = {}
+
+        def fake_csv(findings):
+            captured["findings"] = findings
+            return "csv"
+
+        test_client = MagicMock()
+        test_client.list_notebook_instances.side_effect = EndpointConnectionError(
+            endpoint_url="https://sagemaker.invalid"
+        )
+        mock_client.return_value = test_client
+
+        with (
+            patch.object(
+                sagemaker_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(sagemaker_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(sagemaker_app, "write_to_s3", return_value="s3://b/r.csv"),
+        ):
+            resp = sagemaker_app.lambda_handler(event, None)
+
+        return resp, captured.get("findings", [])
+
+    @patch("sagemaker_app.boto3.client")
+    def test_primary_region_emits_global_iam_check_tagged_global(self, mock_client):
+        # On the primary region, the IAM-global SM-02 check must be emitted and
+        # tagged "Global", even when SageMaker is unavailable in the region.
+        resp, findings = self._run_handler_unavailable(
+            mock_client, _sagemaker_event(region="ap-south-2", region_index=0)
+        )
+        assert resp["statusCode"] == 200
+
+        rows = [r for f in findings for r in f.get("csv_data", [])]
+        sm02 = [r for r in rows if r["Check_ID"] == "SM-02"]
+        assert sm02, "SM-02 IAM-global finding should be present on primary region"
+        for r in sm02:
+            assert r["Region"] == "Global"
+        # The availability finding is tagged with the scanned region.
+        sm00 = [r for r in rows if r["Check_ID"] == "SM-00"]
+        assert sm00 and sm00[0]["Region"] == "ap-south-2"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_non_primary_region_skips_global_iam_check(self, mock_client):
+        # On a non-primary region the IAM-global SM-02 check must NOT run.
+        resp, findings = self._run_handler_unavailable(
+            mock_client, _sagemaker_event(region="eu-west-1", region_index=2)
+        )
+        assert resp["statusCode"] == 200
+
+        rows = [r for f in findings for r in f.get("csv_data", [])]
+        check_ids = {r["Check_ID"] for r in rows}
+        assert "SM-02" not in check_ids
+        assert check_ids == {"SM-00"}
+
+    @patch("sagemaker_app.boto3.client")
+    def test_optin_region_error_treated_as_unavailable(self, mock_client):
+        # A region-not-enabled error code is treated like an endpoint failure:
+        # emit a single SM-00 N/A finding (no regional checks).
+        captured = {}
+
+        def fake_csv(findings):
+            captured["findings"] = findings
+            return "csv"
+
+        test_client = MagicMock()
+        test_client.list_notebook_instances.side_effect = _make_client_error(
+            "OptInRequired"
+        )
+        mock_client.return_value = test_client
+
+        with (
+            patch.object(
+                sagemaker_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(sagemaker_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(sagemaker_app, "write_to_s3", return_value="s3://b/r.csv"),
+        ):
+            resp = sagemaker_app.lambda_handler(
+                _sagemaker_event(region="ap-east-1", region_index=1), None
+            )
+
+        assert resp["statusCode"] == 200
+        rows = [r for f in captured["findings"] for r in f.get("csv_data", [])]
+        sm00 = [r for r in rows if r["Check_ID"] == "SM-00"]
+        assert sm00 and sm00[0]["Status"] == "N/A"
+        assert "ap-east-1" in sm00[0]["Finding_Details"]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_access_denied_probe_proceeds_with_checks(self, mock_client):
+        # AccessDenied is NOT in REGION_UNAVAILABLE_ERROR_CODES: the service is
+        # reachable, so the handler must proceed and run regional checks rather
+        # than short-circuiting with SM-00.
+        captured = {}
+
+        def fake_csv(findings):
+            captured["findings"] = findings
+            return "csv"
+
+        test_client = MagicMock()
+        test_client.list_notebook_instances.side_effect = _make_client_error(
+            "AccessDeniedException"
+        )
+        mock_client.return_value = test_client
+
+        with (
+            patch.object(
+                sagemaker_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(sagemaker_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(sagemaker_app, "write_to_s3", return_value="s3://b/r.csv"),
+        ):
+            resp = sagemaker_app.lambda_handler(
+                _sagemaker_event(region="us-east-1", region_index=0), None
+            )
+
+        assert resp["statusCode"] == 200
+        rows = [r for f in captured["findings"] for r in f.get("csv_data", [])]
+        check_ids = {r["Check_ID"] for r in rows}
+        # Reachable => no SM-00, and many regional checks ran.
+        assert "SM-00" not in check_ids
+        assert len(check_ids) > 3

@@ -98,9 +98,22 @@ class TestCreateFindingValid:
             "Reference",
             "Severity",
             "Status",
+            "Region",
             "Compliance_Frameworks",
         }
         assert set(result.keys()) == expected_keys
+
+    def test_region_defaults_to_empty_string(self):
+        result = create_finding(
+            check_id="FS-42",
+            finding_name="Name",
+            finding_details="Details",
+            resolution="Resolution",
+            reference="https://example.com",
+            severity="High",
+            status="Failed",
+        )
+        assert result["Region"] == ""
 
     @pytest.mark.parametrize(
         "check_id",

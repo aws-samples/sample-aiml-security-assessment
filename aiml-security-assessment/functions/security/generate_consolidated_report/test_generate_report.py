@@ -171,6 +171,8 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertIn("sidebar", content)
             self.assertIn("service-icon", content)
             self.assertIn("theme-toggle", content)
+            self.assertIn("Assessment Area", content)
+            self.assertIn("All Assessment Areas", content)
 
             # Verify new features from consolidation
             self.assertIn("Methodology", content)
@@ -214,16 +216,29 @@ class TestHtmlReportGeneration(unittest.TestCase):
                 "status": "Passed",
                 "_service": "agentcore",
             },
+            {
+                "account_id": "444455556666",
+                "check_id": "FS-01",
+                "finding": "FinServ Regional Scope Not Applicable",
+                "details": "No regional AI/ML resources found.",
+                "resolution": "No action required.",
+                "reference": "https://example.com",
+                "severity": "Informational",
+                "status": "N/A",
+                "_service": "finserv",
+            },
         ]
         service_findings = {
             "bedrock": [all_findings[0]],
             "sagemaker": [all_findings[1]],
             "agentcore": [all_findings[2]],
+            "finserv": [all_findings[3]],
         }
         service_stats = {
             "bedrock": {"passed": 0, "failed": 1},
             "sagemaker": {"passed": 0, "failed": 1},
             "agentcore": {"passed": 1, "failed": 0},
+            "finserv": {"passed": 0, "failed": 0, "na": 1},
         }
 
         html_content = generate_report_direct(
@@ -250,6 +265,14 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertIn("accountFilter", content)
             self.assertIn("111122223333", content)
             self.assertIn("444455556666", content)
+            self.assertIn("<h3>By Industry</h3>", content)
+            self.assertIn('class="nav-section industry-nav"', content)
+            self.assertIn("Financial Services Risk", content)
+            self.assertIn('class="scope-industry"', content)
+            by_service_nav = content.split("<h3>By Service</h3>", 1)[1].split(
+                "<h3>By Industry</h3>", 1
+            )[0]
+            self.assertNotIn("Financial Services", by_service_nav)
 
     def test_missing_data_fields(self):
         """Test handling of assessment results with missing fields"""
@@ -308,6 +331,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
                     "Reference": "https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html",
                     "Severity": "Medium",
                     "Status": "Failed",
+                    "Region": "region-a",
                 },
                 {
                     "Account_ID": "123456789012",
@@ -318,6 +342,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
                     "Reference": "https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html",
                     "Severity": "High",
                     "Status": "Passed",
+                    "Region": "region-b",
                 },
             ]
         }
@@ -327,12 +352,47 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertIn('<option value="finserv">', html)
         self.assertIn("FS-01", html)
         self.assertIn('data-service="finserv"', html)
+        self.assertIn('id="finservRegionFilter"', html)
+        self.assertIn('<option value="region-a">region-a</option>', html)
+        self.assertIn('<option value="region-b">region-b</option>', html)
+        self.assertIn('data-scope-service="finserv"', html)
+        self.assertIn('class="scope-industry"', html)
+        self.assertIn('class="scope-chip industry-chip"', html)
+        self.assertIn('class="nav-section industry-nav"', html)
+        self.assertIn("Financial Services Risk", html)
+        self.assertIn("Assessment Area", html)
+        self.assertIn("All Assessment Areas", html)
+        self.assertIn(
+            "wellarchitected/latest/generative-ai-lens/generative-ai-lens.html", html
+        )
+        self.assertIn(
+            "introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption",
+            html,
+        )
+        self.assertNotIn("global-FinServ-ComplianceGuide-GenAIRisks-public.pdf", html)
+        self.assertIn("<h3>By Industry</h3>", html)
+        by_service_nav = html.split("<h3>By Service</h3>", 1)[1].split(
+            "<h3>By Industry</h3>", 1
+        )[0]
+        self.assertNotIn("Financial Services", by_service_nav)
 
     def test_finserv_omitted_when_absent(self):
         """REQ-1/REQ-7: with no FinServ data the FinServ section is omitted cleanly."""
         html = generate_html_report(self.test_assessment_results)
         self.assertNotIn('id="finserv"', html)
+        self.assertNotIn("<h3>By Industry</h3>", html)
         self.assertNotIn('<option value="finserv">', html)
+        self.assertNotIn('data-scope-service="finserv"', html)
+        self.assertNotIn('class="scope-industry"', html)
+        self.assertNotIn("Financial Services Risk", html)
+        self.assertIn(
+            "wellarchitected/latest/generative-ai-lens/generative-ai-lens.html", html
+        )
+        self.assertNotIn(
+            "introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption",
+            html,
+        )
+        self.assertNotIn("global-FinServ-ComplianceGuide-GenAIRisks-public.pdf", html)
         # Other services still render (regression check).
         self.assertIn('id="bedrock"', html)
 

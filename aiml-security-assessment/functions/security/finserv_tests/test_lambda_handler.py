@@ -274,6 +274,56 @@ class TestInventoryCollectedAndPassed:
             "lambda_handler must never pass None as the inventory argument"
         )
 
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app._apply_region_scope")
+    @patch("finserv_app.build_finserv_checks")
+    @patch("finserv_app.collect_resource_inventory")
+    def test_handler_scopes_findings_with_target_regions_from_event(
+        self,
+        mock_collect,
+        mock_build,
+        mock_apply_scope,
+        mock_cache,
+        mock_s3,
+    ):
+        """lambda_handler uses the state-machine TargetRegions list for report scoping."""
+        mock_collect.return_value = object()
+        mock_build.return_value = [
+            (
+                "FS-01",
+                lambda: {
+                    "check_name": "Scoped Check",
+                    "status": "WARN",
+                    "csv_data": [
+                        {
+                            "Check_ID": "FS-01",
+                            "Finding": "Scoped Finding",
+                            "Finding_Details": "Details",
+                            "Resolution": "Fix",
+                            "Reference": "https://example.com",
+                            "Severity": "High",
+                            "Status": "Failed",
+                        }
+                    ],
+                },
+            )
+        ]
+        mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
+        mock_s3.return_value = "https://bucket.s3.amazonaws.com/report.csv"
+        event = {
+            "Execution": {"Name": "exec-target-regions"},
+            "Region": "fallback-region",
+            "TargetRegions": ["region-a", "region-b"],
+        }
+
+        app.lambda_handler(event, None)
+
+        mock_apply_scope.assert_called_once()
+        findings_arg, regions_arg = mock_apply_scope.call_args.args
+        assert regions_arg == ["region-a", "region-b"]
+        assert findings_arg[0]["check_name"] == "Scoped Check"
+
 
 class TestWriteToS3:
     """Test the write_to_s3 helper."""

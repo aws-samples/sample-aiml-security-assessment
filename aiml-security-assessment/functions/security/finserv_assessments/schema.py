@@ -40,6 +40,9 @@ class Finding(BaseModel):
     Reference: str = Field(..., description="Documentation reference URL")
     Severity: SeverityEnum = Field(..., description="Severity level of the finding")
     Status: StatusEnum = Field(..., description="Current status of the finding")
+    Region: str = Field(
+        default="", description="AWS region where the finding was identified"
+    )
     Compliance_Frameworks: str = Field(
         default="",
         description=(
@@ -76,6 +79,7 @@ def create_finding(
     reference: str,
     severity: SeverityEnum,
     status: StatusEnum,
+    region: str = "",
     compliance_frameworks: Optional[str] = "",
 ) -> Dict[str, Any]:
     """Create a validated finding dict.
@@ -94,6 +98,7 @@ def create_finding(
         Reference=reference,
         Severity=severity,
         Status=status,
+        Region=region,
         Compliance_Frameworks=compliance_frameworks or "",
     )
     return dict(finding.model_dump())

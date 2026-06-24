@@ -18,6 +18,7 @@ def assert_finding_schema(finding):
         "Reference",
         "Severity",
         "Status",
+        "Region",
     }
     assert required_keys.issubset(finding.keys()), (
         f"Missing keys: {required_keys - finding.keys()}"
@@ -25,3 +26,4 @@ def assert_finding_schema(finding):
     assert finding["Severity"] in ("High", "Medium", "Low", "Informational")
     assert finding["Status"] in ("Failed", "Passed", "N/A")
     assert finding["Reference"].startswith("https://")
+    assert isinstance(finding["Region"], str)

@@ -15,7 +15,7 @@ from io import StringIO
 from datetime import datetime, timezone
 from typing import Dict, List, Any
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 from schema import create_finding, SeverityEnum, StatusEnum
 
@@ -26,25 +26,36 @@ logger.setLevel(logging.INFO)
 # Configure boto3 with adaptive retry mode
 boto3_config = Config(retries=dict(max_attempts=10, mode="adaptive"))
 
-# Initialize AWS clients
+# Initialize S3 client (always uses Lambda's region for bucket operations)
 s3_client = boto3.client("s3", config=boto3_config)
-iam_client = boto3.client("iam", config=boto3_config)
-ec2_client = boto3.client("ec2", config=boto3_config)
-ecr_client = boto3.client("ecr", config=boto3_config)
-logs_client = boto3.client("logs", config=boto3_config)
-xray_client = boto3.client("xray", config=boto3_config)
-cloudwatch_client = boto3.client("cloudwatch", config=boto3_config)
 
-# Initialize AgentCore client
-try:
-    agentcore_client = boto3.client("bedrock-agentcore-control", config=boto3_config)
-    logger.info("Successfully initialized bedrock-agentcore-control client")
-except Exception as e:
-    logger.warning(f"Failed to initialize bedrock-agentcore-control client: {e}")
-    agentcore_client = None
+# Regional clients — initialized in lambda_handler with target region
+iam_client = None
+ec2_client = None
+ecr_client = None
+logs_client = None
+xray_client = None
+cloudwatch_client = None
+agentcore_client = None
 
 # Environment variables
 BUCKET_NAME = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
+
+# IAM is a global service. Findings derived purely from the IAM permission cache
+# (e.g. AC-02, AC-03) are identical across regions, so they are produced only on
+# the primary region (Map index 0) and tagged with this region label to avoid
+# duplicate findings when scanning multiple regions.
+GLOBAL_REGION_LABEL = "Global"
+
+# Error codes returned when a region exists but is not enabled/usable for the
+# account (opt-in regions, disabled regions). The availability probe treats
+# these the same as an endpoint connection failure.
+REGION_UNAVAILABLE_ERROR_CODES = {
+    "UnrecognizedClientException",
+    "InvalidClientTokenId",
+    "AuthFailure",
+    "OptInRequired",
+}
 
 # Execution tracking
 start_time = None
@@ -129,6 +140,12 @@ def _agentcore_list_all(
             kwargs["nextToken"] = next_token
 
         response = list_method(**kwargs)
+        if not isinstance(response, dict):
+            logger.warning(
+                f"{list_method_name} returned unexpected response type: "
+                f"{type(response).__name__}"
+            )
+            break
 
         for result_key in result_keys:
             page_items = response.get(result_key)
@@ -137,6 +154,12 @@ def _agentcore_list_all(
                 break
 
         next_token = response.get("nextToken")
+        if next_token is not None and not isinstance(next_token, str):
+            logger.warning(
+                f"{list_method_name} returned non-string nextToken: "
+                f"{type(next_token).__name__}"
+            )
+            break
         if not next_token:
             break
 
@@ -201,6 +224,7 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
                 "Reference",
                 "Severity",
                 "Status",
+                "Region",
             ],
         )
         writer.writeheader()
@@ -217,6 +241,7 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
             "Reference",
             "Severity",
             "Status",
+            "Region",
         ],
     )
     writer.writeheader()
@@ -230,7 +255,9 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
     return csv_content
 
 
-def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
+def write_to_s3(
+    execution_id: str, csv_content: str, bucket_name: str, region: str = ""
+) -> str:
     """
     Upload CSV report to S3.
 
@@ -238,6 +265,7 @@ def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
         execution_id: Unique execution identifier
         csv_content: CSV content to upload
         bucket_name: S3 bucket name
+        region: AWS region identifier for the report filename
 
     Returns:
         S3 URL of uploaded file
@@ -246,7 +274,10 @@ def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
         Exception: If upload fails
     """
     try:
-        key = f"agentcore_security_report_{execution_id}.csv"
+        if region:
+            key = f"agentcore_security_report_{execution_id}_{region}.csv"
+        else:
+            key = f"agentcore_security_report_{execution_id}.csv"
 
         s3_client.put_object(
             Bucket=bucket_name,
@@ -1505,8 +1536,39 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
     """
     findings = []
 
+    if agentcore_client is None:
+        findings.append(
+            create_finding(
+                check_id="AC-08",
+                finding_name="AgentCore VPC Endpoints Check",
+                finding_details="AgentCore client not available in this region",
+                resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
+                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+        return findings
+
     try:
         logger.info("Checking for AgentCore VPC endpoints")
+
+        runtimes_response = agentcore_client.list_agent_runtimes()
+        runtimes = runtimes_response.get("agentRuntimes", [])
+
+        if not runtimes:
+            findings.append(
+                create_finding(
+                    check_id="AC-08",
+                    finding_name="AgentCore VPC Endpoints Check",
+                    finding_details="No AgentCore resources found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            return findings
 
         # Get all VPCs
         vpcs_response = ec2_client.describe_vpcs()
@@ -1806,7 +1868,9 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                 gateway_name = gateway.get("name", gateway_id)
 
                 try:
-                    gateway_details = agentcore_client.get_gateway(gatewayId=gateway_id)
+                    gateway_details = agentcore_client.get_gateway(
+                        gatewayIdentifier=gateway_id
+                    )
                     gateway_arn = gateway_details.get("gatewayArn")
 
                     if not gateway_arn:
@@ -2171,7 +2235,9 @@ def check_agentcore_gateway_encryption() -> List[Dict[str, Any]]:
                 gateway_name = gateway.get("name", gateway_id)
 
                 try:
-                    gateway_details = agentcore_client.get_gateway(gatewayId=gateway_id)
+                    gateway_details = agentcore_client.get_gateway(
+                        gatewayIdentifier=gateway_id
+                    )
 
                     # Check for customer-managed KMS key
                     encryption_key_arn = gateway_details.get(
@@ -2388,47 +2454,181 @@ def lambda_handler(event, context):
     Lambda handler for AgentCore security assessment.
 
     Args:
-        event: Lambda event containing execution_id
+        event: Lambda event containing execution_id and Region
         context: Lambda context
 
     Returns:
         Response with status and S3 URL
     """
-    global start_time
+    global start_time, iam_client, ec2_client, ecr_client, logs_client
+    global xray_client, cloudwatch_client, agentcore_client
     start_time = time.time()
 
     try:
-        # Extract execution ID
+        # Extract target region from Step Functions Map state
+        region = event.get("Region", os.environ.get("AWS_REGION", "us-east-1"))
+        # IAM is global: only the primary region (Map index 0) runs IAM-only checks.
+        is_primary_region = int(event.get("RegionIndex", 0)) == 0
+        logger.info(f"Scanning region: {region} (primary={is_primary_region})")
+
         execution_id = event.get("Execution", {}).get("Name", "unknown")
-        logger.info(
-            f"Starting AgentCore security assessment for execution: {execution_id}"
+
+        # Initialize regional clients (iam is global, the rest are region-scoped)
+        iam_client = boto3.client("iam", config=boto3_config)
+        ec2_client = boto3.client("ec2", config=boto3_config, region_name=region)
+        ecr_client = boto3.client("ecr", config=boto3_config, region_name=region)
+        logs_client = boto3.client("logs", config=boto3_config, region_name=region)
+        xray_client = boto3.client("xray", config=boto3_config, region_name=region)
+        cloudwatch_client = boto3.client(
+            "cloudwatch", config=boto3_config, region_name=region
         )
 
-        # Retrieve permission cache
+        # Collect all findings
+        all_findings = []
+
+        # Retrieve permission cache (shared/global IAM data)
         try:
             permission_cache = get_permissions_cache(execution_id)
         except Exception as e:
             logger.warning(f"Failed to retrieve permission cache: {e}")
             permission_cache = {"role_permissions": [], "user_permissions": []}
 
-        # Collect all findings
-        all_findings = []
+        # Run global IAM-only checks once (on the primary region) so the same role
+        # violations are not reported once per scanned region. These run before the
+        # regional availability gate so they are still emitted even if AgentCore is
+        # not available in the primary region.
+        if is_primary_region:
+            global_checks = [
+                (
+                    "IAM Full Access",
+                    lambda: check_agentcore_full_access_roles(permission_cache),
+                ),
+                (
+                    "Stale Access",
+                    lambda: check_stale_agentcore_access(permission_cache),
+                ),
+                # AC-09 inspects a global IAM service-linked role, so it is also
+                # run once on the primary region rather than per scanned region.
+                ("Service-Linked Role", check_agentcore_service_linked_role),
+            ]
+            for check_name, check_func in global_checks:
+                try:
+                    logger.info(f"Running global check: {check_name}")
+                    global_findings = check_func()
+                    for finding in global_findings:
+                        finding["Region"] = GLOBAL_REGION_LABEL
+                    all_findings.extend(global_findings)
+                except Exception as e:
+                    logger.error(f"Error in global check '{check_name}': {e}")
+                    all_findings.append(
+                        create_finding(
+                            check_id="AC-00",
+                            finding_name=f"AgentCore {check_name} Check Error",
+                            finding_details=f"Error during {check_name} check: {str(e)}",
+                            resolution="Investigate error and retry assessment",
+                            reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/",
+                            severity=SeverityEnum.HIGH,
+                            status=StatusEnum.FAILED,
+                            region=GLOBAL_REGION_LABEL,
+                        )
+                    )
 
-        # Execute all assessment checks
+        # Reset per-invocation so a warm container cannot leak a previous
+        # region's client if creation below fails.
+        agentcore_client = None
+        try:
+            agentcore_client = boto3.client(
+                "bedrock-agentcore-control", config=boto3_config, region_name=region
+            )
+        except Exception as e:
+            # The client could not even be constructed (e.g. the SDK in this
+            # runtime does not know the service). This is the one case where the
+            # region genuinely cannot be assessed.
+            logger.warning(
+                f"Failed to initialize bedrock-agentcore-control client: {e}"
+            )
+            agentcore_client = None
+
+        if agentcore_client is not None:
+            # Test service availability with a lightweight call
+            try:
+                agentcore_client.list_agent_runtimes(maxResults=1)
+                logger.info("Successfully initialized bedrock-agentcore-control client")
+            except EndpointConnectionError:
+                logger.info(
+                    f"AgentCore service not available in region {region}, skipping"
+                )
+                agentcore_client = None
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code in REGION_UNAVAILABLE_ERROR_CODES:
+                    logger.info(
+                        f"AgentCore not accessible in region {region} ({error_code}), skipping"
+                    )
+                    agentcore_client = None
+                else:
+                    # Service is reachable but returned another API error (e.g. access
+                    # denied) — proceed; individual checks handle their own errors.
+                    logger.info(
+                        f"AgentCore client initialized (probe returned {error_code})"
+                    )
+            except Exception as e:
+                # An unexpected probe failure (e.g. a boto3/botocore SDK param or
+                # operation mismatch such as ParamValidationError/AttributeError)
+                # says nothing about regional availability. Treating it as "not
+                # available" would silently skip every AgentCore check and emit a
+                # false N/A report, so keep the client and let the individual
+                # checks surface their own errors instead.
+                logger.warning(
+                    f"AgentCore availability probe raised an unexpected error, "
+                    f"proceeding with checks: {e}"
+                )
+
+        # If AgentCore not available, produce an N/A report (plus any global IAM
+        # findings already collected on the primary region) and exit early
+        if agentcore_client is None:
+            all_findings.append(
+                create_finding(
+                    check_id="AC-00",
+                    finding_name="AgentCore Service Availability",
+                    finding_details=f"Amazon Bedrock AgentCore is not available in region {region}. No checks performed.",
+                    resolution="No action required. AgentCore is not deployed in this region.",
+                    reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/",
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                    region=region,
+                )
+            )
+            for finding in all_findings:
+                if not finding.get("Region"):
+                    finding["Region"] = region
+            csv_content = generate_csv_report(all_findings)
+            s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
+            return {
+                "statusCode": 200,
+                "body": json.dumps(
+                    {
+                        "message": f"AgentCore not available in {region}",
+                        "s3_url": s3_url,
+                    }
+                ),
+            }
+
+        logger.info(
+            f"Starting AgentCore security assessment for execution: {execution_id}"
+        )
+
+        # Execute regional assessment checks (IAM-only checks AC-02/AC-03 and the
+        # global service-linked role check AC-09 are run separately, once, on the
+        # primary region above)
         checks = [
             ("VPC Configuration", check_agentcore_vpc_configuration),
-            (
-                "IAM Full Access",
-                lambda: check_agentcore_full_access_roles(permission_cache),
-            ),
-            ("Stale Access", lambda: check_stale_agentcore_access(permission_cache)),
             ("Observability", check_agentcore_observability),
             ("Encryption", check_agentcore_encryption),
             ("Browser Tool Recording", check_browser_tool_recording),
             ("Memory Configuration", check_agentcore_memory_configuration),
             ("Gateway Configuration", check_agentcore_gateway_configuration),
             ("VPC Endpoints", check_agentcore_vpc_endpoints),
-            ("Service-Linked Role", check_agentcore_service_linked_role),
             ("Resource-Based Policies", check_agentcore_resource_based_policies),
             ("Policy Engine Encryption", check_agentcore_policy_engine_encryption),
             ("Gateway Encryption", check_agentcore_gateway_encryption),
@@ -2455,7 +2655,6 @@ def lambda_handler(event, context):
 
             except Exception as e:
                 logger.error(f"Error in check '{check_name}': {e}")
-                # Add error finding
                 all_findings.append(
                     create_finding(
                         check_id="AC-00",
@@ -2465,15 +2664,21 @@ def lambda_handler(event, context):
                         reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/",
                         severity=SeverityEnum.HIGH,
                         status=StatusEnum.FAILED,
+                        region=region,
                     )
                 )
+
+        # Inject region into all findings that don't have it set
+        for finding in all_findings:
+            if not finding.get("Region"):
+                finding["Region"] = region
 
         # Generate CSV report
         logger.info(f"Generating CSV report with {len(all_findings)} total findings")
         csv_content = generate_csv_report(all_findings)
 
         # Upload to S3
-        s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME)
+        s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
 
         # Calculate execution metrics
         total_duration = time.time() - start_time

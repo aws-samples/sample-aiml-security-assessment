@@ -33,6 +33,16 @@ sys.path.insert(
 
 from report_template import generate_html_report
 
+# Sentinel region label used by the per-service assessments to tag IAM-only
+# findings that run once per execution rather than per region. It is not a real
+# AWS region and must be excluded when counting scanned regions.
+GLOBAL_REGION_LABEL = "Global"
+
+
+def build_multi_account_report_key(timestamp: str) -> str:
+    """Build the consolidated multi-account HTML report object key."""
+    return f"consolidated-reports/security_assessment_multi_account_{timestamp}.html"
+
 
 def _account_files_dir():
     """Base directory holding per-account CSV files.
@@ -69,6 +79,7 @@ def consolidate_html_reports():
 
     all_findings = []
     account_ids = set()
+    regions = set()
     service_stats = {
         "bedrock": {"passed": 0, "failed": 0, "na": 0},
         "sagemaker": {"passed": 0, "failed": 0, "na": 0},
@@ -97,6 +108,14 @@ def consolidate_html_reports():
                         reader = csv.DictReader(f)
                         for row in reader:
                             # Map CSV columns to finding structure
+                            region = row.get("Region", "")
+                            # "Global" tags IAM-only findings; not a scanned region.
+                            if (
+                                region
+                                and region != GLOBAL_REGION_LABEL
+                                and "," not in region
+                            ):
+                                regions.add(region)
                             finding = {
                                 "account_id": account_id,
                                 "check_id": row.get("Check_ID", ""),
@@ -106,6 +125,7 @@ def consolidate_html_reports():
                                 "reference": row.get("Reference", ""),
                                 "severity": row.get("Severity", "N/A"),
                                 "status": row.get("Status", ""),
+                                "region": region,
                             }
 
                             # Determine service from Check_ID prefix
@@ -167,10 +187,11 @@ def consolidate_html_reports():
             mode="multi",
             account_ids=list(account_ids),
             timestamp=timestamp_display,
+            regions=sorted(regions) if regions else None,
         )
 
         timestamp_file = datetime.now().strftime("%Y%m%d_%H%M%S")
-        s3_key = f"consolidated-reports/multi_account_report_{timestamp_file}.html"
+        s3_key = build_multi_account_report_key(timestamp_file)
 
         try:
             s3.put_object(

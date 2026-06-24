@@ -1,13 +1,11 @@
-"""Multi-account consolidation: FS-* Check-IDs must categorize to the finserv
-service (not be mislabeled as bedrock). Patches S3 and the renderer to capture
-the service_findings/service_stats passed to the shared template."""
+"""Multi-account consolidation categorizes FS-* checks as finserv."""
 
-import os
 import csv
+import os
 import shutil
 import tempfile
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import consolidate_html_reports as chr
 
@@ -79,9 +77,8 @@ class TestConsolidateFinservCategorization(unittest.TestCase):
         bedrock_ids = {f["check_id"] for f in sf["bedrock"]}
         self.assertIn("FS-01", finserv_ids)
         self.assertIn("FS-44", finserv_ids)
-        self.assertNotIn("FS-01", bedrock_ids)  # the bug was FS-* -> bedrock
+        self.assertNotIn("FS-01", bedrock_ids)
         self.assertIn("BR-01", bedrock_ids)
-        # finserv stats counted
         self.assertEqual(captured["service_stats"]["finserv"]["failed"], 1)
         self.assertEqual(captured["service_stats"]["finserv"]["passed"], 1)
 

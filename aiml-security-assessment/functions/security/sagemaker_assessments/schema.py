@@ -1,11 +1,7 @@
 from enum import Enum
-from typing import Dict, Any
-from pydantic import BaseModel, Field, validator
+from typing import Any, Dict
+from pydantic import BaseModel, Field, field_validator
 import re
-
-
-class Config:
-    strict = True  # Enables strict type checking
 
 
 class SeverityEnum(str, Enum):
@@ -39,8 +35,12 @@ class Finding(BaseModel):
     Reference: str = Field(..., description="Documentation reference URL")
     Severity: SeverityEnum = Field(..., description="Severity level of the finding")
     Status: StatusEnum = Field(..., description="Current status of the finding")
+    Region: str = Field(
+        default="", description="AWS region where the finding was identified"
+    )
 
-    @validator("Check_ID")
+    @field_validator("Check_ID")
+    @classmethod
     def validate_check_id(cls, v):
         """Validate that Check_ID follows the pattern XX-NN (e.g., SM-01, BR-14, AC-05)"""
         pattern = r"^[A-Z]{2,3}-\d{2}$"
@@ -50,21 +50,24 @@ class Finding(BaseModel):
             )
         return v
 
-    @validator("Reference")
+    @field_validator("Reference")
+    @classmethod
     def validate_reference_url(cls, v):
         """Validate that reference URL starts with https://"""
         if not str(v).startswith("https://"):
             raise ValueError("Reference URL must start with https://")
         return v
 
-    @validator("Severity")
+    @field_validator("Severity")
+    @classmethod
     def validate_severity(cls, v):
         """Validate that severity is one of the allowed values"""
         if v not in SeverityEnum.__members__.values():
             raise ValueError("Severity must be one of the allowed values")
         return v
 
-    @validator("Status")
+    @field_validator("Status")
+    @classmethod
     def validate_status(cls, v):
         """Validate that status is one of the allowed values"""
         if v not in StatusEnum.__members__.values():
@@ -80,6 +83,7 @@ def create_finding(
     reference: str,
     severity: SeverityEnum,
     status: StatusEnum,
+    region: str = "",
 ) -> Dict[str, Any]:
     """
     Create a validated finding object
@@ -92,6 +96,7 @@ def create_finding(
         reference: Documentation URL
         severity: Severity level
         status: Current status
+        region: AWS region where the finding was identified
 
     Returns:
         Dict[str, Any]: Validated finding as dictionary
@@ -107,5 +112,6 @@ def create_finding(
         Reference=reference,
         Severity=severity,
         Status=status,
+        Region=region,
     )
     return dict(finding.model_dump())  # Convert to regular dictionary
