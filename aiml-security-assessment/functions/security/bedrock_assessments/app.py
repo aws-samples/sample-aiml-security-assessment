@@ -2759,10 +2759,10 @@ def lambda_handler(event, context):
                 )
             )
 
-            logger.info("Running global stale Bedrock access check (BR-14)")
-            all_findings.append(
-                check_stale_bedrock_access(permission_cache, region=GLOBAL_REGION_LABEL)
-            )
+            # logger.info("Running global stale Bedrock access check (BR-14)")
+            # all_findings.append(
+            #     check_stale_bedrock_access(permission_cache, region=GLOBAL_REGION_LABEL)
+            # )
 
         # Verify Bedrock is available in this region. A ValidationException here
         # (logging simply not configured) still means the service is reachable,
