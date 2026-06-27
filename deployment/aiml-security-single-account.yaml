@@ -174,9 +174,27 @@ Resources:
                   - bedrock:GetModelCustomizationJob
                   - bedrock:ListFlows
                   - bedrock:GetFlow
+                  # Model evaluation (BR-18, BR-25)
+                  - bedrock:ListEvaluationJobs
+                  # Imported custom models (BR-30)
+                  - bedrock:ListImportedModels
+                  - bedrock:GetImportedModel
+                  # Batch inference jobs (BR-31)
+                  - bedrock:ListModelInvocationJobs
                   # Bedrock Agent Permissions (Knowledge Bases, Flows)
                   - bedrock:ListKnowledgeBases
                   - bedrock:GetKnowledgeBase
+                  # Agent action groups (BR-21)
+                  - bedrock:ListAgentActionGroups
+                  - bedrock:GetAgentActionGroup
+                  # Cross-account guardrails / quotas / monitoring
+                  # (BR-15, BR-22, BR-32)
+                  - organizations:DescribeOrganization
+                  - organizations:ListRoots
+                  - organizations:ListPolicies
+                  - servicequotas:ListServiceQuotas
+                  - servicequotas:GetServiceQuota
+                  - cloudwatch:DescribeAlarms
                   # SageMaker Permissions
                   - sagemaker:ListNotebookInstances
                   - sagemaker:DescribeNotebookInstance
@@ -222,6 +240,8 @@ Resources:
                   - cloudtrail:GetEventSelectors
                   - cloudtrail:GetTrailStatus
                   - lambda:ListFunctions
+                  # Read agent action-group Lambda execution role (BR-21)
+                  - lambda:GetFunction
                   - ecs:ListClusters
                   - ecs:ListTasks
                   - ecs:DescribeTasks

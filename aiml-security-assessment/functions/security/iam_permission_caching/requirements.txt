@@ -1,1 +1,3 @@
+boto3==1.43.32
+botocore==1.43.32
 pydantic

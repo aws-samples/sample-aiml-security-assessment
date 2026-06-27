@@ -73,6 +73,13 @@ Resources:
                   - bedrock:GetModelCustomizationJob
                   - bedrock:ListFlows
                   - bedrock:GetFlow
+                  # Model evaluation (BR-18, BR-25)
+                  - bedrock:ListEvaluationJobs
+                  # Imported custom models (BR-30)
+                  - bedrock:ListImportedModels
+                  - bedrock:GetImportedModel
+                  # Batch inference jobs (BR-31)
+                  - bedrock:ListModelInvocationJobs
                 Resource: "*"
               # Bedrock Agent Permissions (Agents for Amazon Bedrock)
               - Effect: Allow
@@ -83,6 +90,21 @@ Resources:
                   - bedrock:GetAgent
                   - bedrock:ListKnowledgeBases
                   - bedrock:GetKnowledgeBase
+                  # Agent action groups (BR-21)
+                  - bedrock:ListAgentActionGroups
+                  - bedrock:GetAgentActionGroup
+                Resource: "*"
+              # Bedrock cross-account / quota / monitoring assessment
+              # (BR-15 organizational guardrails, BR-22 service quotas,
+              # BR-32 CloudWatch alarms)
+              - Effect: Allow
+                Action:
+                  - organizations:DescribeOrganization
+                  - organizations:ListRoots
+                  - organizations:ListPolicies
+                  - servicequotas:ListServiceQuotas
+                  - servicequotas:GetServiceQuota
+                  - cloudwatch:DescribeAlarms
                 Resource: "*"
               # Bedrock AgentCore Permissions
               - Effect: Allow
@@ -151,6 +173,8 @@ Resources:
               - Effect: Allow
                 Action:
                   - lambda:ListFunctions
+                  # Read agent action-group Lambda execution role (BR-21)
+                  - lambda:GetFunction
                 Resource: "*"
               # ECS Permissions
               - Effect: Allow
