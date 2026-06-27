@@ -746,6 +746,29 @@ class TestBR09KBEncryption:
         assert findings[0]["Severity"] == "Informational"
 
     @patch("boto3.client")
+    def test_br09_region_unsupported_returns_na(self, mock_client):
+        # Knowledge Bases API absent in the region -> N/A, not ERROR/Failed.
+        check = bedrock_app.check_bedrock_knowledge_base_encryption
+        mock_agent = MagicMock()
+        mock_client.return_value = mock_agent
+        paginator = MagicMock()
+        mock_agent.get_paginator.return_value = paginator
+        paginator.paginate.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "UnknownOperationException",
+                    "Message": "Unknown operation ListKnowledgeBases",
+                }
+            },
+            "ListKnowledgeBases",
+        )
+        result = check(region="ap-southeast-3")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-09"
+        assert "not available" in findings[0]["Finding_Details"]
+
+    @patch("boto3.client")
     def test_br09_schema_valid(self, mock_client):
         check = bedrock_app.check_bedrock_knowledge_base_encryption
         mock_agent = MagicMock()
@@ -2168,6 +2191,28 @@ class TestBR20KnowledgeBaseKMS:
         assert na[0]["Check_ID"] == "BR-20"
         assert "storage layer" in na[0]["Finding_Details"]
 
+    @patch("bedrock_app.boto3.client")
+    def test_br20_region_unsupported_returns_na(self, mock_client):
+        # Knowledge Bases API absent in the region -> N/A, not ERROR.
+        check = bedrock_app.check_bedrock_knowledge_base_kms_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "UnknownOperationException",
+                    "Message": "Unknown operation ListKnowledgeBases",
+                }
+            },
+            "ListKnowledgeBases",
+        )
+        mock_client.return_value = agent_client
+
+        result = check(region="ap-southeast-3")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-20"
+        assert "not available" in findings[0]["Finding_Details"]
+
     def test_br20_schema_valid(self):
         check = bedrock_app.check_bedrock_knowledge_base_kms_encryption
         with patch("bedrock_app.boto3.client") as mock_client:
@@ -2308,6 +2353,28 @@ class TestBR21AgentActionGroupIAM:
         passed = [f for f in findings if f["Status"] == "Passed"]
         assert len(passed) >= 1
         assert passed[0]["Check_ID"] == "BR-21"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br21_region_unsupported_returns_na(self, mock_client):
+        # Bedrock Agents API absent in the region -> N/A, not ERROR.
+        check = bedrock_app.check_bedrock_agent_action_group_iam
+        agent_client = MagicMock()
+        agent_client.list_agents.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "UnknownOperationException",
+                    "Message": "Unknown operation ListAgents",
+                }
+            },
+            "ListAgents",
+        )
+        mock_client.return_value = agent_client
+
+        result = check(region="ap-southeast-3", permission_cache={"role_permissions": {}})
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-21"
+        assert "not available" in findings[0]["Finding_Details"]
 
     def test_br21_schema_valid(self):
         check = bedrock_app.check_bedrock_agent_action_group_iam
@@ -2465,6 +2532,60 @@ class TestBR24AutomatedReasoning:
             bedrock_client = MagicMock()
             bedrock_client.list_guardrails.return_value = {"guardrails": []}
             mock_client.return_value = bedrock_client
+            result = check(region="us-east-1")
+
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+
+# ===================================================================
+# BR-25: check_bedrock_rag_evaluation_jobs
+# ===================================================================
+class TestBR25RAGEvaluationJobs:
+    """BR-25: Verify RAG applications have evaluation jobs configured."""
+
+    @patch("bedrock_app.boto3.client")
+    def test_br25_no_kbs_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_rag_evaluation_jobs
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-25"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br25_region_unsupported_returns_na(self, mock_client):
+        # Knowledge Bases / evaluation API absent in the region -> N/A, not ERROR.
+        check = bedrock_app.check_bedrock_rag_evaluation_jobs
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "UnknownOperationException",
+                    "Message": "Unknown operation ListKnowledgeBases",
+                }
+            },
+            "ListKnowledgeBases",
+        )
+        mock_client.return_value = agent_client
+
+        result = check(region="ap-southeast-3")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-25"
+        assert "not available" in findings[0]["Finding_Details"]
+
+    def test_br25_schema_valid(self):
+        check = bedrock_app.check_bedrock_rag_evaluation_jobs
+        with patch("bedrock_app.boto3.client") as mock_client:
+            agent_client = MagicMock()
+            agent_client.list_knowledge_bases.return_value = {
+                "knowledgeBaseSummaries": []
+            }
+            mock_client.return_value = agent_client
             result = check(region="us-east-1")
 
         for f in extract_csv_data(result):

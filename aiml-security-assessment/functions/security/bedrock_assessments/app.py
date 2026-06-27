@@ -69,6 +69,20 @@ def is_account_not_authorized(error: Exception) -> bool:
     )
 
 
+def is_region_unsupported(error: Exception) -> bool:
+    """
+    Detect a "this API/feature is not available in this region" error.
+
+    Several Bedrock features (Knowledge Bases, Agents, Flows, Model/RAG
+    evaluation, ...) are not in every region. boto3 surfaces an unsupported
+    operation as an UnknownOperation/"Unknown operation" error. When a check
+    calls such an API in a region that lacks it, that is Not Applicable rather
+    than a security finding or a hard error.
+    """
+    text = str(error)
+    return "UnknownOperation" in text or "Unknown operation" in text
+
+
 def describe_api_error(error: Exception, api_label: str, region: str = "") -> str:
     """
     Build a report-friendly description for an API error raised by a regional
@@ -1742,6 +1756,23 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
                         resolution="Ensure the assessment role can call bedrock:ListKnowledgeBases and bedrock:GetKnowledgeBase for the target account.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
                         severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif is_region_unsupported(e):
+                findings["status"] = "N/A"
+                findings["details"] = "Knowledge Bases API not available in this region"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-09",
+                        finding_name="Bedrock Knowledge Base Encryption Check",
+                        finding_details=describe_api_error(
+                            e, "Knowledge Bases API", region
+                        ),
+                        resolution="Amazon Bedrock Knowledge Bases are not available in this region. No action required.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                        severity="Low",
                         status="N/A",
                         region=region,
                     )
@@ -3797,7 +3828,23 @@ def check_bedrock_knowledge_base_kms_encryption(region: str = "") -> Dict[str, A
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code in ACCESS_DENIED_ERROR_CODES:
+            if is_region_unsupported(e):
+                findings["details"] = "Knowledge Bases API not available in this region"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-20",
+                        finding_name="Knowledge Base Customer-Managed KMS Encryption Check",
+                        finding_details=describe_api_error(
+                            e, "Knowledge Bases API", region
+                        ),
+                        resolution="Amazon Bedrock Knowledge Bases are not available in this region. No action required.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif error_code in ACCESS_DENIED_ERROR_CODES:
                 findings["csv_data"].append(
                     create_finding(
                         check_id="BR-20",
@@ -4070,7 +4117,23 @@ def check_bedrock_agent_action_group_iam(
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code in ACCESS_DENIED_ERROR_CODES:
+            if is_region_unsupported(e):
+                findings["details"] = "Bedrock Agents API not available in this region"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-21",
+                        finding_name="Agent Action Group IAM Least Privilege Check",
+                        finding_details=describe_api_error(
+                            e, "Bedrock Agents API", region
+                        ),
+                        resolution="Amazon Bedrock Agents are not available in this region. No action required.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif error_code in ACCESS_DENIED_ERROR_CODES:
                 findings["csv_data"].append(
                     create_finding(
                         check_id="BR-21",
@@ -4771,7 +4834,25 @@ def check_bedrock_rag_evaluation_jobs(region: str = "") -> Dict[str, Any]:
 
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code", "")
-            if error_code in ACCESS_DENIED_ERROR_CODES:
+            if is_region_unsupported(e):
+                findings["details"] = (
+                    "Knowledge Bases / evaluation API not available in this region"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-25",
+                        finding_name="RAG Evaluation Jobs Check",
+                        finding_details=describe_api_error(
+                            e, "RAG evaluation API", region
+                        ),
+                        resolution="Amazon Bedrock Knowledge Bases or RAG evaluation are not available in this region. No action required.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation-rag.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif error_code in ACCESS_DENIED_ERROR_CODES:
                 findings["csv_data"].append(
                     create_finding(
                         check_id="BR-25",
