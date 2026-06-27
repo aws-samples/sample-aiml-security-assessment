@@ -237,6 +237,12 @@ Resources:
               Action:
                 - cloudwatch:DescribeAlarms
               Resource: '*'
+            - Sid: OrganizationsPermissions
+              Effect: Allow
+              Action:
+                - organizations:DescribeOrganization # BR-15
+                - organizations:ListPolicies # BR-15
+              Resource: '*'
             - Sid: S3BucketEncryptionPermissions
               Effect: Allow
               Action:

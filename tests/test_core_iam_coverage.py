@@ -23,6 +23,8 @@ _SECTION_CHECKS = [
             "servicequotas:ListServiceQuotas",  # BR-22
             "servicequotas:GetServiceQuota",  # BR-22
             "cloudwatch:DescribeAlarms",
+            "organizations:DescribeOrganization",  # BR-15
+            "organizations:ListPolicies",  # BR-15
         },
     },
     {
@@ -48,6 +50,8 @@ _SECTION_CHECKS = [
             "servicequotas:ListServiceQuotas",  # BR-22
             "servicequotas:GetServiceQuota",  # BR-22
             "cloudwatch:DescribeAlarms",
+            "organizations:DescribeOrganization",  # BR-15
+            "organizations:ListPolicies",  # BR-15
         },
     },
     {
