@@ -16,6 +16,13 @@ _SECTION_CHECKS = [
             "bedrock:GetModelInvocationLoggingConfiguration",
             "bedrock:ListKnowledgeBases",
             "bedrock:GetKnowledgeBase",
+            "bedrock:ListEvaluationJobs",  # BR-18
+            "bedrock:ListImportedModels",  # BR-30
+            "bedrock:GetImportedModel",  # BR-30
+            "bedrock:ListModelInvocationJobs",  # BR-31
+            "servicequotas:ListServiceQuotas",  # BR-22
+            "servicequotas:GetServiceQuota",  # BR-22
+            "cloudwatch:DescribeAlarms",
         },
     },
     {
@@ -34,6 +41,13 @@ _SECTION_CHECKS = [
             "bedrock:GetModelInvocationLoggingConfiguration",
             "bedrock:ListKnowledgeBases",
             "bedrock:GetKnowledgeBase",
+            "bedrock:ListEvaluationJobs",  # BR-18
+            "bedrock:ListImportedModels",  # BR-30
+            "bedrock:GetImportedModel",  # BR-30
+            "bedrock:ListModelInvocationJobs",  # BR-31
+            "servicequotas:ListServiceQuotas",  # BR-22
+            "servicequotas:GetServiceQuota",  # BR-22
+            "cloudwatch:DescribeAlarms",
         },
     },
     {
