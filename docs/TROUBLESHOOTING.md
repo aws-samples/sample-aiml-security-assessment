@@ -323,7 +323,7 @@ A: Minimal ongoing costs:
 
 **Q: Can I customize which security checks are included?**
 
-A: Currently, all 52 core checks run by default to provide comprehensive coverage. If `EnableFinServAssessment` is enabled, the 64 optional Financial Services GenAI risk checks also run. You can filter results in the generated HTML reports by severity, status, service, industry, or region. Future versions may support selective check execution.
+A: Currently, all 70 core checks run by default to provide comprehensive coverage. If `EnableFinServAssessment` is enabled, the 64 optional Financial Services GenAI risk checks also run. You can filter results in the generated HTML reports by severity, status, service, industry, or region. Future versions may support selective check execution.
 
 **Q: Can I add custom security checks?**
 
