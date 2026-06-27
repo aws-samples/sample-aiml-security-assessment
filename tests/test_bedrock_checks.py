@@ -1853,8 +1853,11 @@ class TestBR17CustomModelKMSEncryption:
 class TestBR18ModelEvaluations:
     """BR-18: Check if model evaluation jobs exist."""
 
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
     @patch("bedrock_app.boto3.client")
-    def test_br18_no_evaluations_returns_failed(self, mock_client):
+    def test_br18_no_evaluations_with_footprint_returns_failed(
+        self, mock_client, mock_footprint
+    ):
         check = bedrock_app.check_bedrock_model_evaluations
 
         bedrock_client = MagicMock()
@@ -1867,6 +1870,23 @@ class TestBR18ModelEvaluations:
         assert findings[0]["Status"] == "Failed"
         assert findings[0]["Check_ID"] == "BR-18"
         assert findings[0]["Severity"] == "Medium"
+
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=False)
+    @patch("bedrock_app.boto3.client")
+    def test_br18_no_evaluations_no_footprint_returns_na(
+        self, mock_client, mock_footprint
+    ):
+        check = bedrock_app.check_bedrock_model_evaluations
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_evaluation_jobs.return_value = {"jobSummaries": []}
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-18"
 
     @patch("bedrock_app.boto3.client")
     def test_br18_recent_evaluations_returns_passed(self, mock_client):

@@ -3273,20 +3273,39 @@ def check_bedrock_model_evaluations(region: str = "") -> Dict[str, Any]:
             eval_jobs = eval_jobs_response.get("jobSummaries", [])
 
             if not eval_jobs:
-                findings["status"] = "WARN"
-                findings["details"] = "No model evaluation jobs found"
-                findings["csv_data"].append(
-                    create_finding(
-                        check_id="BR-18",
-                        finding_name="Model Evaluation Implementation Check",
-                        finding_details="No Bedrock model evaluation jobs found. Model evaluation helps assess toxicity, accuracy, semantic robustness, and other safety metrics before production deployment.",
-                        resolution="Create model evaluation jobs using Amazon Bedrock Evaluations to assess foundation model performance against safety and quality metrics. Use built-in datasets or custom test sets. Enable LLM-as-a-judge evaluation for comprehensive assessment.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
-                        severity="Medium",
-                        status="Failed",
-                        region=region,
-                    )
+                bedrock_footprint_found = detect_bedrock_regional_footprint(
+                    region=region
                 )
+
+                if bedrock_footprint_found is False:
+                    findings["details"] = "No regional Bedrock resources found"
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-18",
+                            finding_name="Model Evaluation Implementation Check",
+                            finding_details="No regional Bedrock resources found to assess with model evaluation jobs",
+                            resolution="No action required",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
+                            severity="Informational",
+                            status="N/A",
+                            region=region,
+                        )
+                    )
+                else:
+                    findings["status"] = "WARN"
+                    findings["details"] = "No model evaluation jobs found"
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-18",
+                            finding_name="Model Evaluation Implementation Check",
+                            finding_details="No Bedrock model evaluation jobs found. Model evaluation helps assess toxicity, accuracy, semantic robustness, and other safety metrics before production deployment.",
+                            resolution="Create model evaluation jobs using Amazon Bedrock Evaluations to assess foundation model performance against safety and quality metrics. Use built-in datasets or custom test sets. Enable LLM-as-a-judge evaluation for comprehensive assessment.",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
+                            severity="Medium",
+                            status="Failed",
+                            region=region,
+                        )
+                    )
                 return findings
 
             # Analyze evaluation jobs
