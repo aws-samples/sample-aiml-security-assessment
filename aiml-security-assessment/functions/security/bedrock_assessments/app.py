@@ -48,6 +48,27 @@ ACCESS_DENIED_ERROR_CODES = {
 }
 
 
+def is_account_not_authorized(error: Exception) -> bool:
+    """
+    Distinguish an account/feature-gate denial from an IAM-policy denial.
+
+    Both surface as AccessDeniedException, but the cause differs:
+      - IAM gap:        "... is not authorized to perform: <action> because no
+                         identity-based policy allows ..."  -> grant the action.
+      - Account gate:   "Your account is not authorized to invoke this API
+                         operation."  -> the Bedrock feature (e.g. Custom Model
+                         Import, Batch Inference, Model Evaluation) is not enabled
+                         or allow-listed for this account/region. No IAM change
+                         fixes it, so the check is Not Applicable rather than a
+                         finding.
+    """
+    text = str(error)
+    return (
+        "not authorized to invoke this API operation" in text
+        or "account is not authorized" in text
+    )
+
+
 def describe_api_error(error: Exception, api_label: str, region: str = "") -> str:
     """
     Build a report-friendly description for an API error raised by a regional
@@ -3316,6 +3337,24 @@ def check_bedrock_model_evaluations(region: str = "") -> Dict[str, Any]:
                         region=region,
                     )
                 )
+            elif is_account_not_authorized(e):
+                findings["details"] = (
+                    "Model evaluation not enabled for this account/region"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-18",
+                        finding_name="Model Evaluation Implementation Check",
+                        finding_details=describe_api_error(
+                            e, "Model evaluation check", region
+                        ),
+                        resolution="Amazon Bedrock model evaluation is not enabled or available for this account in this region. No IAM change is required; enable the feature to assess model evaluation practices.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
             elif error_code in ACCESS_DENIED_ERROR_CODES:
                 findings["csv_data"].append(
                     create_finding(
@@ -5521,6 +5560,24 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                         region=region,
                     )
                 )
+            elif is_account_not_authorized(e):
+                findings["details"] = (
+                    "Custom model import not enabled for this account/region"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-30",
+                        finding_name="Imported Model Customer-Managed KMS Encryption Check",
+                        finding_details=describe_api_error(
+                            e, "Imported model encryption check", region
+                        ),
+                        resolution="Amazon Bedrock Custom Model Import is not enabled or available for this account in this region. No IAM change is required; the check applies only once model import is in use.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
             elif error_code in ACCESS_DENIED_ERROR_CODES:
                 findings["csv_data"].append(
                     create_finding(
@@ -5671,6 +5728,24 @@ def check_bedrock_batch_inference_output_encryption(
                             e, "Batch inference API", region
                         ),
                         resolution="Batch inference may not be available in all regions",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif is_account_not_authorized(e):
+                findings["details"] = (
+                    "Batch inference not enabled for this account/region"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-31",
+                        finding_name="Batch Inference Output Encryption Check",
+                        finding_details=describe_api_error(
+                            e, "Batch inference output encryption check", region
+                        ),
+                        resolution="Amazon Bedrock batch inference is not enabled or available for this account in this region. No IAM change is required; the check applies only once batch inference is in use.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html",
                         severity="Low",
                         status="N/A",

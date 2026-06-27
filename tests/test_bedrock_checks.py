@@ -1932,6 +1932,29 @@ class TestBR18ModelEvaluations:
         assert findings[0]["Status"] == "Failed"
         assert findings[0]["Check_ID"] == "BR-18"
 
+    @patch("bedrock_app.boto3.client")
+    def test_br18_account_not_authorized_returns_na(self, mock_client):
+        # Account/feature-gate denial (model evaluation not enabled) must be N/A.
+        check = bedrock_app.check_bedrock_model_evaluations
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_evaluation_jobs.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "AccessDeniedException",
+                    "Message": "Your account is not authorized to invoke this API operation.",
+                }
+            },
+            "ListEvaluationJobs",
+        )
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-18"
+
     def test_br18_schema_valid(self):
         check = bedrock_app.check_bedrock_model_evaluations
         with patch("bedrock_app.boto3.client") as mock_client:
@@ -2810,6 +2833,29 @@ class TestBR30ImportedModelKMS:
         assert findings[0]["Status"] == "Failed"
         assert findings[0]["Check_ID"] == "BR-30"
 
+    @patch("bedrock_app.boto3.client")
+    def test_br30_account_not_authorized_returns_na(self, mock_client):
+        # Account/feature-gate denial (Custom Model Import not enabled) must be
+        # N/A, not a Failed finding telling the user to grant IAM permissions.
+        check = bedrock_app.check_bedrock_imported_model_kms_encryption
+        mock_client.return_value = self._bedrock_client(
+            [],
+            list_side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "AccessDeniedException",
+                        "Message": "Your account is not authorized to invoke this API operation.",
+                    }
+                },
+                "ListImportedModels",
+            ),
+        )
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-30"
+
     def test_br30_schema_valid(self):
         check = bedrock_app.check_bedrock_imported_model_kms_encryption
         with patch("bedrock_app.boto3.client") as mock_client:
@@ -2887,6 +2933,28 @@ class TestBR31BatchInferenceOutputEncryption:
         assert findings[0]["Status"] == "Failed"
         assert findings[0]["Check_ID"] == "BR-31"
         assert findings[0]["Severity"] == "Medium"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br31_account_not_authorized_returns_na(self, mock_client):
+        # Account/feature-gate denial (batch inference not enabled) must be N/A.
+        check = bedrock_app.check_bedrock_batch_inference_output_encryption
+        mock_client.return_value = self._bedrock_client(
+            [],
+            list_side_effect=ClientError(
+                {
+                    "Error": {
+                        "Code": "AccessDeniedException",
+                        "Message": "Your account is not authorized to invoke this API operation.",
+                    }
+                },
+                "ListModelInvocationJobs",
+            ),
+        )
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-31"
 
     def test_br31_schema_valid(self):
         check = bedrock_app.check_bedrock_batch_inference_output_encryption
