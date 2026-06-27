@@ -2390,7 +2390,9 @@ class TestBR21AgentActionGroupIAM:
         )
         mock_client.return_value = agent_client
 
-        result = check(region="ap-southeast-3", permission_cache={"role_permissions": {}})
+        result = check(
+            region="ap-southeast-3", permission_cache={"role_permissions": {}}
+        )
         findings = extract_csv_data(result)
         assert findings[0]["Status"] == "N/A"
         assert findings[0]["Check_ID"] == "BR-21"
