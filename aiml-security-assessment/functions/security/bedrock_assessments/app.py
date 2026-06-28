@@ -4435,6 +4435,28 @@ def check_bedrock_service_quotas_throttling(region: str = "") -> Dict[str, Any]:
             "csv_data": [],
         }
 
+        # Default quotas are only actionable when Bedrock is actually in use in
+        # the region. Otherwise, the check creates false regional failures.
+        bedrock_footprint_found = detect_bedrock_regional_footprint(region=region)
+        if bedrock_footprint_found is not True:
+            findings["details"] = bedrock_footprint_na_detail(bedrock_footprint_found)
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-22",
+                    finding_name="Model Invocation Throttling Limits Check",
+                    finding_details=bedrock_footprint_na_detail(
+                        bedrock_footprint_found,
+                        "to assess model invocation throttling quotas",
+                    ),
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+            return findings
+
         service_quotas_client = boto3.client(
             "service-quotas", config=boto3_config, region_name=region
         )

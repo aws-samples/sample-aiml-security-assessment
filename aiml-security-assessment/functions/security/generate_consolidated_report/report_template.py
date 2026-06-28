@@ -188,6 +188,11 @@ def get_html_template() -> str:
         .section-title .service-icon svg {{ border-radius: 8px; }}
         .nav-item .count {{ margin-left: auto; font-size: 12px; font-weight: 600; background: var(--surface-2); padding: 2px 8px; border-radius: 10px; }}
         .nav-item.active .count {{ background: var(--accent); color: #fff; }}
+        .nav-section.lens-nav {{ border-top: 1px solid var(--border); padding-top: 16px; margin-top: -8px; }}
+        .lens-nav .nav-item {{ background: var(--warning-soft); color: var(--text); box-shadow: inset 3px 0 0 var(--warning); }}
+        .lens-nav .nav-item:hover {{ background: var(--warning-soft); color: var(--warning); }}
+        .lens-nav .nav-item.active {{ background: var(--warning-soft); color: var(--warning); }}
+        .lens-nav .nav-item .count {{ background: var(--warning); color: #fff; }}
         .nav-section.industry-nav {{ border-top: 1px solid var(--border); padding-top: 16px; margin-top: -8px; }}
         .industry-nav .nav-item {{ background: var(--accent-soft); color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }}
         .industry-nav .nav-item:hover {{ background: var(--accent-soft); color: var(--accent); }}
@@ -332,8 +337,8 @@ def get_html_template() -> str:
 	                    AgentCore
 	                    <span class="count">{agentcore_total}</span>
 	                </a>
-                    {agentic_nav}
 	            </nav>
+	            {lens_nav}
 	            {industry_nav}
 	            <div class="sidebar-footer">
 	                <p>Generated: {date_display}</p>
@@ -1007,6 +1012,11 @@ def generate_html_report(
             + " Agentic AI Security"
             + f'<span class="count">{agentic_total}</span></a>'
         )
+        lens_nav = (
+            '<nav class="nav-section lens-nav"><h3>By Lens</h3>'
+            + agentic_nav
+            + "</nav>"
+        )
         agentic_filter_option = '<option value="agentic">Agentic AI Security</option>'
         agentic_service_card = (
             '<div class="metric"><div class="metric-label">'
@@ -1047,6 +1057,7 @@ def generate_html_report(
         )
     else:
         agentic_nav = ""
+        lens_nav = ""
         agentic_filter_option = ""
         agentic_service_card = ""
         agentic_section = ""
@@ -1203,6 +1214,7 @@ def generate_html_report(
         agentcore_region_filter=agentcore_region_filter,
         agentic_region_filter=agentic_region_filter,
         agentic_nav=agentic_nav,
+        lens_nav=lens_nav,
         agentic_filter_option=agentic_filter_option,
         agentic_service_card=agentic_service_card,
         agentic_section=agentic_section,

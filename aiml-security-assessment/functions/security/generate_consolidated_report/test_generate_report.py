@@ -431,6 +431,8 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertIn('id="agentic"', html)
         self.assertIn('id="agenticTable"', html)
         self.assertIn('<option value="agentic">Agentic AI Security</option>', html)
+        self.assertIn("<h3>By Lens</h3>", html)
+        self.assertIn('class="nav-section lens-nav"', html)
         self.assertIn("AG-01", html)
         self.assertIn('data-service="agentic"', html)
         self.assertIn("Agentic AI Security Findings", html)
@@ -444,6 +446,12 @@ class TestHtmlReportGeneration(unittest.TestCase):
             1,
         )
         self.assertIn("Human-in-the-loop governance", html)
+        by_service_nav = html.split("<h3>By Service</h3>", 1)[1].split(
+            "<h3>By Lens</h3>", 1
+        )[0]
+        self.assertNotIn("Agentic AI Security", by_service_nav)
+        by_lens_nav = html.split("<h3>By Lens</h3>", 1)[1].split("</nav>", 1)[0]
+        self.assertIn("Agentic AI Security", by_lens_nav)
 
     def test_agentic_security_omitted_when_absent(self):
         """With no AG-* data the Agentic section is omitted cleanly."""
@@ -452,6 +460,8 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertNotIn('id="agentic"', html)
         self.assertNotIn('id="agenticTable"', html)
         self.assertNotIn('<option value="agentic">Agentic AI Security</option>', html)
+        self.assertNotIn("<h3>By Lens</h3>", html)
+        self.assertNotIn('class="nav-section lens-nav"', html)
         self.assertIn(
             "wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html", html
         )

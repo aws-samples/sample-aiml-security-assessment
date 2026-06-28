@@ -1758,9 +1758,7 @@ class TestBR16GuardrailTier:
         assert bedrock_client.list_guardrails.call_count == 2
         assert "N/A" in statuses
         assert "Passed" in statuses
-        unassessed = [
-            f for f in findings if "DeletedGuardrail" in f["Finding_Details"]
-        ]
+        unassessed = [f for f in findings if "DeletedGuardrail" in f["Finding_Details"]]
         assert unassessed
         assert unassessed[0]["Severity"] == "Informational"
 
@@ -3247,8 +3245,27 @@ class TestBR32CloudWatchAlarms:
 class TestBR22ServiceQuotas:
     """BR-22: Verify throttling quotas are compared against AWS defaults."""
 
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=False)
     @patch("bedrock_app.boto3.client")
-    def test_br22_custom_quota_uses_aws_default_comparison(self, mock_client):
+    def test_br22_no_regional_footprint_returns_na(self, mock_client, mock_footprint):
+        check = bedrock_app.check_bedrock_service_quotas_throttling
+
+        result = check(region="sa-east-1")
+        findings = extract_csv_data(result)
+
+        assert findings[0]["Check_ID"] == "BR-22"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert findings[0]["Finding_Details"] == (
+            "No regional Bedrock resources found to assess model invocation throttling quotas"
+        )
+        mock_client.assert_not_called()
+
+    @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
+    @patch("bedrock_app.boto3.client")
+    def test_br22_custom_quota_uses_aws_default_comparison(
+        self, mock_client, mock_footprint
+    ):
         check = bedrock_app.check_bedrock_service_quotas_throttling
 
         quotas_client = MagicMock()
@@ -3344,6 +3361,37 @@ class TestAgenticBedrockMapping:
         assert set(actual_by_source) == set(self.EXPECTED_AGENTIC_MAPPINGS)
         for source_check_id, expected_ag_id in self.EXPECTED_AGENTIC_MAPPINGS.items():
             assert actual_by_source[source_check_id]["Check_ID"] == expected_ag_id
+
+    def test_br22_na_generates_ag12_informational_na(self):
+        source_findings = [
+            {
+                "check_name": "Model Invocation Throttling Limits Check",
+                "csv_data": [
+                    {
+                        "Check_ID": "BR-22",
+                        "Finding": "Model Invocation Throttling Limits Check",
+                        "Finding_Details": "No regional Bedrock resources found to assess model invocation throttling quotas",
+                        "Resolution": "No action required",
+                        "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                        "Severity": "Informational",
+                        "Status": "N/A",
+                        "Region": "sa-east-1",
+                    }
+                ],
+            }
+        ]
+
+        result = bedrock_app.build_agentic_bedrock_security_findings(source_findings)
+        findings = extract_csv_data(result)
+
+        assert len(findings) == 1
+        assert findings[0]["Check_ID"] == "AG-12"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert findings[0]["Region"] == "sa-east-1"
+        assert "Source check BR-22" in findings[0]["Finding_Details"]
+        assert "No regional Bedrock resources found" in findings[0]["Finding_Details"]
+        assert_finding_schema(findings[0])
 
     def test_br28_generates_ag01_mapping(self):
         source_findings = [
