@@ -194,7 +194,10 @@ Resources:
                   - organizations:ListPolicies
                   - servicequotas:ListServiceQuotas
                   - servicequotas:GetServiceQuota
+                  - servicequotas:GetAWSDefaultServiceQuota
                   - cloudwatch:DescribeAlarms
+                  # AgentCore assessment-duration custom metric
+                  - cloudwatch:PutMetricData
                   # SageMaker Permissions
                   - sagemaker:ListNotebookInstances
                   - sagemaker:DescribeNotebookInstance

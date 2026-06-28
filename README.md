@@ -6,7 +6,7 @@
 
 **Open-source automated security scanner for generative AI and machine learning workloads on AWS.** Core checks for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore are built on the [AWS Well-Architected Framework — Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html). An optional Financial Services GenAI risk module adds 64 checks aligned to the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption within Financial Services Industries](https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf). See the [AWS Security Blog announcement](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/) for context on the updated guide.
 
-Run **[134 security checks](docs/SECURITY_CHECKS.md)** across your AWS accounts and regions in one deployment. Surfaces IAM misconfigurations, encryption gaps, network isolation issues, missing guardrails, and governance gaps — with interactive HTML reports, severity ratings, and AWS documentation links for remediation. Single-account or full AWS Organizations multi-account scans; all data stays in your account.
+Run **[161 security checks](docs/SECURITY_CHECKS.md)** across your AWS accounts and regions in one deployment. Surfaces IAM misconfigurations, encryption gaps, network isolation issues, missing guardrails, and governance gaps — with interactive HTML reports, severity ratings, and AWS documentation links for remediation. Single-account or full AWS Organizations multi-account scans; all data stays in your account.
 
 ---
 
@@ -39,7 +39,7 @@ The framework generates professional, interactive security assessment reports wi
 
 - **Executive Summary** with severity counts and service breakdown
 - **Priority Recommendations** highlighting critical issues requiring immediate attention
-- **[134 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Financial Services GenAI Risk
+- **[161 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, Agentic AI Security, and Financial Services GenAI Risk
 - **Multi-Region Support** for core Bedrock, SageMaker, and AgentCore checks, with per-region risk breakdown
 - **Interactive Filtering** by account, region, service, severity, and status
 - **Light/Dark Mode Toggle** with persistent user preference
@@ -83,7 +83,7 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 | Challenge | How This Framework Helps |
 |-----------|-------------------------|
 | **Manual security audits are time-consuming** | Fully automated scanning with one-click CloudFormation deployment |
-| **Inconsistent security checks across teams** | Standardized 134-check assessment based on AWS Well-Architected Generative AI Lens best practices and AWS Responsible AI governance, risk, and compliance guidance for financial services |
+| **Inconsistent security checks across teams** | Standardized 161-check assessment based on AWS Well-Architected Generative AI Lens and Agentic AI Lens best practices and AWS Responsible AI governance, risk, and compliance guidance for financial services |
 | **Difficulty tracking AI/ML security posture** | Interactive HTML dashboards with severity breakdown and per-account visibility |
 | **Multi-account complexity** | Consolidated reporting across AWS Organizations with cross-account role assumption |
 | **Compliance and audit support** | Exportable reports to supplement your compliance program, with remediation guidance linked to AWS documentation |
@@ -93,6 +93,7 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 - **[Amazon Bedrock](docs/SECURITY_CHECKS.md#amazon-bedrock-security-checks-32)** (32 checks) - Guardrails, cross-account policies, guardrail tiers, content filters, sensitive-information/PII filters, contextual grounding, automated reasoning, encryption (custom, imported, knowledge base, and batch inference output), Amazon VPC endpoints, AWS IAM permissions, agent guardrail association and least privilege, model invocation logging, CloudWatch alarms, model evaluation, prompt flow validation, RAG evaluation, service quotas
 - **[Amazon SageMaker AI](docs/SECURITY_CHECKS.md#amazon-sagemaker-ai-security-checks-25)** (25 checks) - AWS Security Hub controls (SageMaker.1-5), encryption, network isolation, AWS IAM, MLOps
 - **[Amazon Bedrock AgentCore](docs/SECURITY_CHECKS.md#amazon-bedrock-agentcore-security-checks-13)** (13 checks) - Amazon VPC configuration, encryption, observability, resource policies
+- **[Agentic AI Security](docs/SECURITY_CHECKS.md#agentic-ai-security-checks-27)** (27 always-on checks) - Bounded autonomy, agent identity, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability, and abuse protection, aligned to the [AWS Well-Architected Agentic AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html). Synthesized by re-mapping Amazon Bedrock and AgentCore findings, with native AgentCore gateway checks
 - **[Financial Services GenAI Risk](docs/SECURITY_CHECKS.md#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)** (64 checks) - Unbounded consumption, excessive agency, supply chain, training data poisoning, hallucination, prompt injection, PII disclosure, and 8 more FinServ-specific risk categories derived from the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption within Financial Services Industries](https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf). See the [AWS Security Blog announcement](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/) for context on the updated guide.
 
 **Deployment Options:**
@@ -115,7 +116,7 @@ This tool operates within the [AWS Shared Responsibility Model](https://aws.amaz
 
 **No guarantee of security or compliance.** This framework identifies common misconfigurations based on AWS best practices and the AWS Well-Architected Framework. It does not cover all possible security risks, does not replace formal compliance audits (SOC 2, HIPAA, and similar), and does not guarantee that your workloads are secure. Use the results as one input into your broader security program.
 
-**134 checks across four domains.** The assessment covers Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and optional Financial Services GenAI risk checks. Other AI/ML services (Amazon Comprehend, Amazon Rekognition, Amazon Textract, and others) are not currently assessed.
+**161 checks across five areas.** The assessment covers Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, always-on Agentic AI Security, and optional Financial Services GenAI risk checks. Other AI/ML services (Amazon Comprehend, Amazon Rekognition, Amazon Textract, and others) are not currently assessed.
 
 ---
 
@@ -386,7 +387,7 @@ If you need to reduce scope, review the role policies in:
 
 | Document | Description |
 |----------|-------------|
-| [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 134 security checks with severity levels |
+| [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 161 security checks with severity levels |
 | [FinServ GenAI Risk Checks](docs/SECURITY_CHECKS_FINSERV.md) | Complete FS-01..69 reference: shared introduction, severity rubric, upstream-overlap table, compliance framework mapping, and all check definitions (Part 1 infrastructure controls, Part 2 guardrails & content safety, Part 3 app-layer controls & gaps) |
 | [FinServ Severity Methodology](docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) | Likelihood × Impact → ASFF severity model, disposition rules, and research basis for FS check severities |
 | [FinServ Severity Register](docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md) | Authoritative per-finding severity assignments (the single source of truth enforced by the drift-guard test) |

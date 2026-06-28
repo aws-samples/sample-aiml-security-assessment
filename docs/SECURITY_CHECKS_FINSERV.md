@@ -136,7 +136,7 @@ Because `aws-samples` is an OSPO-managed organization, pushes to your personal f
 ## Relationship to upstream SM/BR/AC checks
 
 The upstream [sample-aiml-security-assessment](https://github.com/aws-samples/sample-aiml-security-assessment)
-framework already provides 70 core security checks (SM-01 to SM-25, BR-01 to BR-32, AC-01 to AC-13).
+framework already provides 70 core security checks (SM-01 to SM-25, BR-01 to BR-32, AC-01 to AC-13) and 27 always-on Agentic AI Security checks (AG-01 to AG-27).
 The 69 FS checks in this document are **additive**: they enhance the upstream with FinServ-specific
 detection and remediation guidance drawn from the Responsible AI GRC guide. A few FS
 checks overlap with upstream checks — in those cases, the FS check adds FinServ-specific depth
@@ -179,7 +179,7 @@ whether the FS check adds FinServ-specific regulatory specificity, (3) severity 
 - **Extend upstream (5 FS checks merged into 5 upstream checks):** FS-17 → SM-07; FS-18 → SM-23; FS-19 → SM-22; FS-23 → BR-06; FS-64 → BR-04. These checks are replaced by upstream-extension notes in Parts 1 and 3 and are removed from `finserv_assessments/app.py`.
 - **Keep separate (64 FS checks):** All other FS checks ship as standalone entries. This includes FS-20, FS-22, FS-25, FS-26, FS-39, FS-41, all Guardrail-policy-level checks (FS-27, FS-28, FS-36, FS-38, FS-45, FS-47, FS-50, FS-51, FS-59), and all FS checks that have no upstream overlap at all.
 
-After consolidation the combined framework contains **70 upstream + 64 FS = 134 distinct checks** (down from 70 + 69 = 139 before merging). The consolidation reduces duplication without losing FinServ-specific regulatory depth.
+After consolidation the combined framework contains **70 upstream + 27 AG + 64 FS = 161 distinct checks** (down from 70 + 27 AG + 69 FS = 166 before merging FinServ overlaps). The consolidation reduces duplication without losing FinServ-specific regulatory depth.
 
 
 ---

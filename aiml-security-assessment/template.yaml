@@ -231,6 +231,7 @@ Resources:
               Action:
                 - servicequotas:ListServiceQuotas # BR-22
                 - servicequotas:GetServiceQuota # BR-22
+                - servicequotas:GetAWSDefaultServiceQuota # BR-22
               Resource: '*'
             - Sid: CloudWatchPermissions
               Effect: Allow
@@ -241,6 +242,7 @@ Resources:
               Effect: Allow
               Action:
                 - organizations:DescribeOrganization # BR-15
+                - organizations:ListRoots # BR-15
                 - organizations:ListPolicies # BR-15
               Resource: '*'
             - Sid: S3BucketEncryptionPermissions

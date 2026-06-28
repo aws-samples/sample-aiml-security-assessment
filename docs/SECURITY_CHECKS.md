@@ -1,6 +1,6 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 134 security checks performed by the AI/ML Security Assessment framework (70 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 64 Financial Services GenAI Risk checks).
+This document provides a comprehensive reference for all 161 security checks performed by the AI/ML Security Assessment framework (70 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 27 Agentic AI Security checks, plus 64 Financial Services GenAI Risk checks).
 
 ## Table of Contents
 
@@ -11,6 +11,7 @@ This document provides a comprehensive reference for all 134 security checks per
 - [Amazon SageMaker AI Security Checks (25)](#amazon-sagemaker-ai-security-checks-25)
 - [Amazon Bedrock Security Checks (32)](#amazon-bedrock-security-checks-32)
 - [Amazon Bedrock AgentCore Security Checks (13)](#amazon-bedrock-agentcore-security-checks-13)
+- [Agentic AI Security Checks (27)](#agentic-ai-security-checks-27)
 - [Financial Services GenAI Risk Checks (64)](#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)
 
 ---
@@ -24,6 +25,7 @@ The framework evaluates your AI/ML workloads against AWS security best practices
 | Amazon SageMaker AI | 25 | Security Hub controls, encryption, network isolation, IAM, MLOps |
 | Amazon Bedrock | 32 | Guardrails, content filters, sensitive-information/PII filters, contextual grounding, automated reasoning, encryption (custom, imported, knowledge base, batch inference output), VPC endpoints, IAM permissions, agent guardrail association and least privilege, logging, CloudWatch alarms, cross-account policies, model evaluation, prompt flow validation, RAG evaluation, service quotas |
 | Amazon Bedrock AgentCore | 13 | VPC configuration, encryption, observability, resource policies |
+| Agentic AI Security | 27 | Bounded autonomy, agent identity, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability, abuse protection |
 | Financial Services GenAI Risk | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
 
 ---
@@ -37,6 +39,7 @@ Each security check has a unique identifier with a service prefix:
 | **SM-XX** | Amazon SageMaker | SM-01, SM-25 |
 | **BR-XX** | Amazon Bedrock | BR-01, BR-32 |
 | **AC-XX** | Amazon Bedrock AgentCore | AC-01, AC-13 |
+| **AG-XX** | Agentic AI Security | AG-01, AG-27 |
 | **FS-XX** | Financial Services GenAI Risk | FS-01, FS-69 |
 
 ---
@@ -449,10 +452,218 @@ Each security check has a unique identifier with a service prefix:
 
 ---
 
+## Agentic AI Security Checks (27)
+
+Agentic AI Security checks use the `AG-XX` namespace and are included with the
+default assessment. They follow a hybrid model:
+
+- Reused API-backed controls from Amazon Bedrock and Amazon Bedrock AgentCore
+  are mapped into agentic security domains.
+- New checks are added only where AWS APIs can prove the control state.
+- Controls that cannot be proven by AWS APIs are not scored. Human-in-the-loop
+  governance is therefore documented as a methodology note, not emitted as an
+  automated pass/fail finding.
+
+These checks reference the
+[AWS Well-Architected Agentic AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html),
+with scope limited to the Security pillar.
+
+### AG-01: Agent Guardrail Association
+
+- **Severity:** High
+- **Source:** BR-28
+- **Domain:** Guardrail Enforcement
+- **Description:** Maps Bedrock agent guardrail association into the Agentic AI Security view.
+
+### AG-02: Harmful Content Guardrail Coverage
+
+- **Severity:** Source check severity
+- **Source:** BR-23
+- **Domain:** Guardrail Enforcement
+- **Description:** Maps guardrail content filter coverage for agent-facing workloads.
+
+### AG-03: Sensitive Information Protection
+
+- **Severity:** Source check severity
+- **Source:** BR-26
+- **Domain:** Memory & Data Privacy
+- **Description:** Maps guardrail sensitive-information and PII protection controls.
+
+### AG-04: Automated Reasoning Guardrails
+
+- **Severity:** Source check severity
+- **Source:** BR-24
+- **Domain:** Guardrail Enforcement
+- **Description:** Maps automated reasoning policies used to verify responses against deterministic rules.
+
+### AG-05: Grounding Controls
+
+- **Severity:** Source check severity
+- **Source:** BR-27
+- **Domain:** Prompt & Input Protection
+- **Description:** Maps contextual grounding checks for RAG and tool-using agents.
+
+### AG-06: Tool Execution Least Privilege
+
+- **Severity:** Source check severity
+- **Source:** BR-21
+- **Domain:** Tool Authorization
+- **Description:** Maps Bedrock agent action group IAM least-privilege findings.
+
+### AG-07: Model Invocation Logging
+
+- **Severity:** Source check severity
+- **Source:** BR-04
+- **Domain:** Auditability & Observability
+- **Description:** Maps model invocation logging for agent prompts, responses, and guardrail traces.
+
+### AG-08: API Audit Trail
+
+- **Severity:** Source check severity
+- **Source:** BR-06
+- **Domain:** Auditability & Observability
+- **Description:** Maps CloudTrail coverage for Bedrock activity.
+
+### AG-09: Guardrail Enforcement Boundary
+
+- **Severity:** Source check severity
+- **Source:** BR-15
+- **Domain:** Guardrail Enforcement
+- **Description:** Maps organization-level guardrail enforcement controls.
+
+### AG-10: Adversarial Evaluation Coverage
+
+- **Severity:** Source check severity
+- **Source:** BR-18
+- **Domain:** Prompt & Input Protection
+- **Description:** Maps model/application evaluation coverage for adversarial and safety testing.
+
+### AG-11: Prompt Flow Validation
+
+- **Severity:** Source check severity
+- **Source:** BR-19
+- **Domain:** Prompt & Input Protection
+- **Description:** Maps Bedrock flow validation before deployment.
+
+### AG-12: Invocation Abuse Controls
+
+- **Severity:** Source check severity
+- **Source:** BR-22
+- **Domain:** Abuse & Cost Protection
+- **Description:** Maps Bedrock service quota and throttling controls.
+
+### AG-13: Session Boundary
+
+- **Severity:** Source check severity
+- **Source:** BR-29
+- **Domain:** Bounded Autonomy
+- **Description:** Maps Bedrock agent idle session TTL controls.
+
+### AG-14: Operational Abuse Alarms
+
+- **Severity:** Source check severity
+- **Source:** BR-32
+- **Domain:** Abuse & Cost Protection
+- **Description:** Maps CloudWatch alarms for Bedrock invocation abuse and operational anomalies.
+
+### AG-15: Runtime Network Boundary
+
+- **Severity:** Source check severity
+- **Source:** AC-01
+- **Domain:** Bounded Autonomy
+- **Description:** Maps AgentCore runtime VPC configuration.
+
+### AG-16: AgentCore Least Privilege
+
+- **Severity:** Source check severity
+- **Source:** AC-02
+- **Domain:** Agent Identity & Access
+- **Description:** Maps AgentCore full-access IAM findings.
+
+### AG-17: Stale AgentCore Access
+
+- **Severity:** Source check severity
+- **Source:** AC-03
+- **Domain:** Agent Identity & Access
+- **Description:** Maps stale AgentCore permissions.
+
+### AG-18: AgentCore Observability
+
+- **Severity:** Source check severity
+- **Source:** AC-04
+- **Domain:** Auditability & Observability
+- **Description:** Maps AgentCore logging, tracing, and observability coverage.
+
+### AG-19: Memory Data Protection
+
+- **Severity:** Source check severity
+- **Source:** AC-07
+- **Domain:** Memory & Data Privacy
+- **Description:** Maps AgentCore memory encryption controls.
+
+### AG-20: Private AgentCore Connectivity
+
+- **Severity:** Source check severity
+- **Source:** AC-08
+- **Domain:** Bounded Autonomy
+- **Description:** Maps VPC endpoint coverage for AgentCore services.
+
+### AG-21: Resource Policy Boundary
+
+- **Severity:** Source check severity
+- **Source:** AC-10
+- **Domain:** Agent Identity & Access
+- **Description:** Maps AgentCore runtime and gateway resource-based policy controls.
+
+### AG-22: Policy Engine Data Protection
+
+- **Severity:** Source check severity
+- **Source:** AC-11
+- **Domain:** Tool Authorization
+- **Description:** Maps AgentCore policy engine encryption controls.
+
+### AG-23: Gateway Data Protection
+
+- **Severity:** Source check severity
+- **Source:** AC-12
+- **Domain:** Tool Authorization
+- **Description:** Maps AgentCore gateway encryption controls.
+
+### AG-24: Gateway Inbound Authorization
+
+- **Severity:** High
+- **Source:** AgentCore `ListGateways` and `GetGateway`
+- **Domain:** Tool Authorization
+- **Description:** Fails gateways with missing, unknown, or `NONE` authorizers. Passes `AWS_IAM` and `CUSTOM_JWT`. `AUTHENTICATE_ONLY` passes only when an AgentCore policy engine is attached in `ENFORCE` mode, because the gateway authenticates the SigV4 caller but does not make an authorization decision for that authorizer type.
+
+### AG-25: Gateway Tool Policy Enforcement
+
+- **Severity:** High
+- **Source:** AgentCore `GetGateway.policyEngineConfiguration`
+- **Domain:** Tool Authorization
+- **Description:** Fails gateways without a policy engine or with policy engine mode other than `ENFORCE`.
+
+### AG-26: Gateway Error Detail Exposure
+
+- **Severity:** Medium
+- **Source:** AgentCore `GetGateway.exceptionLevel`
+- **Domain:** Auditability & Observability
+- **Description:** Fails gateways configured to return `DEBUG`-level exception detail.
+
+### AG-27: Gateway WAF Protection
+
+- **Severity:** Low
+- **Source:** AgentCore `GetGateway.webAclArn`
+- **Domain:** Abuse & Cost Protection
+- **Description:** Fails AgentCore gateways without an associated AWS WAF web ACL.
+
+---
+
 ## Additional Resources
 
 - [Amazon SageMaker Security Best Practices](https://docs.aws.amazon.com/sagemaker/latest/dg/security.html)
 - [Amazon Bedrock Security](https://docs.aws.amazon.com/bedrock/latest/userguide/security.html)
+- [AWS Well-Architected Agentic AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html)
 - [AWS Security Hub SageMaker Controls](https://docs.aws.amazon.com/securityhub/latest/userguide/sagemaker-controls.html)
 - [AWS Well-Architected Framework - Security Pillar](https://docs.aws.amazon.com/wellarchitected/latest/security-pillar/welcome.html)
 

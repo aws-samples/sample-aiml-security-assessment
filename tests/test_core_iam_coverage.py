@@ -22,6 +22,7 @@ _SECTION_CHECKS = [
             "bedrock:ListModelInvocationJobs",  # BR-31
             "servicequotas:ListServiceQuotas",  # BR-22
             "servicequotas:GetServiceQuota",  # BR-22
+            "servicequotas:GetAWSDefaultServiceQuota",  # BR-22
             "cloudwatch:DescribeAlarms",
             "organizations:DescribeOrganization",  # BR-15
             "organizations:ListPolicies",  # BR-15
@@ -49,6 +50,7 @@ _SECTION_CHECKS = [
             "bedrock:ListModelInvocationJobs",  # BR-31
             "servicequotas:ListServiceQuotas",  # BR-22
             "servicequotas:GetServiceQuota",  # BR-22
+            "servicequotas:GetAWSDefaultServiceQuota",  # BR-22
             "cloudwatch:DescribeAlarms",
             "organizations:DescribeOrganization",  # BR-15
             "organizations:ListPolicies",  # BR-15

@@ -1618,7 +1618,7 @@ class TestBR15CrossAccountGuardrails:
         assert passed_findings[0]["Check_ID"] == "BR-15"
 
     @patch("bedrock_app.boto3.client")
-    def test_br15_access_denied_returns_failed(self, mock_client):
+    def test_br15_access_denied_returns_na(self, mock_client):
         check = bedrock_app.check_bedrock_cross_account_guardrails
 
         org_client = MagicMock()
@@ -1630,7 +1630,9 @@ class TestBR15CrossAccountGuardrails:
         result = check(region="Global")
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        # Access-denied paths resolve to N/A (CLAUDE.md status semantics),
+        # not Failed — a permission gap is not a security misconfiguration.
+        assert findings[0]["Status"] == "N/A"
         assert findings[0]["Check_ID"] == "BR-15"
 
     def test_br15_schema_valid(self):
@@ -1723,6 +1725,44 @@ class TestBR16GuardrailTier:
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Failed"
         assert findings[0]["Check_ID"] == "BR-16"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br16_paginates_and_continues_when_one_guardrail_detail_fails(
+        self, mock_client
+    ):
+        check = bedrock_app.check_bedrock_guardrail_tier
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_guardrails.side_effect = [
+            {
+                "guardrails": [{"id": "gr-error", "name": "DeletedGuardrail"}],
+                "nextToken": "page-2",
+            },
+            {
+                "guardrails": [{"id": "gr-ok", "name": "StandardGuardrail"}],
+            },
+        ]
+        bedrock_client.get_guardrail.side_effect = [
+            ClientError(
+                {"Error": {"Code": "ResourceNotFoundException"}},
+                "GetGuardrail",
+            ),
+            {"guardrail": {"contentPolicy": {"tier": {"tierName": "STANDARD"}}}},
+        ]
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        statuses = [f["Status"] for f in findings]
+
+        assert bedrock_client.list_guardrails.call_count == 2
+        assert "N/A" in statuses
+        assert "Passed" in statuses
+        unassessed = [
+            f for f in findings if "DeletedGuardrail" in f["Finding_Details"]
+        ]
+        assert unassessed
+        assert unassessed[0]["Severity"] == "Informational"
 
     def test_br16_schema_valid(self):
         check = bedrock_app.check_bedrock_guardrail_tier
@@ -3202,3 +3242,134 @@ class TestBR32CloudWatchAlarms:
         result = check(region="us-east-1")
         for f in extract_csv_data(result):
             assert_finding_schema(f)
+
+
+class TestBR22ServiceQuotas:
+    """BR-22: Verify throttling quotas are compared against AWS defaults."""
+
+    @patch("bedrock_app.boto3.client")
+    def test_br22_custom_quota_uses_aws_default_comparison(self, mock_client):
+        check = bedrock_app.check_bedrock_service_quotas_throttling
+
+        quotas_client = MagicMock()
+        quotas_client.list_service_quotas.side_effect = [
+            {
+                "Quotas": [
+                    {
+                        "QuotaName": "Tokens per minute for model invocations",
+                        "QuotaCode": "L-123",
+                        "Value": 200,
+                    }
+                ],
+                "NextToken": "page-2",
+            },
+            {"Quotas": []},
+        ]
+        quotas_client.get_service_quota.return_value = {
+            "Quota": {"QuotaName": "Tokens per minute", "Value": 200}
+        }
+        quotas_client.get_aws_default_service_quota.return_value = {
+            "Quota": {"QuotaName": "Tokens per minute", "Value": 100}
+        }
+        mock_client.return_value = quotas_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+
+        assert quotas_client.list_service_quotas.call_count == 2
+        assert findings[0]["Check_ID"] == "BR-22"
+        assert findings[0]["Status"] == "Passed"
+        assert "custom throttling quotas" in findings[0]["Finding_Details"]
+
+
+class TestAgenticBedrockMapping:
+    """Agentic AI AG-* rows are generated from API-backed Bedrock checks."""
+
+    EXPECTED_AGENTIC_MAPPINGS = {
+        "BR-04": "AG-07",
+        "BR-06": "AG-08",
+        "BR-15": "AG-09",
+        "BR-18": "AG-10",
+        "BR-19": "AG-11",
+        "BR-21": "AG-06",
+        "BR-22": "AG-12",
+        "BR-23": "AG-02",
+        "BR-24": "AG-04",
+        "BR-26": "AG-03",
+        "BR-27": "AG-05",
+        "BR-28": "AG-01",
+        "BR-29": "AG-13",
+        "BR-32": "AG-14",
+    }
+
+    def test_all_bedrock_agentic_mappings_emit_expected_rows(self):
+        source_rows = []
+        for source_check_id in self.EXPECTED_AGENTIC_MAPPINGS:
+            source_rows.append(
+                {
+                    "Check_ID": source_check_id,
+                    "Finding": f"{source_check_id} source finding",
+                    "Finding_Details": f"{source_check_id} source details",
+                    "Resolution": "No action required.",
+                    "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    "Severity": "Medium",
+                    "Status": "Passed",
+                    "Region": "us-east-1",
+                }
+            )
+
+        source_findings = [
+            {
+                "check_name": "Bedrock Agentic Mapping Sources",
+                "csv_data": source_rows,
+            }
+        ]
+
+        result = bedrock_app.build_agentic_bedrock_security_findings(source_findings)
+        findings = extract_csv_data(result)
+
+        assert len(findings) == len(self.EXPECTED_AGENTIC_MAPPINGS)
+        actual_by_source = {}
+        for finding in findings:
+            details = finding["Finding_Details"]
+            source_check_id = details.split("Source check ", 1)[1].split(":", 1)[0]
+            actual_by_source[source_check_id] = finding
+
+            assert finding["Status"] == "Passed"
+            assert finding["Severity"] == "Medium"
+            assert finding["Region"] == "us-east-1"
+            assert f"Source check {source_check_id}" in details
+            assert_finding_schema(finding)
+
+        assert set(actual_by_source) == set(self.EXPECTED_AGENTIC_MAPPINGS)
+        for source_check_id, expected_ag_id in self.EXPECTED_AGENTIC_MAPPINGS.items():
+            assert actual_by_source[source_check_id]["Check_ID"] == expected_ag_id
+
+    def test_br28_generates_ag01_mapping(self):
+        source_findings = [
+            {
+                "check_name": "Bedrock Agent Guardrail Association",
+                "csv_data": [
+                    {
+                        "Check_ID": "BR-28",
+                        "Finding": "Bedrock Agent Guardrail Association",
+                        "Finding_Details": "Agent has a guardrail associated.",
+                        "Resolution": "No action required.",
+                        "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/agents-guardrails.html",
+                        "Severity": "High",
+                        "Status": "Passed",
+                        "Region": "us-east-1",
+                    }
+                ],
+            }
+        ]
+
+        result = bedrock_app.build_agentic_bedrock_security_findings(source_findings)
+        findings = extract_csv_data(result)
+
+        assert len(findings) == 1
+        assert findings[0]["Check_ID"] == "AG-01"
+        assert findings[0]["Status"] == "Passed"
+        assert findings[0]["Region"] == "us-east-1"
+        assert "Source check BR-28" in findings[0]["Finding_Details"]
+        assert_finding_schema(findings[0])

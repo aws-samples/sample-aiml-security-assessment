@@ -104,7 +104,10 @@ Resources:
                   - organizations:ListPolicies
                   - servicequotas:ListServiceQuotas
                   - servicequotas:GetServiceQuota
+                  - servicequotas:GetAWSDefaultServiceQuota
                   - cloudwatch:DescribeAlarms
+                  # AgentCore assessment-duration custom metric
+                  - cloudwatch:PutMetricData
                 Resource: "*"
               # Bedrock AgentCore Permissions
               - Effect: Allow

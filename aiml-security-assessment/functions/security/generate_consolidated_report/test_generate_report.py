@@ -396,6 +396,66 @@ class TestHtmlReportGeneration(unittest.TestCase):
         # Other services still render (regression check).
         self.assertIn('id="bedrock"', html)
 
+    def test_agentic_security_renders_when_present(self):
+        """Agentic AI Security AG-* rows render as a first-class assessment area."""
+        data = dict(self.test_assessment_results)
+        data["bedrock"] = {
+            "bedrock_security_report": [
+                {
+                    "Account_ID": "123456789012",
+                    "Check_ID": "BR-28",
+                    "Finding": "Bedrock Agent Guardrail Association",
+                    "Finding_Details": "Agent has a guardrail.",
+                    "Resolution": "No action required.",
+                    "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/agents-guardrails.html",
+                    "Severity": "High",
+                    "Status": "Passed",
+                    "Region": "us-east-1",
+                },
+                {
+                    "Account_ID": "123456789012",
+                    "Check_ID": "AG-01",
+                    "Finding": "Agentic AI Agent Guardrail Association",
+                    "Finding_Details": "Agentic AI security domain: Guardrail Enforcement.",
+                    "Resolution": "Associate an approved Bedrock guardrail with each Bedrock agent.",
+                    "Reference": "https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html",
+                    "Severity": "High",
+                    "Status": "Passed",
+                    "Region": "us-east-1",
+                },
+            ]
+        }
+
+        html = generate_html_report(data)
+
+        self.assertIn('id="agentic"', html)
+        self.assertIn('id="agenticTable"', html)
+        self.assertIn('<option value="agentic">Agentic AI Security</option>', html)
+        self.assertIn("AG-01", html)
+        self.assertIn('data-service="agentic"', html)
+        self.assertIn("Agentic AI Security Findings", html)
+        self.assertIn(
+            "wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html", html
+        )
+        # The Agentic AI Lens hyperlink in the methodology must appear exactly
+        # once even when agentic findings are present (no duplicate link).
+        self.assertEqual(
+            html.count('target="_blank">AWS Well-Architected Agentic AI Lens</a>'),
+            1,
+        )
+        self.assertIn("Human-in-the-loop governance", html)
+
+    def test_agentic_security_omitted_when_absent(self):
+        """With no AG-* data the Agentic section is omitted cleanly."""
+        html = generate_html_report(self.test_assessment_results)
+
+        self.assertNotIn('id="agentic"', html)
+        self.assertNotIn('id="agenticTable"', html)
+        self.assertNotIn('<option value="agentic">Agentic AI Security</option>', html)
+        self.assertIn(
+            "wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html", html
+        )
+
     def tearDown(self):
         """Clean up test files after running tests"""
         pass

@@ -44,7 +44,7 @@
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 70 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, with an optional 64-check Financial Services GenAI risk assessment, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 70 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 27 always-on Agentic AI Security checks, with an optional 64-check Financial Services GenAI risk assessment, generating interactive HTML reports with findings and remediation guidance.
 
 ### Security Design Principles
 
@@ -211,7 +211,7 @@ sample-aiml-security-assessment/
 
 ## Assessment Structure
 
-The framework includes **70 core security checks** across three AI/ML services, plus **64 optional Financial Services GenAI risk checks** when `EnableFinServAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **70 core security checks** across three AI/ML services, plus **27 always-on Agentic AI Security checks** and **64 optional Financial Services GenAI risk checks** when `EnableFinServAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
@@ -481,7 +481,7 @@ sam local invoke ComprehendSecurityAssessmentFunction --event testfile.json
 - **Handle Exceptions**: Implement proper error handling and logging
 - **Follow Least Privilege**: Only request necessary permissions
 - **Standardize Findings**: Use the `create_finding()` function for consistent output
-- **Check ID Convention**: Use service prefixes for check IDs (BR-XX for Amazon Bedrock, SM-XX for Amazon SageMaker AI, AC-XX for Amazon Bedrock AgentCore, FS-XX for Financial Services GenAI risk checks)
+- **Check ID Convention**: Use service prefixes for check IDs (BR-XX for Amazon Bedrock, SM-XX for Amazon SageMaker AI, AC-XX for Amazon Bedrock AgentCore, AG-XX for Agentic AI Security, FS-XX for Financial Services GenAI risk checks)
 - **Status Semantics**: Use correct status values:
   - `Passed`: Resources were checked and met the assessed best practice
   - `Failed`: Resources were checked and found non-compliant
@@ -505,16 +505,18 @@ try:
     # Assessment logic
     result = aws_client.describe_service()
 except ClientError as e:
-    if e.response["Error"]["Code"] == "AccessDenied":
-        # Handle permission issues
+    # Access-denied and region-unsupported paths resolve to N/A, not Failed:
+    # the check could not run, which is not a confirmed misconfiguration.
+    if e.response["Error"]["Code"] in ACCESS_DENIED_ERROR_CODES:
         logger.warning(f"Access denied for service check: {str(e)}")
         return create_finding(
             finding_name="Permission Check",
-            finding_details="Insufficient permissions to assess service",
+            finding_details=describe_api_error(e, "Service check", region),
             resolution="Grant required permissions to assessment role",
             reference="https://docs.aws.amazon.com/service/permissions",
-            severity="High",
-            status="Failed",
+            severity="Medium",
+            status="N/A",
+            region=region,
         )
     else:
         # Handle other AWS errors
@@ -560,7 +562,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 ## Development Roadmap
 
 ### Current Status
-- **AI/ML Assessment**: 70 core checks across three services, plus 64 optional Financial Services GenAI risk checks (see [Security Checks Reference](SECURITY_CHECKS.md))
+- **AI/ML Assessment**: 70 core checks across three services, 27 always-on Agentic AI Security checks, plus 64 optional Financial Services GenAI risk checks (see [Security Checks Reference](SECURITY_CHECKS.md))
 
 ### Potential Additions
 - **Amazon Comprehend**: Data privacy, access controls, entity recognition security
@@ -716,7 +718,7 @@ After generating new screenshots, update the README to reference them:
 **Preview:**
 
 ![Executive Dashboard](sample-reports/dashboard-overview-light.png)
-*Executive summary with severity counts and service breakdown*
+*Executive summary with severity counts and assessment-area breakdown*
 
 ![Findings Table](sample-reports/findings-table.png)
 *Interactive findings table with filtering capabilities*
