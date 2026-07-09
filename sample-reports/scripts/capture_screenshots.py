@@ -18,6 +18,7 @@ Usage:
     python sample-reports/scripts/capture_screenshots.py
 """
 
+import re
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
@@ -31,6 +32,19 @@ VIEWPORT_WIDTH = 1440
 VIEWPORT_HEIGHT = 900
 JPEG_QUALITY = 85  # Balance between quality and file size
 PNG_OPTIMIZE = True
+
+# Well-known AWS documentation example account IDs (not real accounts). Real
+# account IDs discovered in the sample reports are consistently remapped to
+# these placeholders before screenshots are captured.
+# See: https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-identifiers.html
+ANONYMIZED_ACCOUNT_IDS = [
+    "111122223333",
+    "444455556666",
+    "777788889999",
+    "123456789012",
+    "555555555555",
+    "666677778888",
+]
 
 # Screenshots to capture
 SCREENSHOTS = [
@@ -78,6 +92,64 @@ SCREENSHOTS = [
         "clip": {"x": 0, "y": 0, "width": VIEWPORT_WIDTH, "height": 800},
     },
 ]
+
+
+def anonymize_account_ids(html_files: list) -> None:
+    """
+    Replace real 12-digit AWS account IDs in the given HTML files with
+    well-known example account IDs, in place.
+
+    Each distinct real account ID is mapped to a stable placeholder so that
+    filtering and grouping in the reports keep working. The mapping is shared
+    across all provided files, so an account that appears in multiple reports
+    is anonymized to the same placeholder everywhere.
+
+    Args:
+        html_files: List of Path objects pointing to HTML report files.
+    """
+    print("\n Anonymizing account IDs...")
+
+    # Collect every distinct 12-digit account ID across all files first so the
+    # placeholder assignment is deterministic regardless of processing order.
+    account_id_pattern = re.compile(r"\b\d{12}\b")
+    discovered = []
+    file_contents = {}
+    for html_file in html_files:
+        if not html_file.exists():
+            print(f"  WARNING: {html_file} not found, skipping...")
+            continue
+        content = html_file.read_text(encoding="utf-8")
+        file_contents[html_file] = content
+        for account_id in account_id_pattern.findall(content):
+            if account_id not in discovered:
+                discovered.append(account_id)
+
+    if not discovered:
+        print("  No account IDs found to anonymize.")
+        return
+
+    if len(discovered) > len(ANONYMIZED_ACCOUNT_IDS):
+        print(
+            f"  ERROR: Found {len(discovered)} distinct account IDs but only "
+            f"{len(ANONYMIZED_ACCOUNT_IDS)} placeholders are defined. "
+            "Add more entries to ANONYMIZED_ACCOUNT_IDS."
+        )
+        sys.exit(1)
+
+    mapping = dict(zip(discovered, ANONYMIZED_ACCOUNT_IDS))
+    for real_id, placeholder in mapping.items():
+        print(f"  {real_id} -> {placeholder}")
+
+    # Apply the mapping to each file. Replace via the same word-boundary regex
+    # to avoid touching digits that happen to embed a 12-digit run.
+    def _replace(match: "re.Match") -> str:
+        return mapping.get(match.group(0), match.group(0))
+
+    for html_file, content in file_contents.items():
+        updated = account_id_pattern.sub(_replace, content)
+        if updated != content:
+            html_file.write_text(updated, encoding="utf-8")
+            print(f"  Updated: {html_file.name}")
 
 
 def optimize_png(image_path: Path, max_size_kb: int = 300) -> None:
@@ -189,6 +261,11 @@ def main():
     print(f"\n Sample reports directory: {SAMPLE_REPORTS_DIR}")
     print(f" Viewport size: {VIEWPORT_WIDTH}x{VIEWPORT_HEIGHT}")
     print(f" Target: {len(SCREENSHOTS)} screenshots")
+
+    # Anonymize account IDs in the source HTML reports before capturing so the
+    # screenshots (and the reports themselves) never expose real account IDs.
+    report_files = sorted({SAMPLE_REPORTS_DIR / cfg["file"] for cfg in SCREENSHOTS})
+    anonymize_account_ids(report_files)
 
     try:
         with sync_playwright() as p:
