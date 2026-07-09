@@ -213,6 +213,27 @@ Resources:
                   - bedrock:GetFlow
                   - bedrock:ListKnowledgeBases
                   - bedrock:GetKnowledgeBase
+                  # Model evaluation (BR-18, BR-25)
+                  - bedrock:ListEvaluationJobs
+                  # Imported custom models (BR-30)
+                  - bedrock:ListImportedModels
+                  - bedrock:GetImportedModel
+                  # Batch inference jobs (BR-31)
+                  - bedrock:ListModelInvocationJobs
+                  # Agent action groups (BR-21)
+                  - bedrock:ListAgentActionGroups
+                  - bedrock:GetAgentActionGroup
+                  # Cross-account guardrails / quotas / monitoring
+                  # (BR-15, BR-22, BR-32)
+                  - organizations:DescribeOrganization
+                  - organizations:ListRoots
+                  - organizations:ListPolicies
+                  - servicequotas:ListServiceQuotas
+                  - servicequotas:GetServiceQuota
+                  - servicequotas:GetAWSDefaultServiceQuota
+                  - cloudwatch:DescribeAlarms
+                  # AgentCore assessment-duration custom metric
+                  - cloudwatch:PutMetricData
                   # SageMaker Permissions
                   - sagemaker:ListNotebookInstances
                   - sagemaker:DescribeNotebookInstance
@@ -258,6 +279,8 @@ Resources:
                   - cloudtrail:GetEventSelectors
                   - cloudtrail:GetTrailStatus
                   - lambda:ListFunctions
+                  # Read agent action-group Lambda execution role (BR-21)
+                  - lambda:GetFunction
                   - ecs:ListClusters
                   - ecs:ListTasks
                   - ecs:DescribeTasks
@@ -304,6 +327,52 @@ Resources:
                   - s3:GetBucketVersioning
                   - s3:GetBucketTagging
                   - s3:HeadBucket
+                  # FinServ GenAI Risk Assessment Permissions (FS-01 to FS-69)
+                  # Read-only list/describe/get actions required by the FinServ
+                  # security checks. Kept in sync with the canonical member role
+                  # in deployment/1-aiml-security-member-roles.yaml.
+                  # WAF / Shield (FS-01)
+                  - wafv2:ListWebACLs
+                  - wafv2:GetWebACL
+                  - shield:DescribeSubscription
+                  # API Gateway (FS-02, FS-68, FS-69)
+                  - apigateway:GET
+                  # Service Quotas (FS-03)
+                  - servicequotas:ListAWSDefaultServiceQuotas
+                  # Cost Explorer / Budgets (FS-04, FS-06)
+                  - ce:GetAnomalyMonitors
+                  - budgets:ViewBudget
+                  # Logs account policies (FS-05, FS-11, FS-43)
+                  - logs:DescribeAccountPolicies
+                  # Bedrock — models, data sources, reasoning (FS-07, FS-15, FS-27..50)
+                  - bedrock:ListFoundationModels
+                  - bedrock:ListDataSources
+                  - bedrock:GetDataSource
+                  - bedrock:ListAutomatedReasoningPolicies
+                  - bedrock:ListTagsForResource
+                  # Lambda concurrency / agent transaction checks (FS-09, FS-67, FS-69)
+                  - lambda:GetFunctionConcurrency
+                  # Step Functions — human-in-the-loop / rate checks (FS-10, FS-11)
+                  - states:ListStateMachines
+                  - states:DescribeStateMachine
+                  # Organizations — SCP model access restrictions (FS-12)
+                  - organizations:DescribePolicy
+                  # SageMaker — model cards / tags (FS-13, FS-61, FS-63)
+                  - sagemaker:ListModelCards
+                  - sagemaker:ListTags
+                  # S3 — bucket metadata (FS-20, FS-21, FS-46, FS-65)
+                  - s3:ListAllMyBuckets
+                  - s3:GetBucketNotification
+                  # OpenSearch Serverless — KB vector store (FS-25, FS-26)
+                  - aoss:ListSecurityPolicies
+                  # Macie — PII detection on training data (FS-44)
+                  - macie2:GetMacieSession
+                  # EventBridge — KB integrity monitoring (FS-33, FS-65)
+                  - events:ListRules
+                  # EventBridge Scheduler — KB sync schedules (FS-61)
+                  - scheduler:ListSchedules
+                  # Config — model onboarding governance (FS-14)
+                  - config:DescribeConfigRules
                 Resource: "*"
 
   # S3 bucket for assessment results

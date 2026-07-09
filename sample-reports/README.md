@@ -10,6 +10,8 @@ Interactive HTML reports demonstrating the assessment output:
 
 - **[security_assessment_single_account.html](security_assessment_single_account.html)** - Example report for a single AWS account showing 7 findings across Bedrock, SageMaker, and AgentCore
 - **[security_assessment_multi_account.html](security_assessment_multi_account.html)** - Example consolidated report for 3 AWS accounts showing 73 findings
+- **[security_assessment_multi_account_agentic_prototype.html](security_assessment_multi_account_agentic_prototype.html)** - Prototype based on the existing multi-account report with an Agentic AI security overlay added to the same UI
+- **[agentic-ai-lens-prototype.html](agentic-ai-lens-prototype.html)** - Prototype report showing how security-scoped Agentic AI check and control-domain metadata could be added to the HTML experience
 
 **Features:**
 - Executive dashboard with severity breakdown
@@ -17,6 +19,7 @@ Interactive HTML reports demonstrating the assessment output:
 - Filterable findings table
 - Light/dark mode toggle
 - Direct links to AWS documentation
+- Agentic AI security prototype view with security control summaries, question mapping, and lens-aware filters
 
 **How to view:** Download the HTML file and open it in your web browser.
 

@@ -1,4 +1,8 @@
 version: 0.2
+env:
+  variables:
+    # Opt out of AWS SAM CLI telemetry collection for all phases.
+    SAM_CLI_TELEMETRY: "0"
 phases:
   install:
     runtime-versions:

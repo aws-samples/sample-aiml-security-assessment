@@ -774,6 +774,205 @@ class TestAC13GatewayConfiguration:
 
 
 # ===================================================================
+# AG-24..AG-27: check_agentcore_gateway_agentic_security
+# ===================================================================
+class TestAgenticGatewaySecurity:
+    """Agentic AI Gateway security checks."""
+
+    @patch("agentcore_app.agentcore_client")
+    def test_gateway_policy_controls_fail_when_not_enforced(self, mock_ac):
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        mock_ac.get_gateway.return_value = {
+            "gatewayId": "gw-1",
+            "name": "TestGateway",
+            "authorizerType": "NONE",
+            "policyEngineConfiguration": {
+                "arn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:policy-engine/TestEngine-abcdefghij",
+                "mode": "LOG_ONLY",
+            },
+            "exceptionLevel": "DEBUG",
+        }
+
+        findings = agentcore_app.check_agentcore_gateway_agentic_security()
+        statuses = {f["Check_ID"]: f["Status"] for f in findings}
+
+        assert statuses["AG-24"] == "Failed"
+        assert statuses["AG-25"] == "Failed"
+        assert statuses["AG-26"] == "Failed"
+        assert statuses["AG-27"] == "Failed"
+        for finding in findings:
+            assert_finding_schema(finding)
+
+    @patch("agentcore_app.agentcore_client")
+    def test_gateway_authorizer_unspecified_fails_closed(self, mock_ac):
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        mock_ac.get_gateway.return_value = {
+            "gatewayId": "gw-1",
+            "name": "TestGateway",
+            "policyEngineConfiguration": {
+                "arn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:policy-engine/TestEngine-abcdefghij",
+                "mode": "ENFORCE",
+            },
+            "webAclArn": "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/abc",
+        }
+
+        findings = agentcore_app.check_agentcore_gateway_agentic_security()
+        ag24 = [f for f in findings if f["Check_ID"] == "AG-24"]
+
+        assert ag24
+        assert ag24[0]["Status"] == "Failed"
+        assert "unspecified" in ag24[0]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_gateway_authenticate_only_without_enforced_policy_fails_closed(
+        self, mock_ac
+    ):
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        mock_ac.get_gateway.return_value = {
+            "gatewayId": "gw-1",
+            "name": "TestGateway",
+            "authorizerType": "AUTHENTICATE_ONLY",
+            "policyEngineConfiguration": {
+                "arn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:policy-engine/TestEngine-abcdefghij",
+                "mode": "LOG_ONLY",
+            },
+            "webAclArn": "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/abc",
+        }
+
+        findings = agentcore_app.check_agentcore_gateway_agentic_security()
+        ag24 = [f for f in findings if f["Check_ID"] == "AG-24"]
+
+        assert ag24
+        assert ag24[0]["Status"] == "Failed"
+        assert "AUTHENTICATE_ONLY" in ag24[0]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_gateway_authenticate_only_with_enforced_policy_passes(self, mock_ac):
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        mock_ac.get_gateway.return_value = {
+            "gatewayId": "gw-1",
+            "name": "TestGateway",
+            "authorizerType": "AUTHENTICATE_ONLY",
+            "policyEngineConfiguration": {
+                "arn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:policy-engine/TestEngine-abcdefghij",
+                "mode": "ENFORCE",
+            },
+            "webAclArn": "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/abc",
+        }
+
+        findings = agentcore_app.check_agentcore_gateway_agentic_security()
+        ag24 = [f for f in findings if f["Check_ID"] == "AG-24"]
+
+        assert ag24
+        assert ag24[0]["Status"] == "Passed"
+        assert "policy engine" in ag24[0]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_gateway_detail_access_denied_returns_na(self, mock_ac):
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        mock_ac.get_gateway.side_effect = _make_client_error(
+            "AccessDeniedException", "Denied"
+        )
+
+        findings = agentcore_app.check_agentcore_gateway_agentic_security()
+
+        assert len(findings) == 1
+        assert findings[0]["Check_ID"] == "AG-24"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert "Unable to retrieve Gateway" in findings[0]["Finding_Details"]
+        assert_finding_schema(findings[0])
+
+    @patch("agentcore_app.agentcore_client")
+    def test_gateway_policy_controls_pass_when_enforced(self, mock_ac):
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        mock_ac.get_gateway.return_value = {
+            "gatewayId": "gw-1",
+            "name": "TestGateway",
+            "authorizerType": "AWS_IAM",
+            "policyEngineConfiguration": {
+                "arn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:policy-engine/TestEngine-abcdefghij",
+                "mode": "ENFORCE",
+            },
+            "webAclArn": "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/abc",
+        }
+
+        findings = agentcore_app.check_agentcore_gateway_agentic_security()
+        statuses = {f["Check_ID"]: f["Status"] for f in findings}
+
+        assert statuses["AG-24"] == "Passed"
+        assert statuses["AG-25"] == "Passed"
+        assert statuses["AG-26"] == "Passed"
+        assert statuses["AG-27"] == "Passed"
+
+
+class TestAgenticAgentCoreMapping:
+    """Agentic AI AG-* rows are generated from API-backed AgentCore checks."""
+
+    EXPECTED_AGENTIC_MAPPINGS = {
+        "AC-01": "AG-15",
+        "AC-02": "AG-16",
+        "AC-03": "AG-17",
+        "AC-04": "AG-18",
+        "AC-07": "AG-19",
+        "AC-08": "AG-20",
+        "AC-10": "AG-21",
+        "AC-11": "AG-22",
+        "AC-12": "AG-23",
+    }
+
+    def test_all_agentcore_agentic_mappings_emit_expected_rows(self):
+        source_findings = []
+        for source_check_id in self.EXPECTED_AGENTIC_MAPPINGS:
+            source_findings.append(
+                {
+                    "Account_ID": "123456789012",
+                    "Check_ID": source_check_id,
+                    "Finding": f"{source_check_id} source finding",
+                    "Finding_Details": f"{source_check_id} source details",
+                    "Resolution": "No action required.",
+                    "Reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security.html",
+                    "Severity": "Medium",
+                    "Status": "Passed",
+                    "Region": "us-east-1",
+                }
+            )
+
+        findings = agentcore_app.build_agentic_agentcore_security_findings(
+            source_findings
+        )
+
+        assert len(findings) == len(self.EXPECTED_AGENTIC_MAPPINGS)
+        actual_by_source = {}
+        for finding in findings:
+            details = finding["Finding_Details"]
+            source_check_id = details.split("Source check ", 1)[1].split(":", 1)[0]
+            actual_by_source[source_check_id] = finding
+
+            assert finding["Status"] == "Passed"
+            assert finding["Severity"] == "Medium"
+            assert finding["Region"] == "us-east-1"
+            assert f"Source check {source_check_id}" in details
+            assert_finding_schema(finding)
+
+        assert set(actual_by_source) == set(self.EXPECTED_AGENTIC_MAPPINGS)
+        for source_check_id, expected_ag_id in self.EXPECTED_AGENTIC_MAPPINGS.items():
+            assert actual_by_source[source_check_id]["Check_ID"] == expected_ag_id
+
+
+# ===================================================================
 # lambda_handler: multi-region gating and availability probe
 # ===================================================================
 def _agentcore_event(region="us-east-1", region_index=0):
@@ -885,7 +1084,7 @@ class TestAgentCoreHandlerMultiRegion:
         assert "AC-02" not in check_ids
         assert "AC-03" not in check_ids
         assert "AC-09" not in check_ids
-        assert check_ids == {"AC-00"}
+        assert check_ids == {"AC-00"} | {f"AG-{i:02d}" for i in range(15, 28)}
 
     def test_optin_region_error_treated_as_unavailable(self):
         # A region-not-enabled ClientError code makes agentcore_client None, so

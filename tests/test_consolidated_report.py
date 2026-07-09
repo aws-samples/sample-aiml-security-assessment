@@ -207,3 +207,34 @@ class TestRegionCounting:
         consolidated_app.generate_html_report(results)
 
         assert captured["regions"] is None
+
+
+class TestAgenticFindingClassification:
+    """AG-* rows are classified into the Agentic assessment area."""
+
+    def test_ag_rows_from_bedrock_csv_move_to_agentic_bucket(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            consolidated_app,
+            "generate_report_from_template",
+            lambda **kwargs: captured.update(kwargs) or "<html></html>",
+        )
+
+        results = _build_results(
+            {
+                "bedrock_security_report_exec-123_us-east-1": [
+                    _finding(
+                        "AG-01",
+                        "us-east-1",
+                        status="Passed",
+                        name="Agentic AI Agent Guardrail Association",
+                    ),
+                ],
+            }
+        )
+
+        consolidated_app.generate_html_report(results)
+
+        assert captured["service_stats"]["agentic"]["passed"] == 1
+        assert captured["service_stats"]["bedrock"]["passed"] == 0
+        assert captured["service_findings"]["agentic"][0]["_service"] == "agentic"

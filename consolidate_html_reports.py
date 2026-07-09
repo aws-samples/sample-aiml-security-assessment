@@ -84,9 +84,16 @@ def consolidate_html_reports():
         "bedrock": {"passed": 0, "failed": 0, "na": 0},
         "sagemaker": {"passed": 0, "failed": 0, "na": 0},
         "agentcore": {"passed": 0, "failed": 0, "na": 0},
+        "agentic": {"passed": 0, "failed": 0, "na": 0},
         "finserv": {"passed": 0, "failed": 0, "na": 0},
     }
-    service_findings = {"bedrock": [], "sagemaker": [], "agentcore": [], "finserv": []}
+    service_findings = {
+        "bedrock": [],
+        "sagemaker": [],
+        "agentcore": [],
+        "agentic": [],
+        "finserv": [],
+    }
 
     for account_dir in glob.glob(os.path.join(_account_files_dir(), "*/")):
         account_id = os.path.basename(account_dir.rstrip("/"))
@@ -138,6 +145,8 @@ def consolidate_html_reports():
                                 service = "sagemaker"
                             elif check_id.startswith("AC-"):
                                 service = "agentcore"
+                            elif check_id.startswith("AG-"):
+                                service = "agentic"
                             elif check_id.startswith("FS-"):
                                 service = "finserv"
                             else:

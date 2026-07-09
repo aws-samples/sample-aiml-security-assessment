@@ -94,6 +94,7 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
             "bedrock": {},
             "sagemaker": {},
             "agentcore": {},
+            "agentic": {},
             "finserv": {},
         }
 
@@ -153,10 +154,11 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
             "total_files_processed": len(assessment_results["bedrock"])
             + len(assessment_results["sagemaker"])
             + len(assessment_results["agentcore"])
+            + len(assessment_results["agentic"])
             + len(assessment_results["finserv"]),
             "categories_found": [
                 cat
-                for cat in ["bedrock", "sagemaker", "agentcore", "finserv"]
+                for cat in ["bedrock", "sagemaker", "agentcore", "agentic", "finserv"]
                 if assessment_results[cat]
             ],
             "rows": assessment_results["bedrock"],
@@ -164,6 +166,7 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
                 "bedrock": list(assessment_results["bedrock"].keys()),
                 "sagemaker": list(assessment_results["sagemaker"].keys()),
                 "agentcore": list(assessment_results["agentcore"].keys()),
+                "agentic": list(assessment_results["agentic"].keys()),
                 "finserv": list(assessment_results["finserv"].keys()),
             },
         }
@@ -204,9 +207,16 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
         "bedrock": {"passed": 0, "failed": 0, "na": 0},
         "sagemaker": {"passed": 0, "failed": 0, "na": 0},
         "agentcore": {"passed": 0, "failed": 0, "na": 0},
+        "agentic": {"passed": 0, "failed": 0, "na": 0},
         "finserv": {"passed": 0, "failed": 0, "na": 0},
     }
-    service_findings = {"bedrock": [], "sagemaker": [], "agentcore": [], "finserv": []}
+    service_findings = {
+        "bedrock": [],
+        "sagemaker": [],
+        "agentcore": [],
+        "agentic": [],
+        "finserv": [],
+    }
     regions = set()
 
     # Global/IAM findings (Region == "Global", e.g. BR-01, SM-02, AC-09) are
@@ -222,9 +232,14 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
         if service in assessment_results:
             for report_type, findings in assessment_results[service].items():
                 for finding in findings:
+                    output_service = (
+                        "agentic"
+                        if finding.get("Check_ID", "").upper().startswith("AG-")
+                        else service
+                    )
                     dedup_key = (
                         finding.get("Account_ID", ""),
-                        service,
+                        output_service,
                         finding.get("Check_ID", ""),
                         finding.get("Region", ""),
                         finding.get("Finding_Details", ""),
@@ -233,16 +248,16 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
                         continue
                     seen_findings.add(dedup_key)
 
-                    finding["_service"] = service
+                    finding["_service"] = output_service
                     all_findings.append(finding)
-                    service_findings[service].append(finding)
+                    service_findings[output_service].append(finding)
                     status = finding.get("Status", "").lower()
                     if status == "passed":
-                        service_stats[service]["passed"] += 1
+                        service_stats[output_service]["passed"] += 1
                     elif status == "failed":
-                        service_stats[service]["failed"] += 1
+                        service_stats[output_service]["failed"] += 1
                     elif status == "n/a":
-                        service_stats[service]["na"] += 1
+                        service_stats[output_service]["na"] += 1
                     region = finding.get("Region", "")
                     # "Global" tags IAM-only findings; it is not a scanned region
                     # and must not inflate the region count / multi-region UI.

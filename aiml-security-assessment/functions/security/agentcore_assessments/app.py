@@ -47,6 +47,85 @@ BUCKET_NAME = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
 # duplicate findings when scanning multiple regions.
 GLOBAL_REGION_LABEL = "Global"
 
+AGENTIC_AI_LENS_URL = (
+    "https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/"
+    "agentic-ai-lens.html"
+)
+AGENTCORE_GATEWAY_API_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/"
+    "API_GetGateway.html"
+)
+AGENTCORE_POLICY_ENGINE_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/"
+    "API_GatewayPolicyEngineConfiguration.html"
+)
+
+AGENTIC_AGENTCORE_CHECK_MAPPINGS = {
+    "AC-01": {
+        "check_id": "AG-15",
+        "finding": "Agentic AI Runtime Network Boundary",
+        "lens_domain": "Bounded Autonomy",
+        "agentic_context": "Agent runtimes should execute inside explicit network boundaries to reduce unintended external reachability.",
+        "resolution": "Configure AgentCore runtimes with appropriate VPC settings and restrict network paths to required services.",
+    },
+    "AC-02": {
+        "check_id": "AG-16",
+        "finding": "Agentic AI AgentCore Least Privilege",
+        "lens_domain": "Agent Identity & Access",
+        "agentic_context": "Over-permissive AgentCore principals can let agents or operators bypass intended autonomy and tool boundaries.",
+        "resolution": "Replace full-access AgentCore permissions with least-privilege IAM policies scoped to required resources and actions.",
+    },
+    "AC-03": {
+        "check_id": "AG-17",
+        "finding": "Agentic AI Stale AgentCore Access",
+        "lens_domain": "Agent Identity & Access",
+        "agentic_context": "Unused AgentCore permissions increase the blast radius of compromised principals.",
+        "resolution": "Remove or restrict stale AgentCore permissions for principals that no longer need access.",
+    },
+    "AC-04": {
+        "check_id": "AG-18",
+        "finding": "Agentic AI AgentCore Observability",
+        "lens_domain": "Auditability & Observability",
+        "agentic_context": "AgentCore observability provides the telemetry needed to investigate runtime, tool, memory, and gateway behavior.",
+        "resolution": "Enable CloudWatch Logs, tracing, and AgentCore observability for runtime and gateway resources where supported.",
+    },
+    "AC-07": {
+        "check_id": "AG-19",
+        "finding": "Agentic AI Memory Data Protection",
+        "lens_domain": "Memory & Data Privacy",
+        "agentic_context": "Agent memory can contain sensitive user or business context and should use customer-controlled encryption where required.",
+        "resolution": "Configure AgentCore memory resources with customer-managed KMS keys and review memory access permissions.",
+    },
+    "AC-08": {
+        "check_id": "AG-20",
+        "finding": "Agentic AI Private AgentCore Connectivity",
+        "lens_domain": "Bounded Autonomy",
+        "agentic_context": "Private service connectivity reduces exposure for agents that access AgentCore control or runtime services.",
+        "resolution": "Create required VPC endpoints for AgentCore services and validate endpoint availability.",
+    },
+    "AC-10": {
+        "check_id": "AG-21",
+        "finding": "Agentic AI Resource Policy Boundary",
+        "lens_domain": "Agent Identity & Access",
+        "agentic_context": "Resource-based policies add a second authorization boundary for AgentCore runtimes and gateways.",
+        "resolution": "Attach resource-based policies to AgentCore resources to constrain principals, accounts, and network sources.",
+    },
+    "AC-11": {
+        "check_id": "AG-22",
+        "finding": "Agentic AI Policy Engine Data Protection",
+        "lens_domain": "Tool Authorization",
+        "agentic_context": "Policy engines contain authorization logic for tool calls and should be protected with appropriate encryption controls.",
+        "resolution": "Configure policy engines with customer-managed KMS keys where enhanced key control is required.",
+    },
+    "AC-12": {
+        "check_id": "AG-23",
+        "finding": "Agentic AI Gateway Data Protection",
+        "lens_domain": "Tool Authorization",
+        "agentic_context": "Gateway configuration can include tool schemas, target definitions, and integration metadata.",
+        "resolution": "Configure AgentCore gateways with customer-managed KMS keys where enhanced key control is required.",
+    },
+}
+
 # Error codes returned when a region exists but is not enabled/usable for the
 # account (opt-in regions, disabled regions). The availability probe treats
 # these the same as an endpoint connection failure.
@@ -253,6 +332,72 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
     logger.info(f"Generated CSV report with {len(findings)} findings")
 
     return csv_content
+
+
+def build_agentic_agentcore_security_findings(
+    findings: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Create AG-* rows from AgentCore checks that already prove agentic controls."""
+    agentic_findings = []
+    for row in findings:
+        source_check_id = row.get("Check_ID", "")
+        mapping = AGENTIC_AGENTCORE_CHECK_MAPPINGS.get(source_check_id)
+        if not mapping:
+            continue
+
+        status = row.get("Status", "N/A")
+        severity = row.get("Severity", "Informational")
+        if status == "N/A":
+            severity = "Informational"
+
+        agentic_findings.append(
+            create_finding(
+                check_id=mapping["check_id"],
+                finding_name=mapping["finding"],
+                finding_details=(
+                    f"Agentic AI security domain: {mapping['lens_domain']}. "
+                    f"{mapping['agentic_context']} "
+                    f"Source check {source_check_id}: {row.get('Finding_Details', '')}"
+                ),
+                resolution=mapping["resolution"],
+                reference=AGENTIC_AI_LENS_URL,
+                severity=severity,
+                status=status,
+                region=row.get("Region", ""),
+            )
+        )
+    return agentic_findings
+
+
+def build_agentic_agentcore_unavailable_findings(
+    region: str, existing_findings: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Create N/A AG-* rows for AgentCore-derived checks that could not run."""
+    existing_check_ids = {finding.get("Check_ID") for finding in existing_findings}
+    unavailable_findings = []
+
+    for mapping in AGENTIC_AGENTCORE_CHECK_MAPPINGS.values():
+        if mapping["check_id"] in existing_check_ids:
+            continue
+
+        unavailable_findings.append(
+            create_finding(
+                check_id=mapping["check_id"],
+                finding_name=mapping["finding"],
+                finding_details=(
+                    f"Agentic AI security domain: {mapping['lens_domain']}. "
+                    f"This AgentCore-derived control could not be assessed because "
+                    f"Amazon Bedrock AgentCore is not available in region {region}."
+                ),
+                resolution="No action required unless AgentCore workloads are expected in this region.",
+                reference=AGENTIC_AI_LENS_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+                region=region,
+            )
+        )
+
+    return unavailable_findings
 
 
 def write_to_s3(
@@ -979,8 +1124,8 @@ def check_stale_agentcore_access(
                     finding_details=f"The following principals have AgentCore permissions but have never accessed the service: {never_accessed_details}",
                     resolution="Review and remove unused AgentCore permissions following least privilege principle",
                     reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
-                    severity=SeverityEnum.MEDIUM,
-                    status=StatusEnum.FAILED,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
                 )
             )
 
@@ -2449,6 +2594,284 @@ def check_agentcore_gateway_configuration() -> List[Dict[str, Any]]:
     return findings
 
 
+def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
+    """
+    Check API-provable AgentCore Gateway controls for agentic tool execution.
+
+    Validates:
+    - Inbound gateway authorization is enabled
+    - Policy engine is attached in ENFORCE mode
+    - Debug exception detail is not exposed
+    - AWS WAF web ACL is associated
+    """
+    findings = []
+
+    if agentcore_client is None:
+        for check_id, finding_name in [
+            ("AG-24", "Agentic AI Gateway Inbound Authorization"),
+            ("AG-25", "Agentic AI Gateway Tool Policy Enforcement"),
+            ("AG-26", "Agentic AI Gateway Error Detail Exposure"),
+            ("AG-27", "Agentic AI Gateway WAF Protection"),
+        ]:
+            findings.append(
+                create_finding(
+                    check_id=check_id,
+                    finding_name=finding_name,
+                    finding_details="AgentCore client not available in this region",
+                    resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
+                    reference=AGENTIC_AI_LENS_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+        return findings
+
+    try:
+        gateways = _agentcore_list_all("list_gateways", ["items", "gateways"])
+    except AttributeError:
+        return [
+            create_finding(
+                check_id="AG-24",
+                finding_name="Agentic AI Gateway Security Controls",
+                finding_details="Gateway APIs not yet available in bedrock-agentcore-control client",
+                resolution="Upgrade the AWS SDK/runtime when AgentCore Gateway APIs are available",
+                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+    except ClientError as e:
+        status = (
+            StatusEnum.NA if _is_access_denied_client_error(e) else StatusEnum.FAILED
+        )
+        severity = (
+            SeverityEnum.INFORMATIONAL
+            if status == StatusEnum.NA
+            else SeverityEnum.MEDIUM
+        )
+        return [
+            create_finding(
+                check_id="AG-24",
+                finding_name="Agentic AI Gateway Security Controls",
+                finding_details=f"Unable to list AgentCore Gateways: {str(e)}",
+                resolution="Grant bedrock-agentcore:ListGateways and retry the assessment",
+                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                severity=severity,
+                status=status,
+            )
+        ]
+
+    if not gateways:
+        return [
+            create_finding(
+                check_id="AG-24",
+                finding_name="Agentic AI Gateway Inbound Authorization",
+                finding_details="No AgentCore Gateways found",
+                resolution="No action required",
+                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            ),
+            create_finding(
+                check_id="AG-25",
+                finding_name="Agentic AI Gateway Tool Policy Enforcement",
+                finding_details="No AgentCore Gateways found",
+                resolution="No action required",
+                reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            ),
+            create_finding(
+                check_id="AG-26",
+                finding_name="Agentic AI Gateway Error Detail Exposure",
+                finding_details="No AgentCore Gateways found",
+                resolution="No action required",
+                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            ),
+            create_finding(
+                check_id="AG-27",
+                finding_name="Agentic AI Gateway WAF Protection",
+                finding_details="No AgentCore Gateways found",
+                resolution="No action required",
+                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            ),
+        ]
+
+    for gateway in gateways:
+        gateway_id = gateway.get("gatewayId", "unknown")
+        gateway_name = gateway.get("name", gateway_id)
+
+        try:
+            gateway_details = agentcore_client.get_gateway(gatewayIdentifier=gateway_id)
+        except ClientError as e:
+            findings.append(
+                create_finding(
+                    check_id="AG-24",
+                    finding_name="Agentic AI Gateway Security Controls",
+                    finding_details=f"Unable to retrieve Gateway '{gateway_name}' ({gateway_id}): {str(e)}",
+                    resolution="Grant bedrock-agentcore:GetGateway and retry the assessment",
+                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            continue
+
+        authorizer_type = gateway_details.get("authorizerType") or gateway.get(
+            "authorizerType"
+        )
+        policy_engine_config = gateway_details.get("policyEngineConfiguration") or {}
+        policy_engine_mode = policy_engine_config.get("mode")
+        policy_engine_arn = policy_engine_config.get("arn")
+
+        if authorizer_type in {"AWS_IAM", "CUSTOM_JWT"}:
+            findings.append(
+                create_finding(
+                    check_id="AG-24",
+                    finding_name="Agentic AI Gateway Inbound Authorization",
+                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) uses authorizerType {authorizer_type}.",
+                    resolution="No action required",
+                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.PASSED,
+                )
+            )
+        elif (
+            authorizer_type == "AUTHENTICATE_ONLY"
+            and policy_engine_mode == "ENFORCE"
+            and policy_engine_arn
+        ):
+            findings.append(
+                create_finding(
+                    check_id="AG-24",
+                    finding_name="Agentic AI Gateway Inbound Authorization",
+                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) uses authorizerType AUTHENTICATE_ONLY and delegates authorization to policy engine {policy_engine_arn} in ENFORCE mode.",
+                    resolution="No action required. Continue validating policy coverage for all exposed gateway targets.",
+                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.PASSED,
+                )
+            )
+        elif authorizer_type == "AUTHENTICATE_ONLY":
+            findings.append(
+                create_finding(
+                    check_id="AG-24",
+                    finding_name="Agentic AI Gateway Authenticate-Only Authorization",
+                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) uses authorizerType AUTHENTICATE_ONLY without an attached policy engine in ENFORCE mode. AgentCore Gateway authenticates the SigV4 caller but does not make an authorization decision for this authorizer type.",
+                    resolution="Use AWS_IAM or CUSTOM_JWT for gateway-enforced authorization, or attach an AgentCore policy engine in ENFORCE mode before using AUTHENTICATE_ONLY.",
+                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.FAILED,
+                )
+            )
+        else:
+            findings.append(
+                create_finding(
+                    check_id="AG-24",
+                    finding_name="Agentic AI Gateway Inbound Authorization Disabled",
+                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) uses authorizerType {authorizer_type or 'unspecified'}. Agent tool endpoints must use an explicit gateway authorizer.",
+                    resolution="Configure the gateway authorizerType as AWS_IAM or CUSTOM_JWT and provide the required authorizer configuration.",
+                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.FAILED,
+                )
+            )
+
+        if not policy_engine_config:
+            findings.append(
+                create_finding(
+                    check_id="AG-25",
+                    finding_name="Agentic AI Gateway Tool Policy Enforcement Missing",
+                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) does not have a policy engine configuration. Tool calls are not evaluated by AgentCore policy enforcement.",
+                    resolution="Attach an AgentCore policy engine to the gateway and use ENFORCE mode for production tool authorization.",
+                    reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.FAILED,
+                )
+            )
+        elif policy_engine_mode != "ENFORCE":
+            findings.append(
+                create_finding(
+                    check_id="AG-25",
+                    finding_name="Agentic AI Gateway Tool Policy Not Enforced",
+                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) policy engine {policy_engine_arn or 'unknown'} is in {policy_engine_mode or 'unknown'} mode. LOG_ONLY mode records decisions but does not block denied tool calls.",
+                    resolution="Change the gateway policyEngineConfiguration mode to ENFORCE after validating policies in LOG_ONLY mode.",
+                    reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.FAILED,
+                )
+            )
+        else:
+            findings.append(
+                create_finding(
+                    check_id="AG-25",
+                    finding_name="Agentic AI Gateway Tool Policy Enforcement",
+                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) has policy engine {policy_engine_arn or 'unknown'} in ENFORCE mode.",
+                    resolution="No action required",
+                    reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.PASSED,
+                )
+            )
+
+        if gateway_details.get("exceptionLevel") == "DEBUG":
+            findings.append(
+                create_finding(
+                    check_id="AG-26",
+                    finding_name="Agentic AI Gateway Debug Error Detail Enabled",
+                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) returns DEBUG-level exception detail. Detailed errors can disclose tool, target, or policy implementation details to callers.",
+                    resolution="Remove DEBUG exceptionLevel for production gateways so callers receive generic gateway errors.",
+                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    severity=SeverityEnum.MEDIUM,
+                    status=StatusEnum.FAILED,
+                )
+            )
+        else:
+            findings.append(
+                create_finding(
+                    check_id="AG-26",
+                    finding_name="Agentic AI Gateway Error Detail Exposure",
+                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) does not expose DEBUG-level exception detail.",
+                    resolution="No action required",
+                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    severity=SeverityEnum.MEDIUM,
+                    status=StatusEnum.PASSED,
+                )
+            )
+
+        web_acl_arn = gateway_details.get("webAclArn")
+        if web_acl_arn:
+            findings.append(
+                create_finding(
+                    check_id="AG-27",
+                    finding_name="Agentic AI Gateway WAF Protection",
+                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) is associated with WAF web ACL {web_acl_arn}.",
+                    resolution="No action required",
+                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    severity=SeverityEnum.LOW,
+                    status=StatusEnum.PASSED,
+                )
+            )
+        else:
+            findings.append(
+                create_finding(
+                    check_id="AG-27",
+                    finding_name="Agentic AI Gateway WAF Protection Missing",
+                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) is not associated with an AWS WAF web ACL.",
+                    resolution="Associate an AWS WAF web ACL with internet-facing AgentCore gateways to add request filtering and abuse protection.",
+                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    severity=SeverityEnum.LOW,
+                    status=StatusEnum.FAILED,
+                )
+            )
+
+    return findings
+
+
 def lambda_handler(event, context):
     """
     Lambda handler for AgentCore security assessment.
@@ -2602,6 +3025,14 @@ def lambda_handler(event, context):
             for finding in all_findings:
                 if not finding.get("Region"):
                     finding["Region"] = region
+            all_findings.extend(check_agentcore_gateway_agentic_security())
+            all_findings.extend(build_agentic_agentcore_security_findings(all_findings))
+            all_findings.extend(
+                build_agentic_agentcore_unavailable_findings(region, all_findings)
+            )
+            for finding in all_findings:
+                if not finding.get("Region"):
+                    finding["Region"] = region
             csv_content = generate_csv_report(all_findings)
             s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
             return {
@@ -2632,6 +3063,7 @@ def lambda_handler(event, context):
             ("Resource-Based Policies", check_agentcore_resource_based_policies),
             ("Policy Engine Encryption", check_agentcore_policy_engine_encryption),
             ("Gateway Encryption", check_agentcore_gateway_encryption),
+            ("Agentic Gateway Security", check_agentcore_gateway_agentic_security),
         ]
 
         for check_name, check_func in checks:
@@ -2669,6 +3101,12 @@ def lambda_handler(event, context):
                 )
 
         # Inject region into all findings that don't have it set
+        for finding in all_findings:
+            if not finding.get("Region"):
+                finding["Region"] = region
+
+        logger.info("Building Agentic AI Security findings from AgentCore results")
+        all_findings.extend(build_agentic_agentcore_security_findings(all_findings))
         for finding in all_findings:
             if not finding.get("Region"):
                 finding["Region"] = region
