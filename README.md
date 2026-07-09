@@ -2,7 +2,7 @@
 
 *A serverless framework that scans your AWS accounts for AI/ML security misconfigurations and produces an interactive, shareable report.*
 
-[![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](https://opensource.org/licenses/MIT-0) [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/) [![AWS SAM](https://img.shields.io/badge/AWS-SAM-orange.svg)](https://aws.amazon.com/serverless/sam/)
+[![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](https://opensource.org/licenses/MIT-0) [![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/downloads/) [![AWS SAM](https://img.shields.io/badge/AWS-SAM-orange.svg)](https://aws.amazon.com/serverless/sam/)
 
 **Open-source automated security scanner for generative AI and machine learning workloads on AWS.** Core checks for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore are built on the [AWS Well-Architected Framework — Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html). An optional Financial Services GenAI risk module adds 64 checks aligned to the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption within Financial Services Industries](https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf). See the [AWS Security Blog announcement](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/) for context on the updated guide.
 
@@ -131,7 +131,7 @@ This tool operates within the [AWS Shared Responsibility Model](https://aws.amaz
 
 ## Prerequisites
 
-- Python 3.12+ — [Install Python](https://www.python.org/downloads/)
+- Python 3.12 — [Install Python](https://www.python.org/downloads/)
 - AWS SAM CLI — [Install the AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
 - Docker (optional) — [Install Docker](https://hub.docker.com/search/?type=edition&offering=community) — Only required for local development
 
@@ -405,7 +405,7 @@ GitHub Actions workflows run automatically on pull requests and selected pushes:
 | Workflow | Trigger | What It Checks |
 |----------|---------|----------------|
 | **Python Code Quality** | PR | `ruff check` and `ruff format --check` on changed Python files |
-| **AI/ML Security Assessment Tests** | PR, push to `main`/`develop` | Runs the `pytest` suite (assessment functions and report pipeline) on Python 3.11 and 3.12 |
+| **AI/ML Security Assessment Tests** | PR, push to `main`/`develop` | Runs the `pytest` suite (assessment functions and report pipeline) on Python 3.12 |
 | **CloudFormation Lint** | PR | Validates deployment and SAM templates with `cfn-lint` |
 | **SAM Validate & Build** | PR | `sam validate --lint` and `sam build` on SAM templates |
 | **ASH Security Scan** | PR | Scans for secrets, dependency vulnerabilities, and IaC misconfigurations |
