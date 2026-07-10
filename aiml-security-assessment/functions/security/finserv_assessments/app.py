@@ -1250,7 +1250,7 @@ def check_cloudwatch_token_alarms() -> Dict[str, Any]:
                         "- AWS/Bedrock TokensProcessed (threshold based on quota)\n"
                         "- Custom application-level token counters via EMF"
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-runtime-metrics.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-05"],
@@ -1266,7 +1266,7 @@ def check_cloudwatch_token_alarms() -> Dict[str, Any]:
                         f"{len(throttle_alarms)} covering throttling."
                     ),
                     resolution="Ensure alarms have SNS actions and are in OK state.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-runtime-metrics.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-05"],
@@ -1495,7 +1495,7 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
                         finding_name="AgentCore Policy Engine — Access Check",
                         finding_details="Unable to enumerate AgentCore runtimes (access denied or service unavailable in region).",
                         resolution="Ensure assessment role has bedrock-agentcore:ListAgentRuntimes permission.",
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
+                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
                         severity="Low",
                         status="N/A",
                         compliance_frameworks=COMPLIANCE_MAP["FS-08"],
@@ -1511,7 +1511,7 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
                     finding_name="No AgentCore Runtimes Found",
                     finding_details="No AgentCore runtimes found; policy engine check not applicable.",
                     resolution="If using AgentCore, configure the Policy Engine to authorize tool calls.",
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-08"],
@@ -1538,7 +1538,7 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
                             "Configure an authorizer (Lambda or Cedar policy store) on each AgentCore runtime "
                             "to enforce fine-grained tool-call authorization."
                         ),
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
+                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
                         severity="High",
                         status="Failed",
                         compliance_frameworks=COMPLIANCE_MAP["FS-08"],
@@ -1551,7 +1551,7 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
                         finding_name="AgentCore Policy Engine Configured",
                         finding_details=f"All {len(runtimes)} runtime(s) have authorizer configurations.",
                         resolution="No action required.",
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
+                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
                         severity="High",
                         status="Passed",
                         compliance_frameworks=COMPLIANCE_MAP["FS-08"],
@@ -1757,7 +1757,7 @@ def check_agent_rate_alarms() -> Dict[str, Any]:
                         "- Lambda invocation errors for agent functions\n"
                         "- Step Functions execution failures and timeouts"
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-agents-cw-metrics.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-11"],
@@ -1770,7 +1770,7 @@ def check_agent_rate_alarms() -> Dict[str, Any]:
                     finding_name="Agent Rate Alarms Present",
                     finding_details=f"Found {len(agent_alarms)} agent-related CloudWatch alarm(s).",
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-cw.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-agents-cw-metrics.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-11"],
@@ -2026,7 +2026,7 @@ def check_bedrock_model_evaluation_adversarial() -> Dict[str, Any]:
                         "2. Use FMEval library for automated robustness testing.\n"
                         "3. Schedule periodic re-evaluation after model updates."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-automatic.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-15"],
@@ -2039,7 +2039,7 @@ def check_bedrock_model_evaluation_adversarial() -> Dict[str, Any]:
                     finding_name="Bedrock Evaluation Jobs Present",
                     finding_details=f"Found {len(evals)} evaluation job(s). Verify adversarial datasets are included.",
                     resolution="Ensure evaluation datasets include adversarial/red-team test cases.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-automatic.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-15"],
@@ -2678,7 +2678,7 @@ def check_guardrail_contextual_grounding(inventory) -> Dict[str, Any]:
                         "Configure Bedrock Guardrails with contextual grounding checks "
                         "(grounding threshold ≥0.7 and relevance threshold ≥0.7 for FinServ use cases)."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-27"],
@@ -2713,7 +2713,7 @@ def check_guardrail_contextual_grounding(inventory) -> Dict[str, Any]:
                         "Also consider enabling Automated Reasoning checks (bedrock:ListAutomatedReasoningPolicies) "
                         "for policy-based formal verification of factual claims — see FS-27 ARC check."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
                     severity="High",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-27"],
@@ -2729,7 +2729,7 @@ def check_guardrail_contextual_grounding(inventory) -> Dict[str, Any]:
                         "No action required for contextual grounding. "
                         "Also consider enabling Automated Reasoning checks for formal policy verification."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-27"],
@@ -3045,7 +3045,7 @@ def check_bedrock_evaluation_compliance_datasets() -> Dict[str, Any]:
                     "- UDAP/UDAAP unfair/deceptive practice scenarios\n"
                     "- AML/KYC edge cases"
                 ),
-                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-automatic.html",
                 severity="Informational",
                 status="N/A",
                 compliance_frameworks=COMPLIANCE_MAP["FS-30"],
@@ -3435,7 +3435,7 @@ def check_fmeval_harmful_content() -> Dict[str, Any]:
                     "- Hate speech classification\n"
                     "- Violence/self-harm content"
                 ),
-                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-automatic.html",
                 severity="Informational",
                 status="N/A",
                 compliance_frameworks=COMPLIANCE_MAP["FS-35"],
@@ -3752,7 +3752,7 @@ def check_bedrock_evaluation_bias_datasets() -> Dict[str, Any]:
                     "- Equal opportunity scenarios\n"
                     "- Counterfactual fairness tests"
                 ),
-                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation.html",
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-automatic.html",
                 severity="Informational",
                 status="N/A",
                 compliance_frameworks=COMPLIANCE_MAP["FS-40"],
@@ -4185,7 +4185,7 @@ def check_guardrail_grounding_threshold(inventory) -> Dict[str, Any]:
                     finding_name="No Guardrails — Grounding Threshold Not Applicable",
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with contextual grounding checks.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-47"],
@@ -4412,7 +4412,7 @@ def check_guardrail_relevance_grounding(inventory) -> Dict[str, Any]:
                         "the user query. Also enable the GROUNDING filter (≥0.7) to block "
                         "responses not supported by the retrieved source context."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-50"],
@@ -4428,7 +4428,7 @@ def check_guardrail_relevance_grounding(inventory) -> Dict[str, Any]:
                         f"{', '.join(guardrails_with_relevance)}."
                     ),
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-50"],
@@ -4811,7 +4811,7 @@ def check_penetration_testing_evidence() -> Dict[str, Any]:
 # CATEGORY 13: IMPROPER OUTPUT HANDLING (FS-55 to FS-58)
 # CATEGORY 14: OFF-TOPIC & INAPPROPRIATE OUTPUT (FS-59 to FS-60)
 # CATEGORY 15: OUT-OF-DATE TRAINING DATA (FS-61 to FS-63)
-# COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, NYDFS 500, OWASP LLM02]
+# COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, NYDFS 500, OWASP LLM05]
 # ===========================================================================
 
 
@@ -4819,7 +4819,7 @@ def check_output_validation_lambda(inventory) -> Dict[str, Any]:
     """
     FS-55 — Check for Lambda functions implementing output validation/sanitization
     in GenAI application pipelines.
-    COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, OWASP LLM02]
+    COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, OWASP LLM05]
     """
     findings = _empty_findings("Output Validation Lambda Check")
     try:
@@ -4850,7 +4850,7 @@ def check_output_validation_lambda(inventory) -> Dict[str, Any]:
                         "3. Sanitize outputs before rendering in web UIs (XSS prevention).\n"
                         "4. Encode outputs appropriately for the target context (HTML, SQL, JSON)."
                     ),
-                    reference="https://genai.owasp.org/llm-top-10/",
+                    reference="https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-55"],
@@ -4863,7 +4863,7 @@ def check_output_validation_lambda(inventory) -> Dict[str, Any]:
                     finding_name="Output Validation Functions Present",
                     finding_details=f"Found {len(validation_functions)} output validation/sanitization function(s).",
                     resolution="No action required.",
-                    reference="https://genai.owasp.org/llm-top-10/",
+                    reference="https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-55"],
@@ -4877,7 +4877,7 @@ def check_output_validation_lambda(inventory) -> Dict[str, Any]:
 def check_xss_prevention_waf(inventory) -> Dict[str, Any]:
     """
     FS-56 — Verify WAF rules include XSS prevention for GenAI web application outputs.
-    COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, PCI-DSS 6.4.1, OWASP LLM02]
+    COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, PCI-DSS 6.4.1, OWASP LLM05]
     """
     findings = _empty_findings("XSS Prevention WAF Check")
     try:
@@ -4971,7 +4971,7 @@ def check_output_encoding_advisory() -> Dict[str, Any]:
     """
     FS-57 — Advisory check: verify application encodes GenAI outputs
     appropriately for the rendering context.
-    COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, OWASP LLM02]
+    COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, OWASP LLM05]
     """
     findings = _empty_findings("Output Encoding Advisory")
     findings["csv_data"].append(
@@ -4988,7 +4988,7 @@ def check_output_encoding_advisory() -> Dict[str, Any]:
                 "3. JSON-encode outputs before embedding in JavaScript contexts.\n"
                 "4. Validate output length and format before passing to downstream APIs."
             ),
-            reference="https://genai.owasp.org/llm-top-10/",
+            reference="https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html",
             severity="Informational",
             status="N/A",
             compliance_frameworks=COMPLIANCE_MAP["FS-57"],
@@ -5001,7 +5001,7 @@ def check_output_schema_validation(inventory) -> Dict[str, Any]:
     """
     FS-58 — Check for structured output validation using Bedrock response
     schemas or application-level JSON schema validation.
-    COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, OWASP LLM02]
+    COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, OWASP LLM05]
     """
     findings = _empty_findings("Output Schema Validation Check")
     try:
@@ -5170,7 +5170,7 @@ def check_contextual_grounding_for_offtopic() -> Dict[str, Any]:
                 "2. Use Bedrock Guardrails relevance grounding filter.\n"
                 "3. Test with off-topic prompts in QA to verify rejection behavior."
             ),
-            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-grounding.html",
+            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
             severity="Informational",
             status="N/A",
             compliance_frameworks=COMPLIANCE_MAP["FS-60"],
@@ -5601,7 +5601,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                         finding_name="AgentCore Identity Propagation — Access Check",
                         finding_details="Unable to enumerate AgentCore runtimes (access denied or service unavailable in region).",
                         resolution="Ensure assessment role has bedrock-agentcore:ListAgentRuntimes permission.",
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
+                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
                         severity="Low",
                         status="N/A",
                         compliance_frameworks=COMPLIANCE_MAP["FS-66"],
@@ -5620,7 +5620,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                         "If using AgentCore, configure token propagation so end-user identities "
                         "are forwarded to tool services."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-66"],
@@ -5653,7 +5653,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                         "3. Ensure tool services validate the propagated identity before executing actions.\n"
                         "4. Do not expose propagated identity tokens to unauthorized third parties."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
                     severity="High",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-66"],
@@ -5666,7 +5666,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                     finding_name="AgentCore End-User Identity Propagation Configured",
                     finding_details=f"All {len(runtimes)} runtime(s) have authorizer configurations supporting identity propagation.",
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-authorization.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-66"],
@@ -5722,7 +5722,7 @@ def check_agent_financial_transaction_thresholds(inventory) -> Dict[str, Any]:
                         "a policy constraint on tool calls.\n"
                         "3. Reject or escalate to human review any transaction exceeding defined limits."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-engine.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_GatewayPolicyEngineConfiguration.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-67"],
@@ -5765,7 +5765,7 @@ def check_agent_financial_transaction_thresholds(inventory) -> Dict[str, Any]:
                             "3. Configure AgentCore Policy Engine rules to cap financial transaction amounts.\n"
                             "4. Route transactions exceeding thresholds to a human-in-the-loop approval step."
                         ),
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-engine.html",
+                        reference="https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_GatewayPolicyEngineConfiguration.html",
                         severity="High",
                         status="Failed",
                         compliance_frameworks=COMPLIANCE_MAP["FS-67"],
@@ -5781,7 +5781,7 @@ def check_agent_financial_transaction_thresholds(inventory) -> Dict[str, Any]:
                             "threshold/limit environment variables present."
                         ),
                         resolution="Verify threshold values are appropriate for your financial risk tolerance.",
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-engine.html",
+                        reference="https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_GatewayPolicyEngineConfiguration.html",
                         severity="High",
                         status="Passed",
                         compliance_frameworks=COMPLIANCE_MAP["FS-67"],
