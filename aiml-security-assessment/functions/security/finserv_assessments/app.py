@@ -437,7 +437,8 @@ COMPLIANCE_MAP: Dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
-# SEVERITY METHODOLOGY (see docs/severity-methodology.md + severity-register.md)
+# SEVERITY METHODOLOGY (see docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md
+# + docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md)
 #
 # Severity = property of the CONTROL (the risk it mitigates), assigned once via a
 # Likelihood (L) x Impact (I) matrix mapped to the AWS Security Hub ASFF label set,
@@ -485,7 +486,7 @@ _DISPOSITION_SEVERITY = {
 
 
 # Authoritative per-finding severity register (keyed by finding-name).
-# Source of truth derived from docs/severity-register.md. The test suite
+# Source of truth derived from docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md. The test suite
 # (test_severity_register.py) asserts every emitted severity matches this map.
 # Entries: finding_name -> (severity, disposition). I/L rationale lives in the doc.
 SEVERITY_REGISTER: Dict[str, str] = {
@@ -716,7 +717,7 @@ def _could_not_assess_row(check_id: str, check_name: str, err: Any) -> Dict[str,
     """
     Synthesize one visible finding row for a check that errored out and produced
     no rows. Uses Status="N/A", Severity="Low" (the COULD_NOT_ASSESS disposition —
-    see severity-methodology.md §3.4) so the gap surfaces in the report as an
+    see SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md §3.4) so the gap surfaces in the report as an
     unknown/assessment-gap without inflating the Failed count or implying a
     confirmed control failure.
     """

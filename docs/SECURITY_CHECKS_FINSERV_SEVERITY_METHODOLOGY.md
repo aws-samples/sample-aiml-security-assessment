@@ -123,7 +123,7 @@ a default band. Per-control I×L may refine within ±1 with a documented reason.
 | **Non-verifiable advisory** | app-layer; no API | **Informational** | FS-24, FS-29, FS-32, FS-37, FS-49, FS-54, FS-57, FS-58, FS-60, FS-62 |
 
 The authoritative per-finding assignments are in
-[`severity-register.md`](./severity-register.md).
+[`SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
 
 
 
