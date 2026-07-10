@@ -178,6 +178,16 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertIn("Methodology", content)
             self.assertIn("Severity Legend", content)
             self.assertIn("sortable", content)
+            self.assertIn("Failed High, Medium, and Low findings", content)
+            self.assertIn('<option value="failed" selected>Failed</option>', content)
+            self.assertIn('class="single-account-report"', content)
+            self.assertIn("Details and remediation", content)
+            self.assertLess(content.index('id="risk"'), content.index('id="findings"'))
+            self.assertIn(
+                "const status = this.hasAttribute('data-filter-status')",
+                content,
+            )
+            self.assertNotIn("this.dataset.filterStatus || 'failed'", content)
 
     def test_generate_multi_account_report(self):
         """Test multi-account report generation using shared template directly"""
@@ -348,13 +358,13 @@ class TestHtmlReportGeneration(unittest.TestCase):
         }
         html = generate_html_report(data)
         self.assertIn('id="finserv"', html)
-        self.assertIn('id="finservTable"', html)
+        self.assertIn('id="findingsTable"', html)
+        self.assertNotIn('id="finservTable"', html)
         self.assertIn('<option value="finserv">', html)
         self.assertIn("FS-01", html)
         self.assertIn('data-service="finserv"', html)
-        self.assertIn('id="finservRegionFilter"', html)
-        self.assertIn('<option value="region-a">region-a</option>', html)
-        self.assertIn('<option value="region-b">region-b</option>', html)
+        self.assertIn('data-filter-service="finserv"', html)
+        self.assertIn("View failed findings", html)
         self.assertIn('data-scope-service="finserv"', html)
         self.assertIn('class="scope-industry"', html)
         self.assertIn('class="scope-chip industry-chip"', html)
@@ -407,7 +417,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
                     "Finding": "Bedrock Agent Guardrail Association",
                     "Finding_Details": "Agent has a guardrail.",
                     "Resolution": "No action required.",
-                    "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/agents-guardrails.html",
+                    "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use.html",
                     "Severity": "High",
                     "Status": "Passed",
                     "Region": "us-east-1",
@@ -429,12 +439,14 @@ class TestHtmlReportGeneration(unittest.TestCase):
         html = generate_html_report(data)
 
         self.assertIn('id="agentic"', html)
-        self.assertIn('id="agenticTable"', html)
+        self.assertIn('id="findingsTable"', html)
+        self.assertNotIn('id="agenticTable"', html)
         self.assertIn('<option value="agentic">Agentic AI Security</option>', html)
         self.assertIn("<h3>By Lens</h3>", html)
         self.assertIn('class="nav-section lens-nav"', html)
         self.assertIn("AG-01", html)
         self.assertIn('data-service="agentic"', html)
+        self.assertIn('data-filter-service="agentic"', html)
         self.assertIn("Agentic AI Security Findings", html)
         self.assertIn(
             "wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html", html
@@ -464,6 +476,74 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertNotIn('class="nav-section lens-nav"', html)
         self.assertIn(
             "wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html", html
+        )
+
+    def test_region_risk_includes_global_scope_card(self):
+        """Global failed findings render in risk by region / scope without inflating regions."""
+        all_findings = [
+            {
+                "account_id": "123456789012",
+                "check_id": "BR-01",
+                "finding": "Regional Bedrock Check",
+                "details": "No regional issue.",
+                "resolution": "No action required.",
+                "reference": "https://example.com",
+                "severity": "High",
+                "status": "Passed",
+                "region": "us-east-1",
+                "_service": "bedrock",
+            },
+            {
+                "account_id": "123456789012",
+                "check_id": "BR-03",
+                "finding": "Marketplace Subscription Access Check",
+                "details": "Overly permissive marketplace subscription access.",
+                "resolution": "Restrict subscription access.",
+                "reference": "https://example.com",
+                "severity": "High",
+                "status": "Failed",
+                "region": "Global",
+                "_service": "bedrock",
+            },
+            {
+                "account_id": "123456789012",
+                "check_id": "AC-09",
+                "finding": "AgentCore Service-Linked Role Missing",
+                "details": "Service-linked role is missing.",
+                "resolution": "Allow service-linked role creation.",
+                "reference": "https://example.com",
+                "severity": "Medium",
+                "status": "Failed",
+                "region": "Global",
+                "_service": "agentcore",
+            },
+        ]
+
+        html = generate_report_direct(
+            all_findings=all_findings,
+            service_findings={
+                "bedrock": all_findings[:2],
+                "agentcore": [all_findings[2]],
+            },
+            service_stats={
+                "bedrock": {"passed": 1, "failed": 1, "na": 0},
+                "agentcore": {"passed": 0, "failed": 1, "na": 0},
+            },
+            mode="single",
+            account_id="123456789012",
+            regions=["eu-west-1", "us-east-1", "us-west-2"],
+        )
+
+        self.assertIn("Risk by Region / Scope", html)
+        self.assertIn('>eu-west-1</div><div class="metric-value">0</div>', html)
+        self.assertIn('>us-east-1</div><div class="metric-value">0</div>', html)
+        self.assertIn('>us-west-2</div><div class="metric-value">0</div>', html)
+        self.assertIn('>Global</div><div class="metric-value">2</div>', html)
+        self.assertIn(
+            '<span style="color: var(--danger);">1 High</span> · '
+            '<span style="color: var(--warning);">1 Med</span> · '
+            '<span style="color: var(--accent);">0 Low</span>',
+            html,
         )
 
     def tearDown(self):

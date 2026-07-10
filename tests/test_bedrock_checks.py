@@ -3403,7 +3403,7 @@ class TestAgenticBedrockMapping:
                         "Finding": "Bedrock Agent Guardrail Association",
                         "Finding_Details": "Agent has a guardrail associated.",
                         "Resolution": "No action required.",
-                        "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/agents-guardrails.html",
+                        "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use.html",
                         "Severity": "High",
                         "Status": "Passed",
                         "Region": "us-east-1",

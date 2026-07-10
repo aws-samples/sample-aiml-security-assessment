@@ -190,7 +190,7 @@ Both deployment modes support scanning multiple AWS regions in parallel via the 
 
 Scanning uses a Step Functions Map state, so multiple regions execute in parallel with no additional time cost. Services unavailable in a region produce an informational N/A finding.
 
-The HTML report includes a Region column, filter dropdown, and "Risk by Region" summary.
+The HTML report includes a Region column, filter dropdown, and "Risk by Region / Scope" summary.
 
 > **Upgrading an existing deployment?** See [Troubleshooting](docs/TROUBLESHOOTING.md#9-upgrading-an-existing-deployment-to-multi-region) — it's a simple stack parameter update with no teardown.
 

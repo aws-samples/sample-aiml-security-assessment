@@ -198,14 +198,14 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 
 | Framework | Description | Relevant Checks |
 |-----------|-------------|-----------------|
-| SR 11-7 | Federal Reserve Model Risk Management Guidance | FS-07, FS-10, FS-12 to FS-16, FS-20, FS-21, FS-27 to FS-33, FS-34, FS-39 to FS-42, FS-66, FS-67 |
-| FFIEC CAT | Cybersecurity Assessment Tool | All FS checks |
-| NYDFS 500 | NY Cybersecurity Regulation | FS-22, FS-43 to FS-46, FS-51 to FS-54, FS-66 |
-| PCI-DSS | Payment Card Industry Data Security Standard | FS-22, FS-25, FS-26, FS-43 to FS-46, FS-53, FS-56, FS-67, FS-68 |
-| DORA | EU Digital Operational Resilience Act | FS-01 to FS-06, FS-08, FS-11, FS-54, FS-65, FS-68 |
-| MAS TRM 9 | Monetary Authority of Singapore Technology Risk Management | FS-07 to FS-11, FS-15, FS-27 to FS-30, FS-32, FS-37, FS-39 to FS-42, FS-66, FS-67 |
-| ISO 27001 | Information Security Management | FS-13, FS-14, FS-16, FS-21, FS-33, FS-46, FS-52, FS-63, FS-65 |
-| ECOA/Fair Housing | Equal Credit Opportunity Act (US) | FS-39 to FS-42 (advisory — applicability depends on whether the model is used for ECOA-covered credit decisions; confirm with your compliance team) |
+| SR 11-7 | Federal Reserve Model Risk Management Guidance | FS-03, FS-04, FS-06 to FS-10, FS-12 to FS-15, FS-20, FS-21, FS-27 to FS-42, FS-47 to FS-50, FS-59 to FS-63, FS-66, FS-67 |
+| FFIEC CAT | Cybersecurity Assessment Tool | All FS checks except FS-08, FS-56, FS-66 |
+| NYDFS 500 | NY Cybersecurity Regulation | FS-22, FS-24 to FS-26, FS-28 to FS-30, FS-43 to FS-46, FS-51 to FS-54, FS-56, FS-57, FS-66, FS-69 |
+| PCI-DSS | Payment Card Industry Data Security Standard | FS-02, FS-22, FS-24 to FS-26, FS-43 to FS-46, FS-53, FS-56, FS-66 to FS-68 |
+| DORA | EU Digital Operational Resilience Act | FS-01, FS-02, FS-05, FS-11, FS-16, FS-65, FS-68 |
+| MAS TRM 9 | Monetary Authority of Singapore Technology Risk Management | FS-08, FS-10, FS-15, FS-27 to FS-29, FS-32, FS-37, FS-49, FS-62, FS-66, FS-67 |
+| ISO 27001 | Information Security Management | FS-12 to FS-14, FS-16, FS-21, FS-33, FS-46, FS-52, FS-63, FS-65 |
+| ECOA/Fair Housing | Equal Credit Opportunity Act (US) | FS-39, FS-40 (advisory — applicability depends on whether the model is used for ECOA-covered credit decisions; confirm with your compliance team) |
 | OWASP LLM Top 10 | OWASP LLM Application Security | FS-51 to FS-58, FS-68, FS-69 |
 
 > **FS-34 note:** FS-34 (TPRM for FM Providers) is listed above under SR 11-7. Although the
@@ -1016,7 +1016,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 | Description | Checks for Lambda functions implementing output validation/sanitization before AI responses reach downstream consumers. |
 | Detection | Calls `lambda:ListFunctions` and searches for functions with naming patterns indicating output validation (e.g., "output-valid", "sanitiz", "post-process", "response-filter"). Flags if no such functions exist. |
 | Remediation | 1. Implement a post-processing Lambda that validates AI model output before it reaches the end user or downstream system. 2. Validate output against expected schema (JSON schema validation for structured responses). 3. Strip or escape any executable content (HTML tags, JavaScript, SQL fragments). 4. Log rejected outputs for security monitoring. |
-| Reference | [AWS Well-Architected Security Pillar — Application Security](https://docs.aws.amazon.com/wellarchitected/latest/security-pillar/application-security.html), [Bedrock Prompt Injection Security](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-injection.html), [Well-Architected FSI Lens — FSISEC14 Monitor AI system outputs for security issues](https://docs.aws.amazon.com/wellarchitected/latest/financial-services-industry-lens/fsisec14.html) |
+| Reference | [OWASP LLM05:2025 Improper Output Handling](https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/), [AWS Well-Architected Security Pillar — Application Security](https://docs.aws.amazon.com/wellarchitected/latest/security-pillar/application-security.html), [Bedrock Prompt Injection Security](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-injection.html), [Well-Architected FSI Lens — FSISEC14 Monitor AI system outputs for security issues](https://docs.aws.amazon.com/wellarchitected/latest/financial-services-industry-lens/fsisec14.html) |
 
 #### FS-56 — XSS Prevention WAF
 

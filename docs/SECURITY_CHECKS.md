@@ -87,7 +87,7 @@ Each security check has a unique identifier with a service prefix:
 
 ### SM-04: Amazon GuardDuty Integration
 
-- **Severity:** Medium
+- **Severity:** High
 - **Description:** Verifies Amazon GuardDuty runtime threat detection is enabled.
 
 ### SM-05: MLOps Features
@@ -124,7 +124,7 @@ Each security check has a unique identifier with a service prefix:
 
 ### SM-11: Model Network Isolation
 
-- **Severity:** Medium
+- **Severity:** High
 - **AWS Security Hub Control:** SageMaker.4
 - **Description:** Checks inference containers have network isolation.
 
@@ -417,7 +417,7 @@ Each security check has a unique identifier with a service prefix:
 
 ### AC-07: Memory Encryption
 
-- **Severity:** High
+- **Severity:** Medium
 - **Description:** Checks agent memory encryption with AWS KMS.
 
 ### AC-08: Amazon VPC Endpoints
