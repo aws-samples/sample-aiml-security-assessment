@@ -406,6 +406,7 @@ def get_html_template() -> str:
                     <div class="metric danger"><div class="metric-label">High Severity</div><div class="metric-value">{high_passed}/{high_count}</div><div class="metric-sub">{high_pass_rate}% passed · Immediate action required</div></div>
                     <div class="metric warning"><div class="metric-label">Medium Severity</div><div class="metric-value">{medium_passed}/{medium_count}</div><div class="metric-sub">{medium_pass_rate}% passed · Should be addressed</div></div>
                     <div class="metric highlight"><div class="metric-label">Low Severity</div><div class="metric-value">{low_passed}/{low_count}</div><div class="metric-sub">{low_pass_rate}% passed · Best practices</div></div>
+                    <div class="metric warning"><div class="metric-label">Unassessed Checks</div><div class="metric-value">{unassessed_count}</div><div class="metric-sub">COULD NOT ASSESS · Fix assessment-role access and re-run</div></div>
                 </div>
                 <div class="card"><div class="card-header"><h3>Priority Recommendations</h3></div><div class="card-body"><div class="alerts">{alerts}</div></div></div>
                 <div class="card">
@@ -414,12 +415,13 @@ def get_html_template() -> str:
                         <table style="min-width: 100%; table-layout: fixed;">
                             <thead><tr><th style="width: 12%;">Severity</th><th style="width: 44%;">Meaning</th><th style="width: 44%;">Recommended Action</th></tr></thead>
                             <tbody>
-                                <tr><td style="text-align: center;"><span class="severity high">High</span></td><td class="finding-details">Direct security risk - IAM/access control gaps, missing audit trails, guardrail bypasses that could lead to unauthorized access or data exposure</td><td class="resolution-text">Remediate within <strong>7 days</strong></td></tr>
-                                <tr><td style="text-align: center;"><span class="severity medium">Medium</span></td><td class="finding-details">Defense-in-depth gaps - encryption, logging, or configuration issues that reduce security posture</td><td class="resolution-text">Remediate within <strong>30 days</strong></td></tr>
-                                <tr><td style="text-align: center;"><span class="severity low">Low</span></td><td class="finding-details">Best practice deviations - optimization opportunities that improve security hygiene</td><td class="resolution-text">Remediate within <strong>90 days</strong></td></tr>
-                                <tr><td style="text-align: center;"><span class="severity na">Informational</span></td><td class="finding-details">No resources found or advisory recommendations - check does not apply or suggests optional improvements</td><td class="resolution-text">No action required</td></tr>
+                                <tr><td style="text-align: center;"><span class="severity high">High</span></td><td class="finding-details">Control whose absence can directly enable a breach - sensitive-data exposure, guardrail bypass, unauthorized or unsafe automated action, or a regulatory violation</td><td class="resolution-text">Remediate failed findings within <strong>7 days</strong></td></tr>
+                                <tr><td style="text-align: center;"><span class="severity medium">Medium</span></td><td class="finding-details">Control whose absence materially weakens security posture, oversight, or assurance - encryption, monitoring, or governance gaps that are not a breach by themselves</td><td class="resolution-text">Remediate failed findings within <strong>30 days</strong></td></tr>
+                                <tr><td style="text-align: center;"><span class="severity low">Low</span></td><td class="finding-details">Residual-risk or observability controls with strong compensating alternatives. Also assigned to "COULD NOT ASSESS" rows, which mark checks that could not run (for example, a missing IAM permission)</td><td class="resolution-text">Remediate failed findings within <strong>90 days</strong>; for COULD NOT ASSESS rows, fix assessment-role access and re-run</td></tr>
+                                <tr><td style="text-align: center;"><span class="severity na">Informational</span></td><td class="finding-details">Advisory checks that no AWS API can verify, and N/A rows where no resources exist to assess</td><td class="resolution-text">No action required</td></tr>
                             </tbody>
                         </table>
+                        <p style="padding: 12px 16px; margin: 0; font-size: 12px; color: var(--text-2); line-height: 1.6;">Severity reflects the inherent risk of the control (Likelihood &times; Impact) and is the same on a check's Passed and Failed rows. Pass rates count only Passed and Failed rows; N/A rows (not applicable, advisory, and COULD NOT ASSESS) are excluded from pass-rate denominators and COULD NOT ASSESS rows are surfaced in the Unassessed Checks metric instead.</p>
                     </div>
                 </div>
             </section>
@@ -655,47 +657,61 @@ def generate_html_report(
         f.get("check_id", f.get("Check_ID", "")) for f in all_findings
     )
     security_checks = len(unique_check_ids)  # Unique security controls evaluated
+
+    def _severity(f: Dict) -> str:
+        return f.get("severity", f.get("Severity", "")).lower()
+
+    def _status(f: Dict) -> str:
+        return f.get("status", f.get("Status", "")).lower()
+
+    # Pass-rate metrics count only SCORED rows (Status Passed or Failed).
+    # N/A-status rows are excluded from every denominator: a COULD NOT ASSESS
+    # row (Severity=Low, Status=N/A) or a soft-warning row (Status=N/A) marks a
+    # check that was not (or could not be) assessed; counting it as a
+    # never-passing denominator entry would silently depress the pass rate and
+    # misrepresent posture. This matches the severity methodology
+    # (docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md §7: N/A rows are
+    # excluded from the pass-rate denominator).
+    _SCORED_STATUSES = {"passed", "failed"}
     high_count = sum(
         1
         for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "high"
+        if _severity(f) == "high" and _status(f) in _SCORED_STATUSES
     )
     medium_count = sum(
         1
         for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "medium"
+        if _severity(f) == "medium" and _status(f) in _SCORED_STATUSES
     )
     low_count = sum(
         1
         for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "low"
+        if _severity(f) == "low" and _status(f) in _SCORED_STATUSES
     )
     scored_findings = high_count + medium_count + low_count
     actionable_findings = sum(
         1
         for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() in {"high", "medium", "low"}
-        and f.get("status", f.get("Status", "")).lower() == "failed"
+        if _severity(f) in {"high", "medium", "low"} and _status(f) == "failed"
+    )
+    # Checks that could not run (missing IAM permission, unsupported region,
+    # outdated SDK). Surfaced as a dedicated metric so an assessment gap is
+    # never mistaken for a clean result.
+    unassessed_count = sum(
+        1
+        for f in all_findings
+        if f.get("finding", f.get("Finding", "")).startswith("COULD NOT ASSESS")
     )
 
     # Severity-specific pass rates
     high_passed = sum(
-        1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "high"
-        and f.get("status", f.get("Status", "")).lower() == "passed"
+        1 for f in all_findings if _severity(f) == "high" and _status(f) == "passed"
     )
     medium_passed = sum(
-        1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "medium"
-        and f.get("status", f.get("Status", "")).lower() == "passed"
+        1 for f in all_findings if _severity(f) == "medium" and _status(f) == "passed"
     )
     low_passed = sum(
-        1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "low"
-        and f.get("status", f.get("Status", "")).lower() == "passed"
+        1 for f in all_findings if _severity(f) == "low" and _status(f) == "passed"
     )
     passed_count = high_passed + medium_passed + low_passed
     pass_rate = (
@@ -1099,6 +1115,7 @@ def generate_html_report(
         total_findings=total_findings,
         findings_sub=findings_sub,
         actionable_findings=actionable_findings,
+        unassessed_count=unassessed_count,
         scored_findings=scored_findings,
         total_rows=total_findings,
         high_count=high_count,

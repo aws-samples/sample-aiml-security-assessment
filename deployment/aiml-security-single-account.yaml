@@ -274,6 +274,8 @@ Resources:
                   - bedrock-agentcore:ListPolicyEngines
                   - bedrock-agentcore:GetPolicyEngine
                   - bedrock-agentcore:GetResourcePolicy
+                  - bedrock-agentcore:ListBrowsers
+                  - bedrock-agentcore:GetBrowser
                   # ECR Permissions for AgentCore encryption checks
                   - ecr:DescribeRepositories
                   - ecr:GetRepositoryPolicy

@@ -433,6 +433,8 @@ Resources:
                 - bedrock-agentcore:ListPolicyEngines
                 - bedrock-agentcore:GetPolicyEngine
                 - bedrock-agentcore:GetResourcePolicy
+                - bedrock-agentcore:ListBrowsers
+                - bedrock-agentcore:GetBrowser
               Resource: '*'
             - Sid: IAMRolePermissions
               Effect: Allow

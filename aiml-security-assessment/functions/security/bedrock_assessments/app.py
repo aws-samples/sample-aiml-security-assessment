@@ -6591,6 +6591,16 @@ def lambda_handler(event, context):
                 )
             )
 
+            # BR-14 (stale Bedrock access) is currently DISABLED: it polls
+            # iam:GetServiceLastAccessedDetails for up to 30 seconds per
+            # identity with Bedrock access, which can exhaust the Lambda
+            # timeout in accounts with many principals. Re-enabling requires
+            # bounding the total wait (parallel job submission or an overall
+            # deadline) first. Its IAM permissions
+            # (iam:GenerateServiceLastAccessedDetails /
+            # iam:GetServiceLastAccessedDetails) remain granted in the
+            # templates. Do not document BR-14 as an active check while this
+            # block is commented out.
             # logger.info("Running global stale Bedrock access check (BR-14)")
             # all_findings.append(
             #     check_stale_bedrock_access(permission_cache, region=GLOBAL_REGION_LABEL)

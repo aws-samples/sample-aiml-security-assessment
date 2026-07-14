@@ -5,8 +5,20 @@ derived by applying [`SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md`](./SECURI
 ASFF label; §3.4 disposition rules; §3.5 family bands) to the **164 `create_finding` rows / 65
 check IDs** extracted from `finserv_assessments/app.py`.
 
-During implementation this becomes `SEVERITY_REGISTER` in `app.py` (keyed by finding-name) and the
-`test_severity_register.py` drift-guard asserts each emitted `severity=` equals the value here.
+This register is implemented as `SEVERITY_REGISTER` in `app.py` (keyed by finding-name). The
+`test_severity_register.py` drift-guard enforces it bidirectionally: every static
+`finding_name` literal in the source must have a register entry, every register entry must
+correspond to a finding name in the source (no orphans), and emitted rows must carry the
+register severity. Because the register is keyed by the human-readable finding name, renaming
+a finding in code without updating the register (or vice versa) fails the test suite.
+
+> **Cross-module severity note (documented decision):** FinServ scores customer-managed-key
+> encryption absence as **High** for knowledge-base vector stores (FS-25, family band
+> "sensitive-data exposure": embeddings of regulated data). The general
+> Bedrock/AgentCore/SageMaker checks that mirror Security Hub CMK controls (Bedrock.1,
+> BedrockAgentCore.3/.4, SageMaker.21/.23/.24) carry the AWS-published severity **Medium**.
+> Both can appear in one report: the FinServ rating reflects the regulated-data context the
+> FS checks are scoped to, not a scoring inconsistency.
 
 ## How to read it
 

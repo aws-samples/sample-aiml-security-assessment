@@ -179,7 +179,7 @@ whether the FS check adds FinServ-specific regulatory specificity, (3) severity 
 - **Extend upstream (5 FS checks merged into 5 upstream checks):** FS-17 → SM-07; FS-18 → SM-23; FS-19 → SM-22; FS-23 → BR-06; FS-64 → BR-04. These checks are replaced by upstream-extension notes in Parts 1 and 3 and are removed from `finserv_assessments/app.py`.
 - **Keep separate (64 FS checks):** All other FS checks ship as standalone entries. This includes FS-20, FS-22, FS-25, FS-26, FS-39, FS-41, all Guardrail-policy-level checks (FS-27, FS-28, FS-36, FS-38, FS-45, FS-47, FS-50, FS-51, FS-59), and all FS checks that have no upstream overlap at all.
 
-After consolidation the combined framework contains **70 upstream + 27 AG + 64 FS = 161 distinct checks** (down from 70 + 27 AG + 69 FS = 166 before merging FinServ overlaps). The consolidation reduces duplication without losing FinServ-specific regulatory depth.
+After consolidation the combined framework contains **72 upstream + 27 AG + 64 FS = 163 distinct checks** (down from 70 + 27 AG + 69 FS = 166 before merging FinServ overlaps; the upstream count increased from 70 to 72 when SM-01/SM-03 were split into notebook-scoped and repo-specific checks in a later PR-0 correctness pass). The consolidation reduces duplication without losing FinServ-specific regulatory depth.
 
 
 ---

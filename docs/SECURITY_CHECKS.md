@@ -1,6 +1,6 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 161 security checks performed by the AI/ML Security Assessment framework (70 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 27 Agentic AI Security checks, plus 64 Financial Services GenAI Risk checks).
+This document provides a comprehensive reference for all 163 security checks performed by the AI/ML Security Assessment framework (72 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 27 Agentic AI Security checks, plus 64 Financial Services GenAI Risk checks).
 
 ## Table of Contents
 
@@ -8,7 +8,7 @@ This document provides a comprehensive reference for all 161 security checks per
 - [Check ID Convention](#check-id-convention)
 - [Severity Levels](#severity-levels)
 - [Status Values](#status-values)
-- [Amazon SageMaker AI Security Checks (25)](#amazon-sagemaker-ai-security-checks-25)
+- [Amazon SageMaker AI Security Checks (27)](#amazon-sagemaker-ai-security-checks-27)
 - [Amazon Bedrock Security Checks (32)](#amazon-bedrock-security-checks-32)
 - [Amazon Bedrock AgentCore Security Checks (13)](#amazon-bedrock-agentcore-security-checks-13)
 - [Agentic AI Security Checks (27)](#agentic-ai-security-checks-27)
@@ -22,7 +22,7 @@ The framework evaluates your AI/ML workloads against AWS security best practices
 
 | Service | Number of Checks | Focus Areas |
 |---------|------------------|-------------|
-| Amazon SageMaker AI | 25 | Security Hub controls, encryption, network isolation, IAM, MLOps |
+| Amazon SageMaker AI | 27 | Security Hub controls, encryption, network isolation, IAM, MLOps |
 | Amazon Bedrock | 32 | Guardrails, content filters, sensitive-information/PII filters, contextual grounding, automated reasoning, encryption (custom, imported, knowledge base, batch inference output), VPC endpoints, IAM permissions, agent guardrail association and least privilege, logging, CloudWatch alarms, cross-account policies, model evaluation, prompt flow validation, RAG evaluation, service quotas |
 | Amazon Bedrock AgentCore | 13 | VPC configuration, encryption, observability, resource policies |
 | Agentic AI Security | 27 | Bounded autonomy, agent identity, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability, abuse protection |
@@ -66,24 +66,24 @@ Each security check has a unique identifier with a service prefix:
 
 ---
 
-## Amazon SageMaker AI Security Checks (25)
+## Amazon SageMaker AI Security Checks (27)
 
 ### SM-01: Internet Access
 
 - **Severity:** High
-- **AWS Security Hub Control:** SageMaker.2
-- **Description:** Checks for direct internet access on notebooks and domains.
+- **AWS Security Hub Control:** SageMaker.1 (notebook instances only — matches the control's scope exactly)
+- **Description:** Checks for direct internet access on SageMaker notebook instances. Domain network-access-type is checked separately by SM-27, which has no Security Hub mapping (SageMaker.1 scope is `NotebookInstance` only).
 
 ### SM-02: AWS IAM Permissions
 
 - **Severity:** High
 - **Description:** Identifies overly permissive policies, stale access, and IAM Identity Center configuration.
 
-### SM-03: Data Protection
+### SM-03: Notebook Storage Encryption
 
-- **Severity:** High
-- **AWS Security Hub Control:** SageMaker.1
-- **Description:** Verifies encryption at rest and in transit for notebooks and domains.
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.21 (notebook storage encryption)
+- **Description:** Verifies notebook instances have a KMS key configured for storage-volume encryption (presence-as-proxy; the check does not attempt to distinguish AWS-managed from customer-managed keys by string-matching the key id/ARN). Domain and training-job encryption are checked separately by SM-26, which has no Security Hub mapping.
 
 ### SM-04: Amazon GuardDuty Integration
 
@@ -125,14 +125,14 @@ Each security check has a unique identifier with a service prefix:
 ### SM-11: Model Network Isolation
 
 - **Severity:** High
-- **AWS Security Hub Control:** SageMaker.4
+- **AWS Security Hub Control:** SageMaker.5
 - **Description:** Checks inference containers have network isolation.
 
 ### SM-12: Endpoint Instance Count
 
 - **Severity:** Medium
-- **AWS Security Hub Control:** SageMaker.5
-- **Description:** Verifies endpoints have 2+ instances for high availability.
+- **AWS Security Hub Control:** SageMaker.4
+- **Description:** Verifies instance-based endpoints have 2+ instances for high availability. Serverless endpoint variants are out of scope and are not evaluated.
 
 ### SM-13: Monitoring Network Isolation
 
@@ -198,6 +198,18 @@ Each security check has a unique identifier with a service prefix:
 
 - **Severity:** Low
 - **Description:** Validates experiment tracking and lineage.
+
+### SM-26: Domain and Training Job Encryption
+
+- **Severity:** Medium
+- **Type:** Repo-specific (no Security Hub mapping)
+- **Description:** Verifies SageMaker Domain KMS/VPC configuration and Training Job output encryption plus inter-container traffic encryption. Split out of the former combined SM-03 check, which bundled these resources under a SageMaker.21 label that only covers notebook storage encryption.
+
+### SM-27: Domain Network Access
+
+- **Severity:** High
+- **Type:** Repo-specific (no Security Hub mapping)
+- **Description:** Verifies SageMaker Domains use `VpcOnly` network access. Split out of the former combined SM-01 check, which surfaced domain findings under the SageMaker.1 label even though that control's scope is `NotebookInstance` only.
 
 ---
 
@@ -271,7 +283,8 @@ Each security check has a unique identifier with a service prefix:
 ### BR-14: Stale Bedrock Access
 
 - **Severity:** Medium
-- **Description:** Detects principals with Bedrock permissions that have not used the service recently, using IAM service-last-accessed data. As an IAM-global check, it runs once per execution and is tagged with the `Global` region in multi-region scans.
+- **Status:** Currently disabled — the check polls IAM service-last-accessed jobs for up to 30 seconds per identity, which can exhaust the Lambda timeout in accounts with many principals. It produces no findings until it is re-enabled with a bounded total wait.
+- **Description:** Detects principals with Bedrock permissions that have not used the service recently, using IAM service-last-accessed data. As an IAM-global check, it is designed to run once per execution tagged with the `Global` region in multi-region scans.
 
 ### BR-15: Cross-Account Guardrails Enforcement
 
@@ -410,10 +423,11 @@ Each security check has a unique identifier with a service prefix:
 - **Severity:** High
 - **Description:** Validates Amazon ECR repositories use encryption.
 
-### AC-06: Browser Tool Recording
+### AC-06: Browser Session Recording
 
 - **Severity:** Medium
-- **Description:** Checks storage configuration for browser tools.
+- **AWS Security Hub Control:** BedrockAgentCore.6
+- **Description:** Checks that custom AgentCore browsers have session recording enabled with an S3 destination. Only customer-created browsers are evaluated; AWS system browsers are out of scope.
 
 ### AC-07: Memory Encryption
 

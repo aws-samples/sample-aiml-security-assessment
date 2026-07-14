@@ -1,7 +1,18 @@
 # FinServ GenAI Check Severity Methodology
 
-**Status:** Proposed (Round 3). This document is the authoritative reference for how every
-FinServ (`FS-`) check is assigned a severity. It answers reviewer Finding 6 ("How are the priorities of the findings determined?") with a concrete reproducible, industry- and AWS-aligned formula — not per-check intuition.
+**Status:** Adopted for FinServ. Implemented in `finserv_assessments/app.py` (`SEVERITY_REGISTER`,
+`_SEVERITY_MATRIX`, `_DISPOSITION_SEVERITY`, `_could_not_assess_row`) and enforced by the
+drift-guard test suite `finserv_tests/test_severity_register.py`. This document is the
+authoritative reference for how every FinServ (`FS-`) check is assigned a severity. It answers reviewer Finding 6 ("How are the priorities of the findings determined?") with a concrete reproducible, industry- and AWS-aligned formula — not per-check intuition.
+
+**Tool-wide adoption status (Bedrock/AgentCore/SageMaker):** the general checks now apply the
+same disposition principles pointwise — `COULD_NOT_ASSESS` (access-denied, unsupported region)
+routes to `N/A`/`Low` rather than a false `Failed` or a silent no-resources `N/A` (see `AC-06`,
+`AG-24`), and severity is kept consistent across a control's Passed/Failed rows (see the `AC-12`,
+`AC-07`, `SM-11`, `SM-15` fixes). A unified `SEVERITY_REGISTER`/`_could_not_assess_row` shared
+across all four modules (rather than the FinServ-only implementation below) remains a follow-up;
+today each general-check module applies the same rules pointwise rather than through one shared
+register.
 
 > Scope note: today the FinServ checks and the upstream Bedrock/SageMaker/AgentCore checks all use ad-hoc severities with **no documented methodology** (verified by inspection — the upstream `app.py` files hardcode `severity="High"|"Medium"|...` with no rationale and no rubric doc). This methodology is introduced for the FinServ checks first and is written so it can later be adopted tool-wide.
 
@@ -137,7 +148,7 @@ The authoritative per-finding assignments are in
 | **FS-01 (Regional WAF)** | WAF Web ACL present | **2** | **2** | Impact Medium: no WAF → exposed to abusive callers / cost exhaustion, but API Gateway usage-plan throttling (FS-02) is a compensating control and there is no direct breach. Likelihood Medium: common but mitigated by throttling. | **Medium** |
 | **FS-43-style (PII in logs / data exposure)** | Sensitive-data masking | **3** | **2** | Impact High: PII exposure = regulatory breach. Likelihood Medium: requires logging misconfig. | **High** |
 | **FS-58 (output schema validation)** | App-layer validation | — | — | No AWS API can verify it → advisory. | **Informational** (advisory) |
-| **FS-27 ARC (no policies)** | Automated Reasoning policy present | **2** | **1** | Impact Medium: ARC adds formal verification of factual claims; its absence leaves grounding-only assurance. Likelihood Low: ARC is an advanced, rarely-adopted control; contextual grounding (FS-27 grounding) compensates. | **Low/Medium** (confirm in register) |
+| **FS-27 ARC (no policies)** | Automated Reasoning policy present | **2** | **2** | Impact Medium: ARC adds formal verification of factual claims; its absence leaves grounding-only assurance. Likelihood Medium: unverified factual claims occur under common operating conditions; contextual grounding (FS-27 grounding) partially compensates but is threshold-based, not formal verification. | **Medium** (matches register) |
 
 ---
 
@@ -174,5 +185,14 @@ The matrix has a Critical-eligible cell (I=High, L=High). Two paths:
 
 ## 7. How this changes the report (expected, document for reviewers)
 
-Downgrading FS-01 Shield from High→Low (and any other audit-driven changes) **moves those findings into the Low band, which still counts toward the pass-rate denominator** (only `Informational`/`N/A` are excluded — Round-2 behavior). So pass rates and the High-severity count will shift; this is
+Downgrading FS-01 Shield from High→Low (and any other audit-driven changes) **moves those findings into the Low band, which still counts toward the pass-rate denominator when the row is scored (Passed/Failed)**. So pass rates and the High-severity count will shift; this is
 intended and must be called out in the PR description with before/after numbers so reviewers do not mistake it for a new regression.
+
+**Pass-rate scoring rule (enforced by the report template):** pass-rate denominators count
+only rows with `Status` of `Passed` or `Failed`. Every `N/A`-status row is excluded from the
+denominators regardless of its severity label — that covers `NOT_APPLICABLE` and `ADVISORY`
+rows (Informational), `COULD_NOT_ASSESS` rows (Low), and the FS-03 `SOFT_WARNING` row
+(Medium). A `COULD_NOT_ASSESS` row therefore never silently depresses the pass rate; it is
+surfaced instead in the report's dedicated **Unassessed Checks** metric, which prompts the
+customer to fix assessment-role access and re-run. This keeps the §3.4 promise that
+"unknown state" is visible without being scored as a failure.

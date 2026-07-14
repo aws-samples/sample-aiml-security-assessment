@@ -98,7 +98,7 @@ sample-aiml-security-assessment/
 ├── aiml-security-assessment/
 │   ├── functions/security/
 │   │   ├── bedrock_assessments/      # Bedrock security checks (32)
-│   │   ├── sagemaker_assessments/    # SageMaker security checks (25)
+│   │   ├── sagemaker_assessments/    # SageMaker security checks (27)
 │   │   ├── agentcore_assessments/    # AgentCore security checks (13)
 │   │   ├── finserv_assessments/      # Optional Financial Services GenAI risk checks (64)
 │   │   ├── finserv_tests/            # FinServ-specific unit and coverage tests

@@ -304,7 +304,13 @@ class TestAC05Encryption:
 # AC-06: check_browser_tool_recording
 # ===================================================================
 class TestAC06BrowserToolRecording:
-    """AC-06: Check browser tool recording storage."""
+    """AC-06: custom browser session recording (Security Hub BedrockAgentCore.6).
+
+    The check evaluates ListBrowsers(type=CUSTOM)/GetBrowser recording config.
+    It must never read runtime storageConfig (a field that does not exist in
+    GetAgentRuntime and previously produced a false FAIL for every runtime),
+    and errors must surface as COULD NOT ASSESS (N/A, Low), never as Failed.
+    """
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac06_client_unavailable_returns_na(self):
@@ -314,19 +320,101 @@ class TestAC06BrowserToolRecording:
         assert findings[0]["Check_ID"] == "AC-06"
 
     @patch("agentcore_app.agentcore_client")
-    def test_ac06_no_runtimes_returns_na(self, mock_ac):
-        mock_ac.list_agent_runtimes.return_value = {"agentRuntimes": []}
+    def test_ac06_no_custom_browsers_returns_na(self, mock_ac):
+        mock_ac.list_browsers.return_value = {"browserSummaries": []}
         result = agentcore_app.check_browser_tool_recording()
         findings = extract_csv_data(result)
-        assert len(findings) >= 1
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
 
     @patch("agentcore_app.agentcore_client")
-    def test_ac06_exception_returns_error_finding(self, mock_ac):
-        mock_ac.list_agent_runtimes.side_effect = Exception("Browser tool error")
+    def test_ac06_lists_custom_browsers_only(self, mock_ac):
+        """The list call must pass type=CUSTOM so AWS system browsers (for
+        example aws.browser.v1) are excluded server-side, matching the
+        control's BrowserCustom resource type."""
+        mock_ac.list_browsers.return_value = {"browserSummaries": []}
+        agentcore_app.check_browser_tool_recording()
+        _, kwargs = mock_ac.list_browsers.call_args
+        assert kwargs.get("type") == "CUSTOM"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_recording_enabled_with_bucket_passes_medium(self, mock_ac):
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {
+            "browserId": "br-1",
+            "recording": {"enabled": True, "s3Location": {"bucket": "rec-bucket"}},
+        }
+        result = agentcore_app.check_browser_tool_recording()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_recording_disabled_fails_medium(self, mock_ac):
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {"browserId": "br-1"}
+        result = agentcore_app.check_browser_tool_recording()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "Medium"
+        assert "my-browser" in findings[0]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_recording_enabled_without_bucket_fails(self, mock_ac):
+        """BedrockAgentCore.6 fails when recording is enabled but no S3
+        location is configured."""
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {
+            "browserId": "br-1",
+            "recording": {"enabled": True},
+        }
+        result = agentcore_app.check_browser_tool_recording()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_access_denied_returns_could_not_assess(self, mock_ac):
+        """AccessDenied must yield a visible COULD NOT ASSESS row (N/A, Low),
+        never a false Failed and never a silent no-resources N/A."""
+        mock_ac.list_browsers.side_effect = _make_client_error(
+            "AccessDeniedException", "no ListBrowsers"
+        )
+        result = agentcore_app.check_browser_tool_recording()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_exception_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_browsers.side_effect = Exception("Browser tool error")
         result = agentcore_app.check_browser_tool_recording()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_never_reads_runtime_config(self, mock_ac):
+        """Regression guard: the previous implementation read a nonexistent
+        storageConfig field from GetAgentRuntime and false-failed every
+        runtime. The check must not call runtime APIs at all."""
+        mock_ac.list_browsers.return_value = {"browserSummaries": []}
+        agentcore_app.check_browser_tool_recording()
+        mock_ac.list_agent_runtimes.assert_not_called()
+        mock_ac.get_agent_runtime.assert_not_called()
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac06_schema_valid(self):
@@ -370,6 +458,30 @@ class TestAC07MemoryConfiguration:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Passed"
+        # One severity per control: BedrockAgentCore.3 is Medium, and the
+        # Passed row must carry the same severity as the Failed row.
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac07_pass_and_fail_severity_match(self, mock_ac):
+        """Regression guard for the pass-path severity drift (Passed was High
+        while Failed was Medium)."""
+        mock_ac.list_memories.return_value = {
+            "memories": [{"id": "mem-123456789012", "name": "TestMemory"}]
+        }
+        mock_ac.get_memory.return_value = {"memory": {"id": "mem-123456789012"}}
+        failed = extract_csv_data(agentcore_app.check_agentcore_memory_configuration())
+        assert failed[0]["Status"] == "Failed"
+
+        mock_ac.get_memory.return_value = {
+            "memory": {
+                "id": "mem-123456789012",
+                "encryptionKeyArn": "arn:aws:kms:us-east-1:123:key/abc",
+            }
+        }
+        passed = extract_csv_data(agentcore_app.check_agentcore_memory_configuration())
+        assert passed[0]["Status"] == "Passed"
+        assert str(failed[0]["Severity"]) == str(passed[0]["Severity"])
 
     @patch("agentcore_app.agentcore_client")
     def test_ac07_exception_returns_error_finding(self, mock_ac):
@@ -714,6 +826,25 @@ class TestAC12GatewayEncryption:
         mock_ac.get_gateway.assert_called_once_with(gatewayIdentifier="gw-1")
 
     @patch("agentcore_app.agentcore_client")
+    def test_ac12_gateway_without_cmk_returns_failed_medium(self, mock_ac):
+        """Regression test (gap-analysis PR-0): BedrockAgentCore.4 is Medium
+        severity in Security Hub. Previously the Failed path emitted LOW
+        while the Passed path emitted MEDIUM (one severity must apply to
+        both Passed and Failed rows of the same control)."""
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        mock_ac.get_gateway.return_value = {
+            "gatewayId": "gw-1",
+            "name": "TestGateway",
+        }
+        result = agentcore_app.check_agentcore_gateway_encryption()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("agentcore_app.agentcore_client")
     def test_ac12_exception_returns_error_finding(self, mock_ac):
         mock_ac.list_gateways.side_effect = Exception("Gateway encryption error")
         result = agentcore_app.check_agentcore_gateway_encryption()
@@ -778,6 +909,22 @@ class TestAC13GatewayConfiguration:
 # ===================================================================
 class TestAgenticGatewaySecurity:
     """Agentic AI Gateway security checks."""
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ag24_list_gateways_access_denied_returns_could_not_assess(self, mock_ac):
+        """Regression test (gap-analysis PR-0): AccessDenied on ListGateways
+        must route through the COULD_NOT_ASSESS disposition (N/A, Low), not
+        the previous Informational, which understated an access gap as
+        "no issue"."""
+        mock_ac.list_gateways.side_effect = _make_client_error(
+            "AccessDeniedException", "no ListGateways"
+        )
+        findings = agentcore_app.check_agentcore_gateway_agentic_security()
+        assert len(findings) == 1
+        assert findings[0]["Check_ID"] == "AG-24"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS:")
 
     @patch("agentcore_app.agentcore_client")
     def test_gateway_policy_controls_fail_when_not_enforced(self, mock_ac):

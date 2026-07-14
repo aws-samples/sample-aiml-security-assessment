@@ -99,14 +99,19 @@ def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
 
 def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
     """
-    Check if SageMaker notebook instances and domains have direct internet access
+    Check if SageMaker notebook instances have direct internet access.
+
+    Aligns with AWS Security Hub control SageMaker.1 (severity High), whose
+    scope is NotebookInstance only. The domain network-access-type check
+    (repo-specific hardening, no SageMaker.1 mapping) is a separate check —
+    check_sagemaker_domain_network_access — so domain findings are not
+    surfaced under the SageMaker.1 label.
     """
     logger.debug("Starting check for SageMaker direct internet access")
     try:
         findings = {"csv_data": []}
 
         instances_with_direct_access = []
-        domains_with_direct_access = []
         total_resources_checked = 0
 
         # Create SageMaker client
@@ -141,41 +146,8 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Error checking notebook instances: {str(e)}")
 
-        # Check SageMaker Domains
-        try:
-            paginator = sagemaker_client.get_paginator("list_domains")
-            for page in paginator.paginate():
-                for domain in page.get("Domains", []):
-                    domain_id = domain.get("DomainId")
-                    if domain_id:
-                        # Get detailed information about the domain
-                        domain_details = sagemaker_client.describe_domain(
-                            DomainId=domain_id
-                        )
-
-                        vpc_id = domain_details.get("DomainSettings", {}).get(
-                            "SecurityGroupIds", ["N/A"]
-                        )[0]
-                        domain_name = domain_details.get("DomainName", "N/A")
-
-                        # Check network access type
-                        if domain_details.get("AppNetworkAccessType") != "VpcOnly":
-                            domains_with_direct_access.append(
-                                {
-                                    "domain_id": domain_id,
-                                    "name": domain_name,
-                                    "vpc_id": vpc_id,
-                                }
-                            )
-                        total_resources_checked += 1
-        except Exception as e:
-            logger.error(f"Error checking domains: {str(e)}")
-
         # Generate findings
-        if instances_with_direct_access or domains_with_direct_access:
-            findings["status"] = "WARN"
-
-            # Add findings for notebook instances
+        if instances_with_direct_access:
             for instance in instances_with_direct_access:
                 findings["csv_data"].append(
                     create_finding(
@@ -189,31 +161,13 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
                         region=region,
                     )
                 )
-
-            # Add findings for domains
-            for domain in domains_with_direct_access:
-                findings["csv_data"].append(
-                    create_finding(
-                        check_id="SM-01",
-                        finding_name="Non-VPC Only Network Access",
-                        finding_details=f"SageMaker domain '{domain['domain_id']}' ({domain['name']}) is not configured for VPC-only access",
-                        resolution="Configure the SageMaker domain to use VPC-only network access type",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
-                        severity="High",
-                        status="Failed",
-                        region=region,
-                    )
-                )
         else:
-            findings["details"] = (
-                "No SageMaker resources found with direct internet access"
-            )
             if total_resources_checked > 0:
                 findings["csv_data"].append(
                     create_finding(
                         check_id="SM-01",
                         finding_name="SageMaker Internet Access Check",
-                        finding_details="All SageMaker resources are properly configured to use VPC connectivity",
+                        finding_details="All SageMaker notebook instances are properly configured to use VPC connectivity",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
                         severity="High",
@@ -226,7 +180,7 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
                     create_finding(
                         check_id="SM-01",
                         finding_name="SageMaker Internet Access Check",
-                        finding_details="No SageMaker notebook instances or domains found to check",
+                        finding_details="No SageMaker notebook instances found to check",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
                         severity="Informational",
@@ -246,6 +200,116 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-01",
                     finding_name="SageMaker Internet Access Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_domain_network_access(region: str = "") -> Dict[str, Any]:
+    """
+    Repo-specific hardening check (no direct Security Hub control mapping)
+    verifying SageMaker Domains use VpcOnly network access. Split out from
+    the former combined SM-01 check, which surfaced domain findings under
+    the SageMaker.1 label even though that control's scope is
+    NotebookInstance only.
+    """
+    logger.debug("Starting check for SageMaker domain network access type")
+    try:
+        findings = {"csv_data": []}
+
+        domains_with_direct_access = []
+        total_domains_checked = 0
+
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        try:
+            paginator = sagemaker_client.get_paginator("list_domains")
+            for page in paginator.paginate():
+                for domain in page.get("Domains", []):
+                    domain_id = domain.get("DomainId")
+                    if domain_id:
+                        domain_details = sagemaker_client.describe_domain(
+                            DomainId=domain_id
+                        )
+                        total_domains_checked += 1
+
+                        vpc_id = domain_details.get("DomainSettings", {}).get(
+                            "SecurityGroupIds", ["N/A"]
+                        )[0]
+                        domain_name = domain_details.get("DomainName", "N/A")
+
+                        if domain_details.get("AppNetworkAccessType") != "VpcOnly":
+                            domains_with_direct_access.append(
+                                {
+                                    "domain_id": domain_id,
+                                    "name": domain_name,
+                                    "vpc_id": vpc_id,
+                                }
+                            )
+        except Exception as e:
+            logger.error(f"Error checking domains: {str(e)}")
+
+        if domains_with_direct_access:
+            for domain in domains_with_direct_access:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-27",
+                        finding_name="Non-VPC Only Network Access",
+                        finding_details=f"SageMaker domain '{domain['domain_id']}' ({domain['name']}) is not configured for VPC-only access",
+                        resolution="Configure the SageMaker domain to use VPC-only network access type",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
+                        severity="High",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        else:
+            if total_domains_checked > 0:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-27",
+                        finding_name="SageMaker Domain Network Access Check",
+                        finding_details=f"All {total_domains_checked} SageMaker domains are configured for VPC-only access",
+                        resolution="No action required",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
+                        severity="High",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+            else:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-27",
+                        finding_name="SageMaker Domain Network Access Check",
+                        finding_details="No SageMaker domains found to check",
+                        resolution="No action required",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_domain_network_access: {str(e)}", exc_info=True
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-27",
+                    finding_name="SageMaker Domain Network Access Check",
                     finding_details=f"Error during check: {str(e)}",
                     resolution="Investigate error and retry assessment",
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
@@ -614,11 +678,26 @@ def get_account_id() -> str:
         raise
 
 
-def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
+def check_sagemaker_notebook_storage_encryption(region: str = "") -> Dict[str, Any]:
     """
-    Check SageMaker data protection configurations including encryption at rest and in transit
+    Check if SageMaker notebook instance storage volumes are encrypted with a
+    KMS key.
+
+    Aligns with AWS Security Hub control SageMaker.21 (severity Medium):
+    the control requires a customer-managed KMS key for notebook storage.
+    Detection uses presence-as-proxy (Correctness Rule 1) — the KmsKeyId
+    field only holds a value when the customer configured one, so absence
+    is the practical "no customer-managed key" signal. This intentionally
+    does NOT try to distinguish an AWS-managed key from a customer-managed
+    one by string-matching the key id/ARN (e.g. checking for the substring
+    "aws/sagemaker"): that substring test misses AWS-managed keys referenced
+    by key id or ARN and can produce a false PASS on an encryption control.
+    Domain and training-job encryption were previously bundled into this
+    check under the SM-03 label; they are repo-specific hardening checks
+    with no SageMaker.21 mapping and have moved to
+    check_sagemaker_domain_and_training_job_encryption (SM-26).
     """
-    logger.debug("Starting check for SageMaker data protection")
+    logger.debug("Starting check for SageMaker notebook storage encryption")
     try:
         findings = {"csv_data": []}
 
@@ -626,13 +705,9 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
             "sagemaker", config=boto3_config, region_name=region
         )
 
-        # Track resources with encryption issues
-        resources_with_aws_managed_keys = []
-        resources_without_encryption = []
-        resources_without_vpc_encryption = []
-        total_resources_checked = 0
+        notebooks_without_kms = []
+        notebooks_with_kms = []
 
-        # Check Notebook Instances
         try:
             paginator = sagemaker_client.get_paginator("list_notebook_instances")
             for page in paginator.paginate():
@@ -642,28 +717,102 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
                         instance_details = sagemaker_client.describe_notebook_instance(
                             NotebookInstanceName=instance_name
                         )
-                        total_resources_checked += 1
 
-                        # Check KMS key usage
-                        kms_key_id = instance_details.get("KmsKeyId")
-                        if not kms_key_id:
-                            resources_without_encryption.append(
-                                {
-                                    "type": "Notebook Instance",
-                                    "name": instance_name,
-                                    "issue": "No KMS key configured",
-                                }
-                            )
-                        elif "aws/sagemaker" in kms_key_id:
-                            resources_with_aws_managed_keys.append(
-                                {
-                                    "type": "Notebook Instance",
-                                    "name": instance_name,
-                                    "key_id": kms_key_id,
-                                }
-                            )
+                        if instance_details.get("KmsKeyId"):
+                            notebooks_with_kms.append(instance_name)
+                        else:
+                            notebooks_without_kms.append(instance_name)
         except Exception as e:
             logger.error(f"Error checking notebook instances encryption: {str(e)}")
+
+        if notebooks_without_kms:
+            for notebook_name in notebooks_without_kms:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-03",
+                        finding_name="SageMaker Notebook Storage Encryption Missing",
+                        finding_details=f"Notebook instance '{notebook_name}' does not have a customer-managed KMS key configured for storage volume encryption.",
+                        resolution="Configure a customer-managed KMS key (KmsKeyId) when creating or updating the notebook instance to encrypt its storage volume.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/key-management.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        else:
+            if notebooks_with_kms:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-03",
+                        finding_name="SageMaker Notebook Storage Encryption Check",
+                        finding_details=f"All {len(notebooks_with_kms)} notebook instances have a KMS key configured for storage encryption",
+                        resolution="No action required",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/key-management.html",
+                        severity="Medium",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+            else:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-03",
+                        finding_name="SageMaker Notebook Storage Encryption Check",
+                        finding_details="No notebook instances found",
+                        resolution="No action required",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/key-management.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_notebook_storage_encryption: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-03",
+                    finding_name="SageMaker Notebook Storage Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="Medium",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_domain_and_training_job_encryption(
+    region: str = "",
+) -> Dict[str, Any]:
+    """
+    Repo-specific hardening check (no direct Security Hub control mapping)
+    covering SageMaker Domain KMS/VPC configuration and Training Job
+    encryption. Split out from the former combined SM-03 check, which bundled
+    these resources under a SageMaker.21 label that only covers notebook
+    storage encryption.
+    """
+    logger.debug(
+        "Starting check for SageMaker domain and training job data protection"
+    )
+    try:
+        findings = {"csv_data": []}
+
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        resources_without_encryption = []
+        resources_without_vpc_encryption = []
+        total_resources_checked = 0
 
         # Check SageMaker Domains
         try:
@@ -676,23 +825,16 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
                             DomainId=domain_id
                         )
                         total_resources_checked += 1
+                        domain_label = domain_details.get("DomainName", domain_id)
 
-                        # Check KMS key usage for domain
-                        kms_key_id = domain_details.get("KmsKeyId")
-                        if not kms_key_id:
+                        # Presence-as-proxy for customer-managed KMS (Rule 1);
+                        # do not string-match the key id/ARN.
+                        if not domain_details.get("KmsKeyId"):
                             resources_without_encryption.append(
                                 {
                                     "type": "Domain",
-                                    "name": domain_details.get("DomainName", domain_id),
+                                    "name": domain_label,
                                     "issue": "No KMS key configured",
-                                }
-                            )
-                        elif "aws/sagemaker" in kms_key_id:
-                            resources_with_aws_managed_keys.append(
-                                {
-                                    "type": "Domain",
-                                    "name": domain_details.get("DomainName", domain_id),
-                                    "key_id": kms_key_id,
                                 }
                             )
 
@@ -703,7 +845,7 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
                             resources_without_vpc_encryption.append(
                                 {
                                     "type": "Domain",
-                                    "name": domain_details.get("DomainName", domain_id),
+                                    "name": domain_label,
                                     "issue": "No VPC configuration",
                                 }
                             )
@@ -722,24 +864,13 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
                         )
                         total_resources_checked += 1
 
-                        # Check output encryption
                         output_config = job_details.get("OutputDataConfig", {})
-                        kms_key_id = output_config.get("KmsKeyId")
-
-                        if not kms_key_id:
+                        if not output_config.get("KmsKeyId"):
                             resources_without_encryption.append(
                                 {
                                     "type": "Training Job",
                                     "name": job_name,
                                     "issue": "No output encryption configured",
-                                }
-                            )
-                        elif "aws/sagemaker" in kms_key_id:
-                            resources_with_aws_managed_keys.append(
-                                {
-                                    "type": "Training Job",
-                                    "name": job_name,
-                                    "key_id": kms_key_id,
                                 }
                             )
 
@@ -758,47 +889,25 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Error checking training jobs encryption: {str(e)}")
 
-        # Generate findings
-        if (
-            resources_without_encryption
-            or resources_with_aws_managed_keys
-            or resources_without_vpc_encryption
-        ):
-            # Resources without encryption
+        if resources_without_encryption or resources_without_vpc_encryption:
             for resource in resources_without_encryption:
                 findings["csv_data"].append(
                     create_finding(
-                        check_id="SM-03",
+                        check_id="SM-26",
                         finding_name="Missing Encryption Configuration",
                         finding_details=f"{resource['type']} '{resource['name']}' - {resource['issue']}",
                         resolution="Configure encryption using AWS KMS customer managed keys for enhanced security",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/key-management.html",
-                        severity="High",
+                        severity="Medium",
                         status="Failed",
                         region=region,
                     )
                 )
 
-            # Resources using AWS managed keys
-            for resource in resources_with_aws_managed_keys:
-                findings["csv_data"].append(
-                    create_finding(
-                        check_id="SM-03",
-                        finding_name="AWS Managed Key Usage",
-                        finding_details=f"{resource['type']} '{resource['name']}' uses AWS managed key {resource['key_id']}",
-                        resolution="Consider using customer managed keys for better control over encryption",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/key-management.html",
-                        severity="Low",
-                        status="Failed",
-                        region=region,
-                    )
-                )
-
-            # Resources without VPC encryption
             for resource in resources_without_vpc_encryption:
                 findings["csv_data"].append(
                     create_finding(
-                        check_id="SM-03",
+                        check_id="SM-26",
                         finding_name="Missing VPC Encryption",
                         finding_details=f"{resource['type']} '{resource['name']}' - {resource['issue']}",
                         resolution="Enable encryption for inter-container traffic and VPC communication",
@@ -808,17 +917,16 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
                         region=region,
                     )
                 )
-
         else:
             if total_resources_checked > 0:
                 findings["csv_data"].append(
                     create_finding(
-                        check_id="SM-03",
-                        finding_name="Data Protection Check",
-                        finding_details="All resources use appropriate encryption configurations",
+                        check_id="SM-26",
+                        finding_name="Domain and Training Job Data Protection Check",
+                        finding_details="All domains and training jobs use appropriate encryption configurations",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                        severity="High",
+                        severity="Medium",
                         status="Passed",
                         region=region,
                     )
@@ -826,9 +934,9 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
             else:
                 findings["csv_data"].append(
                     create_finding(
-                        check_id="SM-03",
-                        finding_name="Data Protection Check",
-                        finding_details="No SageMaker resources found to check for data protection",
+                        check_id="SM-26",
+                        finding_name="Domain and Training Job Data Protection Check",
+                        finding_details="No SageMaker domains or training jobs found to check",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                         severity="Informational",
@@ -841,17 +949,18 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(
-            f"Error in check_sagemaker_data_protection: {str(e)}", exc_info=True
+            f"Error in check_sagemaker_domain_and_training_job_encryption: {str(e)}",
+            exc_info=True,
         )
         return {
             "csv_data": [
                 create_finding(
-                    check_id="SM-03",
-                    finding_name="SageMaker Data Protection Check",
+                    check_id="SM-26",
+                    finding_name="Domain and Training Job Data Protection Check",
                     finding_details=f"Error during check: {str(e)}",
                     resolution="Investigate error and retry assessment",
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
+                    severity="Medium",
                     status="Failed",
                     region=region,
                 )
@@ -1585,7 +1694,13 @@ def check_sagemaker_model_network_isolation(region: str = "") -> Dict[str, Any]:
                         finding_details=f"Model '{model['name']}' does not have network isolation enabled. Model containers can make outbound network calls, potentially exfiltrating data.",
                         resolution="Enable network isolation by setting EnableNetworkIsolation=True when creating models. This prevents containers from making outbound network calls.",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/mkt-algo-model-internet-free.html",
-                        severity="High",
+                        # SageMaker.5 (model network isolation) is Medium
+                        # severity in Security Hub. One severity applies to
+                        # every Passed/Failed row of a control (severity
+                        # methodology Rule 2); this previously emitted High on
+                        # the Failed path while the Passed path below used
+                        # Medium.
+                        severity="Medium",
                         status="Failed",
                         region=region,
                     )
@@ -1599,7 +1714,7 @@ def check_sagemaker_model_network_isolation(region: str = "") -> Dict[str, Any]:
                         finding_details=f"Found {len(models_without_isolation)} total models without network isolation (showing first 20)",
                         resolution="Review all models and enable network isolation where appropriate",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/mkt-algo-model-internet-free.html",
-                        severity="High",
+                        severity="Medium",
                         status="Failed",
                         region=region,
                     )
@@ -1691,10 +1806,27 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
                             )
 
                             for variant in production_variants:
-                                current_instance_count = variant.get(
-                                    "CurrentInstanceCount", 0
-                                )
                                 variant_name = variant.get("VariantName", "Unknown")
+
+                                # Serverless variants have no instance count and
+                                # scale automatically; Security Hub SageMaker.4
+                                # applies only to instance-based variants.
+                                # Without this skip every serverless endpoint
+                                # would be reported as a false "single instance"
+                                # failure (CurrentInstanceCount is absent and
+                                # would default to 0).
+                                if variant.get(
+                                    "CurrentServerlessConfig"
+                                ) or variant.get("DesiredServerlessConfig"):
+                                    continue
+
+                                current_instance_count = variant.get(
+                                    "CurrentInstanceCount"
+                                )
+                                if current_instance_count is None:
+                                    # Not an instance-based variant (or count
+                                    # unavailable); do not fabricate a zero.
+                                    continue
 
                                 if current_instance_count <= 1:
                                     endpoints_single_instance.append(
@@ -1751,12 +1883,13 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
                     )
                 )
             else:
-                # No InService endpoints found - N/A
+                # No InService instance-based endpoints found - N/A
+                # (serverless variants are out of scope for this control)
                 findings["csv_data"].append(
                     create_finding(
                         check_id="SM-12",
                         finding_name="SageMaker Endpoint Instance Count Check",
-                        finding_details="No InService endpoints found",
+                        finding_details="No InService instance-based endpoints found (serverless endpoints are not evaluated by this check)",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling.html",
                         severity="Informational",
@@ -1787,10 +1920,85 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
         }
 
 
+# Maps MonitoringScheduleConfig.MonitoringType to the SageMaker DescribeXJobDefinition
+# operation used to resolve a *named* job definition (MonitoringJobDefinitionName).
+# Reused by both SM-13 (network isolation) and the SM-22 traffic-encryption check.
+_MONITORING_TYPE_DESCRIBE_OPERATION = {
+    "DataQuality": "describe_data_quality_job_definition",
+    "ModelQuality": "describe_model_quality_job_definition",
+    "ModelBias": "describe_model_bias_job_definition",
+    "ModelExplainability": "describe_model_explainability_job_definition",
+}
+
+# Maps the same MonitoringType values to the job-definition-name kwarg used by
+# each DescribeXJobDefinition operation.
+_MONITORING_TYPE_NAME_PARAM = {
+    "DataQuality": "JobDefinitionName",
+    "ModelQuality": "JobDefinitionName",
+    "ModelBias": "JobDefinitionName",
+    "ModelExplainability": "JobDefinitionName",
+}
+
+
+def _resolve_monitoring_job_definition(
+    sagemaker_client, schedule_config: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Resolve the effective MonitoringJobDefinition for a monitoring schedule.
+
+    MonitoringScheduleConfig carries the job definition one of two ways:
+      - Inline: MonitoringJobDefinition is embedded directly.
+      - Named: MonitoringJobDefinitionName + MonitoringType reference a
+        separately-created job definition (DataQuality, ModelQuality,
+        ModelBias, or ModelExplainability) that must be fetched via its own
+        DescribeXJobDefinition API.
+
+    Reading only the inline field (the previous behavior) yields an empty
+    config for every named-definition schedule, which made isolation/
+    encryption checks default to "disabled" and false-FAIL every such
+    schedule. Returns {} if the definition cannot be resolved (unknown type,
+    lookup error), the same "assume not configured" default as before, but
+    only as a genuine last resort rather than the common case.
+    """
+    inline_definition = schedule_config.get("MonitoringJobDefinition")
+    if inline_definition:
+        return inline_definition
+
+    job_definition_name = schedule_config.get("MonitoringJobDefinitionName")
+    monitoring_type = schedule_config.get("MonitoringType")
+    if not job_definition_name or not monitoring_type:
+        return {}
+
+    operation_name = _MONITORING_TYPE_DESCRIBE_OPERATION.get(monitoring_type)
+    name_param = _MONITORING_TYPE_NAME_PARAM.get(monitoring_type)
+    if not operation_name or not name_param:
+        logger.warning(
+            f"Unrecognized MonitoringType '{monitoring_type}' for named "
+            f"monitoring job definition '{job_definition_name}'"
+        )
+        return {}
+
+    try:
+        operation = getattr(sagemaker_client, operation_name)
+        return operation(**{name_param: job_definition_name})
+    except Exception as e:
+        logger.warning(
+            f"Error resolving named monitoring job definition "
+            f"'{job_definition_name}' ({monitoring_type}): {str(e)}"
+        )
+        return {}
+
+
 def check_sagemaker_monitoring_network_isolation(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker monitoring schedules have network isolation enabled.
     Aligns with AWS Security Hub control SageMaker.14
+
+    Resolves both inline job definitions and named job definitions
+    (MonitoringJobDefinitionName + MonitoringType) via
+    _resolve_monitoring_job_definition; reading only the inline field
+    previously false-FAILed every named-definition schedule (empty config
+    defaults isolation to disabled).
     """
     logger.debug("Starting check for SageMaker monitoring schedule network isolation")
     try:
@@ -1816,9 +2024,12 @@ def check_sagemaker_monitoring_network_isolation(region: str = "") -> Dict[str, 
                                 )
                             )
 
-                            job_definition = schedule_details.get(
+                            schedule_config = schedule_details.get(
                                 "MonitoringScheduleConfig", {}
-                            ).get("MonitoringJobDefinition", {})
+                            )
+                            job_definition = _resolve_monitoring_job_definition(
+                                sagemaker_client, schedule_config
+                            )
                             network_config = job_definition.get("NetworkConfig", {})
                             enable_network_isolation = network_config.get(
                                 "EnableNetworkIsolation", False
@@ -1915,7 +2126,8 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
     """
     Check if SageMaker models pull container images from private ECR in VPC.
     Using Platform mode exposes supply chain risks.
-    Aligns with AWS Security Hub control SageMaker.16
+    Aligns with AWS Security Hub controls SageMaker.16 (primary containers)
+    and SageMaker.19 (multi-container inference pipelines)
     """
     logger.debug("Starting check for SageMaker model container repository access")
     try:
@@ -1939,50 +2151,56 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
                                 ModelName=model_name
                             )
 
-                            # Check primary container
-                            primary_container = model_details.get(
-                                "PrimaryContainer", {}
-                            )
-                            image_config = primary_container.get("ImageConfig", {})
-                            repository_access_mode = image_config.get(
-                                "RepositoryAccessMode", "Platform"
-                            )
+                            # DescribeModel returns EITHER PrimaryContainer
+                            # (single-container models; Security Hub
+                            # SageMaker.16) OR Containers (multi-container
+                            # inference pipelines; SageMaker.19). Only evaluate
+                            # the container definitions that actually exist:
+                            # treating an absent PrimaryContainer as a
+                            # Platform-mode container would flag every
+                            # multi-container model with a phantom failure.
+                            model_flagged = False
 
-                            if repository_access_mode == "Platform":
+                            primary_container = model_details.get("PrimaryContainer")
+                            if primary_container:
+                                repository_access_mode = primary_container.get(
+                                    "ImageConfig", {}
+                                ).get("RepositoryAccessMode", "Platform")
+                                # Absent ImageConfig defaults to Platform, which
+                                # matches the control's "image is not configured"
+                                # fail condition.
+                                if repository_access_mode == "Platform":
+                                    models_platform_mode.append(
+                                        {
+                                            "name": model_name,
+                                            "image": primary_container.get(
+                                                "Image", "Unknown"
+                                            )[:50],
+                                        }
+                                    )
+                                    model_flagged = True
+
+                            # Check multi-container inference pipeline containers
+                            containers = model_details.get("Containers", [])
+                            platform_containers = [
+                                container.get("ContainerHostname", "Unknown")
+                                for container in containers
+                                if container.get("ImageConfig", {}).get(
+                                    "RepositoryAccessMode", "Platform"
+                                )
+                                == "Platform"
+                            ]
+                            if platform_containers:
                                 models_platform_mode.append(
                                     {
                                         "name": model_name,
-                                        "image": primary_container.get(
-                                            "Image", "Unknown"
-                                        )[:50],
+                                        "container": ", ".join(platform_containers),
                                     }
                                 )
-                            else:
+                                model_flagged = True
+
+                            if not model_flagged and (primary_container or containers):
                                 models_vpc_mode.append(model_name)
-
-                            # Check additional containers
-                            for container in model_details.get("Containers", []):
-                                container_image_config = container.get(
-                                    "ImageConfig", {}
-                                )
-                                container_access_mode = container_image_config.get(
-                                    "RepositoryAccessMode", "Platform"
-                                )
-
-                                if container_access_mode == "Platform":
-                                    container_name = container.get(
-                                        "ContainerHostname", "Unknown"
-                                    )
-                                    if {
-                                        "name": model_name,
-                                        "container": container_name,
-                                    } not in models_platform_mode:
-                                        models_platform_mode.append(
-                                            {
-                                                "name": model_name,
-                                                "container": container_name,
-                                            }
-                                        )
 
                         except Exception as e:
                             logger.warning(
@@ -1995,11 +2213,16 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
         if models_platform_mode:
             # Limit findings
             for model in models_platform_mode[:15]:
+                container_note = (
+                    f" (containers: {model['container']})"
+                    if model.get("container")
+                    else ""
+                )
                 findings["csv_data"].append(
                     create_finding(
                         check_id="SM-14",
                         finding_name="SageMaker Model Platform Repository Access",
-                        finding_details=f"Model '{model['name']}' uses Platform repository access mode. Container images are pulled from public/external registries, exposing supply chain risks.",
+                        finding_details=f"Model '{model['name']}'{container_note} uses Platform repository access mode. Container images are pulled from public/external registries, exposing supply chain risks.",
                         resolution="Configure RepositoryAccessMode=Vpc in ImageConfig to pull images from private ECR repositories through VPC. This provides supply chain security.",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html",
                         severity="Medium",
@@ -2037,12 +2260,13 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
                     )
                 )
             else:
-                # No models found or all use default Platform access - N/A
+                # No models found - N/A (models using Platform access are
+                # reported as Failed above, never collapsed into this branch)
                 findings["csv_data"].append(
                     create_finding(
                         check_id="SM-14",
                         finding_name="SageMaker Model Repository Access Check",
-                        finding_details="No models found or all use default Platform access",
+                        finding_details="No models found",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html",
                         severity="Informational",
@@ -2154,7 +2378,12 @@ def check_sagemaker_feature_store_encryption(region: str = "") -> Dict[str, Any]
                         finding_details=f"All {len(feature_groups_with_encryption)} feature groups with offline stores have KMS encryption configured",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-security.html",
-                        severity="High",
+                        # SageMaker.17 (offline feature store KMS) is Medium
+                        # severity in Security Hub; the Failed path above
+                        # already uses Medium. One severity applies to every
+                        # Passed/Failed row of a control (severity
+                        # methodology Rule 2); this previously emitted High.
+                        severity="Medium",
                         status="Passed",
                         region=region,
                     )
@@ -2316,7 +2545,9 @@ def check_sagemaker_data_quality_encryption(region: str = "") -> Dict[str, Any]:
 def check_sagemaker_processing_job_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker processing jobs have volume encryption enabled.
-    Aligns with AWS Security Hub control SageMaker.10
+    Repo-specific hardening check with no Security Hub equivalent.
+    (Security Hub SageMaker.10 covers model explainability job definition
+    inter-container traffic encryption, not processing jobs.)
     """
     logger.debug("Starting check for SageMaker processing job encryption")
     try:
@@ -2449,7 +2680,9 @@ def check_sagemaker_processing_job_encryption(region: str = "") -> Dict[str, Any
 def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker transform jobs have volume encryption enabled.
-    Aligns with AWS Security Hub control SageMaker.11
+    Repo-specific hardening check with no Security Hub equivalent.
+    (Security Hub SageMaker.11 covers data quality job definition network
+    isolation, not transform jobs.)
     """
     logger.debug("Starting check for SageMaker transform job encryption")
     try:
@@ -2581,7 +2814,9 @@ def check_sagemaker_hyperparameter_tuning_encryption(
 ) -> Dict[str, Any]:
     """
     Check if SageMaker hyperparameter tuning jobs have volume encryption enabled.
-    Aligns with AWS Security Hub control SageMaker.12
+    Repo-specific hardening check with no Security Hub equivalent.
+    (Security Hub SageMaker.12 covers model bias job definition network
+    isolation, not hyperparameter tuning jobs.)
     """
     logger.debug("Starting check for SageMaker hyperparameter tuning job encryption")
     try:
@@ -2718,7 +2953,9 @@ def check_sagemaker_hyperparameter_tuning_encryption(
 def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker compilation jobs have volume encryption enabled.
-    Aligns with AWS Security Hub control SageMaker.13
+    Repo-specific hardening check with no Security Hub equivalent.
+    (Security Hub SageMaker.13 covers model quality job definition
+    inter-container traffic encryption, not compilation jobs.)
     """
     logger.debug("Starting check for SageMaker compilation job encryption")
     try:
@@ -2845,8 +3082,11 @@ def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, An
 
 def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]:
     """
-    Check if SageMaker AutoML (Autopilot) jobs have network isolation enabled.
-    Aligns with AWS Security Hub control SageMaker.15
+    Check if SageMaker AutoML (Autopilot) jobs have inter-container traffic
+    encryption enabled (AutoMLJobConfig.SecurityConfig).
+    Repo-specific hardening check with no Security Hub equivalent.
+    (Security Hub SageMaker.15 covers model bias job definition
+    inter-container traffic encryption, not AutoML jobs.)
     """
     logger.debug("Starting check for SageMaker AutoML job network isolation")
     try:
@@ -4041,21 +4281,37 @@ def lambda_handler(event, context):
                 f"SageMaker availability probe returned {error_code}; proceeding with checks"
             )
 
-        logger.info("Running SageMaker internet access check")
+        logger.info("Running SageMaker internet access check (SageMaker.1, notebooks)")
         sagemaker_internet_access_findings = check_sagemaker_internet_access(
             region=region
         )
         all_findings.append(sagemaker_internet_access_findings)
 
+        logger.info("Running SageMaker domain network access check (repo-specific)")
+        sagemaker_domain_network_findings = check_sagemaker_domain_network_access(
+            region=region
+        )
+        all_findings.append(sagemaker_domain_network_findings)
+
         logger.info("Running SageMaker SSO configuration check")
         sagemaker_sso_findings = check_sagemaker_sso_configuration(region=region)
         all_findings.append(sagemaker_sso_findings)
 
-        logger.info("Running SageMaker data protection check")
-        sagemaker_data_protection_findings = check_sagemaker_data_protection(
-            region=region
+        logger.info(
+            "Running SageMaker notebook storage encryption check (SageMaker.21)"
         )
-        all_findings.append(sagemaker_data_protection_findings)
+        sagemaker_notebook_encryption_findings = (
+            check_sagemaker_notebook_storage_encryption(region=region)
+        )
+        all_findings.append(sagemaker_notebook_encryption_findings)
+
+        logger.info(
+            "Running SageMaker domain and training job encryption check (repo-specific)"
+        )
+        sagemaker_domain_training_encryption_findings = (
+            check_sagemaker_domain_and_training_job_encryption(region=region)
+        )
+        all_findings.append(sagemaker_domain_training_encryption_findings)
 
         logger.info("Running GuardDuty SageMaker monitoring check")
         guardduty_findings = check_guardduty_enabled(region=region)

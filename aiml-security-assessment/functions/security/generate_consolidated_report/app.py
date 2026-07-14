@@ -49,13 +49,168 @@ def parse_csv_content(csv_content: str) -> List[Dict[str, str]]:
     return results
 
 
-def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[str, Any]:
+# Reserved per-service check IDs used for rows synthesized by the report layer
+# (matches the existing XX-00 convention the service Lambdas use for
+# service-availability rows).
+_MISSING_RESULTS_CHECK_IDS = {
+    "bedrock": "BR-00",
+    "sagemaker": "SM-00",
+    "agentcore": "AC-00",
+    "finserv": "FS-00",
+}
+_SERVICE_DISPLAY_NAMES = {
+    "bedrock": "Bedrock",
+    "sagemaker": "SageMaker",
+    "agentcore": "AgentCore",
+    "finserv": "FinServ",
+}
+# Name prefix shared with the per-check COULD_NOT_ASSESS disposition (see
+# docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md §3.4). The report
+# template surfaces rows with this prefix in the "Unassessed Checks" metric.
+COULD_NOT_ASSESS_PREFIX = "COULD NOT ASSESS: "
+
+
+def _missing_results_row(
+    service: str, region: str, execution_id: str
+) -> Dict[str, str]:
+    """Synthesize one visible finding row for a service whose assessment CSV is
+    missing from S3 (for example, the service Lambda timed out or crashed and
+    the state machine's Catch routed to its "Assessment Incomplete" state).
+
+    Without this row the consolidated report would silently omit an entire
+    service (or a service/region cell) and the customer would have no signal
+    that anything was skipped — a silent understatement of risk. The row uses
+    the COULD_NOT_ASSESS convention: Status="N/A" and Severity="Low", so it is
+    visible in the findings table and the Unassessed Checks metric but is
+    excluded from pass-rate denominators.
+    """
+    display = _SERVICE_DISPLAY_NAMES[service]
+    scope = f"in region {region}" if region else "for this execution"
+    return {
+        "Check_ID": _MISSING_RESULTS_CHECK_IDS[service],
+        "Finding": f"{COULD_NOT_ASSESS_PREFIX}{display} assessment results missing",
+        "Finding_Details": (
+            f"No {display} assessment report was found in S3 {scope} "
+            f"(execution {execution_id}). The {display} checks were NOT assessed "
+            "for this scope. The most common cause is a Lambda timeout, "
+            "out-of-memory error, or crash that the state machine caught and "
+            "skipped; the report would otherwise silently omit these checks."
+        ),
+        "Resolution": (
+            "1. Open the Step Functions execution and look for a branch that "
+            "ended in an 'Assessment Incomplete' state.\n"
+            "2. Review the CloudWatch logs for the corresponding assessment "
+            "Lambda function to find the root cause.\n"
+            "3. Re-run the assessment; treat these checks as unassessed until "
+            "a run completes without this row."
+        ),
+        "Reference": "https://docs.aws.amazon.com/step-functions/latest/dg/concepts-error-handling.html",
+        "Severity": "Low",
+        "Status": "N/A",
+        "Region": region,
+        "Compliance_Frameworks": "",
+    }
+
+
+def _regions_from_keys(keys, service: str, execution_id: str):
+    """Parse the region suffix out of a service's report object keys.
+
+    Keys look like ``{service}_security_report_{execution_id}_{region}.csv``
+    (multi-region) or ``{service}_security_report_{execution_id}.csv``
+    (single-file). Returns ``(regions, has_regionless_file)``.
+    """
+    prefix = f"{service}_security_report_{execution_id}"
+    regions = set()
+    has_regionless = False
+    for key in keys:
+        base = os.path.basename(key)
+        if not base.startswith(prefix) or not base.endswith(".csv"):
+            continue
+        remainder = base[len(prefix) : -len(".csv")]
+        if not remainder:
+            has_regionless = True
+        elif remainder.startswith("_") and len(remainder) > 1:
+            regions.add(remainder[1:])
+    return regions, has_regionless
+
+
+def synthesize_missing_result_rows(
+    assessment_results: Dict[str, Any],
+    object_keys,
+    execution_id: str,
+    finserv_enabled: bool,
+    account_id: str = None,
+) -> None:
+    """Append COULD_NOT_ASSESS rows for every service (and service/region cell)
+    whose CSV is missing, so orchestration-level failures are visible in the
+    report instead of silently shrinking it.
+
+    - Bedrock/SageMaker/AgentCore run once per region and write one CSV per
+      region; the expected region set is the union of regions any of them
+      reported. A service missing a region from that union gets one row per
+      missing region; a service with no files at all gets a single row.
+    - FinServ runs once per execution (single CSV, multi-region internally)
+      and only when the execution was started with enableFinServ=true, so it
+      is only flagged when enabled and absent.
+    """
+    per_region_services = ["bedrock", "sagemaker", "agentcore"]
+    regions_by_service = {}
+    regionless_by_service = {}
+    for service in per_region_services + ["finserv"]:
+        regions, has_regionless = _regions_from_keys(object_keys, service, execution_id)
+        regions_by_service[service] = regions
+        regionless_by_service[service] = has_regionless
+
+    expected_regions = set()
+    for service in per_region_services:
+        expected_regions.update(regions_by_service[service])
+
+    for service in per_region_services:
+        rows = []
+        has_any_file = (
+            bool(regions_by_service[service]) or regionless_by_service[service]
+        )
+        if not has_any_file:
+            rows.append(_missing_results_row(service, "", execution_id))
+        elif regions_by_service[service]:
+            # Only compare per-region coverage for services using the
+            # per-region file layout; a legacy region-less file covers the run.
+            for region in sorted(expected_regions - regions_by_service[service]):
+                rows.append(_missing_results_row(service, region, execution_id))
+        if rows:
+            if account_id:
+                for row in rows:
+                    row["Account_ID"] = account_id
+            assessment_results[service]["missing_results"] = rows
+            logger.warning(
+                f"Synthesized {len(rows)} missing-results row(s) for {service} "
+                f"(execution {execution_id})"
+            )
+
+    finserv_has_file = (
+        bool(regions_by_service["finserv"]) or regionless_by_service["finserv"]
+    )
+    if finserv_enabled and not finserv_has_file:
+        row = _missing_results_row("finserv", "", execution_id)
+        if account_id:
+            row["Account_ID"] = account_id
+        assessment_results["finserv"]["missing_results"] = [row]
+        logger.warning(
+            f"Synthesized missing-results row for finserv (execution {execution_id})"
+        )
+
+
+def get_assessment_results(
+    execution_id: str, account_id: str = None, finserv_enabled: bool = False
+) -> Dict[str, Any]:
     """
     Download and parse Bedrock, SageMaker, AgentCore, and FinServ assessment CSV files for a given execution
 
     Args:
         s3_bucket (str): Source S3 bucket name
         execution_id (str): Step Functions execution ID
+        finserv_enabled (bool): Whether the execution was started with
+            enableFinServ=true (used to flag a missing FinServ report)
 
     Returns:
         Dict[str, Any]: Nested object containing all assessment results
@@ -148,6 +303,18 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
             except Exception as e:
                 logger.error(f"Error processing file {s3_key}: {str(e)}", exc_info=True)
                 continue
+
+        # Surface orchestration-level gaps: if a service (or a service/region
+        # cell) produced no CSV — e.g. its Lambda timed out and the state
+        # machine's Catch skipped it — synthesize a visible COULD_NOT_ASSESS
+        # row instead of silently omitting those checks from the report.
+        synthesize_missing_result_rows(
+            assessment_results,
+            [obj["Key"] for obj in all_objects],
+            execution_id,
+            finserv_enabled,
+            account_id,
+        )
 
         # Add summary information
         assessment_results["summary"] = {
@@ -341,6 +508,15 @@ def lambda_handler(event, context):
     try:
         # Get execution ID from event
         execution_id = event["Execution"]["Name"]
+        # The Step Functions context object ($$.Execution) carries the original
+        # execution input; enableFinServ gates whether the FinServ branch ran,
+        # so a missing FinServ CSV is only an assessment gap when it was enabled.
+        execution_input = event.get("Execution", {}).get("Input", {}) or {}
+        if not isinstance(execution_input, dict):
+            execution_input = {}
+        finserv_enabled = (
+            str(execution_input.get("enableFinServ", "")).lower() == "true"
+        )
         # Get account ID using STS GetCallerIdentity
         sts_client = boto3.client("sts", config=boto3_config)
         account_id = sts_client.get_caller_identity()["Account"]
@@ -352,7 +528,9 @@ def lambda_handler(event, context):
             )
 
         # Get assessment results
-        assessment_results = get_assessment_results(execution_id, account_id)
+        assessment_results = get_assessment_results(
+            execution_id, account_id, finserv_enabled
+        )
         if not assessment_results:
             raise ValueError(f"No assessment results found: {execution_id}")
 
