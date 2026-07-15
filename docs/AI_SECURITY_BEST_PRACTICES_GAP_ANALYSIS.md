@@ -212,7 +212,7 @@ severity, which seeds the register's control severity for the general checks.
 | --- | --- | --- | --- | --- |
 | `Bedrock.1` data source CMK | Medium | `AWS::Bedrock::DataSource` | Gap | `BR-20` inspects knowledge-base managed KMS, not data sources. |
 | `BedrockAgentCore.1` runtime VPC mode | High | Runtime | Covered | `AC-01` reads `networkConfiguration.networkMode` (absent -> PUBLIC -> fail). Stale comment/dead subnet code removed. |
-| `BedrockAgentCore.2` gateway inbound auth | High | Gateway | Covered (reconcile) | `AG-24` reads `authorizerType`; richer than the binary control (see Parity Divergence). AccessDenied -> N/A but Informational; should be `COULD_NOT_ASSESS` Low. |
+| `BedrockAgentCore.2` gateway inbound auth | High | Gateway | Covered (reconcile) | `AG-24` reads `authorizerType`; richer than the binary control (see Parity Divergence). AccessDenied now routes through `COULD_NOT_ASSESS` (Low), fixed in PR-0. `SECURITY_HUB_CONTROL_MAP` mapping gap also closed in PR-0. |
 | `BedrockAgentCore.3` memory CMK | Medium | Memory | Covered (fixed) | `AC-07` fails when key absent; presence-as-proxy. Pass-path severity fixed to Medium. |
 | `BedrockAgentCore.4` gateway CMK | Medium | Gateway | Covered (bug) | `AC-12` logic correct but emits severity LOW; register Medium. |
 | `BedrockAgentCore.5` browser not public network | High | BrowserCustom | Gap | No browser network-mode check yet; IAM (`ListBrowsers`/`GetBrowser`) now granted, so only check code is needed. |
@@ -499,6 +499,78 @@ redo them; do extend their patterns:
   `.21` partial, SM-11 -> `.5`, SM-12 -> `.4`), BR-14 marked disabled, AC-06
   re-described; methodology status/worked-example/§7 metric rule updated;
   register doc status and cross-module CMK divergence note added.
+
+## PR-0 Status: COMPLETE
+
+The severity-model extraction and adoption described in PR-0 above is now
+implemented on this branch:
+
+- `agentcore_assessments/severity_disposition.py`,
+  `bedrock_assessments/severity_disposition.py`,
+  `sagemaker_assessments/severity_disposition.py` — one sibling module per
+  service (matching the existing `schema.py` per-module duplication
+  precedent, not a shared Lambda layer), each with `_DISPOSITION_SEVERITY`,
+  `COULD_NOT_ASSESS_PREFIX`, `could_not_assess_row(...)`, and a
+  `SEVERITY_REGISTER` (AgentCore: 46 entries, AC-00..AC-15 + AG-24..27;
+  Bedrock: 45 entries, all 34 BR- checks; SageMaker: covers all 39 SM- checks).
+  AgentCore's helper is enum-based (`SeverityEnum`/`StatusEnum`) to match its
+  `create_finding` call convention; Bedrock's and SageMaker's are string-based
+  (`severity="Low"`) to match theirs.
+- Every outer `except Exception` in all three modules' check functions (plus
+  both `lambda_handler` enumeration loops in AgentCore) now returns
+  `could_not_assess_row(...)` instead of a fabricated `Failed`/`High` result.
+  This closes the `AC-12` fix already noted above, plus the `SM-11`/`SM-15`
+  Passed/Failed severity-drift fixes and 13 additional Bedrock Passed/Failed
+  drift cases (Agent Action Group IAM Least Privilege, Agent Guardrail
+  Association, Automated Reasoning Policy Implementation, Batch Inference
+  Output Encryption, Bedrock Custom Model Encryption, Bedrock Flows
+  Guardrails, Bedrock Knowledge Base Encryption, Imported Model CMK
+  Encryption, Knowledge Base CMK Encryption, Model Evaluation Implementation,
+  Model Invocation Throttling Limits, Prompt Flow Validation, Bedrock
+  CloudTrail Logging).
+- Inner enumeration failures previously silently collapsed into a false
+  "no resources found" `N/A` (Rule 5 violation) were converted to re-raise
+  into the outer handler: AgentCore `AC-04`, `AC-05` (ECR), `AC-10`
+  (runtime/gateway listing loops); SageMaker's `_list_job_definitions_with_
+  details` callers across SM-29..SM-39, plus `SM-06` (Clarify), `SM-08`
+  (Model Registry), `SM-25` (ML Lineage, both the Experiments and Model
+  Package Lineage enumeration branches, including a middle-level wrapper
+  `try/except` that had been re-swallowing the inner `raise`), `SM-28`
+  (Notebook Platform). A further Rule-5 pattern — a per-component `except`
+  that appended a fabricated `High`/`Medium`/`Failed` "component check error"
+  dict alongside real findings instead of a disposition — was found and fixed
+  in `SM-05` (Model Registry/Feature Store/Pipelines sub-checks), `SM-06`
+  (Clarify), `SM-07` (Model Monitor), and `SM-08` (per-group model check).
+  AgentCore's `AC-10` `policy_access_denied`/`policy_check_errors` branches
+  and `AG-24`'s per-gateway `get_gateway` failure branch moved from
+  `Informational` to `COULD_NOT_ASSESS` (Low).
+- A per-module drift-guard test file mirrors
+  `finserv_tests/test_severity_register.py`'s bidirectional source-scan:
+  `tests/test_agentcore_severity_register.py`,
+  `tests/test_bedrock_severity_register.py`,
+  `tests/test_sagemaker_severity_register.py`. Existing check tests
+  (`tests/test_agentcore_checks.py`, `tests/test_bedrock_checks.py`,
+  `tests/test_sagemaker_checks.py`) were updated wherever they asserted the
+  old fabricated `Failed`/`High` (or under-severitied `Informational`)
+  exception behavior.
+- The AG-24 -> `BedrockAgentCore.2` gap in `SECURITY_HUB_CONTROL_MAP`
+  (`generate_consolidated_report/report_template.py`) is closed.
+- Verified: full `tests/` suite = 517 passed (in both forward and reverse
+  file-collection order — the register tests' `sys.modules` cache-eviction
+  guard, needed because `agentcore_assessments`, `bedrock_assessments`, and
+  `sagemaker_assessments` each define their own same-named
+  `schema.py`/`severity_disposition.py`, is now applied consistently in all
+  three `test_*_checks.py` and all three `test_*_severity_register.py`
+  files); `finserv_tests/` = 582 passed, unchanged; `ruff check` clean on all
+  touched files.
+
+Not addressed by this PR-0 pass (still open per "Coverage Matrix" and the
+remaining PRs above): the wrong-resource/mislabeling defects (`SM-01` domain
+scope, `SM-03` substring KMS test + resource-bundling split, `SM-13` named
+monitoring-definition resolution, the five SageMaker.10-.15 mislabeled
+functions), and the 16 coverage gaps in PR-1/PR-2/PR-3. Those require
+check-logic changes, not severity/disposition mechanics, and remain future
+work.
 
 ## Already Closed By Upstream (do not redo)
 

@@ -18,6 +18,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError, EndpointConnectionError
 
 from schema import create_finding, SeverityEnum, StatusEnum
+from severity_disposition import could_not_assess_row, COULD_NOT_ASSESS_PREFIX
 
 # Configure logging
 logger = logging.getLogger()
@@ -599,14 +600,14 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in VPC configuration check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-01",
-                finding_name="AgentCore VPC Configuration Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference=AGENTCORE_STARTER_TOOLKIT_URL,
-                severity=SeverityEnum.HIGH,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-01",
+                "AgentCore VPC Configuration Check",
+                e,
+                AGENTCORE_STARTER_TOOLKIT_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -751,14 +752,14 @@ def check_agentcore_full_access_roles(
     except Exception as e:
         logger.error(f"Error in full access roles check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-02",
-                finding_name="AgentCore IAM Full Access Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
-                severity=SeverityEnum.HIGH,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-02",
+                "AgentCore IAM Full Access Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -1051,14 +1052,16 @@ def check_stale_agentcore_access(
                         f"Job timed out for {principal_type} {principal_name} after {max_wait_time}s"
                     )
                     findings.append(
-                        create_finding(
-                            check_id="AC-03",
-                            finding_name="AgentCore Stale Access Check Incomplete",
-                            finding_details=f"Could not determine last access for {principal_type} '{principal_name}' — IAM job timed out after {max_wait_time}s",
-                            resolution="Re-run the assessment or manually check service last accessed details for this principal",
-                            reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
-                            severity=SeverityEnum.LOW,
-                            status=StatusEnum.FAILED,
+                        could_not_assess_row(
+                            create_finding,
+                            "AC-03",
+                            "AgentCore Stale Access Check",
+                            f"Could not determine last access for {principal_type} "
+                            f"'{principal_name}' — IAM job timed out after "
+                            f"{max_wait_time}s",
+                            "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
+                            SeverityEnum,
+                            StatusEnum,
                         )
                     )
 
@@ -1069,14 +1072,14 @@ def check_stale_agentcore_access(
                 elif error_code == "AccessDenied":
                     logger.error(f"Access denied when checking {principal_name}: {e}")
                     findings.append(
-                        create_finding(
-                            check_id="AC-03",
-                            finding_name="AgentCore Stale Access Check",
-                            finding_details=f"Access denied when checking service last accessed for {principal_type} {principal_name}",
-                            resolution="Ensure Lambda execution role has iam:GenerateServiceLastAccessedDetails and iam:GetServiceLastAccessedDetails permissions",
-                            reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
-                            severity=SeverityEnum.HIGH,
-                            status=StatusEnum.FAILED,
+                        could_not_assess_row(
+                            create_finding,
+                            "AC-03",
+                            "AgentCore Stale Access Check",
+                            f"Access denied when checking service last accessed for {principal_type} {principal_name} ({e})",
+                            "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
+                            SeverityEnum,
+                            StatusEnum,
                         )
                     )
                     return findings
@@ -1144,14 +1147,14 @@ def check_stale_agentcore_access(
     except Exception as e:
         logger.error(f"Error in stale access check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-03",
-                finding_name="AgentCore Stale Access Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-03",
+                "AgentCore Stale Access Check",
+                e,
+                "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -1275,7 +1278,12 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
 
         except ClientError as e:
             if e.response["Error"]["Code"] != "ResourceNotFoundException":
+                # Enumeration itself failed (e.g. AccessDenied) — re-raise so
+                # the outer handler reports COULD_NOT_ASSESS rather than
+                # silently falling through to a "no resources found" N/A,
+                # which would understate an access gap as a clean result.
                 logger.error(f"Error listing runtimes: {e}")
+                raise
 
         # Return appropriate status based on whether resources were found
         if not findings:
@@ -1307,14 +1315,14 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in observability check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-04",
-                finding_name="AgentCore Observability Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-04",
+                "AgentCore Observability Check",
+                e,
+                AGENTCORE_OBSERVABILITY_REFERENCE_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -1391,7 +1399,11 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
                         )
 
         except ClientError as e:
+            # Enumeration itself failed (e.g. AccessDenied) — re-raise so the
+            # outer handler reports COULD_NOT_ASSESS rather than silently
+            # falling through to a "no resources found" N/A.
             logger.warning(f"Error checking ECR repositories: {e}")
+            raise
 
         # Note: Browser Tool recording buckets and Code Interpreter storage are configured
         # as part of Runtime configuration, not as separate resources
@@ -1426,14 +1438,14 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in encryption check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-05",
-                finding_name="AgentCore Encryption Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference=AGENTCORE_DATA_ENCRYPTION_REFERENCE_URL,
-                severity=SeverityEnum.HIGH,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-05",
+                "AgentCore Encryption Check",
+                e,
+                AGENTCORE_DATA_ENCRYPTION_REFERENCE_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -2083,14 +2095,14 @@ def check_agentcore_memory_configuration() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in memory configuration check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-07",
-                finding_name="AgentCore Memory Configuration Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference=AGENTCORE_MEMORY_REFERENCE_URL,
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-07",
+                "AgentCore Memory Configuration Check",
+                e,
+                AGENTCORE_MEMORY_REFERENCE_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -2240,14 +2252,14 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in VPC endpoints check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-08",
-                finding_name="AgentCore VPC Endpoints Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-08",
+                "AgentCore VPC Endpoints Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -2331,14 +2343,14 @@ def check_agentcore_service_linked_role() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in service-linked role check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-09",
-                finding_name="AgentCore Service-Linked Role Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-09",
+                "AgentCore Service-Linked Role Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -2431,7 +2443,11 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
 
         except ClientError as e:
             if e.response["Error"]["Code"] != "ResourceNotFoundException":
+                # Enumeration itself failed (e.g. AccessDenied) — re-raise so
+                # the outer handler reports COULD_NOT_ASSESS rather than
+                # silently proceeding as if there were zero runtimes to check.
                 logger.warning(f"Error listing runtimes: {e}")
+                raise
 
         # Check Gateways
         try:
@@ -2486,8 +2502,17 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                             f"Error checking policy for gateway {gateway_id}: {e}"
                         )
 
-        except (ClientError, AttributeError) as e:
+        except AttributeError as e:
+            # Gateway APIs are not present in this bedrock-agentcore-control
+            # client version — a genuine NOT_APPLICABLE, not an access gap.
             logger.info(f"Gateway APIs not available: {e}")
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "ResourceNotFoundException":
+                # Enumeration itself failed (e.g. AccessDenied) — re-raise so
+                # the outer handler reports COULD_NOT_ASSESS instead of
+                # silently treating it the same as "Gateway APIs unavailable".
+                logger.warning(f"Error listing gateways: {e}")
+                raise
 
         # Generate findings
         if resources_without_rbp:
@@ -2523,17 +2548,19 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
             findings.append(
                 create_finding(
                     check_id="AC-10",
-                    finding_name="AgentCore Resource-Based Policy Assessment Access Denied",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}AgentCore Resource-Based Policies Check",
                     finding_details=(
                         f"Unable to assess resource-based policies for {resource_list} "
-                        "because access to AgentCore resource policy metadata was denied."
+                        "because access to AgentCore resource policy metadata was denied. "
+                        "This control was NOT assessed for these resources."
                     ),
                     resolution=(
                         "Ensure the assessment role can call "
-                        "bedrock-agentcore:GetResourcePolicy for AgentCore resources."
+                        "bedrock-agentcore:GetResourcePolicy for AgentCore resources, "
+                        "then re-run the assessment."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
-                    severity=SeverityEnum.INFORMATIONAL,
+                    severity=SeverityEnum.LOW,
                     status=StatusEnum.NA,
                 )
             )
@@ -2549,10 +2576,11 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
             findings.append(
                 create_finding(
                     check_id="AC-10",
-                    finding_name="AgentCore Resource-Based Policy Assessment Incomplete",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}AgentCore Resource-Based Policies Check",
                     finding_details=(
                         f"Unable to fully assess resource-based policies for {resource_list} "
-                        f"due to AgentCore API errors: {', '.join(error_codes)}."
+                        f"due to AgentCore API errors: {', '.join(error_codes)}. This control "
+                        "was NOT assessed for these resources."
                     ),
                     resolution=(
                         "Re-run the assessment. If the issue persists, review AgentCore "
@@ -2593,14 +2621,14 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in resource-based policies check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-10",
-                finding_name="AgentCore Resource-Based Policies Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-10",
+                "AgentCore Resource-Based Policies Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -2741,14 +2769,14 @@ def check_agentcore_policy_engine_encryption() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in policy engine encryption check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-11",
-                finding_name="AgentCore Policy Engine Encryption Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-encryption.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-11",
+                "AgentCore Policy Engine Encryption Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-encryption.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -2894,14 +2922,14 @@ def check_agentcore_gateway_encryption() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in gateway encryption check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-12",
-                finding_name="AgentCore Gateway Encryption Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/data-encryption.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-12",
+                "AgentCore Gateway Encryption Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/data-encryption.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -3014,14 +3042,14 @@ def check_agentcore_gateway_configuration() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in gateway configuration check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-13",
-                finding_name="AgentCore Gateway Configuration Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference=AGENTCORE_GATEWAY_REFERENCE_URL,
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-13",
+                "AgentCore Gateway Configuration Check",
+                e,
+                AGENTCORE_GATEWAY_REFERENCE_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -3081,25 +3109,27 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
             # rather than the previous Informational, which understated an
             # access gap as "no issue."
             return [
-                create_finding(
-                    check_id="AG-24",
-                    finding_name="COULD NOT ASSESS: Agentic AI Gateway Security Controls",
-                    finding_details=f"Unable to list AgentCore Gateways: {str(e)}. Gateway inbound authorization, tool policy enforcement, error detail exposure, and WAF protection were NOT assessed.",
-                    resolution="Grant bedrock-agentcore:ListGateways to the assessment role and re-run the assessment.",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
-                    severity=SeverityEnum.LOW,
-                    status=StatusEnum.NA,
+                could_not_assess_row(
+                    create_finding,
+                    "AG-24",
+                    "Agentic AI Gateway Security Controls",
+                    f"Unable to list AgentCore Gateways: {str(e)}. Gateway "
+                    "inbound authorization, tool policy enforcement, error "
+                    "detail exposure, and WAF protection were NOT assessed.",
+                    AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    SeverityEnum,
+                    StatusEnum,
                 )
             ]
         return [
-            create_finding(
-                check_id="AG-24",
-                finding_name="Agentic AI Gateway Security Controls",
-                finding_details=f"Unable to list AgentCore Gateways: {str(e)}",
-                resolution="Grant bedrock-agentcore:ListGateways and retry the assessment",
-                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AG-24",
+                "Agentic AI Gateway Security Controls",
+                e,
+                AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         ]
 
@@ -3151,14 +3181,14 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
             gateway_details = agentcore_client.get_gateway(gatewayIdentifier=gateway_id)
         except ClientError as e:
             findings.append(
-                create_finding(
-                    check_id="AG-24",
-                    finding_name="Agentic AI Gateway Security Controls",
-                    finding_details=f"Unable to retrieve Gateway '{gateway_name}' ({gateway_id}): {str(e)}",
-                    resolution="Grant bedrock-agentcore:GetGateway and retry the assessment",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
-                    severity=SeverityEnum.INFORMATIONAL,
-                    status=StatusEnum.NA,
+                could_not_assess_row(
+                    create_finding,
+                    "AG-24",
+                    f"Agentic AI Gateway Security Controls for '{gateway_name}' ({gateway_id})",
+                    e,
+                    AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    SeverityEnum,
+                    StatusEnum,
                 )
             )
             continue
@@ -3385,18 +3415,17 @@ def lambda_handler(event, context):
                     all_findings.extend(global_findings)
                 except Exception as e:
                     logger.error(f"Error in global check '{check_name}': {e}")
-                    all_findings.append(
-                        create_finding(
-                            check_id="AC-00",
-                            finding_name=f"AgentCore {check_name} Check Error",
-                            finding_details=f"Error during {check_name} check: {str(e)}",
-                            resolution="Investigate error and retry assessment",
-                            reference=AGENTCORE_STARTER_TOOLKIT_URL,
-                            severity=SeverityEnum.HIGH,
-                            status=StatusEnum.FAILED,
-                            region=GLOBAL_REGION_LABEL,
-                        )
+                    error_finding = could_not_assess_row(
+                        create_finding,
+                        "AC-00",
+                        f"AgentCore {check_name} Check",
+                        e,
+                        AGENTCORE_STARTER_TOOLKIT_URL,
+                        SeverityEnum,
+                        StatusEnum,
                     )
+                    error_finding["Region"] = GLOBAL_REGION_LABEL
+                    all_findings.append(error_finding)
 
         # Reset per-invocation so a warm container cannot leak a previous
         # region's client if creation below fails.
@@ -3531,18 +3560,17 @@ def lambda_handler(event, context):
 
             except Exception as e:
                 logger.error(f"Error in check '{check_name}': {e}")
-                all_findings.append(
-                    create_finding(
-                        check_id="AC-00",
-                        finding_name=f"AgentCore {check_name} Check Error",
-                        finding_details=f"Error during {check_name} check: {str(e)}",
-                        resolution="Investigate error and retry assessment",
-                        reference=AGENTCORE_STARTER_TOOLKIT_URL,
-                        severity=SeverityEnum.HIGH,
-                        status=StatusEnum.FAILED,
-                        region=region,
-                    )
+                error_finding = could_not_assess_row(
+                    create_finding,
+                    "AC-00",
+                    f"AgentCore {check_name} Check",
+                    e,
+                    AGENTCORE_STARTER_TOOLKIT_URL,
+                    SeverityEnum,
+                    StatusEnum,
                 )
+                error_finding["Region"] = region
+                all_findings.append(error_finding)
 
         # Inject region into all findings that don't have it set
         for finding in all_findings:

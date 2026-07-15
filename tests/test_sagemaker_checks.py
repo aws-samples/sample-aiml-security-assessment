@@ -28,12 +28,25 @@ _sm_dir = os.path.abspath(
 if _sm_dir not in sys.path:
     sys.path.insert(0, _sm_dir)
 
-_spec = importlib.util.spec_from_file_location(
-    "sagemaker_app", os.path.join(_sm_dir, "app.py")
-)
-sagemaker_app = importlib.util.module_from_spec(_spec)
-sys.modules["sagemaker_app"] = sagemaker_app
-_spec.loader.exec_module(sagemaker_app)
+if "sagemaker_app" in sys.modules:
+    sagemaker_app = sys.modules["sagemaker_app"]
+else:
+    # agentcore_assessments, bedrock_assessments, and sagemaker_assessments
+    # each define their own same-named "schema"/"severity_disposition"
+    # modules. If another module's test already ran and cached
+    # sys.modules["severity_disposition"] (or ["schema"]) with its own
+    # version, sagemaker_app.py's plain `from severity_disposition import
+    # ...` / `from schema import ...` would silently bind to that other
+    # module instead of its own. Evict any stale cache entries so the import
+    # below resolves against _sm_dir (already at the front of sys.path).
+    sys.modules.pop("severity_disposition", None)
+    sys.modules.pop("schema", None)
+    _spec = importlib.util.spec_from_file_location(
+        "sagemaker_app", os.path.join(_sm_dir, "app.py")
+    )
+    sagemaker_app = importlib.util.module_from_spec(_spec)
+    sys.modules["sagemaker_app"] = sagemaker_app
+    _spec.loader.exec_module(sagemaker_app)
 
 
 # ===================================================================
@@ -102,7 +115,9 @@ class TestSM01InternetAccess:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm01_schema_valid(self, mock_client):
@@ -165,7 +180,9 @@ class TestSM27DomainNetworkAccess:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -348,7 +365,9 @@ class TestSM03NotebookStorageEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm03_schema_valid(self, mock_client):
@@ -395,7 +414,9 @@ class TestSM26DomainAndTrainingJobEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm26_schema_valid(self, mock_client):
@@ -451,7 +472,9 @@ class TestSM04GuardDuty:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm04_schema_valid(self, mock_client):
@@ -697,7 +720,9 @@ class TestSM09NotebookRootAccess:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm09_schema_valid(self, mock_client):
@@ -775,7 +800,9 @@ class TestSM10NotebookVPC:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm10_schema_valid(self, mock_client):
@@ -850,7 +877,9 @@ class TestSM11ModelNetworkIsolation:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -976,7 +1005,9 @@ class TestSM12EndpointInstanceCount:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm12_endpoint_config_exception_returns_error_finding(self, mock_client):
@@ -985,7 +1016,9 @@ class TestSM12EndpointInstanceCount:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -1014,7 +1047,9 @@ class TestSM13MonitoringNetworkIsolation:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm13_inline_definition_with_isolation_passes(self, mock_client):
@@ -1212,7 +1247,9 @@ class TestSM14ContainerRepository:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -1284,7 +1321,9 @@ class TestSM15FeatureStoreEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -1313,7 +1352,9 @@ class TestSM16DataQualityEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm16_schema_valid(self, mock_client):
@@ -1400,7 +1441,9 @@ class TestSM17ProcessingJobEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -1429,7 +1472,9 @@ class TestSM18TransformJobEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm18_schema_valid(self, mock_client):
@@ -1470,7 +1515,9 @@ class TestSM19HPTuningEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm19_schema_valid(self, mock_client):
@@ -1511,7 +1558,9 @@ class TestSM20CompilationJobEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm20_schema_valid(self, mock_client):
@@ -1550,7 +1599,9 @@ class TestSM21AutoMLNetworkIsolation:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm21_schema_valid(self, mock_client):
@@ -1589,7 +1640,9 @@ class TestSM22ModelApproval:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm22_schema_valid(self, mock_client):
@@ -1630,7 +1683,9 @@ class TestSM23DriftDetection:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm23_schema_valid(self, mock_client):
@@ -1694,7 +1749,9 @@ class TestSM24ABTesting:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm24_schema_valid(self, mock_client):
@@ -1756,7 +1813,9 @@ class TestSM25LineageTracking:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm25_schema_valid(self, mock_client):
@@ -1988,7 +2047,9 @@ class TestSM28NotebookPlatform:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -2581,4 +2642,6 @@ class TestSM37And38InferenceExperimentEncryption:
         check_ids = {f["Check_ID"] for f in findings}
         assert check_ids == {"SM-37", "SM-38"}
         for f in findings:
-            assert f["Status"] == "Failed"
+            assert f["Status"] == "N/A"
+            assert f["Severity"] == "Low"
+            assert f["Finding"].startswith("COULD NOT ASSESS")

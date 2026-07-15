@@ -5,16 +5,45 @@
 drift-guard test suite `finserv_tests/test_severity_register.py`. This document is the
 authoritative reference for how every FinServ (`FS-`) check is assigned a severity. It answers reviewer Finding 6 ("How are the priorities of the findings determined?") with a concrete reproducible, industry- and AWS-aligned formula — not per-check intuition.
 
-**Tool-wide adoption status (Bedrock/AgentCore/SageMaker):** the general checks now apply the
-same disposition principles pointwise — `COULD_NOT_ASSESS` (access-denied, unsupported region)
-routes to `N/A`/`Low` rather than a false `Failed` or a silent no-resources `N/A` (see `AC-06`,
-`AG-24`), and severity is kept consistent across a control's Passed/Failed rows (see the `AC-12`,
-`AC-07`, `SM-11`, `SM-15` fixes). A unified `SEVERITY_REGISTER`/`_could_not_assess_row` shared
-across all four modules (rather than the FinServ-only implementation below) remains a follow-up;
-today each general-check module applies the same rules pointwise rather than through one shared
-register.
+**Tool-wide adoption status (Bedrock/AgentCore/SageMaker): COMPLETE.** Each of the three general
+assessment modules now has its own `severity_disposition.py` sibling module (mirroring the
+per-module duplication already established for `schema.py`) implementing the same
+`_DISPOSITION_SEVERITY` rules and a `could_not_assess_row()` helper as FinServ's
+`_could_not_assess_row`:
 
-> Scope note: today the FinServ checks and the upstream Bedrock/SageMaker/AgentCore checks all use ad-hoc severities with **no documented methodology** (verified by inspection — the upstream `app.py` files hardcode `severity="High"|"Medium"|...` with no rationale and no rubric doc). This methodology is introduced for the FinServ checks first and is written so it can later be adopted tool-wide.
+- `agentcore_assessments/severity_disposition.py` — `SEVERITY_REGISTER` covering AC-00..AC-15 and
+  AG-24..27 (46 finding-name entries); enum-based (`SeverityEnum`/`StatusEnum`) to match
+  `agentcore_assessments/app.py`'s existing `create_finding` call convention.
+- `bedrock_assessments/severity_disposition.py` — `SEVERITY_REGISTER` covering all 34 BR- checks
+  (45 finding-name entries); string-based (`severity="Low"`) to match `bedrock_assessments/app.py`'s
+  convention.
+- `sagemaker_assessments/severity_disposition.py` — `SEVERITY_REGISTER` covering all 39 SM- checks;
+  string-based, same pattern as Bedrock.
+
+Every outer `except Exception` in all three modules' check functions (and both `lambda_handler`
+loops in AgentCore) now routes through `could_not_assess_row()` instead of fabricating a
+`High`/`Failed` result. Inner enumeration failures that were previously silently swallowed into a
+false "no resources found" `N/A` (or, in a few SageMaker/Bedrock cases, a fabricated
+`High`/`Medium` "check error" issue appended alongside real findings) were converted to either
+re-raise into the outer handler or call `could_not_assess_row()` directly. A dedicated drift-guard
+test file per module (`tests/test_agentcore_severity_register.py`,
+`tests/test_bedrock_severity_register.py`, `tests/test_sagemaker_severity_register.py`) mirrors
+`finserv_tests/test_severity_register.py`: it bidirectionally scans every static
+`finding_name="..."` literal in that module's `app.py` against its `SEVERITY_REGISTER` so a rename
+or a new check without a register entry fails CI, and asserts `could_not_assess_row()` always
+returns `Severity=Low`, `Status=N/A`.
+
+A single, code-shared `severity_disposition.py`/`SEVERITY_REGISTER` module across all four
+services (rather than one sibling file per module, each duplicating the same shape) was
+considered and rejected for this round — it would require a Lambda-layer restructuring that the
+existing `schema.py` duplication precedent explicitly avoids. The per-module file is the
+established pattern in this repo.
+
+> Scope note: previously the FinServ checks and the upstream Bedrock/SageMaker/AgentCore checks
+> all used ad-hoc severities with **no documented methodology** (verified by inspection — the
+> upstream `app.py` files hardcoded `severity="High"|"Medium"|...` with no rationale and no rubric
+> doc). This methodology was introduced for the FinServ checks first, and has now been adopted
+> tool-wide per the status above.
 
 ---
 

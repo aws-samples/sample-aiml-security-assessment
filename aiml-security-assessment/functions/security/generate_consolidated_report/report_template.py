@@ -58,6 +58,11 @@ SECURITY_HUB_CONTROL_MAP: Dict[str, List[str]] = {
     "AC-15": ["BedrockAgentCore.7"],
     "AC-07": ["BedrockAgentCore.3"],
     "AC-12": ["BedrockAgentCore.4"],
+    # AG-24 evaluates gateway inbound authorization (authorizerType /
+    # policy-engine enforcement); it is intentionally richer than the
+    # binary BedrockAgentCore.2 control but implements the same control
+    # ("Covered (reconcile)" in the gap analysis coverage matrix).
+    "AG-24": ["BedrockAgentCore.2"],
     # SageMaker
     "SM-01": ["SageMaker.1"],
     "SM-02": ["SageMaker.2"],

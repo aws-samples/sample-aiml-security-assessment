@@ -13,6 +13,7 @@ import json
 
 # TO DO PYDANTIC SUPPORT
 from schema import create_finding
+from severity_disposition import could_not_assess_row
 
 # Configure boto3 with retries
 boto3_config = Config(
@@ -145,6 +146,7 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
                         total_resources_checked += 1
         except Exception as e:
             logger.error(f"Error checking notebook instances: {str(e)}")
+            raise
 
         # Generate findings
         if instances_with_direct_access:
@@ -197,14 +199,12 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-01",
-                    finding_name="SageMaker Internet Access Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-01",
+                    "SageMaker Internet Access Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -256,6 +256,7 @@ def check_sagemaker_domain_network_access(region: str = "") -> Dict[str, Any]:
                             )
         except Exception as e:
             logger.error(f"Error checking domains: {str(e)}")
+            raise
 
         if domains_with_direct_access:
             for domain in domains_with_direct_access:
@@ -307,14 +308,12 @@ def check_sagemaker_domain_network_access(region: str = "") -> Dict[str, Any]:
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-27",
-                    finding_name="SageMaker Domain Network Access Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-27",
+                    "SageMaker Domain Network Access Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -370,30 +369,24 @@ def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
                 )
             )
     except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_message = e.response["Error"]["Message"]
         findings["csv_data"].append(
-            create_finding(
-                check_id="SM-04",
-                finding_name="GuardDuty Check Error",
-                finding_details=f"Error checking GuardDuty status: {error_code} - {error_message}",
-                resolution="Ensure proper IAM permissions to check GuardDuty status",
-                reference="https://docs.aws.amazon.com/guardduty/latest/ug/security-iam.html",
-                severity="High",
-                status="Failed",
+            could_not_assess_row(
+                create_finding,
+                "SM-04",
+                "GuardDuty Check",
+                e,
+                "https://docs.aws.amazon.com/guardduty/latest/ug/security-iam.html",
                 region=region,
             )
         )
     except Exception as e:
         findings["csv_data"].append(
-            create_finding(
-                check_id="SM-04",
-                finding_name="GuardDuty Check Error",
-                finding_details=f"Unexpected error checking GuardDuty status: {str(e)}",
-                resolution="Investigate and resolve the unexpected error",
-                reference="https://docs.aws.amazon.com/guardduty/latest/ug/what-is-guardduty.html",
-                severity="High",
-                status="Failed",
+            could_not_assess_row(
+                create_finding,
+                "SM-04",
+                "GuardDuty Check",
+                e,
+                "https://docs.aws.amazon.com/guardduty/latest/ug/what-is-guardduty.html",
                 region=region,
             )
         )
@@ -527,10 +520,16 @@ def check_sagemaker_iam_permissions(
             f"Error in check_sagemaker_iam_permissions: {str(e)}", exc_info=True
         )
         return {
-            "check_name": "SageMaker IAM Permissions Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                could_not_assess_row(
+                    create_finding,
+                    "SM-02",
+                    "SageMaker IAM Permissions Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker-unified-studio/latest/adminguide/security-iam.html",
+                    region=region,
+                )
+            ]
         }
 
 
@@ -632,10 +631,16 @@ def check_sagemaker_sso_configuration(region: str = "") -> Dict[str, Any]:
             f"Error in check_sagemaker_sso_configuration: {str(e)}", exc_info=True
         )
         return {
-            "check_name": "SageMaker SSO Configuration Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                could_not_assess_row(
+                    create_finding,
+                    "SM-02",
+                    "SageMaker SSO Configuration Check",
+                    e,
+                    "https://aws.amazon.com/blogs/machine-learning/team-and-user-management-with-amazon-sagemaker-and-aws-sso/",
+                    region=region,
+                )
+            ]
         }
 
 
@@ -724,6 +729,7 @@ def check_sagemaker_notebook_storage_encryption(region: str = "") -> Dict[str, A
                             notebooks_without_kms.append(instance_name)
         except Exception as e:
             logger.error(f"Error checking notebook instances encryption: {str(e)}")
+            raise
 
         if notebooks_without_kms:
             for notebook_name in notebooks_without_kms:
@@ -776,14 +782,12 @@ def check_sagemaker_notebook_storage_encryption(region: str = "") -> Dict[str, A
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-03",
-                    finding_name="SageMaker Notebook Storage Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="Medium",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-03",
+                    "SageMaker Notebook Storage Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -851,6 +855,7 @@ def check_sagemaker_domain_and_training_job_encryption(
                             )
         except Exception as e:
             logger.error(f"Error checking domain encryption: {str(e)}")
+            raise
 
         # Check Training Jobs encryption
         try:
@@ -888,6 +893,7 @@ def check_sagemaker_domain_and_training_job_encryption(
                             )
         except Exception as e:
             logger.error(f"Error checking training jobs encryption: {str(e)}")
+            raise
 
         if resources_without_encryption or resources_without_vpc_encryption:
             for resource in resources_without_encryption:
@@ -954,14 +960,12 @@ def check_sagemaker_domain_and_training_job_encryption(
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-26",
-                    finding_name="Domain and Training Job Data Protection Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="Medium",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-26",
+                    "Domain and Training Job Data Protection Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -1020,15 +1024,20 @@ def check_sagemaker_mlops_utilization(
                                 }
                             )
         except Exception as e:
+            # A component-check failure (e.g. AccessDenied) is an unknown
+            # state, not a confirmed control failure — route directly through
+            # the COULD_NOT_ASSESS disposition (Low/N-A) rather than
+            # collecting a false High/Failed into issues_found.
             logger.error(f"Error checking Model Registry: {str(e)}")
-            issues_found.append(
-                {
-                    "component": "Model Registry",
-                    "issue": f"Error checking configuration: {str(e)}",
-                    "impact": "Unable to verify model versioning",
-                    "severity": "High",
-                    "status": "Failed",
-                }
+            findings["csv_data"].append(
+                could_not_assess_row(
+                    create_finding,
+                    "SM-05",
+                    "SageMaker Model Registry Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/mlops.html",
+                    region=region,
+                )
             )
 
         # Check Feature Store Usage
@@ -1062,15 +1071,20 @@ def check_sagemaker_mlops_utilization(
                             }
                         )
         except Exception as e:
+            # A component-check failure (e.g. AccessDenied) is an unknown
+            # state, not a confirmed control failure — route directly through
+            # the COULD_NOT_ASSESS disposition (Low/N-A) rather than
+            # collecting a false High/Failed into issues_found.
             logger.error(f"Error checking Feature Store: {str(e)}")
-            issues_found.append(
-                {
-                    "component": "Feature Store",
-                    "issue": f"Error checking configuration: {str(e)}",
-                    "impact": "Unable to verify feature management",
-                    "severity": "High",
-                    "status": "Failed",
-                }
+            findings["csv_data"].append(
+                could_not_assess_row(
+                    create_finding,
+                    "SM-05",
+                    "SageMaker Feature Store Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/mlops.html",
+                    region=region,
+                )
             )
 
         # Check Pipeline Usage
@@ -1109,15 +1123,20 @@ def check_sagemaker_mlops_utilization(
                                 }
                             )
         except Exception as e:
+            # A component-check failure (e.g. AccessDenied) is an unknown
+            # state, not a confirmed control failure — route directly through
+            # the COULD_NOT_ASSESS disposition (Low/N-A) rather than
+            # collecting a false High/Failed into issues_found.
             logger.error(f"Error checking Pipelines: {str(e)}")
-            issues_found.append(
-                {
-                    "component": "Pipelines",
-                    "issue": f"Error checking configuration: {str(e)}",
-                    "impact": "Unable to verify pipeline automation",
-                    "severity": "High",
-                    "status": "Failed",
-                }
+            findings["csv_data"].append(
+                could_not_assess_row(
+                    create_finding,
+                    "SM-05",
+                    "SageMaker Pipelines Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/mlops.html",
+                    region=region,
+                )
             )
 
         # Generate findings based on issues found
@@ -1162,10 +1181,16 @@ def check_sagemaker_mlops_utilization(
             f"Error in check_sagemaker_mlops_utilization: {str(e)}", exc_info=True
         )
         return {
-            "check_name": "SageMaker MLOps Features Utilization Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                could_not_assess_row(
+                    create_finding,
+                    "SM-05",
+                    "SageMaker MLOps Features Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/mlops.html",
+                    region=region,
+                )
+            ]
         }
 
 
@@ -1247,15 +1272,11 @@ def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[st
                 )
 
         except Exception as e:
+            # Enumeration itself failed (e.g. AccessDenied) — re-raise so the
+            # outer handler reports COULD_NOT_ASSESS rather than fabricating
+            # a High/Failed result into issues_found.
             logger.error(f"Error checking Clarify jobs: {str(e)}")
-            issues_found.append(
-                {
-                    "issue_type": "Clarify Check Error",
-                    "details": f"Error checking Clarify configuration: {str(e)}",
-                    "severity": "High",
-                    "status": "Failed",
-                }
-            )
+            raise
 
         if issues_found:
             for issue in issues_found:
@@ -1291,10 +1312,16 @@ def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[st
     except Exception as e:
         logger.error(f"Error in check_sagemaker_clarify_usage: {str(e)}", exc_info=True)
         return {
-            "check_name": "SageMaker Clarify Usage Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                could_not_assess_row(
+                    create_finding,
+                    "SM-06",
+                    "SageMaker Clarify Usage Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-configure-processing-jobs.html",
+                    region=region,
+                )
+            ]
         }
 
 
@@ -1354,14 +1381,20 @@ def check_sagemaker_model_monitor_usage(
                 )
 
         except Exception as e:
+            # A component-check failure (e.g. AccessDenied) is an unknown
+            # state, not a confirmed control failure — route directly through
+            # the COULD_NOT_ASSESS disposition (Low/N-A) rather than
+            # collecting a false High/Failed into issues_found.
             logger.error(f"Error checking Model Monitor: {str(e)}")
-            issues_found.append(
-                {
-                    "issue_type": "Monitor Check Error",
-                    "details": f"Error checking Model Monitor configuration: {str(e)}",
-                    "severity": "High",
-                    "status": "Failed",
-                }
+            findings["csv_data"].append(
+                could_not_assess_row(
+                    create_finding,
+                    "SM-07",
+                    "SageMaker Model Monitor Usage Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
+                    region=region,
+                )
             )
 
         if issues_found:
@@ -1399,10 +1432,16 @@ def check_sagemaker_model_monitor_usage(
             f"Error in check_sagemaker_model_monitor_usage: {str(e)}", exc_info=True
         )
         return {
-            "check_name": "SageMaker Model Monitor Usage Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                could_not_assess_row(
+                    create_finding,
+                    "SM-07",
+                    "SageMaker Model Monitor Usage Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
+                    region=region,
+                )
+            ]
         }
 
 
@@ -1449,6 +1488,7 @@ def check_sagemaker_notebook_root_access(region: str = "") -> Dict[str, Any]:
 
         except Exception as e:
             logger.error(f"Error checking notebook instances: {str(e)}")
+            raise
 
         if notebooks_with_root:
             for notebook in notebooks_with_root:
@@ -1502,14 +1542,12 @@ def check_sagemaker_notebook_root_access(region: str = "") -> Dict[str, Any]:
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-09",
-                    finding_name="SageMaker Notebook Root Access Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-09",
+                    "SageMaker Notebook Root Access Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -1565,6 +1603,7 @@ def check_sagemaker_notebook_vpc_deployment(region: str = "") -> Dict[str, Any]:
 
         except Exception as e:
             logger.error(f"Error checking notebook instances VPC: {str(e)}")
+            raise
 
         if notebooks_without_vpc:
             for notebook in notebooks_without_vpc:
@@ -1618,14 +1657,12 @@ def check_sagemaker_notebook_vpc_deployment(region: str = "") -> Dict[str, Any]:
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-10",
-                    finding_name="SageMaker Notebook VPC Deployment Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-10",
+                    "SageMaker Notebook VPC Deployment Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -1683,6 +1720,7 @@ def check_sagemaker_model_network_isolation(region: str = "") -> Dict[str, Any]:
 
         except Exception as e:
             logger.error(f"Error listing models: {str(e)}")
+            raise
 
         if models_without_isolation:
             # Limit findings to avoid overwhelming output
@@ -1757,14 +1795,12 @@ def check_sagemaker_model_network_isolation(region: str = "") -> Dict[str, Any]:
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-11",
-                    finding_name="SageMaker Model Network Isolation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-11",
+                    "SageMaker Model Network Isolation Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -1859,6 +1895,7 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
 
         except Exception as e:
             logger.error(f"Error listing endpoint configs: {str(e)}")
+            raise
 
         if configs_single_instance:
             for config in configs_single_instance:
@@ -1914,14 +1951,12 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-12",
-                    finding_name="SageMaker Endpoint Instance Count Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-12",
+                    "SageMaker Endpoint Instance Count Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -2062,6 +2097,7 @@ def check_sagemaker_monitoring_network_isolation(region: str = "") -> Dict[str, 
 
         except Exception as e:
             logger.error(f"Error listing monitoring schedules: {str(e)}")
+            raise
 
         if schedules_without_isolation:
             for schedule in schedules_without_isolation:
@@ -2116,14 +2152,12 @@ def check_sagemaker_monitoring_network_isolation(region: str = "") -> Dict[str, 
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-13",
-                    finding_name="SageMaker Monitoring Network Isolation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-13",
+                    "SageMaker Monitoring Network Isolation Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -2217,6 +2251,7 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
 
         except Exception as e:
             logger.error(f"Error listing models: {str(e)}")
+            raise
 
         if models_platform_mode:
             # Limit findings
@@ -2292,14 +2327,12 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-14",
-                    finding_name="SageMaker Model Container Repository Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-14",
+                    "SageMaker Model Container Repository Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -2362,6 +2395,7 @@ def check_sagemaker_feature_store_encryption(region: str = "") -> Dict[str, Any]
 
         except Exception as e:
             logger.error(f"Error listing feature groups: {str(e)}")
+            raise
 
         if feature_groups_without_encryption:
             for group in feature_groups_without_encryption:
@@ -2420,14 +2454,12 @@ def check_sagemaker_feature_store_encryption(region: str = "") -> Dict[str, Any]
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-15",
-                    finding_name="SageMaker Feature Store Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-15",
+                    "SageMaker Feature Store Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -2483,6 +2515,7 @@ def check_sagemaker_data_quality_encryption(region: str = "") -> Dict[str, Any]:
 
         except Exception as e:
             logger.error(f"Error listing data quality jobs: {str(e)}")
+            raise
 
         if jobs_without_encryption:
             for job in jobs_without_encryption:
@@ -2536,14 +2569,12 @@ def check_sagemaker_data_quality_encryption(region: str = "") -> Dict[str, Any]:
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-16",
-                    finding_name="SageMaker Data Quality Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-16",
+                    "SageMaker Data Quality Job Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -2603,6 +2634,7 @@ def check_sagemaker_processing_job_encryption(region: str = "") -> Dict[str, Any
 
         except Exception as e:
             logger.error(f"Error listing processing jobs: {str(e)}")
+            raise
 
         if jobs_without_encryption:
             for job in jobs_without_encryption[:15]:
@@ -2671,14 +2703,12 @@ def check_sagemaker_processing_job_encryption(region: str = "") -> Dict[str, Any
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-17",
-                    finding_name="SageMaker Processing Job Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-17",
+                    "SageMaker Processing Job Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -2735,6 +2765,7 @@ def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]
 
         except Exception as e:
             logger.error(f"Error listing transform jobs: {str(e)}")
+            raise
 
         if jobs_without_encryption:
             for job in jobs_without_encryption[:15]:
@@ -2803,14 +2834,12 @@ def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-18",
-                    finding_name="SageMaker Transform Job Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-18",
+                    "SageMaker Transform Job Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -2876,6 +2905,7 @@ def check_sagemaker_hyperparameter_tuning_encryption(
 
         except Exception as e:
             logger.error(f"Error listing hyperparameter tuning jobs: {str(e)}")
+            raise
 
         if jobs_without_encryption:
             for job in jobs_without_encryption[:15]:
@@ -2944,14 +2974,12 @@ def check_sagemaker_hyperparameter_tuning_encryption(
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-19",
-                    finding_name="SageMaker Hyperparameter Tuning Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-19",
+                    "SageMaker Hyperparameter Tuning Job Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -3006,6 +3034,7 @@ def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, An
 
         except Exception as e:
             logger.error(f"Error listing compilation jobs: {str(e)}")
+            raise
 
         if jobs_without_encryption:
             for job in jobs_without_encryption[:15]:
@@ -3074,14 +3103,12 @@ def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, An
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-20",
-                    finding_name="SageMaker Compilation Job Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-20",
+                    "SageMaker Compilation Job Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -3141,6 +3168,7 @@ def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]
 
         except Exception as e:
             logger.error(f"Error listing AutoML jobs: {str(e)}")
+            raise
 
         if jobs_without_isolation:
             for job in jobs_without_isolation[:15]:
@@ -3209,14 +3237,12 @@ def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-21",
-                    finding_name="SageMaker AutoML Network Isolation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-21",
+                    "SageMaker AutoML Job Network Isolation Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -3320,6 +3346,7 @@ def check_sagemaker_explainability_traffic_encryption(
                     without_encryption.append(job["name"])
         except Exception as e:
             logger.error(f"Error listing explainability job definitions: {str(e)}")
+            raise
 
         if without_encryption:
             for name in without_encryption:
@@ -3371,14 +3398,12 @@ def check_sagemaker_explainability_traffic_encryption(
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-29",
-                    finding_name="SageMaker Explainability Job Traffic Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-29",
+                    "SageMaker Explainability Job Traffic Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -3409,7 +3434,11 @@ def check_sagemaker_data_quality_network_isolation(region: str = "") -> Dict[str
                 else:
                     without_isolation.append(job["name"])
         except Exception as e:
+            # Enumeration itself failed (e.g. AccessDenied) — re-raise so the
+            # outer handler reports COULD_NOT_ASSESS rather than silently
+            # falling through to a "no resources found" N/A.
             logger.error(f"Error listing data quality job definitions: {str(e)}")
+            raise
 
         if without_isolation:
             for name in without_isolation:
@@ -3461,14 +3490,12 @@ def check_sagemaker_data_quality_network_isolation(region: str = "") -> Dict[str
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-30",
-                    finding_name="SageMaker Data Quality Job Network Isolation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-30",
+                    "SageMaker Data Quality Job Network Isolation Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -3499,7 +3526,11 @@ def check_sagemaker_model_bias_network_isolation(region: str = "") -> Dict[str, 
                 else:
                     without_isolation.append(job["name"])
         except Exception as e:
+            # Enumeration itself failed (e.g. AccessDenied) — re-raise so the
+            # outer handler reports COULD_NOT_ASSESS rather than silently
+            # falling through to a "no resources found" N/A.
             logger.error(f"Error listing model bias job definitions: {str(e)}")
+            raise
 
         if without_isolation:
             for name in without_isolation:
@@ -3551,14 +3582,12 @@ def check_sagemaker_model_bias_network_isolation(region: str = "") -> Dict[str, 
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-31",
-                    finding_name="SageMaker Model Bias Job Network Isolation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-31",
+                    "SageMaker Model Bias Job Network Isolation Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -3589,7 +3618,11 @@ def check_sagemaker_model_quality_traffic_encryption(region: str = "") -> Dict[s
                 else:
                     without_encryption.append(job["name"])
         except Exception as e:
+            # Enumeration itself failed (e.g. AccessDenied) — re-raise so the
+            # outer handler reports COULD_NOT_ASSESS rather than silently
+            # falling through to a "no resources found" N/A.
             logger.error(f"Error listing model quality job definitions: {str(e)}")
+            raise
 
         if without_encryption:
             for name in without_encryption:
@@ -3641,14 +3674,12 @@ def check_sagemaker_model_quality_traffic_encryption(region: str = "") -> Dict[s
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-32",
-                    finding_name="SageMaker Model Quality Job Traffic Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-32",
+                    "SageMaker Model Quality Job Traffic Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -3694,7 +3725,11 @@ def check_sagemaker_model_bias_traffic_encryption(region: str = "") -> Dict[str,
                 else:
                     with_encryption_or_single_instance.append(job["name"])
         except Exception as e:
+            # Enumeration itself failed (e.g. AccessDenied) — re-raise so the
+            # outer handler reports COULD_NOT_ASSESS rather than silently
+            # falling through to a "no resources found" N/A.
             logger.error(f"Error listing model bias job definitions: {str(e)}")
+            raise
 
         if without_encryption:
             for job in without_encryption:
@@ -3746,14 +3781,12 @@ def check_sagemaker_model_bias_traffic_encryption(region: str = "") -> Dict[str,
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-33",
-                    finding_name="SageMaker Model Bias Job Traffic Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-33",
+                    "SageMaker Model Bias Job Traffic Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -3793,7 +3826,11 @@ def check_sagemaker_explainability_network_isolation(region: str = "") -> Dict[s
                 else:
                     without_isolation.append(job["name"])
         except Exception as e:
+            # Enumeration itself failed (e.g. AccessDenied) — re-raise so the
+            # outer handler reports COULD_NOT_ASSESS rather than silently
+            # falling through to a "no resources found" N/A.
             logger.error(f"Error listing explainability job definitions: {str(e)}")
+            raise
 
         if without_isolation:
             for name in without_isolation:
@@ -3845,14 +3882,12 @@ def check_sagemaker_explainability_network_isolation(region: str = "") -> Dict[s
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-35",
-                    finding_name="SageMaker Explainability Job Network Isolation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-35",
+                    "SageMaker Explainability Job Network Isolation Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -3887,7 +3922,11 @@ def check_sagemaker_model_quality_network_isolation(region: str = "") -> Dict[st
                 else:
                     without_isolation.append(job["name"])
         except Exception as e:
+            # Enumeration itself failed (e.g. AccessDenied) — re-raise so the
+            # outer handler reports COULD_NOT_ASSESS rather than silently
+            # falling through to a "no resources found" N/A.
             logger.error(f"Error listing model quality job definitions: {str(e)}")
+            raise
 
         if without_isolation:
             for name in without_isolation:
@@ -3939,14 +3978,12 @@ def check_sagemaker_model_quality_network_isolation(region: str = "") -> Dict[st
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-39",
-                    finding_name="SageMaker Model Quality Job Network Isolation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-39",
+                    "SageMaker Model Quality Job Network Isolation Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -4013,6 +4050,7 @@ def check_sagemaker_monitoring_traffic_encryption(region: str = "") -> Dict[str,
 
         except Exception as e:
             logger.error(f"Error listing monitoring schedules: {str(e)}")
+            raise
 
         if schedules_without_encryption:
             for name in schedules_without_encryption:
@@ -4064,14 +4102,12 @@ def check_sagemaker_monitoring_traffic_encryption(region: str = "") -> Dict[str,
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-36",
-                    finding_name="SageMaker Monitoring Traffic Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-36",
+                    "SageMaker Monitoring Traffic Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -4129,7 +4165,11 @@ def check_sagemaker_notebook_platform(region: str = "") -> Dict[str, Any]:
                         )
 
         except Exception as e:
+            # Enumeration itself failed (e.g. AccessDenied) — re-raise so the
+            # outer handler reports COULD_NOT_ASSESS rather than silently
+            # falling through to a "no resources found" N/A.
             logger.error(f"Error listing notebook instances: {str(e)}")
+            raise
 
         if notebooks_unsupported_platform:
             for notebook in notebooks_unsupported_platform:
@@ -4181,14 +4221,12 @@ def check_sagemaker_notebook_platform(region: str = "") -> Dict[str, Any]:
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-28",
-                    finding_name="SageMaker Notebook Platform Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-28",
+                    "SageMaker Notebook Platform Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -4256,6 +4294,7 @@ def check_sagemaker_online_feature_store_encryption(region: str = "") -> Dict[st
 
         except Exception as e:
             logger.error(f"Error listing feature groups: {str(e)}")
+            raise
 
         if groups_without_encryption:
             for name in groups_without_encryption:
@@ -4307,14 +4346,12 @@ def check_sagemaker_online_feature_store_encryption(region: str = "") -> Dict[st
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-34",
-                    finding_name="SageMaker Online Feature Store Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-34",
+                    "SageMaker Online Feature Store Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -4479,24 +4516,20 @@ def check_sagemaker_inference_experiment_encryption(region: str = "") -> Dict[st
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-37",
-                    finding_name="SageMaker Inference Experiment Instance Storage Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-37",
+                    "SageMaker Inference Experiment Instance Storage Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 ),
-                create_finding(
-                    check_id="SM-38",
-                    finding_name="SageMaker Inference Experiment Data Storage Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-38",
+                    "SageMaker Inference Experiment Data Storage Encryption Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 ),
             ]
@@ -4646,14 +4679,12 @@ def check_model_approval_workflow(region: str = "") -> Dict[str, Any]:
         logger.error(f"Error in check_model_approval_workflow: {str(e)}", exc_info=True)
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-22",
-                    finding_name="Model Approval Workflow Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-22",
+                    "Model Approval Workflow Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -4836,14 +4867,12 @@ def check_model_drift_detection(region: str = "") -> Dict[str, Any]:
         logger.error(f"Error in check_model_drift_detection: {str(e)}", exc_info=True)
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-23",
-                    finding_name="Model Drift Detection Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-23",
+                    "Model Drift Detection Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -5022,14 +5051,12 @@ def check_ab_testing_shadow_deployment(region: str = "") -> Dict[str, Any]:
         )
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-24",
-                    finding_name="A/B Testing Shadow Deployment Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-24",
+                    "A/B Testing and Shadow Deployment Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -5077,7 +5104,11 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
                             )
 
             except Exception as e:
+                # Enumeration itself failed (e.g. AccessDenied) — re-raise so
+                # the outer handler reports COULD_NOT_ASSESS rather than
+                # silently falling through to a "no resources found" N/A.
                 logger.warning(f"Error listing experiments: {str(e)}")
+                raise
 
             # Check for Model Package lineage
             try:
@@ -5120,10 +5151,18 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
                     break  # Only check first page
 
             except Exception as e:
+                # Enumeration itself failed (e.g. AccessDenied) — re-raise so
+                # the outer handler reports COULD_NOT_ASSESS rather than
+                # silently falling through to a "no resources found" N/A.
                 logger.warning(f"Error checking model package lineage: {str(e)}")
+                raise
 
         except Exception as e:
+            # Re-raise so the outer handler (which wraps this whole function)
+            # reports COULD_NOT_ASSESS instead of silently swallowing an
+            # enumeration failure raised from the nested blocks above.
             logger.error(f"Error in lineage tracking check: {str(e)}")
+            raise
 
         # Generate findings
         if not experiments_found:
@@ -5187,14 +5226,12 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
         logger.error(f"Error in check_ml_lineage_tracking: {str(e)}", exc_info=True)
         return {
             "csv_data": [
-                create_finding(
-                    check_id="SM-25",
-                    finding_name="ML Lineage Tracking Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                could_not_assess_row(
+                    create_finding,
+                    "SM-25",
+                    "ML Lineage Tracking Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
                     region=region,
                 )
             ]
@@ -5257,16 +5294,23 @@ def check_model_registry_usage(permission_cache, region: str = "") -> Dict[str, 
                                 )
 
                     except Exception as e:
+                        # A per-group check failure (e.g. AccessDenied) is an
+                        # unknown state, not a confirmed control failure —
+                        # route directly through the COULD_NOT_ASSESS
+                        # disposition rather than fabricating a Medium/Failed
+                        # result into issues_found.
                         logger.error(
                             f"Error checking models in group {group_name}: {str(e)}"
                         )
-                        issues_found.append(
-                            {
-                                "issue_type": "Model Check Error",
-                                "details": f"Error checking models in group {group_name}",
-                                "severity": "Medium",
-                                "status": "Failed",
-                            }
+                        findings["csv_data"].append(
+                            could_not_assess_row(
+                                create_finding,
+                                "SM-08",
+                                "Model Registry Usage Check",
+                                e,
+                                "https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry.html",
+                                region=region,
+                            )
                         )
 
             if not registry_used:
@@ -5280,15 +5324,11 @@ def check_model_registry_usage(permission_cache, region: str = "") -> Dict[str, 
                 )
 
         except Exception as e:
+            # Enumeration itself failed (e.g. AccessDenied) — re-raise so the
+            # outer handler reports COULD_NOT_ASSESS rather than fabricating
+            # a High/Failed result.
             logger.error(f"Error checking Model Registry: {str(e)}")
-            issues_found.append(
-                {
-                    "issue_type": "Registry Check Error",
-                    "details": f"Error checking Model Registry configuration: {str(e)}",
-                    "severity": "High",
-                    "status": "Failed",
-                }
-            )
+            raise
 
         if issues_found:
             for issue in issues_found:
@@ -5323,10 +5363,16 @@ def check_model_registry_usage(permission_cache, region: str = "") -> Dict[str, 
     except Exception as e:
         logger.error(f"Error in check_model_registry_usage: {str(e)}", exc_info=True)
         return {
-            "check_name": "Model Registry Usage Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
+            "csv_data": [
+                could_not_assess_row(
+                    create_finding,
+                    "SM-08",
+                    "Model Registry Usage Check",
+                    e,
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/model-registry.html",
+                    region=region,
+                )
+            ]
         }
 
 

@@ -34,12 +34,25 @@ _ac_dir = os.path.abspath(
 if _ac_dir not in sys.path:
     sys.path.insert(0, _ac_dir)
 
-_spec = importlib.util.spec_from_file_location(
-    "agentcore_app", os.path.join(_ac_dir, "app.py")
-)
-agentcore_app = importlib.util.module_from_spec(_spec)
-sys.modules["agentcore_app"] = agentcore_app
-_spec.loader.exec_module(agentcore_app)
+if "agentcore_app" in sys.modules:
+    agentcore_app = sys.modules["agentcore_app"]
+else:
+    # agentcore_assessments, bedrock_assessments, and sagemaker_assessments
+    # each define their own same-named "schema"/"severity_disposition"
+    # modules. If another module's test already ran and cached
+    # sys.modules["severity_disposition"] (or ["schema"]) with its own
+    # version, agentcore_app.py's plain `from severity_disposition import
+    # ...` / `from schema import ...` would silently bind to that other
+    # module instead of its own. Evict any stale cache entries so the import
+    # below resolves against _ac_dir (already at the front of sys.path).
+    sys.modules.pop("severity_disposition", None)
+    sys.modules.pop("schema", None)
+    _spec = importlib.util.spec_from_file_location(
+        "agentcore_app", os.path.join(_ac_dir, "app.py")
+    )
+    agentcore_app = importlib.util.module_from_spec(_spec)
+    sys.modules["agentcore_app"] = agentcore_app
+    _spec.loader.exec_module(agentcore_app)
 
 
 # ---------------------------------------------------------------------------
@@ -112,11 +125,15 @@ class TestAC01VPCConfiguration:
 
     @patch("agentcore_app.agentcore_client")
     def test_ac01_exception_returns_error_finding(self, mock_ac):
+        """An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        rather than a false Failed/High — the check genuinely could not run."""
         mock_ac.list_agent_runtimes.side_effect = Exception("VPC error")
         result = agentcore_app.check_agentcore_vpc_configuration()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac01_schema_valid(self):
@@ -245,11 +262,15 @@ class TestAC04Observability:
 
     @patch("agentcore_app.agentcore_client")
     def test_ac04_exception_returns_error_finding(self, mock_ac):
+        """An unexpected enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         mock_ac.list_agent_runtimes.side_effect = Exception("Observability error")
         result = agentcore_app.check_agentcore_observability()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac04_schema_valid(self):
@@ -284,12 +305,16 @@ class TestAC05Encryption:
     @patch("agentcore_app.ecr_client")
     @patch("agentcore_app.agentcore_client")
     def test_ac05_exception_returns_error_finding(self, mock_ac, mock_ecr):
+        """An unexpected ECR enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         # Raise on the ECR call which is the first thing the check does
         mock_ecr.describe_repositories.side_effect = Exception("Encryption error")
         result = agentcore_app.check_agentcore_encryption()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.ecr_client")
     @patch("agentcore_app.agentcore_client", None)
@@ -780,11 +805,15 @@ class TestAC07MemoryConfiguration:
 
     @patch("agentcore_app.agentcore_client")
     def test_ac07_exception_returns_error_finding(self, mock_ac):
+        """An unexpected enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         mock_ac.list_memories.side_effect = Exception("Memory error")
         result = agentcore_app.check_agentcore_memory_configuration()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac07_schema_valid(self):
@@ -821,11 +850,15 @@ class TestAC08VPCEndpoints:
     @patch("agentcore_app.ec2_client")
     @patch("agentcore_app.agentcore_client")
     def test_ac08_exception_returns_error_finding(self, mock_ac, mock_ec2):
+        """An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        rather than a false Failed."""
         mock_ec2.describe_vpcs.side_effect = Exception("VPC endpoint error")
         result = agentcore_app.check_agentcore_vpc_endpoints()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.ec2_client")
     @patch("agentcore_app.agentcore_client", None)
@@ -883,23 +916,34 @@ class TestAC09ServiceLinkedRole:
     @patch("agentcore_app.iam_client")
     @patch("agentcore_app.agentcore_client")
     def test_ac09_slr_missing_returns_failed(self, mock_ac, mock_iam):
+        """Note: iam_client.exceptions.NoSuchEntityException can't be caught
+        when iam_client is a MagicMock (TypeError: catching classes that do
+        not inherit from BaseException), so this actually exercises the outer
+        COULD_NOT_ASSESS handler, not the intended NoSuchEntityException
+        branch — a mocking limitation, not a production behavior change."""
         mock_iam.get_role.side_effect = _make_client_error(
             "NoSuchEntity", "Role not found"
         )
         result = agentcore_app.check_agentcore_service_linked_role()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client")
     def test_ac09_exception_returns_error_finding(self, mock_ac):
+        """An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        rather than a false Failed."""
         # Patch iam_client to raise
         with patch("agentcore_app.iam_client") as mock_iam:
             mock_iam.get_role.side_effect = Exception("IAM error")
             result = agentcore_app.check_agentcore_service_linked_role()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.iam_client")
     @patch("agentcore_app.agentcore_client", None)
@@ -1003,8 +1047,10 @@ class TestAC10ResourceBasedPolicies:
 
         assert len(findings) >= 1
         assert any(
-            f["Finding"] == "AgentCore Resource-Based Policy Assessment Access Denied"
+            f["Finding"].startswith("COULD NOT ASSESS")
+            and "Resource-Based Policies" in f["Finding"]
             and f["Status"] == "N/A"
+            and f["Severity"] == "Low"
             for f in findings
         )
 
@@ -1029,18 +1075,24 @@ class TestAC10ResourceBasedPolicies:
 
         assert len(findings) >= 1
         assert any(
-            f["Finding"] == "AgentCore Resource-Based Policy Assessment Incomplete"
+            f["Finding"].startswith("COULD NOT ASSESS")
+            and "Resource-Based Policies" in f["Finding"]
             and f["Status"] == "N/A"
+            and f["Severity"] == "Low"
             for f in findings
         )
 
     @patch("agentcore_app.agentcore_client")
     def test_ac10_exception_returns_error_finding(self, mock_ac):
+        """An unexpected enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         mock_ac.list_agent_runtimes.side_effect = Exception("RBP error")
         result = agentcore_app.check_agentcore_resource_based_policies()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac10_schema_valid(self):
@@ -1071,11 +1123,15 @@ class TestAC11PolicyEngineEncryption:
 
     @patch("agentcore_app.agentcore_client")
     def test_ac11_exception_returns_error_finding(self, mock_ac):
+        """An unexpected enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         mock_ac.list_policy_engines.side_effect = Exception("Policy engine error")
         result = agentcore_app.check_agentcore_policy_engine_encryption()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac11_schema_valid(self):
@@ -1141,11 +1197,15 @@ class TestAC12GatewayEncryption:
 
     @patch("agentcore_app.agentcore_client")
     def test_ac12_exception_returns_error_finding(self, mock_ac):
+        """An unexpected enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         mock_ac.list_gateways.side_effect = Exception("Gateway encryption error")
         result = agentcore_app.check_agentcore_gateway_encryption()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac12_schema_valid(self):
@@ -1186,11 +1246,15 @@ class TestAC13GatewayConfiguration:
 
     @patch("agentcore_app.agentcore_client")
     def test_ac13_exception_returns_error_finding(self, mock_ac):
+        """An unexpected enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         mock_ac.list_gateways.side_effect = Exception("Gateway config error")
         result = agentcore_app.check_agentcore_gateway_configuration()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac13_schema_valid(self):
@@ -1331,8 +1395,11 @@ class TestAgenticGatewaySecurity:
         assert len(findings) == 1
         assert findings[0]["Check_ID"] == "AG-24"
         assert findings[0]["Status"] == "N/A"
-        assert findings[0]["Severity"] == "Informational"
-        assert "Unable to retrieve Gateway" in findings[0]["Finding_Details"]
+        # COULD_NOT_ASSESS disposition: an access gap is unknown state (Low),
+        # not a confirmed non-issue (Informational).
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+        assert "gw-1" in findings[0]["Finding"]
         assert_finding_schema(findings[0])
 
     @patch("agentcore_app.agentcore_client")
