@@ -3299,6 +3299,227 @@ class TestBR22ServiceQuotas:
         assert "custom throttling quotas" in findings[0]["Finding_Details"]
 
 
+class TestBR33DataSourceEncryption:
+    """BR-33: Verify Knowledge Base data sources use customer-managed KMS keys.
+
+    Maps to AWS Security Hub control Bedrock.1 (Medium).
+    """
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_no_knowledge_bases_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-33"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_data_source_with_cmk_returns_passed(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.return_value = {
+            "dataSourceSummaries": [{"dataSourceId": "ds1", "name": "DS1"}]
+        }
+        agent_client.get_data_source.return_value = {
+            "dataSource": {
+                "serverSideEncryptionConfiguration": {
+                    "kmsKeyArn": "arn:aws:kms:us-east-1:123:key/abc"
+                }
+            }
+        }
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        passed = [f for f in findings if f["Status"] == "Passed"]
+        assert len(passed) == 1
+        assert passed[0]["Check_ID"] == "BR-33"
+        assert passed[0]["Severity"] == "Medium"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_data_source_without_cmk_returns_failed(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.return_value = {
+            "dataSourceSummaries": [{"dataSourceId": "ds1", "name": "DS1"}]
+        }
+        agent_client.get_data_source.return_value = {
+            "dataSource": {"serverSideEncryptionConfiguration": {}}
+        }
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        failed = [f for f in findings if f["Status"] == "Failed"]
+        assert len(failed) == 1
+        assert failed[0]["Check_ID"] == "BR-33"
+        assert failed[0]["Severity"] == "Medium"
+        assert "DS1" in failed[0]["Finding_Details"]
+        assert "KB1" in failed[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_kb_with_no_data_sources_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.return_value = {"dataSourceSummaries": []}
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert "No knowledge base data sources found" in findings[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_list_data_sources_access_denied_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+            "ListDataSources",
+        )
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        na = [f for f in findings if f["Status"] == "N/A"]
+        assert len(na) == 1
+        assert na[0]["Check_ID"] == "BR-33"
+        assert "KB1" in na[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_get_data_source_access_denied_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.return_value = {
+            "dataSourceSummaries": [{"dataSourceId": "ds1", "name": "DS1"}]
+        }
+        agent_client.get_data_source.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+            "GetDataSource",
+        )
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        na = [f for f in findings if f["Status"] == "N/A"]
+        assert len(na) == 1
+        assert na[0]["Check_ID"] == "BR-33"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_region_unsupported_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "UnknownOperationException",
+                    "Message": "Unknown operation ListKnowledgeBases",
+                }
+            },
+            "ListKnowledgeBases",
+        )
+        mock_client.return_value = agent_client
+
+        result = check(region="ap-southeast-3")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert "not available" in findings[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_list_knowledge_bases_access_denied_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+            "ListKnowledgeBases",
+        )
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-33"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_mixed_data_sources_with_and_without_cmk(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.return_value = {
+            "dataSourceSummaries": [
+                {"dataSourceId": "ds1", "name": "DS1"},
+                {"dataSourceId": "ds2", "name": "DS2"},
+            ]
+        }
+
+        def get_data_source_side_effect(knowledgeBaseId, dataSourceId):
+            if dataSourceId == "ds1":
+                return {
+                    "dataSource": {
+                        "serverSideEncryptionConfiguration": {
+                            "kmsKeyArn": "arn:aws:kms:us-east-1:123:key/abc"
+                        }
+                    }
+                }
+            return {"dataSource": {"serverSideEncryptionConfiguration": {}}}
+
+        agent_client.get_data_source.side_effect = get_data_source_side_effect
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        passed = [f for f in findings if f["Status"] == "Passed"]
+        failed = [f for f in findings if f["Status"] == "Failed"]
+        assert len(passed) == 1
+        assert len(failed) == 1
+        assert "DS2" in failed[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_schema_valid(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_exception_returns_error_finding(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        mock_client.side_effect = Exception("Bedrock error")
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Check_ID"] == "BR-33"
+
+
 class TestAgenticBedrockMapping:
     """Agentic AI AG-* rows are generated from API-backed Bedrock checks."""
 

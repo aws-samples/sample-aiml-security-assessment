@@ -424,6 +424,301 @@ class TestAC06BrowserToolRecording:
 
 
 # ===================================================================
+# AC-14: check_browser_network_mode
+# ===================================================================
+class TestAC14BrowserNetworkMode:
+    """AC-14: custom browser network mode (Security Hub BedrockAgentCore.5).
+
+    The check evaluates ListBrowsers(type=CUSTOM)/GetBrowser
+    networkConfiguration.networkMode; only PUBLIC fails.
+    """
+
+    @patch("agentcore_app.agentcore_client", None)
+    def test_ac14_client_unavailable_returns_na(self):
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "AC-14"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_no_custom_browsers_returns_na(self, mock_ac):
+        mock_ac.list_browsers.return_value = {"browserSummaries": []}
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_lists_custom_browsers_only(self, mock_ac):
+        """The list call must pass type=CUSTOM so AWS system browsers (for
+        example aws.browser.v1) are excluded server-side, matching the
+        control's BrowserCustom resource type."""
+        mock_ac.list_browsers.return_value = {"browserSummaries": []}
+        agentcore_app.check_browser_network_mode()
+        _, kwargs = mock_ac.list_browsers.call_args
+        assert kwargs.get("type") == "CUSTOM"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_vpc_mode_passes_high(self, mock_ac):
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {
+            "browserId": "br-1",
+            "networkConfiguration": {"networkMode": "VPC"},
+        }
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+        assert findings[0]["Severity"] == "High"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_public_mode_fails_high(self, mock_ac):
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {
+            "browserId": "br-1",
+            "networkConfiguration": {"networkMode": "PUBLIC"},
+        }
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "High"
+        assert "my-browser" in findings[0]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_missing_network_config_defaults_to_public_fails(self, mock_ac):
+        """An absent networkConfiguration must default to PUBLIC (fail), not
+        be treated as VPC (pass)."""
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {"browserId": "br-1"}
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_access_denied_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_browsers.side_effect = _make_client_error(
+            "AccessDeniedException", "no ListBrowsers"
+        )
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_exception_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_browsers.side_effect = Exception("Browser network mode error")
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_get_browser_error_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.side_effect = _make_client_error(
+            "InternalServerException", "boom"
+        )
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_resource_not_found_browser_skipped(self, mock_ac):
+        """A browser deleted between list and describe is silently skipped
+        (matches the existing AC-06 pattern); with no other browsers to
+        report on, the check yields no rows for this region."""
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.side_effect = _make_client_error(
+            "ResourceNotFoundException", "gone"
+        )
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert findings == []
+
+    @patch("agentcore_app.agentcore_client", None)
+    def test_ac14_schema_valid(self):
+        result = agentcore_app.check_browser_network_mode()
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+
+# ===================================================================
+# AC-15: check_code_interpreter_network_mode
+# ===================================================================
+class TestAC15CodeInterpreterNetworkMode:
+    """AC-15: custom code interpreter network mode (Security Hub
+    BedrockAgentCore.7).
+
+    The check evaluates ListCodeInterpreters(type=CUSTOM)/GetCodeInterpreter
+    networkConfiguration.networkMode; only VPC passes (PUBLIC and SANDBOX
+    both fail).
+    """
+
+    @patch("agentcore_app.agentcore_client", None)
+    def test_ac15_client_unavailable_returns_na(self):
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "AC-15"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_no_custom_interpreters_returns_na(self, mock_ac):
+        mock_ac.list_code_interpreters.return_value = {"codeInterpreterSummaries": []}
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_lists_custom_interpreters_only(self, mock_ac):
+        """The list call must pass type=CUSTOM so AWS system code
+        interpreters (for example aws.codeinterpreter.v1) are excluded
+        server-side, matching the control's CodeInterpreterCustom resource
+        type."""
+        mock_ac.list_code_interpreters.return_value = {"codeInterpreterSummaries": []}
+        agentcore_app.check_code_interpreter_network_mode()
+        _, kwargs = mock_ac.list_code_interpreters.call_args
+        assert kwargs.get("type") == "CUSTOM"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_vpc_mode_passes_high(self, mock_ac):
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "my-interpreter"}
+            ]
+        }
+        mock_ac.get_code_interpreter.return_value = {
+            "codeInterpreterId": "ci-1",
+            "networkConfiguration": {"networkMode": "VPC"},
+        }
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+        assert findings[0]["Severity"] == "High"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_public_mode_fails_high(self, mock_ac):
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "my-interpreter"}
+            ]
+        }
+        mock_ac.get_code_interpreter.return_value = {
+            "codeInterpreterId": "ci-1",
+            "networkConfiguration": {"networkMode": "PUBLIC"},
+        }
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "High"
+        assert "my-interpreter" in findings[0]["Finding_Details"]
+        assert "PUBLIC" in findings[0]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_sandbox_mode_fails_high(self, mock_ac):
+        """SANDBOX mode must also fail; only VPC passes for this control."""
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "my-interpreter"}
+            ]
+        }
+        mock_ac.get_code_interpreter.return_value = {
+            "codeInterpreterId": "ci-1",
+            "networkConfiguration": {"networkMode": "SANDBOX"},
+        }
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+        assert "SANDBOX" in findings[0]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_missing_network_config_defaults_to_public_fails(self, mock_ac):
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "my-interpreter"}
+            ]
+        }
+        mock_ac.get_code_interpreter.return_value = {"codeInterpreterId": "ci-1"}
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_access_denied_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_code_interpreters.side_effect = _make_client_error(
+            "AccessDeniedException", "no ListCodeInterpreters"
+        )
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_exception_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_code_interpreters.side_effect = Exception(
+            "Code interpreter network mode error"
+        )
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_resource_not_found_interpreter_skipped(self, mock_ac):
+        """A code interpreter deleted between list and describe is silently
+        skipped (matches the existing AC-06 pattern); with no other
+        interpreters to report on, the check yields no rows for this
+        region."""
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "my-interpreter"}
+            ]
+        }
+        mock_ac.get_code_interpreter.side_effect = _make_client_error(
+            "ResourceNotFoundException", "gone"
+        )
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert findings == []
+
+    @patch("agentcore_app.agentcore_client", None)
+    def test_ac15_schema_valid(self):
+        result = agentcore_app.check_code_interpreter_network_mode()
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+
+# ===================================================================
 # AC-07: check_agentcore_memory_configuration
 # ===================================================================
 class TestAC07MemoryConfiguration:

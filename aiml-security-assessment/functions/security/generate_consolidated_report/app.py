@@ -9,6 +9,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from report_template import generate_html_report as generate_report_from_template
+from report_template import security_hub_controls as _security_hub_controls
 
 # Sentinel region label used by the per-service assessments to tag findings that
 # are derived purely from global (IAM) data and run once per execution rather
@@ -109,6 +110,7 @@ def _missing_results_row(
         "Status": "N/A",
         "Region": region,
         "Compliance_Frameworks": "",
+        "SecurityHub_Control": "",
     }
 
 
@@ -416,6 +418,9 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
                     seen_findings.add(dedup_key)
 
                     finding["_service"] = output_service
+                    finding["SecurityHub_Control"] = _security_hub_controls(
+                        finding.get("Check_ID", "")
+                    )
                     all_findings.append(finding)
                     service_findings[output_service].append(finding)
                     status = finding.get("Status", "").lower()

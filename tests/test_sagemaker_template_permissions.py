@@ -23,6 +23,19 @@ REQUIRED_SAGEMAKER_ACTIONS = [
     "sagemaker:ListTrials",
     "sagemaker:DescribeTrial",
     "sagemaker:ListAssociations",
+    # Gap-analysis PR-1/PR-3 additions: SageMaker.4 endpoint config instance
+    # count, and the Clarify/Model-Monitor job-definition and inference
+    # experiment controls (SageMaker.10/.12/.13/.20/.23/.24/.25).
+    "sagemaker:ListEndpointConfigs",
+    "sagemaker:DescribeEndpointConfig",
+    "sagemaker:ListModelExplainabilityJobDefinitions",
+    "sagemaker:DescribeModelExplainabilityJobDefinition",
+    "sagemaker:ListModelBiasJobDefinitions",
+    "sagemaker:DescribeModelBiasJobDefinition",
+    "sagemaker:ListModelQualityJobDefinitions",
+    "sagemaker:DescribeModelQualityJobDefinition",
+    "sagemaker:ListInferenceExperiments",
+    "sagemaker:DescribeInferenceExperiment",
 ]
 
 

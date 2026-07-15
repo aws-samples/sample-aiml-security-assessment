@@ -1620,6 +1620,368 @@ def check_browser_tool_recording() -> List[Dict[str, Any]]:
     return findings
 
 
+def check_browser_network_mode() -> List[Dict[str, Any]]:
+    """
+    Check that custom AgentCore browsers are not configured with PUBLIC
+    network mode.
+
+    Aligns with AWS Security Hub control BedrockAgentCore.5 (severity High):
+    the control fails when a custom browser's
+    networkConfiguration.networkMode is PUBLIC. Only customer-created
+    browsers are evaluated (ListBrowsers type=CUSTOM, Rule 7); AWS system
+    browsers such as aws.browser.v1 are out of scope, matching the control's
+    AWS::BedrockAgentCore::BrowserCustom resource type.
+    """
+    check_name = "AgentCore Browser Network Mode Check"
+    findings = []
+
+    if agentcore_client is None:
+        findings.append(
+            create_finding(
+                check_id="AC-14",
+                finding_name=check_name,
+                finding_details="AgentCore client not available in this region",
+                resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
+                reference=AGENTCORE_BROWSER_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+        return findings
+
+    def _could_not_assess(detail: str, resolution: str) -> Dict[str, Any]:
+        return create_finding(
+            check_id="AC-14",
+            finding_name=f"COULD NOT ASSESS: {check_name}",
+            finding_details=detail,
+            resolution=resolution,
+            reference=AGENTCORE_BROWSER_REFERENCE_URL,
+            severity=SeverityEnum.LOW,
+            status=StatusEnum.NA,
+        )
+
+    try:
+        logger.info("Checking custom browser network mode configuration")
+        try:
+            browsers = _agentcore_list_all(
+                "list_browsers", ["browserSummaries"], {"type": "CUSTOM"}
+            )
+        except ClientError as e:
+            if _is_access_denied_client_error(e):
+                return [
+                    _could_not_assess(
+                        f"Unable to list AgentCore browsers: {str(e)}. Custom "
+                        "browser network mode was NOT assessed.",
+                        "Grant bedrock-agentcore:ListBrowsers and "
+                        "bedrock-agentcore:GetBrowser to the assessment role "
+                        "and re-run the assessment.",
+                    )
+                ]
+            raise
+        except AttributeError:
+            return [
+                _could_not_assess(
+                    "Browser APIs are not available in this bedrock-agentcore-control "
+                    "client version. Custom browser network mode was NOT assessed.",
+                    "Ensure botocore meets the version floor in requirements.txt "
+                    "and re-run the assessment.",
+                )
+            ]
+
+        if not browsers:
+            findings.append(
+                create_finding(
+                    check_id="AC-14",
+                    finding_name=check_name,
+                    finding_details="No custom browsers found",
+                    resolution="No action required",
+                    reference=AGENTCORE_BROWSER_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            return findings
+
+        browsers_public = []
+        browsers_private = []
+        browsers_not_assessed = []
+
+        for browser in browsers:
+            browser_id = browser.get("browserId", "unknown")
+            browser_name = browser.get("name", browser_id)
+            try:
+                browser_details = agentcore_client.get_browser(browserId=browser_id)
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                    continue
+                logger.warning(f"Error describing browser {browser_id}: {e}")
+                browsers_not_assessed.append(browser_name)
+                continue
+
+            network_mode = browser_details.get("networkConfiguration", {}).get(
+                "networkMode", "PUBLIC"
+            )
+
+            if network_mode == "PUBLIC":
+                browsers_public.append(browser_name)
+            else:
+                browsers_private.append(browser_name)
+
+        if browsers_public:
+            browser_list = ", ".join(f"'{b}'" for b in browsers_public)
+            findings.append(
+                create_finding(
+                    check_id="AC-14",
+                    finding_name="AgentCore Browser Public Network Mode",
+                    finding_details=(
+                        f"The following custom browsers use PUBLIC network mode: "
+                        f"{browser_list}. Public network mode exposes the browser "
+                        "tool to the public internet."
+                    ),
+                    resolution=(
+                        "Configure custom browsers with VPC network mode "
+                        "(networkConfiguration.networkMode=VPC) and appropriate "
+                        "subnets/security groups. Network mode cannot be changed "
+                        "after creation; recreate the browser with VPC mode."
+                    ),
+                    reference=AGENTCORE_BROWSER_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.FAILED,
+                )
+            )
+
+        if browsers_private and not browsers_public:
+            findings.append(
+                create_finding(
+                    check_id="AC-14",
+                    finding_name=check_name,
+                    finding_details=(
+                        f"All {len(browsers_private)} custom browsers use VPC "
+                        "network mode"
+                    ),
+                    resolution="No action required",
+                    reference=AGENTCORE_BROWSER_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.PASSED,
+                )
+            )
+
+        if browsers_not_assessed:
+            findings.append(
+                _could_not_assess(
+                    "Unable to describe the following custom browsers: "
+                    f"{', '.join(browsers_not_assessed)}. Their network mode "
+                    "configuration was NOT assessed.",
+                    "Grant bedrock-agentcore:GetBrowser to the assessment role "
+                    "and re-run the assessment.",
+                )
+            )
+
+    except Exception as e:
+        logger.error(f"Error in browser network mode check: {e}")
+        findings.append(
+            _could_not_assess(
+                f"This check could not be completed (error: {str(e)}). Custom "
+                "browser network mode was NOT assessed.",
+                "Verify the assessment role's bedrock-agentcore permissions, "
+                "confirm the region supports AgentCore, and re-run the assessment.",
+            )
+        )
+
+    return findings
+
+
+CODE_INTERPRETER_REFERENCE_URL = (
+    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
+    "user-guide/builtin-tools/quickstart-code-interpreter.html"
+)
+
+
+def check_code_interpreter_network_mode() -> List[Dict[str, Any]]:
+    """
+    Check that custom AgentCore code interpreters are not configured with
+    PUBLIC or SANDBOX network mode.
+
+    Aligns with AWS Security Hub control BedrockAgentCore.7 (severity High):
+    the control fails when a custom code interpreter's
+    networkConfiguration.networkMode is PUBLIC or SANDBOX (only VPC mode
+    passes). Only customer-created code interpreters are evaluated
+    (ListCodeInterpreters type=CUSTOM, Rule 7); AWS system code interpreters
+    such as aws.codeinterpreter.v1 are out of scope, matching the control's
+    AWS::BedrockAgentCore::CodeInterpreterCustom resource type.
+    """
+    check_name = "AgentCore Code Interpreter Network Mode Check"
+    findings = []
+
+    if agentcore_client is None:
+        findings.append(
+            create_finding(
+                check_id="AC-15",
+                finding_name=check_name,
+                finding_details="AgentCore client not available in this region",
+                resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
+                reference=CODE_INTERPRETER_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+        return findings
+
+    def _could_not_assess(detail: str, resolution: str) -> Dict[str, Any]:
+        return create_finding(
+            check_id="AC-15",
+            finding_name=f"COULD NOT ASSESS: {check_name}",
+            finding_details=detail,
+            resolution=resolution,
+            reference=CODE_INTERPRETER_REFERENCE_URL,
+            severity=SeverityEnum.LOW,
+            status=StatusEnum.NA,
+        )
+
+    try:
+        logger.info("Checking custom code interpreter network mode configuration")
+        try:
+            code_interpreters = _agentcore_list_all(
+                "list_code_interpreters",
+                ["codeInterpreterSummaries"],
+                {"type": "CUSTOM"},
+            )
+        except ClientError as e:
+            if _is_access_denied_client_error(e):
+                return [
+                    _could_not_assess(
+                        f"Unable to list AgentCore code interpreters: {str(e)}. "
+                        "Custom code interpreter network mode was NOT assessed.",
+                        "Grant bedrock-agentcore:ListCodeInterpreters and "
+                        "bedrock-agentcore:GetCodeInterpreter to the assessment "
+                        "role and re-run the assessment.",
+                    )
+                ]
+            raise
+        except AttributeError:
+            return [
+                _could_not_assess(
+                    "Code interpreter APIs are not available in this "
+                    "bedrock-agentcore-control client version. Custom code "
+                    "interpreter network mode was NOT assessed.",
+                    "Ensure botocore meets the version floor in requirements.txt "
+                    "and re-run the assessment.",
+                )
+            ]
+
+        if not code_interpreters:
+            findings.append(
+                create_finding(
+                    check_id="AC-15",
+                    finding_name=check_name,
+                    finding_details="No custom code interpreters found",
+                    resolution="No action required",
+                    reference=CODE_INTERPRETER_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            return findings
+
+        interpreters_insecure = []
+        interpreters_vpc = []
+        interpreters_not_assessed = []
+
+        for interpreter in code_interpreters:
+            interpreter_id = interpreter.get("codeInterpreterId", "unknown")
+            interpreter_name = interpreter.get("name", interpreter_id)
+            try:
+                interpreter_details = agentcore_client.get_code_interpreter(
+                    codeInterpreterId=interpreter_id
+                )
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                    continue
+                logger.warning(
+                    f"Error describing code interpreter {interpreter_id}: {e}"
+                )
+                interpreters_not_assessed.append(interpreter_name)
+                continue
+
+            network_mode = interpreter_details.get("networkConfiguration", {}).get(
+                "networkMode", "PUBLIC"
+            )
+
+            if network_mode in ("PUBLIC", "SANDBOX"):
+                interpreters_insecure.append(
+                    {"name": interpreter_name, "network_mode": network_mode}
+                )
+            else:
+                interpreters_vpc.append(interpreter_name)
+
+        if interpreters_insecure:
+            details_list = ", ".join(
+                f"'{i['name']}' ({i['network_mode']})" for i in interpreters_insecure
+            )
+            findings.append(
+                create_finding(
+                    check_id="AC-15",
+                    finding_name="AgentCore Code Interpreter Insecure Network Mode",
+                    finding_details=(
+                        "The following custom code interpreters do not use VPC "
+                        f"network mode: {details_list}. PUBLIC and SANDBOX modes "
+                        "expose the code interpreter to broader network access "
+                        "than VPC mode."
+                    ),
+                    resolution=(
+                        "Configure custom code interpreters with VPC network mode "
+                        "(networkConfiguration.networkMode=VPC) and appropriate "
+                        "subnets/security groups. Network mode cannot be changed "
+                        "after creation; recreate the code interpreter with VPC "
+                        "mode."
+                    ),
+                    reference=CODE_INTERPRETER_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.FAILED,
+                )
+            )
+
+        if interpreters_vpc and not interpreters_insecure:
+            findings.append(
+                create_finding(
+                    check_id="AC-15",
+                    finding_name=check_name,
+                    finding_details=(
+                        f"All {len(interpreters_vpc)} custom code interpreters use "
+                        "VPC network mode"
+                    ),
+                    resolution="No action required",
+                    reference=CODE_INTERPRETER_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.PASSED,
+                )
+            )
+
+        if interpreters_not_assessed:
+            findings.append(
+                _could_not_assess(
+                    "Unable to describe the following custom code interpreters: "
+                    f"{', '.join(interpreters_not_assessed)}. Their network mode "
+                    "configuration was NOT assessed.",
+                    "Grant bedrock-agentcore:GetCodeInterpreter to the assessment "
+                    "role and re-run the assessment.",
+                )
+            )
+
+    except Exception as e:
+        logger.error(f"Error in code interpreter network mode check: {e}")
+        findings.append(
+            _could_not_assess(
+                f"This check could not be completed (error: {str(e)}). Custom "
+                "code interpreter network mode was NOT assessed.",
+                "Verify the assessment role's bedrock-agentcore permissions, "
+                "confirm the region supports AgentCore, and re-run the assessment.",
+            )
+        )
+
+    return findings
+
+
 def check_agentcore_memory_configuration() -> List[Dict[str, Any]]:
     """
     Check Memory resource configuration.
@@ -3137,6 +3499,8 @@ def lambda_handler(event, context):
             ("Observability", check_agentcore_observability),
             ("Encryption", check_agentcore_encryption),
             ("Browser Tool Recording", check_browser_tool_recording),
+            ("Browser Network Mode", check_browser_network_mode),
+            ("Code Interpreter Network Mode", check_code_interpreter_network_mode),
             ("Memory Configuration", check_agentcore_memory_configuration),
             ("Gateway Configuration", check_agentcore_gateway_configuration),
             ("VPC Endpoints", check_agentcore_vpc_endpoints),

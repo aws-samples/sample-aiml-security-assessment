@@ -226,6 +226,8 @@ Resources:
                 - bedrock:GetImportedModel # BR-30
                 - bedrock:ListAgentActionGroups
                 - bedrock:GetAgentActionGroup
+                - bedrock:ListDataSources # Bedrock.1 (BR-33)
+                - bedrock:GetDataSource # Bedrock.1 (BR-33)
               Resource: '*'
             - Sid: ServiceQuotasPermissions
               Effect: Allow
@@ -362,6 +364,21 @@ Resources:
                 - sagemaker:ListTrials
                 - sagemaker:DescribeTrial
                 - sagemaker:ListAssociations
+                # SageMaker.4 endpoint config instance count
+                - sagemaker:ListEndpointConfigs
+                - sagemaker:DescribeEndpointConfig
+                # SageMaker.10/.20 model explainability job definitions
+                - sagemaker:ListModelExplainabilityJobDefinitions
+                - sagemaker:DescribeModelExplainabilityJobDefinition
+                # SageMaker.12/.15 model bias job definitions
+                - sagemaker:ListModelBiasJobDefinitions
+                - sagemaker:DescribeModelBiasJobDefinition
+                # SageMaker.13/.25 model quality job definitions
+                - sagemaker:ListModelQualityJobDefinitions
+                - sagemaker:DescribeModelQualityJobDefinition
+                # SageMaker.23/.24 inference experiments
+                - sagemaker:ListInferenceExperiments
+                - sagemaker:DescribeInferenceExperiment
               Resource: '*'
         - Statement:
             - Sid: GuardDutyPermissions
@@ -437,6 +454,8 @@ Resources:
                 - bedrock-agentcore:GetResourcePolicy
                 - bedrock-agentcore:ListBrowsers
                 - bedrock-agentcore:GetBrowser
+                - bedrock-agentcore:ListCodeInterpreters # BedrockAgentCore.7 (AC-15)
+                - bedrock-agentcore:GetCodeInterpreter # BedrockAgentCore.7 (AC-15)
               Resource: '*'
             - Sid: IAMRolePermissions
               Effect: Allow

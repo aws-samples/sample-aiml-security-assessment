@@ -1798,6 +1798,233 @@ def check_bedrock_prompt_management(region: str = "") -> Dict[str, Any]:
         }
 
 
+def check_bedrock_data_source_encryption(region: str = "") -> Dict[str, Any]:
+    """
+    BR-33: Check if Amazon Bedrock Knowledge Base data sources are encrypted
+    with a customer-managed KMS key.
+
+    Aligns with AWS Security Hub control Bedrock.1 (severity Medium). Data
+    source encryption is a distinct control from the knowledge base's own
+    vector-store encryption (BR-09/BR-20): GetDataSource returns
+    dataSource.serverSideEncryptionConfiguration.kmsKeyArn, which is
+    unrelated to the KB-level managedKnowledgeBaseConfiguration encryption
+    checked by BR-20. Detection is presence-as-proxy (Correctness Rule 1,
+    customer-managed family) — the field only holds a value when the
+    customer configured a key.
+    """
+    logger.debug("Starting check for Bedrock data source encryption")
+    try:
+        findings = {
+            "check_name": "Bedrock Data Source Encryption Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        bedrock_agent_client = boto3.client(
+            "bedrock-agent", config=boto3_config, region_name=region
+        )
+
+        try:
+            knowledge_bases = _list_all_items(
+                bedrock_agent_client,
+                "list_knowledge_bases",
+                "knowledgeBaseSummaries",
+            )
+
+            if not knowledge_bases:
+                findings["details"] = "No Bedrock knowledge bases found"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-33",
+                        finding_name="Bedrock Data Source Encryption Check",
+                        finding_details="No Bedrock knowledge bases found in this region",
+                        resolution="When creating knowledge base data sources, specify a customer-managed KMS key for server-side encryption",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                        severity="Medium",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
+            data_sources_without_cmk = []
+            data_sources_with_cmk = []
+            data_sources_access_denied = []
+
+            for kb_summary in knowledge_bases:
+                kb_id = kb_summary.get("knowledgeBaseId")
+                kb_name = kb_summary.get("name", kb_id)
+                if not kb_id:
+                    continue
+
+                try:
+                    data_sources = _list_all_items(
+                        bedrock_agent_client,
+                        "list_data_sources",
+                        "dataSourceSummaries",
+                        knowledgeBaseId=kb_id,
+                    )
+                except ClientError as e:
+                    if _is_access_denied_client_error(e):
+                        data_sources_access_denied.append(kb_name)
+                        continue
+                    raise
+
+                for ds_summary in data_sources:
+                    ds_id = ds_summary.get("dataSourceId")
+                    ds_name = ds_summary.get("name", ds_id)
+                    if not ds_id:
+                        continue
+
+                    label = f"{ds_name} (KB: {kb_name})"
+                    try:
+                        ds_detail = bedrock_agent_client.get_data_source(
+                            knowledgeBaseId=kb_id, dataSourceId=ds_id
+                        )
+                        data_source = ds_detail.get("dataSource", ds_detail)
+                        kms_key_arn = data_source.get(
+                            "serverSideEncryptionConfiguration", {}
+                        ).get("kmsKeyArn")
+
+                        if kms_key_arn:
+                            data_sources_with_cmk.append(label)
+                        else:
+                            data_sources_without_cmk.append(label)
+
+                    except ClientError as e:
+                        if _is_access_denied_client_error(e):
+                            data_sources_access_denied.append(label)
+                            continue
+                        logger.warning(
+                            f"Error describing data source {ds_id} in KB {kb_id}: {str(e)}"
+                        )
+
+            if data_sources_without_cmk:
+                findings["status"] = "WARN"
+                findings["details"] = (
+                    f"Found {len(data_sources_without_cmk)} data sources without customer-managed KMS encryption"
+                )
+                for label in data_sources_without_cmk:
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-33",
+                            finding_name="Bedrock Data Source Encryption Missing",
+                            finding_details=f"Knowledge base data source '{label}' is not encrypted with a customer-managed KMS key.",
+                            resolution="Update the data source to specify serverSideEncryptionConfiguration.kmsKeyArn with a customer-managed KMS key. Ensure the KMS key policy grants Amazon Bedrock service access.",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                            severity="Medium",
+                            status="Failed",
+                            region=region,
+                        )
+                    )
+
+            if data_sources_with_cmk:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-33",
+                        finding_name="Bedrock Data Source Encryption Check",
+                        finding_details=f"{len(data_sources_with_cmk)} knowledge base data sources are encrypted with a customer-managed KMS key",
+                        resolution="No action required. Continue specifying a customer-managed KMS key for new data sources.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                        severity="Medium",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+
+            if data_sources_access_denied:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-33",
+                        finding_name="Bedrock Data Source Encryption Check",
+                        finding_details=f"Unable to assess data source encryption for: {', '.join(data_sources_access_denied)} because access was denied.",
+                        resolution="Ensure the assessment role can call bedrock:ListDataSources and bedrock:GetDataSource for the target account.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+
+            if not (
+                data_sources_without_cmk
+                or data_sources_with_cmk
+                or data_sources_access_denied
+            ):
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-33",
+                        finding_name="Bedrock Data Source Encryption Check",
+                        finding_details="No knowledge base data sources found",
+                        resolution="No action required",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+
+        except ClientError as e:
+            if is_region_unsupported(e):
+                findings["details"] = "Knowledge Bases API not available in this region"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-33",
+                        finding_name="Bedrock Data Source Encryption Check",
+                        finding_details=describe_api_error(
+                            e, "Knowledge Bases API", region
+                        ),
+                        resolution="Amazon Bedrock Knowledge Bases are not available in this region. No action required.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif _is_access_denied_client_error(e):
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-33",
+                        finding_name="Bedrock Data Source Encryption Check",
+                        finding_details=describe_api_error(
+                            e, "Data source encryption check", region
+                        ),
+                        resolution="Grant bedrock:ListKnowledgeBases, bedrock:ListDataSources, and bedrock:GetDataSource permissions",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_bedrock_data_source_encryption: {str(e)}", exc_info=True
+        )
+        return {
+            "check_name": "Bedrock Data Source Encryption Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-33",
+                    finding_name="Bedrock Data Source Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
+                    severity="Medium",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
 def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
     """
     Check if Amazon Bedrock Knowledge Bases have proper encryption configured
@@ -6816,6 +7043,12 @@ def lambda_handler(event, context):
         logger.info("Running CloudWatch alarm check (BR-32)")
         cloudwatch_alarm_findings = check_bedrock_cloudwatch_alarms(region=region)
         all_findings.append(cloudwatch_alarm_findings)
+
+        logger.info("Running data source encryption check (Bedrock.1)")
+        data_source_encryption_findings = check_bedrock_data_source_encryption(
+            region=region
+        )
+        all_findings.append(data_source_encryption_findings)
 
         logger.info("Building Agentic AI Security findings from Bedrock results")
         all_findings.append(build_agentic_bedrock_security_findings(all_findings))

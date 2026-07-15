@@ -1773,11 +1773,20 @@ def check_sagemaker_model_network_isolation(region: str = "") -> Dict[str, Any]:
 
 def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
     """
-    Check if SageMaker endpoints have more than one instance for availability.
-    Single instance creates availability risk and single point of compromise.
-    Aligns with AWS Security Hub control SageMaker.4
+    Check if SageMaker endpoint configurations specify more than one initial
+    instance for availability. Single instance creates availability risk and
+    a single point of compromise.
+
+    Aligns with AWS Security Hub control SageMaker.4 (severity Medium), which
+    evaluates ProductionVariants[*].InitialInstanceCount on the endpoint
+    CONFIGURATION resource, not the live endpoint's CurrentInstanceCount.
+    Reading live endpoints missed configs that are not currently attached to
+    an InService endpoint and used the wrong field for the control's
+    documented fail condition. Serverless variants (ServerlessConfig present,
+    no InitialInstanceCount) are skipped; the control applies only to
+    instance-based variants.
     """
-    logger.debug("Starting check for SageMaker endpoint instance count")
+    logger.debug("Starting check for SageMaker endpoint config instance count")
     try:
         findings = {"csv_data": []}
 
@@ -1785,82 +1794,80 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
             "sagemaker", config=boto3_config, region_name=region
         )
 
-        endpoints_single_instance = []
-        endpoints_multi_instance = []
+        configs_single_instance = []
+        configs_multi_instance = []
 
         try:
-            paginator = sagemaker_client.get_paginator("list_endpoints")
+            paginator = sagemaker_client.get_paginator("list_endpoint_configs")
             for page in paginator.paginate():
-                for endpoint in page.get("Endpoints", []):
-                    endpoint_name = endpoint.get("EndpointName")
-                    endpoint_status = endpoint.get("EndpointStatus")
+                for config_summary in page.get("EndpointConfigs", []):
+                    config_name = config_summary.get("EndpointConfigName")
+                    if not config_name:
+                        continue
 
-                    if endpoint_name and endpoint_status == "InService":
-                        try:
-                            endpoint_details = sagemaker_client.describe_endpoint(
-                                EndpointName=endpoint_name
+                    try:
+                        config_details = sagemaker_client.describe_endpoint_config(
+                            EndpointConfigName=config_name
+                        )
+
+                        production_variants = config_details.get(
+                            "ProductionVariants", []
+                        )
+
+                        for variant in production_variants:
+                            variant_name = variant.get("VariantName", "Unknown")
+
+                            # Serverless variants specify ServerlessConfig
+                            # instead of InitialInstanceCount and scale
+                            # automatically; Security Hub SageMaker.4 applies
+                            # only to instance-based variants. Without this
+                            # skip, every serverless config would be reported
+                            # as a false "single instance" failure (the
+                            # absent InitialInstanceCount would default to 0).
+                            if variant.get("ServerlessConfig"):
+                                continue
+
+                            initial_instance_count = variant.get(
+                                "InitialInstanceCount"
                             )
+                            if initial_instance_count is None:
+                                # Not an instance-based variant (or count
+                                # unavailable); do not fabricate a zero.
+                                continue
 
-                            production_variants = endpoint_details.get(
-                                "ProductionVariants", []
-                            )
-
-                            for variant in production_variants:
-                                variant_name = variant.get("VariantName", "Unknown")
-
-                                # Serverless variants have no instance count and
-                                # scale automatically; Security Hub SageMaker.4
-                                # applies only to instance-based variants.
-                                # Without this skip every serverless endpoint
-                                # would be reported as a false "single instance"
-                                # failure (CurrentInstanceCount is absent and
-                                # would default to 0).
-                                if variant.get(
-                                    "CurrentServerlessConfig"
-                                ) or variant.get("DesiredServerlessConfig"):
-                                    continue
-
-                                current_instance_count = variant.get(
-                                    "CurrentInstanceCount"
+                            if initial_instance_count <= 1:
+                                configs_single_instance.append(
+                                    {
+                                        "config_name": config_name,
+                                        "variant_name": variant_name,
+                                        "instance_count": initial_instance_count,
+                                    }
                                 )
-                                if current_instance_count is None:
-                                    # Not an instance-based variant (or count
-                                    # unavailable); do not fabricate a zero.
-                                    continue
+                            else:
+                                configs_multi_instance.append(
+                                    {
+                                        "config_name": config_name,
+                                        "variant_name": variant_name,
+                                        "instance_count": initial_instance_count,
+                                    }
+                                )
 
-                                if current_instance_count <= 1:
-                                    endpoints_single_instance.append(
-                                        {
-                                            "endpoint_name": endpoint_name,
-                                            "variant_name": variant_name,
-                                            "instance_count": current_instance_count,
-                                        }
-                                    )
-                                else:
-                                    endpoints_multi_instance.append(
-                                        {
-                                            "endpoint_name": endpoint_name,
-                                            "variant_name": variant_name,
-                                            "instance_count": current_instance_count,
-                                        }
-                                    )
-
-                        except Exception as e:
-                            logger.warning(
-                                f"Error describing endpoint {endpoint_name}: {str(e)}"
-                            )
+                    except Exception as e:
+                        logger.warning(
+                            f"Error describing endpoint config {config_name}: {str(e)}"
+                        )
 
         except Exception as e:
-            logger.error(f"Error listing endpoints: {str(e)}")
+            logger.error(f"Error listing endpoint configs: {str(e)}")
 
-        if endpoints_single_instance:
-            for endpoint in endpoints_single_instance:
+        if configs_single_instance:
+            for config in configs_single_instance:
                 findings["csv_data"].append(
                     create_finding(
                         check_id="SM-12",
-                        finding_name="SageMaker Endpoint Single Instance",
-                        finding_details=f"Endpoint '{endpoint['endpoint_name']}' variant '{endpoint['variant_name']}' has only {endpoint['instance_count']} instance(s). Single instance creates availability risk and no failover capability.",
-                        resolution="Configure production endpoints with at least 2 instances across multiple Availability Zones for high availability and fault tolerance.",
+                        finding_name="SageMaker Endpoint Config Single Instance",
+                        finding_details=f"Endpoint config '{config['config_name']}' variant '{config['variant_name']}' has an initial instance count of {config['instance_count']}. Single instance creates availability risk and no failover capability.",
+                        resolution="Configure production variants with InitialInstanceCount >= 2 across multiple Availability Zones for high availability and fault tolerance.",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling.html",
                         severity="Medium",
                         status="Failed",
@@ -1868,13 +1875,14 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
                     )
                 )
         else:
-            if endpoints_multi_instance:
-                # Endpoints exist and all have multiple instances - Passed
+            if configs_multi_instance:
+                # Endpoint configs exist and all instance-based variants have
+                # multiple instances - Passed
                 findings["csv_data"].append(
                     create_finding(
                         check_id="SM-12",
                         finding_name="SageMaker Endpoint Instance Count Check",
-                        finding_details=f"All {len(endpoints_multi_instance)} endpoint variants have multiple instances",
+                        finding_details=f"All {len(configs_multi_instance)} instance-based endpoint config variants specify multiple initial instances",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling.html",
                         severity="Medium",
@@ -1883,13 +1891,13 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
                     )
                 )
             else:
-                # No InService instance-based endpoints found - N/A
+                # No instance-based endpoint config variants found - N/A
                 # (serverless variants are out of scope for this control)
                 findings["csv_data"].append(
                     create_finding(
                         check_id="SM-12",
                         finding_name="SageMaker Endpoint Instance Count Check",
-                        finding_details="No InService instance-based endpoints found (serverless endpoints are not evaluated by this check)",
+                        finding_details="No instance-based endpoint config variants found (serverless variants are not evaluated by this check)",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling.html",
                         severity="Informational",
@@ -3216,6 +3224,1286 @@ def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]
 
 
 # ============================================================================
+# JOB-DEFINITION-BASED CONTROLS (SageMaker.10/.11/.12/.13/.15/.20/.25)
+#
+# Clarify (ModelBias, ModelExplainability) and Model Monitor
+# (DataQuality, ModelQuality) job definitions each expose a NetworkConfig
+# with EnableInterContainerTrafficEncryption and EnableNetworkIsolation. Each
+# Security Hub control below checks one field on one job-definition type; the
+# List/Describe fetch is shared via _list_job_definitions_with_details.
+# ============================================================================
+
+# job type -> (list operation, describe operation, describe kwarg name)
+_JOB_DEFINITION_APIS: Dict[str, tuple] = {
+    "DataQuality": (
+        "list_data_quality_job_definitions",
+        "describe_data_quality_job_definition",
+        "JobDefinitionName",
+    ),
+    "ModelQuality": (
+        "list_model_quality_job_definitions",
+        "describe_model_quality_job_definition",
+        "JobDefinitionName",
+    ),
+    "ModelBias": (
+        "list_model_bias_job_definitions",
+        "describe_model_bias_job_definition",
+        "JobDefinitionName",
+    ),
+    "ModelExplainability": (
+        "list_model_explainability_job_definitions",
+        "describe_model_explainability_job_definition",
+        "JobDefinitionName",
+    ),
+}
+
+
+def _list_job_definitions_with_details(
+    sagemaker_client, job_type: str
+) -> List[Dict[str, Any]]:
+    """
+    List all job definitions of the given Clarify/Model-Monitor type
+    (DataQuality, ModelQuality, ModelBias, ModelExplainability) and fetch
+    full details for each via the matching DescribeXJobDefinition API.
+
+    Returns a list of {"name": str, "details": dict} entries. Definitions
+    that fail to describe are skipped (logged) rather than raising, so one
+    bad definition does not abort the whole check.
+    """
+    list_op, describe_op, name_param = _JOB_DEFINITION_APIS[job_type]
+    results: List[Dict[str, Any]] = []
+
+    paginator = sagemaker_client.get_paginator(list_op)
+    for page in paginator.paginate():
+        for job in page.get("JobDefinitionSummaries", []):
+            job_name = job.get("MonitoringJobDefinitionName")
+            if not job_name:
+                continue
+            try:
+                describe = getattr(sagemaker_client, describe_op)
+                details = describe(**{name_param: job_name})
+                results.append({"name": job_name, "details": details})
+            except Exception as e:
+                logger.warning(
+                    f"Error describing {job_type} job definition {job_name}: {str(e)}"
+                )
+
+    return results
+
+
+def check_sagemaker_explainability_traffic_encryption(
+    region: str = "",
+) -> Dict[str, Any]:
+    """
+    Check if SageMaker model explainability job definitions have
+    inter-container traffic encryption enabled.
+    Aligns with AWS Security Hub control SageMaker.10 (severity Medium).
+    """
+    logger.debug("Starting check for SageMaker explainability traffic encryption")
+    try:
+        findings = {"csv_data": []}
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        without_encryption = []
+        with_encryption = []
+        try:
+            jobs = _list_job_definitions_with_details(
+                sagemaker_client, "ModelExplainability"
+            )
+            for job in jobs:
+                network_config = job["details"].get("NetworkConfig", {})
+                if network_config.get("EnableInterContainerTrafficEncryption", False):
+                    with_encryption.append(job["name"])
+                else:
+                    without_encryption.append(job["name"])
+        except Exception as e:
+            logger.error(f"Error listing explainability job definitions: {str(e)}")
+
+        if without_encryption:
+            for name in without_encryption:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-29",
+                        finding_name="SageMaker Explainability Job Traffic Encryption Disabled",
+                        finding_details=f"Model explainability job definition '{name}' does not have inter-container traffic encryption enabled. Data transmitted between containers is not encrypted.",
+                        resolution="Enable EnableInterContainerTrafficEncryption in NetworkConfig when creating model explainability job definitions.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability-baseline-schedule.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        elif with_encryption:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-29",
+                    finding_name="SageMaker Explainability Job Traffic Encryption Check",
+                    finding_details=f"All {len(with_encryption)} model explainability job definitions have inter-container encryption enabled",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability-baseline-schedule.html",
+                    severity="Medium",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-29",
+                    finding_name="SageMaker Explainability Job Traffic Encryption Check",
+                    finding_details="No model explainability job definitions found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability-baseline-schedule.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_explainability_traffic_encryption: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-29",
+                    finding_name="SageMaker Explainability Job Traffic Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_data_quality_network_isolation(region: str = "") -> Dict[str, Any]:
+    """
+    Check if SageMaker data quality job definitions have network isolation
+    enabled.
+    Aligns with AWS Security Hub control SageMaker.11 (severity Medium).
+    """
+    logger.debug("Starting check for SageMaker data quality network isolation")
+    try:
+        findings = {"csv_data": []}
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        without_isolation = []
+        with_isolation = []
+        try:
+            jobs = _list_job_definitions_with_details(sagemaker_client, "DataQuality")
+            for job in jobs:
+                network_config = job["details"].get("NetworkConfig", {})
+                if network_config.get("EnableNetworkIsolation", False):
+                    with_isolation.append(job["name"])
+                else:
+                    without_isolation.append(job["name"])
+        except Exception as e:
+            logger.error(f"Error listing data quality job definitions: {str(e)}")
+
+        if without_isolation:
+            for name in without_isolation:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-30",
+                        finding_name="SageMaker Data Quality Job Network Isolation Disabled",
+                        finding_details=f"Data quality job definition '{name}' does not have network isolation enabled. The job's containers can make outbound network calls.",
+                        resolution="Enable EnableNetworkIsolation in NetworkConfig when creating data quality job definitions.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        elif with_isolation:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-30",
+                    finding_name="SageMaker Data Quality Job Network Isolation Check",
+                    finding_details=f"All {len(with_isolation)} data quality job definitions have network isolation enabled",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html",
+                    severity="Medium",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-30",
+                    finding_name="SageMaker Data Quality Job Network Isolation Check",
+                    finding_details="No data quality job definitions found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_data_quality_network_isolation: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-30",
+                    finding_name="SageMaker Data Quality Job Network Isolation Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_model_bias_network_isolation(region: str = "") -> Dict[str, Any]:
+    """
+    Check if SageMaker model bias job definitions have network isolation
+    enabled.
+    Aligns with AWS Security Hub control SageMaker.12 (severity Medium).
+    """
+    logger.debug("Starting check for SageMaker model bias network isolation")
+    try:
+        findings = {"csv_data": []}
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        without_isolation = []
+        with_isolation = []
+        try:
+            jobs = _list_job_definitions_with_details(sagemaker_client, "ModelBias")
+            for job in jobs:
+                network_config = job["details"].get("NetworkConfig", {})
+                if network_config.get("EnableNetworkIsolation", False):
+                    with_isolation.append(job["name"])
+                else:
+                    without_isolation.append(job["name"])
+        except Exception as e:
+            logger.error(f"Error listing model bias job definitions: {str(e)}")
+
+        if without_isolation:
+            for name in without_isolation:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-31",
+                        finding_name="SageMaker Model Bias Job Network Isolation Disabled",
+                        finding_details=f"Model bias job definition '{name}' does not have network isolation enabled. The job's containers can make outbound network calls.",
+                        resolution="Enable EnableNetworkIsolation in NetworkConfig when creating model bias job definitions.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-bias-schedule.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        elif with_isolation:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-31",
+                    finding_name="SageMaker Model Bias Job Network Isolation Check",
+                    finding_details=f"All {len(with_isolation)} model bias job definitions have network isolation enabled",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-bias-schedule.html",
+                    severity="Medium",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-31",
+                    finding_name="SageMaker Model Bias Job Network Isolation Check",
+                    finding_details="No model bias job definitions found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-bias-schedule.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_model_bias_network_isolation: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-31",
+                    finding_name="SageMaker Model Bias Job Network Isolation Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_model_quality_traffic_encryption(region: str = "") -> Dict[str, Any]:
+    """
+    Check if SageMaker model quality job definitions have inter-container
+    traffic encryption enabled.
+    Aligns with AWS Security Hub control SageMaker.13 (severity Medium).
+    """
+    logger.debug("Starting check for SageMaker model quality traffic encryption")
+    try:
+        findings = {"csv_data": []}
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        without_encryption = []
+        with_encryption = []
+        try:
+            jobs = _list_job_definitions_with_details(sagemaker_client, "ModelQuality")
+            for job in jobs:
+                network_config = job["details"].get("NetworkConfig", {})
+                if network_config.get("EnableInterContainerTrafficEncryption", False):
+                    with_encryption.append(job["name"])
+                else:
+                    without_encryption.append(job["name"])
+        except Exception as e:
+            logger.error(f"Error listing model quality job definitions: {str(e)}")
+
+        if without_encryption:
+            for name in without_encryption:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-32",
+                        finding_name="SageMaker Model Quality Job Traffic Encryption Disabled",
+                        finding_details=f"Model quality job definition '{name}' does not have inter-container traffic encryption enabled. Data transmitted between containers is not encrypted.",
+                        resolution="Enable EnableInterContainerTrafficEncryption in NetworkConfig when creating model quality job definitions.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-model-quality.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        elif with_encryption:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-32",
+                    finding_name="SageMaker Model Quality Job Traffic Encryption Check",
+                    finding_details=f"All {len(with_encryption)} model quality job definitions have inter-container encryption enabled",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-model-quality.html",
+                    severity="Medium",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-32",
+                    finding_name="SageMaker Model Quality Job Traffic Encryption Check",
+                    finding_details="No model quality job definitions found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-model-quality.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_model_quality_traffic_encryption: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-32",
+                    finding_name="SageMaker Model Quality Job Traffic Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_model_bias_traffic_encryption(region: str = "") -> Dict[str, Any]:
+    """
+    Check if multi-instance SageMaker model bias job definitions have
+    inter-container traffic encryption enabled.
+    Aligns with AWS Security Hub control SageMaker.15 (severity Medium): the
+    control fails only when traffic encryption is disabled/absent AND the
+    job's cluster has 2 or more instances (a single-instance job has no
+    inter-container traffic to encrypt).
+    """
+    logger.debug("Starting check for SageMaker model bias traffic encryption")
+    try:
+        findings = {"csv_data": []}
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        without_encryption = []
+        with_encryption_or_single_instance = []
+        try:
+            jobs = _list_job_definitions_with_details(sagemaker_client, "ModelBias")
+            for job in jobs:
+                details = job["details"]
+                network_config = details.get("NetworkConfig", {})
+                encryption_enabled = network_config.get(
+                    "EnableInterContainerTrafficEncryption", False
+                )
+                instance_count = (
+                    details.get("JobResources", {})
+                    .get("ClusterConfig", {})
+                    .get("InstanceCount", 1)
+                )
+
+                if not encryption_enabled and instance_count >= 2:
+                    without_encryption.append(
+                        {"name": job["name"], "instance_count": instance_count}
+                    )
+                else:
+                    with_encryption_or_single_instance.append(job["name"])
+        except Exception as e:
+            logger.error(f"Error listing model bias job definitions: {str(e)}")
+
+        if without_encryption:
+            for job in without_encryption:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-33",
+                        finding_name="SageMaker Model Bias Job Traffic Encryption Disabled",
+                        finding_details=f"Model bias job definition '{job['name']}' runs on {job['instance_count']} instances without inter-container traffic encryption enabled. Data transmitted between containers is not encrypted.",
+                        resolution="Enable EnableInterContainerTrafficEncryption in NetworkConfig when creating multi-instance model bias job definitions.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-bias-schedule.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        elif with_encryption_or_single_instance:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-33",
+                    finding_name="SageMaker Model Bias Job Traffic Encryption Check",
+                    finding_details=f"All {len(with_encryption_or_single_instance)} model bias job definitions are single-instance or have inter-container encryption enabled",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-bias-schedule.html",
+                    severity="Medium",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-33",
+                    finding_name="SageMaker Model Bias Job Traffic Encryption Check",
+                    finding_details="No model bias job definitions found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-bias-schedule.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_model_bias_traffic_encryption: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-33",
+                    finding_name="SageMaker Model Bias Job Traffic Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_explainability_network_isolation(region: str = "") -> Dict[str, Any]:
+    """
+    Check if SageMaker model explainability job definitions have network
+    isolation enabled.
+
+    Aligns with AWS Security Hub control SageMaker.20 (severity High).
+    Register decision: SageMaker.20 and SageMaker.25 are High in Security Hub
+    while sibling isolation controls (SageMaker.11, .12, .14) are Medium and
+    the severity methodology's governance/monitoring family band is Medium.
+    This check seeds from the Security Hub published severity (High) since
+    it is a real Security Hub control; the sibling asymmetry is intentional
+    and documented here per the gap-analysis Severity Model guidance.
+    """
+    logger.debug("Starting check for SageMaker explainability network isolation")
+    try:
+        findings = {"csv_data": []}
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        without_isolation = []
+        with_isolation = []
+        try:
+            jobs = _list_job_definitions_with_details(
+                sagemaker_client, "ModelExplainability"
+            )
+            for job in jobs:
+                network_config = job["details"].get("NetworkConfig", {})
+                if network_config.get("EnableNetworkIsolation", False):
+                    with_isolation.append(job["name"])
+                else:
+                    without_isolation.append(job["name"])
+        except Exception as e:
+            logger.error(f"Error listing explainability job definitions: {str(e)}")
+
+        if without_isolation:
+            for name in without_isolation:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-35",
+                        finding_name="SageMaker Explainability Job Network Isolation Disabled",
+                        finding_details=f"Model explainability job definition '{name}' does not have network isolation enabled. The job's containers can make outbound network calls.",
+                        resolution="Enable EnableNetworkIsolation in NetworkConfig when creating model explainability job definitions.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability-baseline-schedule.html",
+                        severity="High",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        elif with_isolation:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-35",
+                    finding_name="SageMaker Explainability Job Network Isolation Check",
+                    finding_details=f"All {len(with_isolation)} model explainability job definitions have network isolation enabled",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability-baseline-schedule.html",
+                    severity="High",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-35",
+                    finding_name="SageMaker Explainability Job Network Isolation Check",
+                    finding_details="No model explainability job definitions found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability-baseline-schedule.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_explainability_network_isolation: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-35",
+                    finding_name="SageMaker Explainability Job Network Isolation Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_model_quality_network_isolation(region: str = "") -> Dict[str, Any]:
+    """
+    Check if SageMaker model quality job definitions have network isolation
+    enabled.
+
+    Aligns with AWS Security Hub control SageMaker.25 (severity High).
+    Register decision: see check_sagemaker_explainability_network_isolation
+    (SM-35) docstring — SageMaker.25 is High in Security Hub even though the
+    sibling isolation controls are Medium; seeded from Security Hub.
+    """
+    logger.debug("Starting check for SageMaker model quality network isolation")
+    try:
+        findings = {"csv_data": []}
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        without_isolation = []
+        with_isolation = []
+        try:
+            jobs = _list_job_definitions_with_details(sagemaker_client, "ModelQuality")
+            for job in jobs:
+                network_config = job["details"].get("NetworkConfig", {})
+                if network_config.get("EnableNetworkIsolation", False):
+                    with_isolation.append(job["name"])
+                else:
+                    without_isolation.append(job["name"])
+        except Exception as e:
+            logger.error(f"Error listing model quality job definitions: {str(e)}")
+
+        if without_isolation:
+            for name in without_isolation:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-39",
+                        finding_name="SageMaker Model Quality Job Network Isolation Disabled",
+                        finding_details=f"Model quality job definition '{name}' does not have network isolation enabled. The job's containers can make outbound network calls.",
+                        resolution="Enable EnableNetworkIsolation in NetworkConfig when creating model quality job definitions.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-model-quality.html",
+                        severity="High",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        elif with_isolation:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-39",
+                    finding_name="SageMaker Model Quality Job Network Isolation Check",
+                    finding_details=f"All {len(with_isolation)} model quality job definitions have network isolation enabled",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-model-quality.html",
+                    severity="High",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-39",
+                    finding_name="SageMaker Model Quality Job Network Isolation Check",
+                    finding_details="No model quality job definitions found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-model-quality.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_model_quality_network_isolation: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-39",
+                    finding_name="SageMaker Model Quality Job Network Isolation Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_monitoring_traffic_encryption(region: str = "") -> Dict[str, Any]:
+    """
+    Check if SageMaker monitoring schedules have inter-container traffic
+    encryption enabled.
+    Aligns with AWS Security Hub control SageMaker.22 (severity Medium).
+
+    Resolves both inline job definitions and named job definitions
+    (MonitoringJobDefinitionName + MonitoringType) via
+    _resolve_monitoring_job_definition, the same helper used by SM-13
+    (SageMaker.14 network isolation) to fix the identical named-definition
+    defect for this traffic-encryption control.
+    """
+    logger.debug("Starting check for SageMaker monitoring traffic encryption")
+    try:
+        findings = {"csv_data": []}
+
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        schedules_without_encryption = []
+        schedules_with_encryption = []
+
+        try:
+            paginator = sagemaker_client.get_paginator("list_monitoring_schedules")
+            for page in paginator.paginate():
+                for schedule in page.get("MonitoringScheduleSummaries", []):
+                    schedule_name = schedule.get("MonitoringScheduleName")
+                    if not schedule_name:
+                        continue
+                    try:
+                        schedule_details = (
+                            sagemaker_client.describe_monitoring_schedule(
+                                MonitoringScheduleName=schedule_name
+                            )
+                        )
+
+                        schedule_config = schedule_details.get(
+                            "MonitoringScheduleConfig", {}
+                        )
+                        job_definition = _resolve_monitoring_job_definition(
+                            sagemaker_client, schedule_config
+                        )
+                        network_config = job_definition.get("NetworkConfig", {})
+                        encryption_enabled = network_config.get(
+                            "EnableInterContainerTrafficEncryption", False
+                        )
+
+                        if not encryption_enabled:
+                            schedules_without_encryption.append(schedule_name)
+                        else:
+                            schedules_with_encryption.append(schedule_name)
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Error describing monitoring schedule {schedule_name}: {str(e)}"
+                        )
+
+        except Exception as e:
+            logger.error(f"Error listing monitoring schedules: {str(e)}")
+
+        if schedules_without_encryption:
+            for name in schedules_without_encryption:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-36",
+                        finding_name="SageMaker Monitoring Traffic Encryption Disabled",
+                        finding_details=f"Monitoring schedule '{name}' does not have inter-container traffic encryption enabled. Data transmitted between monitoring job containers is not encrypted.",
+                        resolution="Enable EnableInterContainerTrafficEncryption in the monitoring job definition NetworkConfig.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_MonitoringNetworkConfig.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        elif schedules_with_encryption:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-36",
+                    finding_name="SageMaker Monitoring Traffic Encryption Check",
+                    finding_details=f"All {len(schedules_with_encryption)} monitoring schedules have inter-container traffic encryption enabled",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_MonitoringNetworkConfig.html",
+                    severity="Medium",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-36",
+                    finding_name="SageMaker Monitoring Traffic Encryption Check",
+                    finding_details="No monitoring schedules found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_MonitoringNetworkConfig.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_monitoring_traffic_encryption: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-36",
+                    finding_name="SageMaker Monitoring Traffic Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_notebook_platform(region: str = "") -> Dict[str, Any]:
+    """
+    Check if SageMaker notebook instances use a supported platform identifier.
+    Aligns with AWS Security Hub control SageMaker.8 (severity Medium): the
+    control fails when PlatformIdentifier is not the supported value
+    notebook-al2-v3 (the current Amazon Linux 2 platform).
+    """
+    logger.debug("Starting check for SageMaker notebook platform identifier")
+    try:
+        findings = {"csv_data": []}
+
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        notebooks_unsupported_platform = []
+        notebooks_supported_platform = []
+
+        supported_platform = "notebook-al2-v3"
+
+        try:
+            paginator = sagemaker_client.get_paginator("list_notebook_instances")
+            for page in paginator.paginate():
+                for instance in page.get("NotebookInstances", []):
+                    instance_name = instance.get("NotebookInstanceName")
+                    if not instance_name:
+                        continue
+                    try:
+                        instance_details = sagemaker_client.describe_notebook_instance(
+                            NotebookInstanceName=instance_name
+                        )
+                        platform_identifier = instance_details.get(
+                            "PlatformIdentifier"
+                        )
+
+                        if platform_identifier != supported_platform:
+                            notebooks_unsupported_platform.append(
+                                {
+                                    "name": instance_name,
+                                    "platform": platform_identifier or "unknown",
+                                }
+                            )
+                        else:
+                            notebooks_supported_platform.append(instance_name)
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Error describing notebook instance {instance_name}: {str(e)}"
+                        )
+
+        except Exception as e:
+            logger.error(f"Error listing notebook instances: {str(e)}")
+
+        if notebooks_unsupported_platform:
+            for notebook in notebooks_unsupported_platform:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-28",
+                        finding_name="SageMaker Notebook Unsupported Platform",
+                        finding_details=f"Notebook instance '{notebook['name']}' uses platform '{notebook['platform']}' instead of the supported '{supported_platform}' (Amazon Linux 2) platform.",
+                        resolution=f"Update the notebook instance to use PlatformIdentifier={supported_platform} for current security patches and supported software.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/notebook-instance-platform-support-notice.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        else:
+            if notebooks_supported_platform:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-28",
+                        finding_name="SageMaker Notebook Platform Check",
+                        finding_details=f"All {len(notebooks_supported_platform)} notebook instances use the supported '{supported_platform}' platform",
+                        resolution="No action required",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/notebook-instance-platform-support-notice.html",
+                        severity="Medium",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+            else:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-28",
+                        finding_name="SageMaker Notebook Platform Check",
+                        finding_details="No notebook instances found",
+                        resolution="No action required",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/notebook-instance-platform-support-notice.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_notebook_platform: {str(e)}", exc_info=True
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-28",
+                    finding_name="SageMaker Notebook Platform Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_online_feature_store_encryption(region: str = "") -> Dict[str, Any]:
+    """
+    Check if SageMaker Feature Store online stores using standard storage
+    have KMS encryption configured (any KMS key satisfies this control).
+    Aligns with AWS Security Hub control SageMaker.18 (severity Medium).
+
+    Any KMS key (customer-managed or AWS-managed) satisfies this control —
+    unlike SageMaker.21/.23/.24, this control fails only when NO KMS key is
+    configured (Correctness Rule 1: "any KMS" family). Only feature groups
+    with StorageType=Standard online stores are evaluated; InMemory storage
+    does not support this configuration.
+    """
+    logger.debug("Starting check for SageMaker online feature store encryption")
+    try:
+        findings = {"csv_data": []}
+
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        groups_without_encryption = []
+        groups_with_encryption = []
+
+        try:
+            paginator = sagemaker_client.get_paginator("list_feature_groups")
+            for page in paginator.paginate():
+                for group in page.get("FeatureGroupSummaries", []):
+                    group_name = group.get("FeatureGroupName")
+                    if not group_name:
+                        continue
+                    try:
+                        group_details = sagemaker_client.describe_feature_group(
+                            FeatureGroupName=group_name
+                        )
+
+                        online_config = group_details.get("OnlineStoreConfig", {})
+                        if not online_config.get("EnableOnlineStore"):
+                            continue
+
+                        # StorageType defaults to Standard when unspecified;
+                        # InMemory storage is out of this control's scope.
+                        storage_type = online_config.get("StorageType", "Standard")
+                        if storage_type != "Standard":
+                            continue
+
+                        kms_key_id = online_config.get("SecurityConfig", {}).get(
+                            "KmsKeyId"
+                        )
+
+                        if not kms_key_id:
+                            groups_without_encryption.append(group_name)
+                        else:
+                            groups_with_encryption.append(group_name)
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Error describing feature group {group_name}: {str(e)}"
+                        )
+
+        except Exception as e:
+            logger.error(f"Error listing feature groups: {str(e)}")
+
+        if groups_without_encryption:
+            for name in groups_without_encryption:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-34",
+                        finding_name="SageMaker Online Feature Store Encryption Missing",
+                        finding_details=f"Feature group '{name}' online store (standard storage) does not have a KMS key configured. Feature data may not be encrypted with a KMS key.",
+                        resolution="Configure KmsKeyId in OnlineStoreConfig.SecurityConfig when creating or updating feature groups with a standard-storage online store.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-security.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        elif groups_with_encryption:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-34",
+                    finding_name="SageMaker Online Feature Store Encryption Check",
+                    finding_details=f"All {len(groups_with_encryption)} feature groups with standard-storage online stores have a KMS key configured",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-security.html",
+                    severity="Medium",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-34",
+                    finding_name="SageMaker Online Feature Store Encryption Check",
+                    finding_details="No feature groups with standard-storage online stores found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-security.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_online_feature_store_encryption: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-34",
+                    finding_name="SageMaker Online Feature Store Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ]
+        }
+
+
+def check_sagemaker_inference_experiment_encryption(region: str = "") -> Dict[str, Any]:
+    """
+    Check if SageMaker inference experiments have customer-managed KMS keys
+    configured for instance storage and (when data capture is enabled) data
+    storage.
+
+    Aligns with AWS Security Hub controls SageMaker.23 (severity Medium,
+    instance storage volume KMS key) and SageMaker.24 (severity Medium, data
+    capture storage KMS key). Both are evaluated together since both read
+    the same DescribeInferenceExperiment response; findings are tagged with
+    the specific check they apply to. Detection is presence-as-proxy
+    (Correctness Rule 1, customer-managed family): the KmsKey/DataStorageConfig
+    .KmsKey fields only hold a value when the customer configured one.
+    SageMaker.24 is skipped for experiments without data capture enabled.
+    """
+    logger.debug("Starting check for SageMaker inference experiment encryption")
+    try:
+        findings = {"csv_data": []}
+
+        sagemaker_client = boto3.client(
+            "sagemaker", config=boto3_config, region_name=region
+        )
+
+        instance_storage_without_kms = []
+        instance_storage_with_kms = []
+        data_storage_without_kms = []
+        data_storage_with_kms = []
+
+        try:
+            paginator = sagemaker_client.get_paginator("list_inference_experiments")
+            for page in paginator.paginate():
+                for experiment in page.get("InferenceExperiments", []):
+                    experiment_name = experiment.get("Name")
+                    if not experiment_name:
+                        continue
+                    try:
+                        details = sagemaker_client.describe_inference_experiment(
+                            Name=experiment_name
+                        )
+
+                        # SageMaker.23: instance storage volume KMS key
+                        if details.get("KmsKey"):
+                            instance_storage_with_kms.append(experiment_name)
+                        else:
+                            instance_storage_without_kms.append(experiment_name)
+
+                        # SageMaker.24: data capture storage KMS key. Only
+                        # applies when data capture is configured; a missing
+                        # DataStorageConfig means data capture is not enabled
+                        # for this experiment, so the control does not apply.
+                        data_storage_config = details.get("DataStorageConfig")
+                        if data_storage_config:
+                            if data_storage_config.get("KmsKey"):
+                                data_storage_with_kms.append(experiment_name)
+                            else:
+                                data_storage_without_kms.append(experiment_name)
+
+                    except Exception as e:
+                        logger.warning(
+                            f"Error describing inference experiment {experiment_name}: {str(e)}"
+                        )
+
+        except Exception as e:
+            logger.error(f"Error listing inference experiments: {str(e)}")
+
+        # SageMaker.23 findings
+        if instance_storage_without_kms:
+            for name in instance_storage_without_kms:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-37",
+                        finding_name="SageMaker Inference Experiment Instance Storage Encryption Missing",
+                        finding_details=f"Inference experiment '{name}' does not have a customer-managed KMS key configured for the instance storage volume.",
+                        resolution="Configure KmsKey when creating the inference experiment to encrypt the ML compute instance storage volume with a customer-managed key.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/shadow-tests.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        elif instance_storage_with_kms:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-37",
+                    finding_name="SageMaker Inference Experiment Instance Storage Encryption Check",
+                    finding_details=f"All {len(instance_storage_with_kms)} inference experiments have a customer-managed KMS key configured for instance storage",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/shadow-tests.html",
+                    severity="Medium",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-37",
+                    finding_name="SageMaker Inference Experiment Instance Storage Encryption Check",
+                    finding_details="No inference experiments found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/shadow-tests.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        # SageMaker.24 findings
+        if data_storage_without_kms:
+            for name in data_storage_without_kms:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-38",
+                        finding_name="SageMaker Inference Experiment Data Storage Encryption Missing",
+                        finding_details=f"Inference experiment '{name}' has data capture enabled but does not have a customer-managed KMS key configured for the captured data storage.",
+                        resolution="Configure DataStorageConfig.KmsKey when creating the inference experiment to encrypt captured inference data with a customer-managed key.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/shadow-tests.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+        elif data_storage_with_kms:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-38",
+                    finding_name="SageMaker Inference Experiment Data Storage Encryption Check",
+                    finding_details=f"All {len(data_storage_with_kms)} inference experiments with data capture enabled have a customer-managed KMS key configured",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/shadow-tests.html",
+                    severity="Medium",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-38",
+                    finding_name="SageMaker Inference Experiment Data Storage Encryption Check",
+                    finding_details="No inference experiments with data capture enabled found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/shadow-tests.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_sagemaker_inference_experiment_encryption: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-37",
+                    finding_name="SageMaker Inference Experiment Instance Storage Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                ),
+                create_finding(
+                    check_id="SM-38",
+                    finding_name="SageMaker Inference Experiment Data Storage Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                ),
+            ]
+        }
+
+
+# ============================================================================
 # MODEL GOVERNANCE CHECKS
 # ============================================================================
 
@@ -4417,6 +5705,73 @@ def lambda_handler(event, context):
             region=region
         )
         all_findings.append(automl_network_isolation_findings)
+
+        # PR-3: Security Hub gap-closure checks (Clarify / Model Monitor job
+        # definitions, notebook platform, feature store, inference experiments)
+        logger.info("Running SageMaker notebook platform check (SageMaker.8)")
+        all_findings.append(check_sagemaker_notebook_platform(region=region))
+
+        logger.info(
+            "Running SageMaker explainability traffic encryption check (SageMaker.10)"
+        )
+        all_findings.append(
+            check_sagemaker_explainability_traffic_encryption(region=region)
+        )
+
+        logger.info(
+            "Running SageMaker data quality network isolation check (SageMaker.11)"
+        )
+        all_findings.append(
+            check_sagemaker_data_quality_network_isolation(region=region)
+        )
+
+        logger.info(
+            "Running SageMaker model bias network isolation check (SageMaker.12)"
+        )
+        all_findings.append(check_sagemaker_model_bias_network_isolation(region=region))
+
+        logger.info(
+            "Running SageMaker model quality traffic encryption check (SageMaker.13)"
+        )
+        all_findings.append(
+            check_sagemaker_model_quality_traffic_encryption(region=region)
+        )
+
+        logger.info(
+            "Running SageMaker model bias traffic encryption check (SageMaker.15)"
+        )
+        all_findings.append(check_sagemaker_model_bias_traffic_encryption(region=region))
+
+        logger.info(
+            "Running SageMaker online feature store encryption check (SageMaker.18)"
+        )
+        all_findings.append(
+            check_sagemaker_online_feature_store_encryption(region=region)
+        )
+
+        logger.info(
+            "Running SageMaker explainability network isolation check (SageMaker.20)"
+        )
+        all_findings.append(
+            check_sagemaker_explainability_network_isolation(region=region)
+        )
+
+        logger.info("Running SageMaker monitoring traffic encryption check (SageMaker.22)")
+        all_findings.append(check_sagemaker_monitoring_traffic_encryption(region=region))
+
+        logger.info(
+            "Running SageMaker inference experiment encryption check (SageMaker.23/.24)"
+        )
+        all_findings.append(
+            check_sagemaker_inference_experiment_encryption(region=region)
+        )
+
+        logger.info(
+            "Running SageMaker model quality network isolation check (SageMaker.25)"
+        )
+        all_findings.append(
+            check_sagemaker_model_quality_network_isolation(region=region)
+        )
 
         # Model Governance Checks
         logger.info("Running model approval workflow check")
