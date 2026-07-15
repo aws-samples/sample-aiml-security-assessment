@@ -804,9 +804,7 @@ def check_sagemaker_domain_and_training_job_encryption(
     these resources under a SageMaker.21 label that only covers notebook
     storage encryption.
     """
-    logger.debug(
-        "Starting check for SageMaker domain and training job data protection"
-    )
+    logger.debug("Starting check for SageMaker domain and training job data protection")
     try:
         findings = {"csv_data": []}
 
@@ -1863,9 +1861,7 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
                             if variant.get("ServerlessConfig"):
                                 continue
 
-                            initial_instance_count = variant.get(
-                                "InitialInstanceCount"
-                            )
+                            initial_instance_count = variant.get("InitialInstanceCount")
                             if initial_instance_count is None:
                                 # Not an instance-based variant (or count
                                 # unavailable); do not fabricate a zero.
@@ -3594,7 +3590,9 @@ def check_sagemaker_model_bias_network_isolation(region: str = "") -> Dict[str, 
         }
 
 
-def check_sagemaker_model_quality_traffic_encryption(region: str = "") -> Dict[str, Any]:
+def check_sagemaker_model_quality_traffic_encryption(
+    region: str = "",
+) -> Dict[str, Any]:
     """
     Check if SageMaker model quality job definitions have inter-container
     traffic encryption enabled.
@@ -3793,7 +3791,9 @@ def check_sagemaker_model_bias_traffic_encryption(region: str = "") -> Dict[str,
         }
 
 
-def check_sagemaker_explainability_network_isolation(region: str = "") -> Dict[str, Any]:
+def check_sagemaker_explainability_network_isolation(
+    region: str = "",
+) -> Dict[str, Any]:
     """
     Check if SageMaker model explainability job definitions have network
     isolation enabled.
@@ -4145,9 +4145,7 @@ def check_sagemaker_notebook_platform(region: str = "") -> Dict[str, Any]:
                         instance_details = sagemaker_client.describe_notebook_instance(
                             NotebookInstanceName=instance_name
                         )
-                        platform_identifier = instance_details.get(
-                            "PlatformIdentifier"
-                        )
+                        platform_identifier = instance_details.get("PlatformIdentifier")
 
                         if platform_identifier != supported_platform:
                             notebooks_unsupported_platform.append(
@@ -5786,7 +5784,9 @@ def lambda_handler(event, context):
         logger.info(
             "Running SageMaker model bias traffic encryption check (SageMaker.15)"
         )
-        all_findings.append(check_sagemaker_model_bias_traffic_encryption(region=region))
+        all_findings.append(
+            check_sagemaker_model_bias_traffic_encryption(region=region)
+        )
 
         logger.info(
             "Running SageMaker online feature store encryption check (SageMaker.18)"
@@ -5802,8 +5802,12 @@ def lambda_handler(event, context):
             check_sagemaker_explainability_network_isolation(region=region)
         )
 
-        logger.info("Running SageMaker monitoring traffic encryption check (SageMaker.22)")
-        all_findings.append(check_sagemaker_monitoring_traffic_encryption(region=region))
+        logger.info(
+            "Running SageMaker monitoring traffic encryption check (SageMaker.22)"
+        )
+        all_findings.append(
+            check_sagemaker_monitoring_traffic_encryption(region=region)
+        )
 
         logger.info(
             "Running SageMaker inference experiment encryption check (SageMaker.23/.24)"
