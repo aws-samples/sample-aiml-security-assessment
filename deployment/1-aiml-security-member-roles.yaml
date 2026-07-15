@@ -93,6 +93,9 @@ Resources:
                   # Agent action groups (BR-21)
                   - bedrock:ListAgentActionGroups
                   - bedrock:GetAgentActionGroup
+                  # Knowledge base data source encryption (Bedrock.1, BR-33)
+                  - bedrock:ListDataSources
+                  - bedrock:GetDataSource
                 Resource: "*"
               # Bedrock cross-account / quota / monitoring assessment
               # (BR-15 organizational guardrails, BR-22 service quotas,
@@ -121,6 +124,11 @@ Resources:
                   - bedrock-agentcore:ListPolicyEngines
                   - bedrock-agentcore:GetPolicyEngine
                   - bedrock-agentcore:GetResourcePolicy
+                  - bedrock-agentcore:ListBrowsers
+                  - bedrock-agentcore:GetBrowser
+                  # BedrockAgentCore.7 (AC-15)
+                  - bedrock-agentcore:ListCodeInterpreters
+                  - bedrock-agentcore:GetCodeInterpreter
                 Resource: "*"
               # SageMaker Assessment Permissions
               - Effect: Allow
@@ -163,6 +171,21 @@ Resources:
                   - sagemaker:ListTrials
                   - sagemaker:DescribeTrial
                   - sagemaker:ListAssociations
+                  # SageMaker.4 endpoint config instance count
+                  - sagemaker:ListEndpointConfigs
+                  - sagemaker:DescribeEndpointConfig
+                  # SageMaker.10/.20 model explainability job definitions
+                  - sagemaker:ListModelExplainabilityJobDefinitions
+                  - sagemaker:DescribeModelExplainabilityJobDefinition
+                  # SageMaker.12/.15 model bias job definitions
+                  - sagemaker:ListModelBiasJobDefinitions
+                  - sagemaker:DescribeModelBiasJobDefinition
+                  # SageMaker.13/.25 model quality job definitions
+                  - sagemaker:ListModelQualityJobDefinitions
+                  - sagemaker:DescribeModelQualityJobDefinition
+                  # SageMaker.23/.24 inference experiments
+                  - sagemaker:ListInferenceExperiments
+                  - sagemaker:DescribeInferenceExperiment
                 Resource: "*"
               # CloudTrail Permissions
               - Effect: Allow

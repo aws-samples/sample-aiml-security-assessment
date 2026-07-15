@@ -29,12 +29,25 @@ _bedrock_dir = os.path.abspath(
 if _bedrock_dir not in sys.path:
     sys.path.insert(0, _bedrock_dir)
 
-_spec = importlib.util.spec_from_file_location(
-    "bedrock_app", os.path.join(_bedrock_dir, "app.py")
-)
-bedrock_app = importlib.util.module_from_spec(_spec)
-sys.modules["bedrock_app"] = bedrock_app
-_spec.loader.exec_module(bedrock_app)
+if "bedrock_app" in sys.modules:
+    bedrock_app = sys.modules["bedrock_app"]
+else:
+    # agentcore_assessments and bedrock_assessments each define their own
+    # same-named "schema"/"severity_disposition" modules. If the AgentCore
+    # test module already ran and cached sys.modules["severity_disposition"]
+    # (or ["schema"]) with its own version, bedrock_app.py's plain
+    # `from severity_disposition import ...` / `from schema import ...`
+    # would silently bind to AgentCore's module instead of its own. Evict
+    # any stale cache entries so the import below resolves against
+    # _bedrock_dir (already at the front of sys.path).
+    sys.modules.pop("severity_disposition", None)
+    sys.modules.pop("schema", None)
+    _spec = importlib.util.spec_from_file_location(
+        "bedrock_app", os.path.join(_bedrock_dir, "app.py")
+    )
+    bedrock_app = importlib.util.module_from_spec(_spec)
+    sys.modules["bedrock_app"] = bedrock_app
+    _spec.loader.exec_module(bedrock_app)
 
 
 # ===================================================================
@@ -149,13 +162,17 @@ class TestBR02VPCEndpoints:
     def test_br02_exception_returns_error_finding(
         self, mock_footprint, mock_vpc, permission_cache_compliant
     ):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
         check = bedrock_app.check_bedrock_access_and_vpc_endpoints
         mock_vpc.side_effect = Exception("VPC check failed")
         result = check(permission_cache_compliant)
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
-        assert "Error" in findings[0]["Finding_Details"]
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+        assert "VPC check failed" in findings[0]["Finding_Details"]
 
     @patch("bedrock_app.check_bedrock_vpc_endpoints")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
@@ -265,12 +282,16 @@ class TestBR04LoggingConfiguration:
 
     @patch("boto3.client")
     def test_br04_exception_returns_error_finding(self, mock_client):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
         check = bedrock_app.check_bedrock_logging_configuration
         mock_client.side_effect = Exception("Service unavailable")
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
@@ -355,12 +376,16 @@ class TestBR05Guardrails:
 
     @patch("boto3.client")
     def test_br05_exception_returns_error_finding(self, mock_client):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
         check = bedrock_app.check_bedrock_guardrails
         mock_client.side_effect = Exception("Access denied")
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     def test_br05_schema_valid(self, mock_client):
@@ -456,12 +481,16 @@ class TestBR06CloudTrailLogging:
 
     @patch("boto3.client")
     def test_br06_exception_returns_error_finding(self, mock_client):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
         check = bedrock_app.check_bedrock_cloudtrail_logging
         mock_client.side_effect = Exception("CloudTrail error")
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
@@ -533,12 +562,16 @@ class TestBR07PromptManagement:
 
     @patch("boto3.client")
     def test_br07_exception_returns_error_finding(self, mock_client):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
         check = bedrock_app.check_bedrock_prompt_management
         mock_client.side_effect = Exception("Agent error")
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     def test_br07_list_prompts_api_error_returns_na(self, mock_client):
@@ -635,12 +668,16 @@ class TestBR08AgentRoles:
     def test_br08_exception_returns_error_finding(
         self, mock_client, empty_permission_cache
     ):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
         check = bedrock_app.check_bedrock_agent_roles
         mock_client.side_effect = Exception("Agent service error")
         result = check(empty_permission_cache)
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     def test_br08_schema_valid(self, mock_client, empty_permission_cache):
@@ -695,6 +732,9 @@ class TestBR09KBEncryption:
 
     @patch("boto3.client")
     def test_br09_access_denied_in_region_returns_na(self, mock_client):
+        # Access denied routes through COULD_NOT_ASSESS (N/A, Low), with the
+        # generic could_not_assess_row wording rather than a hand-rolled
+        # "access to Knowledge Base metadata was denied" message.
         check = bedrock_app.check_bedrock_knowledge_base_encryption
         mock_agent = MagicMock()
         mock_client.return_value = mock_agent
@@ -713,20 +753,23 @@ class TestBR09KBEncryption:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "N/A"
-        assert (
-            "access to Knowledge Base metadata was denied"
-            in findings[0]["Finding_Details"]
-        )
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+        assert "AccessDeniedException" in findings[0]["Finding_Details"]
         assert findings[0]["Region"] == "eu-west-1"
 
     @patch("boto3.client")
     def test_br09_exception_returns_error_finding(self, mock_client):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
         check = bedrock_app.check_bedrock_knowledge_base_encryption
         mock_client.side_effect = Exception("KB error")
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     def test_br09_access_denied_returns_na(self, mock_client):
@@ -743,7 +786,10 @@ class TestBR09KBEncryption:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "N/A"
-        assert findings[0]["Severity"] == "Informational"
+        # COULD_NOT_ASSESS disposition is Low, not the previous Informational
+        # (Informational is reserved for genuine NOT_APPLICABLE rows).
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     def test_br09_region_unsupported_returns_na(self, mock_client):
@@ -818,12 +864,16 @@ class TestBR10GuardrailIAMEnforcement:
     def test_br10_exception_returns_error_finding(
         self, mock_client, empty_permission_cache
     ):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
         check = bedrock_app.check_bedrock_guardrail_iam_enforcement
         mock_client.side_effect = Exception("IAM error")
         result = check(empty_permission_cache)
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     def test_br10_schema_valid(self, mock_client, empty_permission_cache):
@@ -901,12 +951,16 @@ class TestBR11CustomModelEncryption:
 
     @patch("boto3.client")
     def test_br11_exception_returns_error_finding(self, mock_client):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
         check = bedrock_app.check_bedrock_custom_model_encryption
         mock_client.side_effect = Exception("Model error")
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     def test_br11_schema_valid(self, mock_client):
@@ -1044,12 +1098,16 @@ class TestBR12InvocationLogEncryption:
 
     @patch("boto3.client")
     def test_br12_exception_returns_error_finding(self, mock_client):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
         check = bedrock_app.check_bedrock_invocation_log_encryption
         mock_client.side_effect = Exception("S3 error")
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     def test_br12_access_denied_returns_na(self, mock_client):
@@ -1074,7 +1132,10 @@ class TestBR12InvocationLogEncryption:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "N/A"
-        assert findings[0]["Severity"] == "Informational"
+        # COULD_NOT_ASSESS disposition is Low, not the previous Informational
+        # (Informational is reserved for genuine NOT_APPLICABLE rows).
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     def test_br12_schema_valid(self, mock_client):
@@ -1170,12 +1231,16 @@ class TestBR13FlowsGuardrails:
 
     @patch("boto3.client")
     def test_br13_exception_returns_error_finding(self, mock_client):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
         check = bedrock_app.check_bedrock_flows_guardrails
         mock_client.side_effect = Exception("Flow error")
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("boto3.client")
     def test_br13_schema_valid(self, mock_client):
@@ -1712,6 +1777,8 @@ class TestBR16GuardrailTier:
 
     @patch("bedrock_app.boto3.client")
     def test_br16_access_denied_returns_failed(self, mock_client):
+        # Access denied on enumeration routes through COULD_NOT_ASSESS
+        # (N/A, Low) rather than a false Failed.
         check = bedrock_app.check_bedrock_guardrail_tier
 
         bedrock_client = MagicMock()
@@ -1723,7 +1790,9 @@ class TestBR16GuardrailTier:
         result = check(region="us-east-1")
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
         assert findings[0]["Check_ID"] == "BR-16"
 
     @patch("bedrock_app.boto3.client")
@@ -1855,6 +1924,8 @@ class TestBR17CustomModelKMSEncryption:
 
     @patch("bedrock_app.boto3.client")
     def test_br17_access_denied_returns_failed(self, mock_client):
+        # Access denied on enumeration routes through COULD_NOT_ASSESS
+        # (N/A, Low) rather than a false Failed.
         check = bedrock_app.check_bedrock_custom_model_kms_encryption
 
         bedrock_client = MagicMock()
@@ -1868,7 +1939,9 @@ class TestBR17CustomModelKMSEncryption:
         result = check(region="us-east-1")
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
         assert findings[0]["Check_ID"] == "BR-17"
 
     def test_br17_schema_valid(self):
@@ -1999,6 +2072,8 @@ class TestBR18ModelEvaluations:
 
     @patch("bedrock_app.boto3.client")
     def test_br18_access_denied_returns_failed(self, mock_client):
+        # Access denied on enumeration routes through COULD_NOT_ASSESS
+        # (N/A, Low) rather than a false Failed.
         check = bedrock_app.check_bedrock_model_evaluations
 
         bedrock_client = MagicMock()
@@ -2010,7 +2085,9 @@ class TestBR18ModelEvaluations:
         result = check(region="us-east-1")
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
         assert findings[0]["Check_ID"] == "BR-18"
 
     @patch("bedrock_app.boto3.client")
@@ -2715,6 +2792,8 @@ class TestBR26GuardrailPIIFilters:
 
     @patch("bedrock_app.boto3.client")
     def test_br26_access_denied_returns_failed(self, mock_client):
+        # Access denied on enumeration routes through COULD_NOT_ASSESS
+        # (N/A, Low) rather than a false Failed.
         check = bedrock_app.check_bedrock_guardrail_pii_filters
         bedrock_client = MagicMock()
         bedrock_client.list_guardrails.side_effect = ClientError(
@@ -2724,7 +2803,9 @@ class TestBR26GuardrailPIIFilters:
 
         result = check(region="us-east-1")
         findings = extract_csv_data(result)
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
         assert findings[0]["Check_ID"] == "BR-26"
 
     def test_br26_schema_valid(self):
@@ -3001,6 +3082,8 @@ class TestBR30ImportedModelKMS:
 
     @patch("bedrock_app.boto3.client")
     def test_br30_access_denied_returns_failed(self, mock_client):
+        # Access denied on enumeration routes through COULD_NOT_ASSESS
+        # (N/A, Low) rather than a false Failed.
         check = bedrock_app.check_bedrock_imported_model_kms_encryption
         mock_client.return_value = self._bedrock_client(
             [],
@@ -3011,7 +3094,9 @@ class TestBR30ImportedModelKMS:
 
         result = check(region="us-east-1")
         findings = extract_csv_data(result)
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
         assert findings[0]["Check_ID"] == "BR-30"
 
     @patch("bedrock_app.boto3.client")
@@ -3297,6 +3382,231 @@ class TestBR22ServiceQuotas:
         assert findings[0]["Check_ID"] == "BR-22"
         assert findings[0]["Status"] == "Passed"
         assert "custom throttling quotas" in findings[0]["Finding_Details"]
+
+
+class TestBR33DataSourceEncryption:
+    """BR-33: Verify Knowledge Base data sources use customer-managed KMS keys.
+
+    Maps to AWS Security Hub control Bedrock.1 (Medium).
+    """
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_no_knowledge_bases_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-33"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_data_source_with_cmk_returns_passed(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.return_value = {
+            "dataSourceSummaries": [{"dataSourceId": "ds1", "name": "DS1"}]
+        }
+        agent_client.get_data_source.return_value = {
+            "dataSource": {
+                "serverSideEncryptionConfiguration": {
+                    "kmsKeyArn": "arn:aws:kms:us-east-1:123:key/abc"
+                }
+            }
+        }
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        passed = [f for f in findings if f["Status"] == "Passed"]
+        assert len(passed) == 1
+        assert passed[0]["Check_ID"] == "BR-33"
+        assert passed[0]["Severity"] == "Medium"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_data_source_without_cmk_returns_failed(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.return_value = {
+            "dataSourceSummaries": [{"dataSourceId": "ds1", "name": "DS1"}]
+        }
+        agent_client.get_data_source.return_value = {
+            "dataSource": {"serverSideEncryptionConfiguration": {}}
+        }
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        failed = [f for f in findings if f["Status"] == "Failed"]
+        assert len(failed) == 1
+        assert failed[0]["Check_ID"] == "BR-33"
+        assert failed[0]["Severity"] == "Medium"
+        assert "DS1" in failed[0]["Finding_Details"]
+        assert "KB1" in failed[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_kb_with_no_data_sources_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.return_value = {"dataSourceSummaries": []}
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert "No knowledge base data sources found" in findings[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_list_data_sources_access_denied_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+            "ListDataSources",
+        )
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        na = [f for f in findings if f["Status"] == "N/A"]
+        assert len(na) == 1
+        assert na[0]["Check_ID"] == "BR-33"
+        assert "KB1" in na[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_get_data_source_access_denied_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.return_value = {
+            "dataSourceSummaries": [{"dataSourceId": "ds1", "name": "DS1"}]
+        }
+        agent_client.get_data_source.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+            "GetDataSource",
+        )
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        na = [f for f in findings if f["Status"] == "N/A"]
+        assert len(na) == 1
+        assert na[0]["Check_ID"] == "BR-33"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_region_unsupported_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "UnknownOperationException",
+                    "Message": "Unknown operation ListKnowledgeBases",
+                }
+            },
+            "ListKnowledgeBases",
+        )
+        mock_client.return_value = agent_client
+
+        result = check(region="ap-southeast-3")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert "not available" in findings[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_list_knowledge_bases_access_denied_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+            "ListKnowledgeBases",
+        )
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-33"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_mixed_data_sources_with_and_without_cmk(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {
+            "knowledgeBaseSummaries": [{"knowledgeBaseId": "kb1", "name": "KB1"}]
+        }
+        agent_client.list_data_sources.return_value = {
+            "dataSourceSummaries": [
+                {"dataSourceId": "ds1", "name": "DS1"},
+                {"dataSourceId": "ds2", "name": "DS2"},
+            ]
+        }
+
+        def get_data_source_side_effect(knowledgeBaseId, dataSourceId):
+            if dataSourceId == "ds1":
+                return {
+                    "dataSource": {
+                        "serverSideEncryptionConfiguration": {
+                            "kmsKeyArn": "arn:aws:kms:us-east-1:123:key/abc"
+                        }
+                    }
+                }
+            return {"dataSource": {"serverSideEncryptionConfiguration": {}}}
+
+        agent_client.get_data_source.side_effect = get_data_source_side_effect
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        passed = [f for f in findings if f["Status"] == "Passed"]
+        failed = [f for f in findings if f["Status"] == "Failed"]
+        assert len(passed) == 1
+        assert len(failed) == 1
+        assert "DS2" in failed[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_schema_valid(self, mock_client):
+        check = bedrock_app.check_bedrock_data_source_encryption
+        agent_client = MagicMock()
+        agent_client.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
+        mock_client.return_value = agent_client
+
+        result = check(region="us-east-1")
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_exception_returns_error_finding(self, mock_client):
+        # An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        # rather than a false Failed.
+        check = bedrock_app.check_bedrock_data_source_encryption
+        mock_client.side_effect = Exception("Bedrock error")
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+        assert findings[0]["Check_ID"] == "BR-33"
 
 
 class TestAgenticBedrockMapping:

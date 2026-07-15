@@ -34,6 +34,71 @@ AGENTIC_ICON_SMALL = (
     '<rect fill="#0F766E" width="80" height="80"/>'
     '<path fill="#FFF" d="M40 10 64 20v16c0 15-9.8 27.8-24 34-14.2-6.2-24-19-24-34V20l24-10zm0 8-16 6.7V36c0 10.4 6.1 19.9 16 25 9.9-5.1 16-14.6 16-25V24.7L40 18zm-8 17a8 8 0 1 1 14.9 4.1L52 48h-8l-3.2-5.3h-1.6L36 48h-8l5.1-8.9A8 8 0 0 1 32 35z"/></svg></span>'
 )
+# ---------------------------------------------------------------------------
+# Security Hub control mapping (gap-analysis PR-1, "Security Hub Control
+# Mapping" design, Option A).
+#
+# Repo-local Check_IDs (BR-xx/SM-xx/AC-xx) are NOT AWS Security Hub control
+# IDs, and one Check_ID can map to more than one Security Hub control (e.g.
+# SM-14 -> SageMaker.16 and SageMaker.19). This static lookup is applied at
+# the report/consolidation layer (shared by both the Lambda-based
+# single-account report and the CodeBuild multi-account consolidator via this
+# module) so the mapping travels with every finding without requiring a
+# schema change to the five service Finding models. Check_IDs with no
+# Security Hub equivalent (repo-specific hardening checks) are intentionally
+# absent and render as "-" (repo-only) in the report.
+# ---------------------------------------------------------------------------
+SECURITY_HUB_CONTROL_MAP: Dict[str, List[str]] = {
+    # Bedrock
+    "BR-33": ["Bedrock.1"],
+    # AgentCore
+    "AC-01": ["BedrockAgentCore.1"],
+    "AC-14": ["BedrockAgentCore.5"],
+    "AC-06": ["BedrockAgentCore.6"],
+    "AC-15": ["BedrockAgentCore.7"],
+    "AC-07": ["BedrockAgentCore.3"],
+    "AC-12": ["BedrockAgentCore.4"],
+    # AG-24 evaluates gateway inbound authorization (authorizerType /
+    # policy-engine enforcement); it is intentionally richer than the
+    # binary BedrockAgentCore.2 control but implements the same control
+    # ("Covered (reconcile)" in the gap analysis coverage matrix).
+    "AG-24": ["BedrockAgentCore.2"],
+    # SageMaker
+    "SM-01": ["SageMaker.1"],
+    "SM-02": ["SageMaker.2"],
+    "SM-09": ["SageMaker.3"],
+    "SM-12": ["SageMaker.4"],
+    "SM-11": ["SageMaker.5"],
+    "SM-28": ["SageMaker.8"],
+    "SM-16": ["SageMaker.9"],
+    "SM-29": ["SageMaker.10"],
+    "SM-30": ["SageMaker.11"],
+    "SM-31": ["SageMaker.12"],
+    "SM-32": ["SageMaker.13"],
+    "SM-13": ["SageMaker.14"],
+    "SM-33": ["SageMaker.15"],
+    # SM-14 covers both the primary-container control (.16) and the
+    # multi-container inference-pipeline control (.19) — the one-to-many
+    # case this design exists for.
+    "SM-14": ["SageMaker.16", "SageMaker.19"],
+    "SM-15": ["SageMaker.17"],
+    "SM-34": ["SageMaker.18"],
+    "SM-35": ["SageMaker.20"],
+    "SM-03": ["SageMaker.21"],
+    "SM-36": ["SageMaker.22"],
+    "SM-37": ["SageMaker.23"],
+    "SM-38": ["SageMaker.24"],
+    "SM-39": ["SageMaker.25"],
+}
+
+
+def security_hub_controls(check_id: str) -> str:
+    """Return a comma-separated Security Hub control list for a Check_ID, or
+    "" when the check has no Security Hub equivalent (repo-specific check)."""
+    controls = SECURITY_HUB_CONTROL_MAP.get((check_id or "").upper(), [])
+    return ", ".join(controls)
+
+
 GENAI_LENS_URL = (
     "https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/"
     "generative-ai-lens.html"
@@ -77,6 +142,10 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
         details = finding.get("details", finding.get("Finding_Details", ""))
         resolution = finding.get("resolution", finding.get("Resolution", ""))
         ref = finding.get("reference", finding.get("Reference", ""))
+        sh_control = finding.get(
+            "security_hub_control", finding.get("SecurityHub_Control", "")
+        )
+        sh_control_display = sh_control if sh_control else "-"
 
         if ref and ref.strip() and ref.strip() != "-":
             ref_html = f'''<a href="{ref}" target="_blank" class="reference-btn" title="View AWS Documentation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>'''
@@ -98,6 +167,7 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
             <td><code>{account_id}</code></td>
             <td><code>{region}</code></td>
             <td><code>{check_id}</code></td>
+            <td><code>{sh_control_display}</code></td>
             <td class="finding-summary">
                 <div class="col-domain">{finding_name}</div>
                 <details class="finding-more">
@@ -117,7 +187,7 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
     return (
         "\n".join(rows)
         if rows
-        else '<tr><td colspan="6" style="text-align: center; padding: 40px; color: var(--text-3);">No findings to display</td></tr>'
+        else '<tr><td colspan="7" style="text-align: center; padding: 40px; color: var(--text-3);">No findings to display</td></tr>'
     )
 
 
@@ -272,12 +342,13 @@ def get_html_template() -> str:
         .alert-category {{ font-size: 12px; color: var(--text-2); margin-top: 2px; }}
         .table-wrap {{ overflow-x: auto; max-height: 900px; overflow-y: auto; }}
         table {{ width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; min-width: 1000px; }}
-        #findingsTable th:nth-child(1) {{ width: 13%; }}
-        #findingsTable th:nth-child(2) {{ width: 11%; }}
-        #findingsTable th:nth-child(3) {{ width: 8%; }}
-        #findingsTable th:nth-child(4) {{ width: 46%; }}
-        #findingsTable th:nth-child(5) {{ width: 11%; }}
-        #findingsTable th:nth-child(6) {{ width: 11%; }}
+        #findingsTable th:nth-child(1) {{ width: 12%; }}
+        #findingsTable th:nth-child(2) {{ width: 10%; }}
+        #findingsTable th:nth-child(3) {{ width: 7%; }}
+        #findingsTable th:nth-child(4) {{ width: 11%; }}
+        #findingsTable th:nth-child(5) {{ width: 40%; }}
+        #findingsTable th:nth-child(6) {{ width: 10%; }}
+        #findingsTable th:nth-child(7) {{ width: 10%; }}
         #findingsTable.single-account-report {{ min-width: 780px; }}
         #findingsTable.single-account-report th:nth-child(1),
         #findingsTable.single-account-report td:nth-child(1) {{ display: none; }}
@@ -406,6 +477,7 @@ def get_html_template() -> str:
                     <div class="metric danger"><div class="metric-label">High Severity</div><div class="metric-value">{high_passed}/{high_count}</div><div class="metric-sub">{high_pass_rate}% passed · Immediate action required</div></div>
                     <div class="metric warning"><div class="metric-label">Medium Severity</div><div class="metric-value">{medium_passed}/{medium_count}</div><div class="metric-sub">{medium_pass_rate}% passed · Should be addressed</div></div>
                     <div class="metric highlight"><div class="metric-label">Low Severity</div><div class="metric-value">{low_passed}/{low_count}</div><div class="metric-sub">{low_pass_rate}% passed · Best practices</div></div>
+                    <div class="metric warning"><div class="metric-label">Unassessed Checks</div><div class="metric-value">{unassessed_count}</div><div class="metric-sub">COULD NOT ASSESS · Fix assessment-role access and re-run</div></div>
                 </div>
                 <div class="card"><div class="card-header"><h3>Priority Recommendations</h3></div><div class="card-body"><div class="alerts">{alerts}</div></div></div>
                 <div class="card">
@@ -414,12 +486,13 @@ def get_html_template() -> str:
                         <table style="min-width: 100%; table-layout: fixed;">
                             <thead><tr><th style="width: 12%;">Severity</th><th style="width: 44%;">Meaning</th><th style="width: 44%;">Recommended Action</th></tr></thead>
                             <tbody>
-                                <tr><td style="text-align: center;"><span class="severity high">High</span></td><td class="finding-details">Direct security risk - IAM/access control gaps, missing audit trails, guardrail bypasses that could lead to unauthorized access or data exposure</td><td class="resolution-text">Remediate within <strong>7 days</strong></td></tr>
-                                <tr><td style="text-align: center;"><span class="severity medium">Medium</span></td><td class="finding-details">Defense-in-depth gaps - encryption, logging, or configuration issues that reduce security posture</td><td class="resolution-text">Remediate within <strong>30 days</strong></td></tr>
-                                <tr><td style="text-align: center;"><span class="severity low">Low</span></td><td class="finding-details">Best practice deviations - optimization opportunities that improve security hygiene</td><td class="resolution-text">Remediate within <strong>90 days</strong></td></tr>
-                                <tr><td style="text-align: center;"><span class="severity na">Informational</span></td><td class="finding-details">No resources found or advisory recommendations - check does not apply or suggests optional improvements</td><td class="resolution-text">No action required</td></tr>
+                                <tr><td style="text-align: center;"><span class="severity high">High</span></td><td class="finding-details">Control whose absence can directly enable a breach - sensitive-data exposure, guardrail bypass, unauthorized or unsafe automated action, or a regulatory violation</td><td class="resolution-text">Remediate failed findings within <strong>7 days</strong></td></tr>
+                                <tr><td style="text-align: center;"><span class="severity medium">Medium</span></td><td class="finding-details">Control whose absence materially weakens security posture, oversight, or assurance - encryption, monitoring, or governance gaps that are not a breach by themselves</td><td class="resolution-text">Remediate failed findings within <strong>30 days</strong></td></tr>
+                                <tr><td style="text-align: center;"><span class="severity low">Low</span></td><td class="finding-details">Residual-risk or observability controls with strong compensating alternatives. Also assigned to "COULD NOT ASSESS" rows, which mark checks that could not run (for example, a missing IAM permission)</td><td class="resolution-text">Remediate failed findings within <strong>90 days</strong>; for COULD NOT ASSESS rows, fix assessment-role access and re-run</td></tr>
+                                <tr><td style="text-align: center;"><span class="severity na">Informational</span></td><td class="finding-details">Advisory checks that no AWS API can verify, and N/A rows where no resources exist to assess</td><td class="resolution-text">No action required</td></tr>
                             </tbody>
                         </table>
+                        <p style="padding: 12px 16px; margin: 0; font-size: 12px; color: var(--text-2); line-height: 1.6;">Severity reflects the inherent risk of the control (Likelihood &times; Impact) and is the same on a check's Passed and Failed rows. Pass rates count only Passed and Failed rows; N/A rows (not applicable, advisory, and COULD NOT ASSESS) are excluded from pass-rate denominators and COULD NOT ASSESS rows are surfaced in the Unassessed Checks metric instead.</p>
                     </div>
                 </div>
             </section>
@@ -454,7 +527,7 @@ def get_html_template() -> str:
                     <div class="filter-group"><label>Status</label><select id="statusFilter"><option value="">All Statuses</option><option value="failed" selected>Failed</option><option value="passed">Passed</option><option value="n/a">N/A</option></select></div>
                     <button class="btn btn-reset" id="resetFilters"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>
                 </div>
-                <div class="card"><div class="table-wrap"><table id="findingsTable" class="{findings_table_class}"><thead><tr><th class="sortable" data-sort="account">Account ID</th><th class="sortable" data-sort="region">Region</th><th class="sortable" data-sort="checkId">Check ID</th><th class="sortable" data-sort="finding">Finding</th><th class="sortable" data-sort="severity">Severity</th><th class="sortable" data-sort="status">Status</th></tr></thead><tbody>{all_rows}</tbody></table></div></div>
+                <div class="card"><div class="table-wrap"><table id="findingsTable" class="{findings_table_class}"><thead><tr><th class="sortable" data-sort="account">Account ID</th><th class="sortable" data-sort="region">Region</th><th class="sortable" data-sort="checkId">Check ID</th><th class="sortable" data-sort="shControl">Security Hub Control</th><th class="sortable" data-sort="finding">Finding</th><th class="sortable" data-sort="severity">Severity</th><th class="sortable" data-sort="status">Status</th></tr></thead><tbody>{all_rows}</tbody></table></div></div>
             </section>
             <section id="bedrock" class="section">
                 <div class="section-title"><span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" transform="translate(12,12)" d="M52,26.999C50.897,26.999 50,26.103 50,25 50,23.897 50.897,23 52,23 53.103,23 54,23.897 54,25 54,26.103 53.103,26.999 52,26.999L52,26.999ZM20.113,53.908L16.865,52.014 23.53,47.848 22.47,46.152 14.913,50.875 9,47.426 9,38.535 14.555,34.832 13.445,33.168 7.959,36.825 2,33.42 2,28.58 8.496,24.868 7.504,23.132 2,26.277 2,22.58 8,19.152 14,22.58 14,26.434 9.485,29.143 10.515,30.857 15,28.166 19.485,30.857 20.515,29.143 16,26.434 16,22.535 21.555,18.832C21.833,18.646 22,18.334 22,18L22,11 20,11 20,17.465 14.959,20.825 9,17.42 9,8.574 14,5.658 14,14 16,14 16,4.491 20.113,2.092 28,4.721 28,33.434 13.485,42.143 14.515,43.857 28,35.766 28,51.279 20.113,53.908ZM50,38C50,39.103 49.103,40 48,40 46.897,40 46,39.103 46,38 46,36.897 46.897,36 48,36 49.103,36 50,36.897 50,38L50,38ZM40,48C40,49.103 39.103,50 38,50 36.897,50 36,49.103 36,48 36,46.897 36.897,46 38,46 39.103,46 40,46.897 40,48L40,48ZM39,8C39,6.897 39.897,6 41,6 42.103,6 43,6.897 43,8 43,9.103 42.103,10 41,10 39.897,10 39,9.103 39,8L39,8ZM52,21C50.141,21 48.589,22.28 48.142,24L30,24 30,19 41,19C41.553,19 42,18.552 42,18L42,11.858C43.72,11.411 45,9.858 45,8 45,5.794 43.206,4 41,4 38.794,4 37,5.794 37,8 37,9.858 38.28,11.411 40,11.858L40,17 30,17 30,4C30,3.569 29.725,3.188 29.316,3.051L20.316,0.051C20.042,-0.039 19.744,-0.009 19.496,0.136L7.496,7.136C7.188,7.315 7,7.645 7,8L7,17.42 0.504,21.132C0.192,21.31 0,21.641 0,22L0,34C0,34.359 0.192,34.69 0.504,34.868L7,38.58 7,48C7,48.355 7.188,48.685 7.496,48.864L19.496,55.864C19.65,55.954 19.825,56 20,56 20.106,56 20.213,55.983 20.316,55.949L29.316,52.949C29.725,52.812 30,52.431 30,52L30,40 37,40 37,44.142C35.28,44.589 34,46.142 34,48 34,50.206 35.794,52 38,52 40.206,52 42,50.206 42,48 42,46.142 40.72,44.589 39,44.142L39,39C39,38.448 38.553,38 38,38L30,38 30,33 42.5,33 44.638,35.85C44.239,36.472 44,37.207 44,38 44,40.206 45.794,42 48,42 50.206,42 52,40.206 52,38 52,35.794 50.206,34 48,34 47.316,34 46.682,34.188 46.119,34.492L43.8,31.4C43.611,31.148 43.314,31 43,31L30,31 30,26 48.142,26C48.589,27.72 50.141,29 52,29 54.206,29 56,27.206 56,25 56,22.794 54.206,21 52,21L52,21Z"/></svg></span>Amazon Bedrock Findings</div>
@@ -596,6 +669,10 @@ def get_html_template() -> str:
                             aVal = a.querySelector('td:nth-child(3) code')?.textContent || '';
                             bVal = b.querySelector('td:nth-child(3) code')?.textContent || '';
                             break;
+                        case 'shControl':
+                            aVal = a.querySelector('td:nth-child(4) code')?.textContent || '';
+                            bVal = b.querySelector('td:nth-child(4) code')?.textContent || '';
+                            break;
                         case 'finding':
                             aVal = a.querySelector('.col-domain')?.textContent.toLowerCase() || '';
                             bVal = b.querySelector('.col-domain')?.textContent.toLowerCase() || '';
@@ -655,47 +732,61 @@ def generate_html_report(
         f.get("check_id", f.get("Check_ID", "")) for f in all_findings
     )
     security_checks = len(unique_check_ids)  # Unique security controls evaluated
+
+    def _severity(f: Dict) -> str:
+        return f.get("severity", f.get("Severity", "")).lower()
+
+    def _status(f: Dict) -> str:
+        return f.get("status", f.get("Status", "")).lower()
+
+    # Pass-rate metrics count only SCORED rows (Status Passed or Failed).
+    # N/A-status rows are excluded from every denominator: a COULD NOT ASSESS
+    # row (Severity=Low, Status=N/A) or a soft-warning row (Status=N/A) marks a
+    # check that was not (or could not be) assessed; counting it as a
+    # never-passing denominator entry would silently depress the pass rate and
+    # misrepresent posture. This matches the severity methodology
+    # (docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md §7: N/A rows are
+    # excluded from the pass-rate denominator).
+    _SCORED_STATUSES = {"passed", "failed"}
     high_count = sum(
         1
         for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "high"
+        if _severity(f) == "high" and _status(f) in _SCORED_STATUSES
     )
     medium_count = sum(
         1
         for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "medium"
+        if _severity(f) == "medium" and _status(f) in _SCORED_STATUSES
     )
     low_count = sum(
         1
         for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "low"
+        if _severity(f) == "low" and _status(f) in _SCORED_STATUSES
     )
     scored_findings = high_count + medium_count + low_count
     actionable_findings = sum(
         1
         for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() in {"high", "medium", "low"}
-        and f.get("status", f.get("Status", "")).lower() == "failed"
+        if _severity(f) in {"high", "medium", "low"} and _status(f) == "failed"
+    )
+    # Checks that could not run (missing IAM permission, unsupported region,
+    # outdated SDK). Surfaced as a dedicated metric so an assessment gap is
+    # never mistaken for a clean result.
+    unassessed_count = sum(
+        1
+        for f in all_findings
+        if f.get("finding", f.get("Finding", "")).startswith("COULD NOT ASSESS")
     )
 
     # Severity-specific pass rates
     high_passed = sum(
-        1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "high"
-        and f.get("status", f.get("Status", "")).lower() == "passed"
+        1 for f in all_findings if _severity(f) == "high" and _status(f) == "passed"
     )
     medium_passed = sum(
-        1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "medium"
-        and f.get("status", f.get("Status", "")).lower() == "passed"
+        1 for f in all_findings if _severity(f) == "medium" and _status(f) == "passed"
     )
     low_passed = sum(
-        1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "low"
-        and f.get("status", f.get("Status", "")).lower() == "passed"
+        1 for f in all_findings if _severity(f) == "low" and _status(f) == "passed"
     )
     passed_count = high_passed + medium_passed + low_passed
     pass_rate = (
@@ -1099,6 +1190,7 @@ def generate_html_report(
         total_findings=total_findings,
         findings_sub=findings_sub,
         actionable_findings=actionable_findings,
+        unassessed_count=unassessed_count,
         scored_findings=scored_findings,
         total_rows=total_findings,
         high_count=high_count,

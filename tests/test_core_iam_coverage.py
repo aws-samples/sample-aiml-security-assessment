@@ -20,6 +20,8 @@ _SECTION_CHECKS = [
             "bedrock:ListImportedModels",  # BR-30
             "bedrock:GetImportedModel",  # BR-30
             "bedrock:ListModelInvocationJobs",  # BR-31
+            "bedrock:ListDataSources",  # Bedrock.1 (BR-33)
+            "bedrock:GetDataSource",  # Bedrock.1 (BR-33)
             "servicequotas:ListServiceQuotas",  # BR-22
             "servicequotas:GetServiceQuota",  # BR-22
             "servicequotas:GetAWSDefaultServiceQuota",  # BR-22
@@ -48,6 +50,8 @@ _SECTION_CHECKS = [
             "bedrock:ListImportedModels",  # BR-30
             "bedrock:GetImportedModel",  # BR-30
             "bedrock:ListModelInvocationJobs",  # BR-31
+            "bedrock:ListDataSources",  # Bedrock.1 (BR-33)
+            "bedrock:GetDataSource",  # Bedrock.1 (BR-33)
             "servicequotas:ListServiceQuotas",  # BR-22
             "servicequotas:GetServiceQuota",  # BR-22
             "servicequotas:GetAWSDefaultServiceQuota",  # BR-22

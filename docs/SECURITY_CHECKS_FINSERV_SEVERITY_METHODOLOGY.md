@@ -1,9 +1,49 @@
 # FinServ GenAI Check Severity Methodology
 
-**Status:** Proposed (Round 3). This document is the authoritative reference for how every
-FinServ (`FS-`) check is assigned a severity. It answers reviewer Finding 6 ("How are the priorities of the findings determined?") with a concrete reproducible, industry- and AWS-aligned formula — not per-check intuition.
+**Status:** Adopted for FinServ. Implemented in `finserv_assessments/app.py` (`SEVERITY_REGISTER`,
+`_SEVERITY_MATRIX`, `_DISPOSITION_SEVERITY`, `_could_not_assess_row`) and enforced by the
+drift-guard test suite `finserv_tests/test_severity_register.py`. This document is the
+authoritative reference for how every FinServ (`FS-`) check is assigned a severity. It answers reviewer Finding 6 ("How are the priorities of the findings determined?") with a concrete reproducible, industry- and AWS-aligned formula — not per-check intuition.
 
-> Scope note: today the FinServ checks and the upstream Bedrock/SageMaker/AgentCore checks all use ad-hoc severities with **no documented methodology** (verified by inspection — the upstream `app.py` files hardcode `severity="High"|"Medium"|...` with no rationale and no rubric doc). This methodology is introduced for the FinServ checks first and is written so it can later be adopted tool-wide.
+**Tool-wide adoption status (Bedrock/AgentCore/SageMaker): COMPLETE.** Each of the three general
+assessment modules now has its own `severity_disposition.py` sibling module (mirroring the
+per-module duplication already established for `schema.py`) implementing the same
+`_DISPOSITION_SEVERITY` rules and a `could_not_assess_row()` helper as FinServ's
+`_could_not_assess_row`:
+
+- `agentcore_assessments/severity_disposition.py` — `SEVERITY_REGISTER` covering AC-00..AC-15 and
+  AG-24..27 (46 finding-name entries); enum-based (`SeverityEnum`/`StatusEnum`) to match
+  `agentcore_assessments/app.py`'s existing `create_finding` call convention.
+- `bedrock_assessments/severity_disposition.py` — `SEVERITY_REGISTER` covering all 34 BR- checks
+  (45 finding-name entries); string-based (`severity="Low"`) to match `bedrock_assessments/app.py`'s
+  convention.
+- `sagemaker_assessments/severity_disposition.py` — `SEVERITY_REGISTER` covering all 39 SM- checks;
+  string-based, same pattern as Bedrock.
+
+Every outer `except Exception` in all three modules' check functions (and both `lambda_handler`
+loops in AgentCore) now routes through `could_not_assess_row()` instead of fabricating a
+`High`/`Failed` result. Inner enumeration failures that were previously silently swallowed into a
+false "no resources found" `N/A` (or, in a few SageMaker/Bedrock cases, a fabricated
+`High`/`Medium` "check error" issue appended alongside real findings) were converted to either
+re-raise into the outer handler or call `could_not_assess_row()` directly. A dedicated drift-guard
+test file per module (`tests/test_agentcore_severity_register.py`,
+`tests/test_bedrock_severity_register.py`, `tests/test_sagemaker_severity_register.py`) mirrors
+`finserv_tests/test_severity_register.py`: it bidirectionally scans every static
+`finding_name="..."` literal in that module's `app.py` against its `SEVERITY_REGISTER` so a rename
+or a new check without a register entry fails CI, and asserts `could_not_assess_row()` always
+returns `Severity=Low`, `Status=N/A`.
+
+A single, code-shared `severity_disposition.py`/`SEVERITY_REGISTER` module across all four
+services (rather than one sibling file per module, each duplicating the same shape) was
+considered and rejected for this round — it would require a Lambda-layer restructuring that the
+existing `schema.py` duplication precedent explicitly avoids. The per-module file is the
+established pattern in this repo.
+
+> Scope note: previously the FinServ checks and the upstream Bedrock/SageMaker/AgentCore checks
+> all used ad-hoc severities with **no documented methodology** (verified by inspection — the
+> upstream `app.py` files hardcoded `severity="High"|"Medium"|...` with no rationale and no rubric
+> doc). This methodology was introduced for the FinServ checks first, and has now been adopted
+> tool-wide per the status above.
 
 ---
 
@@ -137,7 +177,7 @@ The authoritative per-finding assignments are in
 | **FS-01 (Regional WAF)** | WAF Web ACL present | **2** | **2** | Impact Medium: no WAF → exposed to abusive callers / cost exhaustion, but API Gateway usage-plan throttling (FS-02) is a compensating control and there is no direct breach. Likelihood Medium: common but mitigated by throttling. | **Medium** |
 | **FS-43-style (PII in logs / data exposure)** | Sensitive-data masking | **3** | **2** | Impact High: PII exposure = regulatory breach. Likelihood Medium: requires logging misconfig. | **High** |
 | **FS-58 (output schema validation)** | App-layer validation | — | — | No AWS API can verify it → advisory. | **Informational** (advisory) |
-| **FS-27 ARC (no policies)** | Automated Reasoning policy present | **2** | **1** | Impact Medium: ARC adds formal verification of factual claims; its absence leaves grounding-only assurance. Likelihood Low: ARC is an advanced, rarely-adopted control; contextual grounding (FS-27 grounding) compensates. | **Low/Medium** (confirm in register) |
+| **FS-27 ARC (no policies)** | Automated Reasoning policy present | **2** | **2** | Impact Medium: ARC adds formal verification of factual claims; its absence leaves grounding-only assurance. Likelihood Medium: unverified factual claims occur under common operating conditions; contextual grounding (FS-27 grounding) partially compensates but is threshold-based, not formal verification. | **Medium** (matches register) |
 
 ---
 
@@ -174,5 +214,14 @@ The matrix has a Critical-eligible cell (I=High, L=High). Two paths:
 
 ## 7. How this changes the report (expected, document for reviewers)
 
-Downgrading FS-01 Shield from High→Low (and any other audit-driven changes) **moves those findings into the Low band, which still counts toward the pass-rate denominator** (only `Informational`/`N/A` are excluded — Round-2 behavior). So pass rates and the High-severity count will shift; this is
+Downgrading FS-01 Shield from High→Low (and any other audit-driven changes) **moves those findings into the Low band, which still counts toward the pass-rate denominator when the row is scored (Passed/Failed)**. So pass rates and the High-severity count will shift; this is
 intended and must be called out in the PR description with before/after numbers so reviewers do not mistake it for a new regression.
+
+**Pass-rate scoring rule (enforced by the report template):** pass-rate denominators count
+only rows with `Status` of `Passed` or `Failed`. Every `N/A`-status row is excluded from the
+denominators regardless of its severity label — that covers `NOT_APPLICABLE` and `ADVISORY`
+rows (Informational), `COULD_NOT_ASSESS` rows (Low), and the FS-03 `SOFT_WARNING` row
+(Medium). A `COULD_NOT_ASSESS` row therefore never silently depresses the pass rate; it is
+surfaced instead in the report's dedicated **Unassessed Checks** metric, which prompts the
+customer to fix assessment-role access and re-run. This keeps the §3.4 promise that
+"unknown state" is visible without being scored as a failure.

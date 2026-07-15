@@ -106,6 +106,34 @@ def _empty_findings(check_name: str) -> Dict[str, Any]:
     return {"check_name": check_name, "status": "PASS", "details": "", "csv_data": []}
 
 
+# Every Lambda function this assessment tool deploys for itself uses one of
+# these name prefixes (see `FunctionName: !Sub 'aiml-security-${AWS::StackName}-...'`
+# in template.yaml / template-multi-account.yaml, which fixes "aiml-security-" as
+# a literal prefix regardless of the user's chosen stack name; "aiml-sec-" is
+# kept as an additional prefix to match the defensive IAM resource patterns in
+# deployment/aiml-security-single-account.yaml).
+_TOOL_OWN_FUNCTION_PREFIXES = ("aiml-security-", "aiml-sec-")
+
+
+def _is_tool_own_infrastructure(function_name: str) -> bool:
+    """Return True if function_name is one of this assessment tool's own
+    deployed Lambda functions (ResolveRegions, CleanupBucket,
+    IAMPermissionCaching, GenerateReport, BedrockAssessment,
+    SagemakerAssessment, AgentCoreAssessment, FinServAssessment).
+
+    Several checks in this module select "agent-related" Lambda functions via
+    broad keyword substrings such as "agent", "bedrock", or "aiml" against
+    FunctionName. Because this tool's own Lambdas are literally named
+    "aiml-security-<stack>-BedrockAssessment", "aiml-security-<stack>-
+    AgentCoreAssessment", etc., those keyword checks always matched the
+    tool's own infrastructure in addition to (or instead of) any genuine
+    customer-deployed agent/Bedrock Lambda functions — causing the tool to
+    flag itself. Callers should filter candidate functions through this
+    helper before applying keyword matching.
+    """
+    return function_name.lower().startswith(_TOOL_OWN_FUNCTION_PREFIXES)
+
+
 def _bucket_name_from_arn(bucket_arn: str) -> str:
     """Extract the bucket name from an S3 bucket ARN (arn:aws:s3:::name).
 
@@ -614,11 +642,13 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "No Guardrails With Word Filters": "Medium",
     "Guardrail Word Filters Configured": "Medium",
     # --- FS-39 (bias = High) ---
+    "No SageMaker Endpoints — Bias Monitoring Not Applicable": "Informational",
     "No SageMaker Clarify Bias Monitoring": "High",
     "SageMaker Clarify Bias Monitoring Active": "High",
     # --- FS-40 (advisory) ---
     "ADVISORY: Bias Dataset Coverage — Manual Review Required": "Informational",
     # --- FS-41 (explainability = High) ---
+    "No SageMaker Endpoints — Explainability Monitoring Not Applicable": "Informational",
     "No SageMaker Clarify Explainability Monitoring": "High",
     "SageMaker Clarify Explainability Active": "High",
     # --- FS-42 ---
@@ -649,6 +679,7 @@ SEVERITY_REGISTER: Dict[str, str] = {
     # --- FS-49 (advisory) ---
     "ADVISORY: Hallucination Disclaimer — Manual Review Required": "Informational",
     # --- FS-50 (relevance grounding = Medium) ---
+    "No Guardrails — Relevance Grounding Not Applicable": "Informational",
     "No Guardrails With Relevance Grounding Filters": "Medium",
     "Relevance Grounding Filters Present": "Medium",
     # --- FS-51 (prompt attack = High) ---
@@ -1479,6 +1510,14 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
     FS-08 — Check whether Bedrock AgentCore Policy Engine is configured to
     enforce action-level authorization for agent tool calls.
     COMPLIANCE_PLACEHOLDER: [SR 11-7, MAS TRM 9.1]
+
+    ListAgentRuntimes summaries do NOT include "authorizerConfiguration" (per
+    the AWS API reference, ListAgentRuntimes only returns agentRuntimeArn/Id/
+    Name/Version/description/lastUpdatedAt/status) — that field only appears
+    on GetAgentRuntime. Reading it off the list response always resolved to
+    None, so this check previously reported every runtime as missing a
+    policy engine regardless of actual configuration. Fixed to call
+    GetAgentRuntime per runtime.
     """
     findings = _empty_findings("AgentCore Policy Engine Check")
     try:
@@ -1519,12 +1558,24 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
                 )
             )
         else:
-            # Check each runtime for policy engine association
-            runtimes_without_policy = [
-                r["agentRuntimeName"]
-                for r in runtimes
-                if not r.get("authorizerConfiguration")
-            ]
+            # Fetch full runtime details: authorizerConfiguration is only
+            # present on GetAgentRuntime, not on the ListAgentRuntimes summary.
+            runtimes_without_policy = []
+            runtimes_unassessed = []
+            for r in runtimes:
+                runtime_id = r.get("agentRuntimeId")
+                runtime_name = r.get("agentRuntimeName", runtime_id)
+                try:
+                    detail = agentcore.get_agent_runtime(agentRuntimeId=runtime_id)
+                except ClientError as e:
+                    logger.warning(
+                        f"Error describing AgentCore runtime {runtime_id}: {e}"
+                    )
+                    runtimes_unassessed.append(runtime_name)
+                    continue
+                if not detail.get("authorizerConfiguration"):
+                    runtimes_without_policy.append(runtime_name)
+
             if runtimes_without_policy:
                 findings["status"] = "WARN"
                 findings["csv_data"].append(
@@ -1545,12 +1596,38 @@ def check_agentcore_policy_engine() -> Dict[str, Any]:
                         compliance_frameworks=COMPLIANCE_MAP["FS-08"],
                     )
                 )
+            elif len(runtimes_unassessed) == len(runtimes):
+                # Every runtime's detail call failed — this is an unknown
+                # state, not a confirmed pass; do not fabricate a Passed row.
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="FS-08",
+                        finding_name="AgentCore Policy Engine — Access Check",
+                        finding_details=(
+                            "Unable to retrieve AgentCore runtime details for "
+                            f"{len(runtimes_unassessed)} runtime(s) (access denied or "
+                            "runtime no longer exists)."
+                        ),
+                        resolution="Ensure assessment role has bedrock-agentcore:GetAgentRuntime permission.",
+                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
+                        severity="Low",
+                        status="N/A",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-08"],
+                    )
+                )
             else:
+                assessed_count = len(runtimes) - len(runtimes_unassessed)
+                details = f"All {assessed_count} assessed runtime(s) have authorizer configurations."
+                if runtimes_unassessed:
+                    details += (
+                        f" {len(runtimes_unassessed)} runtime(s) could not be "
+                        f"described and were excluded: {', '.join(runtimes_unassessed)}."
+                    )
                 findings["csv_data"].append(
                     create_finding(
                         check_id="FS-08",
                         finding_name="AgentCore Policy Engine Configured",
-                        finding_details=f"All {len(runtimes)} runtime(s) have authorizer configurations.",
+                        finding_details=details,
                         resolution="No action required.",
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
                         severity="High",
@@ -1573,11 +1650,16 @@ def check_agent_transaction_limits(inventory) -> Dict[str, Any]:
     try:
         functions = require(inventory, "lambda_functions")
 
-        # Look for agent-related Lambda functions without reserved concurrency
+        # Look for agent-related Lambda functions without reserved concurrency.
+        # Excludes this tool's own deployed Lambdas (see _is_tool_own_infrastructure) —
+        # otherwise the "bedrock"/"aiml"/"agent" keywords always matched this
+        # assessment tool's own functions (e.g. "aiml-security-<stack>-
+        # AgentCoreAssessment"), causing FS-09 to flag itself.
         agent_lambdas = [
             f
             for f in functions
-            if any(
+            if not _is_tool_own_infrastructure(f["FunctionName"])
+            and any(
                 kw in f["FunctionName"].lower() for kw in ["agent", "bedrock", "aiml"]
             )
         ]
@@ -3678,6 +3760,32 @@ def check_sagemaker_clarify_bias() -> Dict[str, Any]:
     findings = _empty_findings("SageMaker Clarify Bias Check")
     try:
         sm = boto3.client("sagemaker", config=boto3_config)
+
+        # Model bias monitoring schedules can only be attached to a real-time
+        # SageMaker endpoint (SageMaker Clarify bias/explainability monitors
+        # observe live inference traffic) — an account with zero endpoints has
+        # no monitorable model to begin with, so this is not applicable rather
+        # than a failed control. See "Online explainability with SageMaker
+        # Clarify" (endpoint required) in the reference doc below.
+        endpoints = _paginate(sm, "list_endpoints", "Endpoints")
+        if not endpoints:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-39",
+                    finding_name="No SageMaker Endpoints — Bias Monitoring Not Applicable",
+                    finding_details=(
+                        "No SageMaker real-time endpoints found; there are no deployed models "
+                        "for Clarify bias monitoring to observe."
+                    ),
+                    resolution="If a credit/lending model is deployed to a SageMaker endpoint in the future, configure Clarify bias monitoring for it.",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-monitor-bias-drift.html",
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-39"],
+                )
+            )
+            return findings
+
         schedules = _paginate(
             sm, "list_monitoring_schedules", "MonitoringScheduleSummaries"
         )
@@ -3773,6 +3881,31 @@ def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
     findings = _empty_findings("SageMaker Clarify Explainability Check")
     try:
         sm = boto3.client("sagemaker", config=boto3_config)
+
+        # Explainability monitoring schedules can only be attached to a
+        # real-time SageMaker endpoint (SageMaker Clarify explainability
+        # monitors observe live inference traffic) — an account with zero
+        # endpoints has no monitorable model to begin with, so this is not
+        # applicable rather than a failed control.
+        endpoints = _paginate(sm, "list_endpoints", "Endpoints")
+        if not endpoints:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-41",
+                    finding_name="No SageMaker Endpoints — Explainability Monitoring Not Applicable",
+                    finding_details=(
+                        "No SageMaker real-time endpoints found; there are no deployed models "
+                        "for Clarify explainability monitoring to observe."
+                    ),
+                    resolution="If a credit/lending model is deployed to a SageMaker endpoint in the future, configure Clarify explainability monitoring for it.",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability.html",
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-41"],
+                )
+            )
+            return findings
+
         schedules = _paginate(
             sm, "list_monitoring_schedules", "MonitoringScheduleSummaries"
         )
@@ -4385,6 +4518,21 @@ def check_guardrail_relevance_grounding(inventory) -> Dict[str, Any]:
         guardrail_inv = require(inventory, "guardrails")
         guardrails = guardrail_inv.summaries
 
+        if not guardrails:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-50",
+                    finding_name="No Guardrails — Relevance Grounding Not Applicable",
+                    finding_details="No Bedrock Guardrails configured.",
+                    resolution="Configure guardrails with contextual grounding checks.",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-50"],
+                )
+            )
+            return findings
+
         guardrails_with_relevance = []
         for g in guardrails:
             detail = guardrail_inv.detail_by_id[g["id"]]
@@ -4566,10 +4714,16 @@ def check_bedrock_sdk_version_currency(inventory) -> Dict[str, Any]:
     try:
         functions = require(inventory, "lambda_functions")
 
+        # Excludes this tool's own deployed Lambdas (see _is_tool_own_infrastructure) —
+        # otherwise "bedrock"/"agent"/"aiml" always matched this assessment
+        # tool's own functions (e.g. "aiml-security-<stack>-BedrockAssessment"),
+        # causing FS-52 to evaluate its own runtime instead of (or in addition
+        # to) genuine customer-deployed Bedrock-related Lambdas.
         bedrock_functions = [
             f
             for f in functions
-            if any(
+            if not _is_tool_own_infrastructure(f["FunctionName"])
+            and any(
                 kw in f["FunctionName"].lower()
                 for kw in ["bedrock", "agent", "aiml", "genai"]
             )
@@ -5588,6 +5742,18 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
     identities to downstream tool services so tool calls are authorized by
     the originating user, not solely by the agent execution role.
     COMPLIANCE_PLACEHOLDER: [SR 11-7, NYDFS 500.06, MAS TRM 9.1]
+
+    Two fixes versus the original implementation:
+    1. ListAgentRuntimes summaries do NOT include "authorizerConfiguration"
+       (per the AWS API reference, ListAgentRuntimes only returns
+       agentRuntimeArn/Id/Name/Version/description/lastUpdatedAt/status) —
+       that field only appears on GetAgentRuntime. Fixed to call
+       GetAgentRuntime per runtime.
+    2. The AgentRuntime AuthorizerConfiguration structure only defines
+       "customJWTAuthorizer" (confirmed against the AWS CDK/CloudFormation
+       property reference) — there is no "iamAuthorizer" member. Checking
+       for a nonexistent field is harmless (it's always absent) but is
+       removed since it implied a capability that doesn't exist.
     """
     findings = _empty_findings("AgentCore End-User Identity Propagation Check")
     try:
@@ -5629,12 +5795,21 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
             )
             return findings
 
-        runtimes_without_identity = [
-            r["agentRuntimeName"]
-            for r in runtimes
-            if not r.get("authorizerConfiguration", {}).get("customJWTAuthorizer")
-            and not r.get("authorizerConfiguration", {}).get("iamAuthorizer")
-        ]
+        # Fetch full runtime details: authorizerConfiguration is only
+        # present on GetAgentRuntime, not on the ListAgentRuntimes summary.
+        runtimes_without_identity = []
+        runtimes_unassessed = []
+        for r in runtimes:
+            runtime_id = r.get("agentRuntimeId")
+            runtime_name = r.get("agentRuntimeName", runtime_id)
+            try:
+                detail = agentcore.get_agent_runtime(agentRuntimeId=runtime_id)
+            except ClientError as e:
+                logger.warning(f"Error describing AgentCore runtime {runtime_id}: {e}")
+                runtimes_unassessed.append(runtime_name)
+                continue
+            if not detail.get("authorizerConfiguration", {}).get("customJWTAuthorizer"):
+                runtimes_without_identity.append(runtime_name)
 
         if runtimes_without_identity:
             findings["status"] = "WARN"
@@ -5643,13 +5818,13 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                     check_id="FS-66",
                     finding_name="AgentCore Runtimes Missing End-User Identity Propagation",
                     finding_details=(
-                        "The following runtimes have no JWT or IAM authorizer configured for "
+                        "The following runtimes have no JWT authorizer configured for "
                         "end-user identity propagation. Tool calls are authorized only by the "
                         "agent execution role, not the originating user:\n"
                         + "\n".join(f"- {r}" for r in runtimes_without_identity[:10])
                     ),
                     resolution=(
-                        "1. Configure a custom JWT authorizer or IAM authorizer on each AgentCore runtime.\n"
+                        "1. Configure a custom JWT authorizer on each AgentCore runtime.\n"
                         "2. Propagate the end-user's identity token to downstream tool services.\n"
                         "3. Ensure tool services validate the propagated identity before executing actions.\n"
                         "4. Do not expose propagated identity tokens to unauthorized third parties."
@@ -5660,12 +5835,41 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                     compliance_frameworks=COMPLIANCE_MAP["FS-66"],
                 )
             )
+        elif len(runtimes_unassessed) == len(runtimes):
+            # Every runtime's detail call failed — this is an unknown state,
+            # not a confirmed pass; do not fabricate a Passed row.
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-66",
+                    finding_name="AgentCore Identity Propagation — Access Check",
+                    finding_details=(
+                        "Unable to retrieve AgentCore runtime details for "
+                        f"{len(runtimes_unassessed)} runtime(s) (access denied or "
+                        "runtime no longer exists)."
+                    ),
+                    resolution="Ensure assessment role has bedrock-agentcore:GetAgentRuntime permission.",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
+                    severity="Low",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-66"],
+                )
+            )
         else:
+            assessed_count = len(runtimes) - len(runtimes_unassessed)
+            details = (
+                f"All {assessed_count} assessed runtime(s) have authorizer "
+                "configurations supporting identity propagation."
+            )
+            if runtimes_unassessed:
+                details += (
+                    f" {len(runtimes_unassessed)} runtime(s) could not be "
+                    f"described and were excluded: {', '.join(runtimes_unassessed)}."
+                )
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-66",
                     finding_name="AgentCore End-User Identity Propagation Configured",
-                    finding_details=f"All {len(runtimes)} runtime(s) have authorizer configurations supporting identity propagation.",
+                    finding_details=details,
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
                     severity="High",
@@ -5689,11 +5893,17 @@ def check_agent_financial_transaction_thresholds(inventory) -> Dict[str, Any]:
     try:
         functions = require(inventory, "lambda_functions")
 
-        # Look for agent action-group Lambda functions
+        # Look for agent action-group Lambda functions. Excludes this tool's
+        # own deployed Lambdas (see _is_tool_own_infrastructure) — otherwise
+        # "agent"/"bedrock"/"finserv" always matched this assessment tool's
+        # own functions (e.g. "aiml-security-<stack>-FinServAssessment",
+        # "...-AgentCoreAssessment"), causing FS-67 to flag itself as an
+        # agent action-group Lambda lacking transaction thresholds.
         action_group_lambdas = [
             f
             for f in functions
-            if any(
+            if not _is_tool_own_infrastructure(f["FunctionName"])
+            and any(
                 kw in f["FunctionName"].lower()
                 for kw in [
                     "agent",

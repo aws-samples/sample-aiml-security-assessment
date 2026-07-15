@@ -28,19 +28,32 @@ _sm_dir = os.path.abspath(
 if _sm_dir not in sys.path:
     sys.path.insert(0, _sm_dir)
 
-_spec = importlib.util.spec_from_file_location(
-    "sagemaker_app", os.path.join(_sm_dir, "app.py")
-)
-sagemaker_app = importlib.util.module_from_spec(_spec)
-sys.modules["sagemaker_app"] = sagemaker_app
-_spec.loader.exec_module(sagemaker_app)
+if "sagemaker_app" in sys.modules:
+    sagemaker_app = sys.modules["sagemaker_app"]
+else:
+    # agentcore_assessments, bedrock_assessments, and sagemaker_assessments
+    # each define their own same-named "schema"/"severity_disposition"
+    # modules. If another module's test already ran and cached
+    # sys.modules["severity_disposition"] (or ["schema"]) with its own
+    # version, sagemaker_app.py's plain `from severity_disposition import
+    # ...` / `from schema import ...` would silently bind to that other
+    # module instead of its own. Evict any stale cache entries so the import
+    # below resolves against _sm_dir (already at the front of sys.path).
+    sys.modules.pop("severity_disposition", None)
+    sys.modules.pop("schema", None)
+    _spec = importlib.util.spec_from_file_location(
+        "sagemaker_app", os.path.join(_sm_dir, "app.py")
+    )
+    sagemaker_app = importlib.util.module_from_spec(_spec)
+    sys.modules["sagemaker_app"] = sagemaker_app
+    _spec.loader.exec_module(sagemaker_app)
 
 
 # ===================================================================
 # SM-01: check_sagemaker_internet_access
 # ===================================================================
 class TestSM01InternetAccess:
-    """SM-01: Check SageMaker direct internet access."""
+    """SM-01: Check SageMaker direct internet access (notebooks only)."""
 
     @patch("sagemaker_app.boto3.client")
     def test_sm01_no_resources_returns_na(self, mock_client):
@@ -48,12 +61,8 @@ class TestSM01InternetAccess:
         mock_sm = MagicMock()
         mock_client.return_value = mock_sm
         nb_paginator = MagicMock()
-        domain_paginator = MagicMock()
-        mock_sm.get_paginator.side_effect = lambda x: (
-            nb_paginator if x == "list_notebook_instances" else domain_paginator
-        )
+        mock_sm.get_paginator.return_value = nb_paginator
         nb_paginator.paginate.return_value = [{"NotebookInstances": []}]
-        domain_paginator.paginate.return_value = [{"Domains": []}]
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
@@ -66,14 +75,10 @@ class TestSM01InternetAccess:
         mock_sm = MagicMock()
         mock_client.return_value = mock_sm
         nb_paginator = MagicMock()
-        domain_paginator = MagicMock()
-        mock_sm.get_paginator.side_effect = lambda x: (
-            nb_paginator if x == "list_notebook_instances" else domain_paginator
-        )
+        mock_sm.get_paginator.return_value = nb_paginator
         nb_paginator.paginate.return_value = [
             {"NotebookInstances": [{"NotebookInstanceName": "test-nb"}]}
         ]
-        domain_paginator.paginate.return_value = [{"Domains": []}]
         mock_sm.describe_notebook_instance.return_value = {
             "DirectInternetAccess": "Enabled",
             "SubnetId": "subnet-123",
@@ -91,14 +96,10 @@ class TestSM01InternetAccess:
         mock_sm = MagicMock()
         mock_client.return_value = mock_sm
         nb_paginator = MagicMock()
-        domain_paginator = MagicMock()
-        mock_sm.get_paginator.side_effect = lambda x: (
-            nb_paginator if x == "list_notebook_instances" else domain_paginator
-        )
+        mock_sm.get_paginator.return_value = nb_paginator
         nb_paginator.paginate.return_value = [
             {"NotebookInstances": [{"NotebookInstanceName": "test-nb"}]}
         ]
-        domain_paginator.paginate.return_value = [{"Domains": []}]
         mock_sm.describe_notebook_instance.return_value = {
             "DirectInternetAccess": "Disabled",
         }
@@ -114,7 +115,9 @@ class TestSM01InternetAccess:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm01_schema_valid(self, mock_client):
@@ -122,15 +125,64 @@ class TestSM01InternetAccess:
         mock_sm = MagicMock()
         mock_client.return_value = mock_sm
         nb_paginator = MagicMock()
-        domain_paginator = MagicMock()
-        mock_sm.get_paginator.side_effect = lambda x: (
-            nb_paginator if x == "list_notebook_instances" else domain_paginator
-        )
+        mock_sm.get_paginator.return_value = nb_paginator
         nb_paginator.paginate.return_value = [{"NotebookInstances": []}]
-        domain_paginator.paginate.return_value = [{"Domains": []}]
         result = check()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
+
+
+# ===================================================================
+# SM-27: check_sagemaker_domain_network_access (repo-specific)
+# (split out of the former SM-01, which incorrectly labeled domain findings
+# under the SageMaker.1 control — that control's scope is NotebookInstance
+# only.)
+# ===================================================================
+class TestSM27DomainNetworkAccess:
+    """SM-27: Check SageMaker domain VPC-only network access (repo-specific)."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm27_no_domains_returns_na(self, mock_client):
+        check = sagemaker_app.check_sagemaker_domain_network_access
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        domain_paginator = MagicMock()
+        mock_sm.get_paginator.return_value = domain_paginator
+        domain_paginator.paginate.return_value = [{"Domains": []}]
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-27"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm27_domain_not_vpc_only_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_domain_network_access
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        domain_paginator = MagicMock()
+        mock_sm.get_paginator.return_value = domain_paginator
+        domain_paginator.paginate.return_value = [{"Domains": [{"DomainId": "d-123"}]}]
+        mock_sm.describe_domain.return_value = {
+            "DomainName": "test-domain",
+            "AppNetworkAccessType": "PublicInternetOnly",
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Check_ID"] == "SM-27"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm27_exception_returns_error_finding(self, mock_client):
+        check = sagemaker_app.check_sagemaker_domain_network_access
+        mock_client.side_effect = Exception("SageMaker error")
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -228,45 +280,157 @@ class TestSM02SSOConfiguration:
 
 
 # ===================================================================
-# SM-03: check_sagemaker_data_protection
+# SM-03: check_sagemaker_notebook_storage_encryption
+# (was check_sagemaker_data_protection; split per gap-analysis PR-0 so the
+# SM-03 label maps only to SageMaker.21 notebook storage encryption. Domain
+# and training-job encryption moved to check_sagemaker_domain_and_training_job_encryption
+# under SM-26 — see TestSM26DomainAndTrainingJobEncryption below.)
 # ===================================================================
-class TestSM03DataProtection:
-    """SM-03: Check SageMaker data protection / encryption."""
+class TestSM03NotebookStorageEncryption:
+    """SM-03: Check SageMaker notebook storage encryption (SageMaker.21)."""
 
     @patch("sagemaker_app.boto3.client")
-    def test_sm03_no_resources_returns_na_or_passed(self, mock_client):
-        check = sagemaker_app.check_sagemaker_data_protection
-        mock_sm = MagicMock()
-        mock_client.return_value = mock_sm
-        # Mock paginators for notebooks, endpoints, training jobs
-        paginator = MagicMock()
-        mock_sm.get_paginator.return_value = paginator
-        paginator.paginate.return_value = [
-            {"NotebookInstances": [], "EndpointConfigs": [], "TrainingJobSummaries": []}
-        ]
-        result = check()
-        findings = extract_csv_data(result)
-        assert len(findings) >= 1
-        assert findings[0]["Check_ID"] == "SM-03"
-
-    @patch("sagemaker_app.boto3.client")
-    def test_sm03_exception_returns_error_finding(self, mock_client):
-        check = sagemaker_app.check_sagemaker_data_protection
-        mock_client.side_effect = Exception("Data protection error")
-        result = check()
-        findings = extract_csv_data(result)
-        assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
-
-    @patch("sagemaker_app.boto3.client")
-    def test_sm03_schema_valid(self, mock_client):
-        check = sagemaker_app.check_sagemaker_data_protection
+    def test_sm03_no_resources_returns_na(self, mock_client):
+        check = sagemaker_app.check_sagemaker_notebook_storage_encryption
         mock_sm = MagicMock()
         mock_client.return_value = mock_sm
         paginator = MagicMock()
         mock_sm.get_paginator.return_value = paginator
         paginator.paginate.return_value = [{"NotebookInstances": []}]
         result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-03"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm03_notebook_without_kms_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_notebook_storage_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"NotebookInstances": [{"NotebookInstanceName": "test-nb"}]}
+        ]
+        mock_sm.describe_notebook_instance.return_value = {}
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm03_notebook_with_customer_kms_returns_passed(self, mock_client):
+        """Presence-as-proxy: any configured KMS key id/ARN passes, including
+        an AWS-managed key id/ARN that a substring test would miss (the SM-03
+        false-PASS defect this rewrite fixes is the substring test itself,
+        not this presence check)."""
+        check = sagemaker_app.check_sagemaker_notebook_storage_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"NotebookInstances": [{"NotebookInstanceName": "test-nb"}]}
+        ]
+        mock_sm.describe_notebook_instance.return_value = {
+            "KmsKeyId": "arn:aws:kms:us-east-1:123456789012:key/abcd-1234"
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm03_no_longer_uses_substring_kms_test(self, mock_client):
+        """Regression test (gap-analysis PR-0 / SM-03 defect): the rewritten
+        check must not gate on a substring match against the KMS key id/ARN
+        (the old bug: 'aws/sagemaker' in kms_key_id). That substring test
+        missed AWS-managed keys referenced by key id or ARN and could produce
+        a false PASS on an encryption control; detection is presence-as-proxy
+        only, so the executable body must not contain an 'in kms_key_id'-style
+        substring comparison."""
+        import inspect
+
+        source = inspect.getsource(
+            sagemaker_app.check_sagemaker_notebook_storage_encryption
+        )
+        assert "in kms_key_id" not in source
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm03_exception_returns_error_finding(self, mock_client):
+        check = sagemaker_app.check_sagemaker_notebook_storage_encryption
+        mock_client.side_effect = Exception("Data protection error")
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm03_schema_valid(self, mock_client):
+        check = sagemaker_app.check_sagemaker_notebook_storage_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{"NotebookInstances": []}]
+        result = check()
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+
+# ===================================================================
+# SM-26: check_sagemaker_domain_and_training_job_encryption
+# (repo-specific hardening check; split out of the former SM-03)
+# ===================================================================
+class TestSM26DomainAndTrainingJobEncryption:
+    """SM-26: Check SageMaker domain/training-job encryption (repo-specific)."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm26_no_resources_returns_na(self, mock_client):
+        check = sagemaker_app.check_sagemaker_domain_and_training_job_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        domain_paginator = MagicMock()
+        training_paginator = MagicMock()
+        mock_sm.get_paginator.side_effect = lambda x: (
+            domain_paginator if x == "list_domains" else training_paginator
+        )
+        domain_paginator.paginate.return_value = [{"Domains": []}]
+        training_paginator.paginate.return_value = [{"TrainingJobSummaries": []}]
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-26"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm26_exception_returns_error_finding(self, mock_client):
+        check = sagemaker_app.check_sagemaker_domain_and_training_job_encryption
+        mock_client.side_effect = Exception("Data protection error")
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm26_schema_valid(self, mock_client):
+        check = sagemaker_app.check_sagemaker_domain_and_training_job_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        domain_paginator = MagicMock()
+        training_paginator = MagicMock()
+        mock_sm.get_paginator.side_effect = lambda x: (
+            domain_paginator if x == "list_domains" else training_paginator
+        )
+        domain_paginator.paginate.return_value = [{"Domains": []}]
+        training_paginator.paginate.return_value = [{"TrainingJobSummaries": []}]
+        result = check(region="us-east-1")
         for f in extract_csv_data(result):
             assert_finding_schema(f)
 
@@ -308,7 +472,9 @@ class TestSM04GuardDuty:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm04_schema_valid(self, mock_client):
@@ -554,7 +720,9 @@ class TestSM09NotebookRootAccess:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm09_schema_valid(self, mock_client):
@@ -632,7 +800,9 @@ class TestSM10NotebookVPC:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm10_schema_valid(self, mock_client):
@@ -707,27 +877,32 @@ class TestSM11ModelNetworkIsolation:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
-# SM-12: check_sagemaker_endpoint_instance_count
+# SM-12: check_sagemaker_endpoint_instance_count (SageMaker.4)
 # ===================================================================
 class TestSM12EndpointInstanceCount:
-    """SM-12: Check endpoint instance count for availability."""
+    """SM-12: Check endpoint CONFIG instance count for availability
+    (SageMaker.4 evaluates ProductionVariants[*].InitialInstanceCount on the
+    EndpointConfig resource, not the live endpoint's CurrentInstanceCount)."""
 
     @patch("sagemaker_app.boto3.client")
-    def test_sm12_no_endpoints_returns_na(self, mock_client):
+    def test_sm12_no_configs_returns_na(self, mock_client):
         check = sagemaker_app.check_sagemaker_endpoint_instance_count
         mock_sm = MagicMock()
         mock_client.return_value = mock_sm
         paginator = MagicMock()
         mock_sm.get_paginator.return_value = paginator
-        paginator.paginate.return_value = [{"Endpoints": []}]
+        paginator.paginate.return_value = [{"EndpointConfigs": []}]
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Check_ID"] == "SM-12"
+        assert findings[0]["Status"] == "N/A"
 
     @patch("sagemaker_app.boto3.client")
     def test_sm12_single_instance_returns_failed(self, mock_client):
@@ -737,15 +912,18 @@ class TestSM12EndpointInstanceCount:
         paginator = MagicMock()
         mock_sm.get_paginator.return_value = paginator
         paginator.paginate.return_value = [
-            {"Endpoints": [{"EndpointName": "ep-1", "EndpointStatus": "InService"}]}
+            {"EndpointConfigs": [{"EndpointConfigName": "cfg-1"}]}
         ]
-        mock_sm.describe_endpoint.return_value = {
-            "ProductionVariants": [{"CurrentInstanceCount": 1, "VariantName": "v1"}]
+        mock_sm.describe_endpoint_config.return_value = {
+            "ProductionVariants": [{"InitialInstanceCount": 1, "VariantName": "v1"}]
         }
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Failed"
+        mock_sm.describe_endpoint_config.assert_called_once_with(
+            EndpointConfigName="cfg-1"
+        )
 
     @patch("sagemaker_app.boto3.client")
     def test_sm12_multi_instance_returns_passed(self, mock_client):
@@ -755,10 +933,10 @@ class TestSM12EndpointInstanceCount:
         paginator = MagicMock()
         mock_sm.get_paginator.return_value = paginator
         paginator.paginate.return_value = [
-            {"Endpoints": [{"EndpointName": "ep-1", "EndpointStatus": "InService"}]}
+            {"EndpointConfigs": [{"EndpointConfigName": "cfg-1"}]}
         ]
-        mock_sm.describe_endpoint.return_value = {
-            "ProductionVariants": [{"CurrentInstanceCount": 3, "VariantName": "v1"}]
+        mock_sm.describe_endpoint_config.return_value = {
+            "ProductionVariants": [{"InitialInstanceCount": 3, "VariantName": "v1"}]
         }
         result = check()
         findings = extract_csv_data(result)
@@ -766,13 +944,81 @@ class TestSM12EndpointInstanceCount:
         assert findings[0]["Status"] == "Passed"
 
     @patch("sagemaker_app.boto3.client")
+    def test_sm12_serverless_variant_is_skipped(self, mock_client):
+        """Regression guard: serverless variants carry no
+        InitialInstanceCount (they expose ServerlessConfig instead). They
+        must be skipped, not treated as 0 instances, which previously
+        false-failed every serverless config. Security Hub SageMaker.4
+        applies only to instance-based variants."""
+        check = sagemaker_app.check_sagemaker_endpoint_instance_count
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"EndpointConfigs": [{"EndpointConfigName": "cfg-sls"}]}
+        ]
+        mock_sm.describe_endpoint_config.return_value = {
+            "ProductionVariants": [
+                {
+                    "VariantName": "v1",
+                    "ServerlessConfig": {"MemorySizeInMB": 2048},
+                }
+            ]
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm12_mixed_serverless_and_single_instance(self, mock_client):
+        """Serverless variants are skipped while instance-based variants are
+        still evaluated."""
+        check = sagemaker_app.check_sagemaker_endpoint_instance_count
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"EndpointConfigs": [{"EndpointConfigName": "cfg-mix"}]}
+        ]
+        mock_sm.describe_endpoint_config.return_value = {
+            "ProductionVariants": [
+                {
+                    "VariantName": "sls",
+                    "ServerlessConfig": {"MemorySizeInMB": 2048},
+                },
+                {"VariantName": "inst", "InitialInstanceCount": 1},
+            ]
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+        assert "inst" in findings[0]["Finding_Details"]
+
+    @patch("sagemaker_app.boto3.client")
     def test_sm12_exception_returns_error_finding(self, mock_client):
+        check = sagemaker_app.check_sagemaker_endpoint_instance_count
+        mock_client.side_effect = Exception("SageMaker error")
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm12_endpoint_config_exception_returns_error_finding(self, mock_client):
         check = sagemaker_app.check_sagemaker_endpoint_instance_count
         mock_client.side_effect = Exception("Endpoint error")
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -801,6 +1047,95 @@ class TestSM13MonitoringNetworkIsolation:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm13_inline_definition_with_isolation_passes(self, mock_client):
+        """Inline MonitoringJobDefinition (unchanged behavior)."""
+        check = sagemaker_app.check_sagemaker_monitoring_network_isolation
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {
+                "MonitoringScheduleSummaries": [
+                    {"MonitoringScheduleName": "sched-inline"}
+                ]
+            }
+        ]
+        mock_sm.describe_monitoring_schedule.return_value = {
+            "MonitoringScheduleConfig": {
+                "MonitoringJobDefinition": {
+                    "NetworkConfig": {"EnableNetworkIsolation": True}
+                }
+            }
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm13_named_definition_resolves_isolation_enabled(self, mock_client):
+        """Regression test (gap-analysis PR-0): a named monitoring job
+        definition (MonitoringJobDefinitionName + MonitoringType) must be
+        resolved via the matching DescribeXJobDefinition API rather than
+        defaulting isolation to disabled because the inline field is absent."""
+        check = sagemaker_app.check_sagemaker_monitoring_network_isolation
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"MonitoringScheduleSummaries": [{"MonitoringScheduleName": "sched-named"}]}
+        ]
+        mock_sm.describe_monitoring_schedule.return_value = {
+            "MonitoringScheduleConfig": {
+                "MonitoringJobDefinitionName": "my-data-quality-job-def",
+                "MonitoringType": "DataQuality",
+            }
+        }
+        mock_sm.describe_data_quality_job_definition.return_value = {
+            "NetworkConfig": {"EnableNetworkIsolation": True}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+        mock_sm.describe_data_quality_job_definition.assert_called_once_with(
+            JobDefinitionName="my-data-quality-job-def"
+        )
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm13_named_definition_resolves_isolation_disabled(self, mock_client):
+        """Named definition that genuinely lacks isolation still fails."""
+        check = sagemaker_app.check_sagemaker_monitoring_network_isolation
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {
+                "MonitoringScheduleSummaries": [
+                    {"MonitoringScheduleName": "sched-named-fail"}
+                ]
+            }
+        ]
+        mock_sm.describe_monitoring_schedule.return_value = {
+            "MonitoringScheduleConfig": {
+                "MonitoringJobDefinitionName": "my-model-quality-job-def",
+                "MonitoringType": "ModelQuality",
+            }
+        }
+        mock_sm.describe_model_quality_job_definition.return_value = {
+            "NetworkConfig": {"EnableNetworkIsolation": False}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
         assert findings[0]["Status"] == "Failed"
 
 
@@ -823,6 +1158,88 @@ class TestSM14ContainerRepository:
         assert len(findings) >= 1
         assert findings[0]["Check_ID"] == "SM-14"
 
+    @staticmethod
+    def _mock_models(mock_client, describe_return):
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{"Models": [{"ModelName": "m-1"}]}]
+        mock_sm.describe_model.return_value = describe_return
+        return mock_sm
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm14_primary_container_vpc_mode_passes(self, mock_client):
+        check = sagemaker_app.check_sagemaker_model_container_repository
+        self._mock_models(
+            mock_client,
+            {
+                "PrimaryContainer": {
+                    "Image": "img",
+                    "ImageConfig": {"RepositoryAccessMode": "Vpc"},
+                }
+            },
+        )
+        findings = extract_csv_data(check())
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm14_primary_container_platform_mode_fails(self, mock_client):
+        check = sagemaker_app.check_sagemaker_model_container_repository
+        self._mock_models(
+            mock_client,
+            {"PrimaryContainer": {"Image": "img"}},  # no ImageConfig -> Platform
+        )
+        findings = extract_csv_data(check())
+        assert findings[0]["Status"] == "Failed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm14_multicontainer_all_vpc_passes(self, mock_client):
+        """Regression guard for the phantom-primary-container bug: an
+        inference-pipeline model (Containers[], no PrimaryContainer) whose
+        containers all use Vpc mode must PASS. Previously the absent
+        PrimaryContainer defaulted to Platform and false-failed every
+        multi-container model (Security Hub SageMaker.19 scope)."""
+        check = sagemaker_app.check_sagemaker_model_container_repository
+        self._mock_models(
+            mock_client,
+            {
+                "Containers": [
+                    {
+                        "ContainerHostname": "c1",
+                        "ImageConfig": {"RepositoryAccessMode": "Vpc"},
+                    },
+                    {
+                        "ContainerHostname": "c2",
+                        "ImageConfig": {"RepositoryAccessMode": "Vpc"},
+                    },
+                ]
+            },
+        )
+        findings = extract_csv_data(check())
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm14_multicontainer_platform_container_fails(self, mock_client):
+        check = sagemaker_app.check_sagemaker_model_container_repository
+        self._mock_models(
+            mock_client,
+            {
+                "Containers": [
+                    {
+                        "ContainerHostname": "c1",
+                        "ImageConfig": {"RepositoryAccessMode": "Vpc"},
+                    },
+                    {"ContainerHostname": "c2"},  # no ImageConfig -> Platform
+                ]
+            },
+        )
+        findings = extract_csv_data(check())
+        assert findings[0]["Status"] == "Failed"
+        assert "c2" in findings[0]["Finding_Details"]
+
     @patch("sagemaker_app.boto3.client")
     def test_sm14_exception_returns_error_finding(self, mock_client):
         check = sagemaker_app.check_sagemaker_model_container_repository
@@ -830,7 +1247,9 @@ class TestSM14ContainerRepository:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -902,7 +1321,9 @@ class TestSM15FeatureStoreEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -931,7 +1352,9 @@ class TestSM16DataQualityEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm16_schema_valid(self, mock_client):
@@ -1018,7 +1441,9 @@ class TestSM17ProcessingJobEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
 
 # ===================================================================
@@ -1047,7 +1472,9 @@ class TestSM18TransformJobEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm18_schema_valid(self, mock_client):
@@ -1088,7 +1515,9 @@ class TestSM19HPTuningEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm19_schema_valid(self, mock_client):
@@ -1129,7 +1558,9 @@ class TestSM20CompilationJobEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm20_schema_valid(self, mock_client):
@@ -1168,7 +1599,9 @@ class TestSM21AutoMLNetworkIsolation:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm21_schema_valid(self, mock_client):
@@ -1207,7 +1640,9 @@ class TestSM22ModelApproval:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm22_schema_valid(self, mock_client):
@@ -1248,7 +1683,9 @@ class TestSM23DriftDetection:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm23_schema_valid(self, mock_client):
@@ -1312,7 +1749,9 @@ class TestSM24ABTesting:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm24_schema_valid(self, mock_client):
@@ -1374,7 +1813,9 @@ class TestSM25LineageTracking:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm25_schema_valid(self, mock_client):
@@ -1540,3 +1981,667 @@ class TestSageMakerHandlerMultiRegion:
         # Reachable => no SM-00, and many regional checks ran.
         assert "SM-00" not in check_ids
         assert len(check_ids) > 3
+
+
+# ===================================================================
+# SM-28: check_sagemaker_notebook_platform (SageMaker.8)
+# ===================================================================
+class TestSM28NotebookPlatform:
+    """SM-28: Check SageMaker notebook platform identifier."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm28_no_notebooks_returns_na(self, mock_client):
+        check = sagemaker_app.check_sagemaker_notebook_platform
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{"NotebookInstances": []}]
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-28"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm28_unsupported_platform_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_notebook_platform
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"NotebookInstances": [{"NotebookInstanceName": "nb-1"}]}
+        ]
+        mock_sm.describe_notebook_instance.return_value = {
+            "PlatformIdentifier": "notebook-al1-v1"
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm28_supported_platform_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_notebook_platform
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"NotebookInstances": [{"NotebookInstanceName": "nb-1"}]}
+        ]
+        mock_sm.describe_notebook_instance.return_value = {
+            "PlatformIdentifier": "notebook-al2-v3"
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm28_exception_returns_error_finding(self, mock_client):
+        check = sagemaker_app.check_sagemaker_notebook_platform
+        mock_client.side_effect = Exception("SageMaker error")
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+
+# ===================================================================
+# Job-definition-based controls (SageMaker.10/.11/.12/.13/.15/.20/.25)
+# ===================================================================
+def _mock_job_definition_client(mock_client, list_key, job_name, describe_method):
+    mock_sm = MagicMock()
+    mock_client.return_value = mock_sm
+    paginator = MagicMock()
+    mock_sm.get_paginator.return_value = paginator
+    paginator.paginate.return_value = [
+        {"JobDefinitionSummaries": [{"MonitoringJobDefinitionName": job_name}]}
+    ]
+    return mock_sm
+
+
+class TestSM29ExplainabilityTrafficEncryption:
+    """SM-29: Model explainability job traffic encryption (SageMaker.10)."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm29_no_jobs_returns_na(self, mock_client):
+        check = sagemaker_app.check_sagemaker_explainability_traffic_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{"JobDefinitionSummaries": []}]
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-29"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm29_encryption_disabled_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_explainability_traffic_encryption
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_explainability_job_definition.return_value = {
+            "NetworkConfig": {"EnableInterContainerTrafficEncryption": False}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm29_encryption_enabled_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_explainability_traffic_encryption
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_explainability_job_definition.return_value = {
+            "NetworkConfig": {"EnableInterContainerTrafficEncryption": True}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+
+class TestSM30DataQualityNetworkIsolation:
+    """SM-30: Data quality job network isolation (SageMaker.11)."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm30_isolation_disabled_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_data_quality_network_isolation
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_data_quality_job_definition.return_value = {
+            "NetworkConfig": {"EnableNetworkIsolation": False}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-30"
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm30_isolation_enabled_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_data_quality_network_isolation
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_data_quality_job_definition.return_value = {
+            "NetworkConfig": {"EnableNetworkIsolation": True}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm30_no_jobs_returns_na(self, mock_client):
+        check = sagemaker_app.check_sagemaker_data_quality_network_isolation
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{"JobDefinitionSummaries": []}]
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+
+
+class TestSM31ModelBiasNetworkIsolation:
+    """SM-31: Model bias job network isolation (SageMaker.12)."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm31_isolation_disabled_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_model_bias_network_isolation
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_bias_job_definition.return_value = {
+            "NetworkConfig": {"EnableNetworkIsolation": False}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-31"
+        assert findings[0]["Status"] == "Failed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm31_isolation_enabled_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_model_bias_network_isolation
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_bias_job_definition.return_value = {
+            "NetworkConfig": {"EnableNetworkIsolation": True}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+
+class TestSM32ModelQualityTrafficEncryption:
+    """SM-32: Model quality job traffic encryption (SageMaker.13)."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm32_encryption_disabled_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_model_quality_traffic_encryption
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_quality_job_definition.return_value = {
+            "NetworkConfig": {"EnableInterContainerTrafficEncryption": False}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-32"
+        assert findings[0]["Status"] == "Failed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm32_encryption_enabled_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_model_quality_traffic_encryption
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_quality_job_definition.return_value = {
+            "NetworkConfig": {"EnableInterContainerTrafficEncryption": True}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+
+class TestSM33ModelBiasTrafficEncryption:
+    """SM-33: Model bias job traffic encryption (SageMaker.15) — only fails
+    when instance count >= 2."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm33_multi_instance_no_encryption_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_model_bias_traffic_encryption
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_bias_job_definition.return_value = {
+            "NetworkConfig": {"EnableInterContainerTrafficEncryption": False},
+            "JobResources": {"ClusterConfig": {"InstanceCount": 2}},
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-33"
+        assert findings[0]["Status"] == "Failed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm33_single_instance_no_encryption_returns_passed(self, mock_client):
+        """Single-instance jobs have no inter-container traffic to encrypt,
+        so the control does not fail even without encryption enabled."""
+        check = sagemaker_app.check_sagemaker_model_bias_traffic_encryption
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_bias_job_definition.return_value = {
+            "NetworkConfig": {"EnableInterContainerTrafficEncryption": False},
+            "JobResources": {"ClusterConfig": {"InstanceCount": 1}},
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm33_multi_instance_with_encryption_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_model_bias_traffic_encryption
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_bias_job_definition.return_value = {
+            "NetworkConfig": {"EnableInterContainerTrafficEncryption": True},
+            "JobResources": {"ClusterConfig": {"InstanceCount": 3}},
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+
+class TestSM34OnlineFeatureStoreEncryption:
+    """SM-34: Online feature store encryption (SageMaker.18) — any KMS key
+    satisfies the control."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm34_no_kms_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_online_feature_store_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"FeatureGroupSummaries": [{"FeatureGroupName": "fg-1"}]}
+        ]
+        mock_sm.describe_feature_group.return_value = {
+            "OnlineStoreConfig": {
+                "EnableOnlineStore": True,
+                "StorageType": "Standard",
+                "SecurityConfig": {},
+            }
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-34"
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm34_any_kms_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_online_feature_store_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"FeatureGroupSummaries": [{"FeatureGroupName": "fg-1"}]}
+        ]
+        mock_sm.describe_feature_group.return_value = {
+            "OnlineStoreConfig": {
+                "EnableOnlineStore": True,
+                "StorageType": "Standard",
+                "SecurityConfig": {"KmsKeyId": "alias/aws/sagemaker"},
+            }
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm34_in_memory_storage_skipped(self, mock_client):
+        """InMemory storage does not support this configuration and is out
+        of scope for the control."""
+        check = sagemaker_app.check_sagemaker_online_feature_store_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"FeatureGroupSummaries": [{"FeatureGroupName": "fg-1"}]}
+        ]
+        mock_sm.describe_feature_group.return_value = {
+            "OnlineStoreConfig": {
+                "EnableOnlineStore": True,
+                "StorageType": "InMemory",
+            }
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm34_online_store_disabled_skipped(self, mock_client):
+        check = sagemaker_app.check_sagemaker_online_feature_store_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"FeatureGroupSummaries": [{"FeatureGroupName": "fg-1"}]}
+        ]
+        mock_sm.describe_feature_group.return_value = {
+            "OnlineStoreConfig": {"EnableOnlineStore": False}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+
+
+class TestSM35ExplainabilityNetworkIsolation:
+    """SM-35: Model explainability job network isolation (SageMaker.20,
+    High severity register decision)."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm35_isolation_disabled_returns_failed_high(self, mock_client):
+        check = sagemaker_app.check_sagemaker_explainability_network_isolation
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_explainability_job_definition.return_value = {
+            "NetworkConfig": {"EnableNetworkIsolation": False}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-35"
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "High"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm35_isolation_enabled_returns_passed_high(self, mock_client):
+        check = sagemaker_app.check_sagemaker_explainability_network_isolation
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_explainability_job_definition.return_value = {
+            "NetworkConfig": {"EnableNetworkIsolation": True}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+        assert findings[0]["Severity"] == "High"
+
+
+class TestSM39ModelQualityNetworkIsolation:
+    """SM-39: Model quality job network isolation (SageMaker.25, High
+    severity register decision)."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm39_isolation_disabled_returns_failed_high(self, mock_client):
+        check = sagemaker_app.check_sagemaker_model_quality_network_isolation
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_quality_job_definition.return_value = {
+            "NetworkConfig": {"EnableNetworkIsolation": False}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-39"
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "High"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm39_isolation_enabled_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_model_quality_network_isolation
+        mock_sm = _mock_job_definition_client(
+            mock_client, "JobDefinitionSummaries", "job-1", None
+        )
+        mock_sm.describe_model_quality_job_definition.return_value = {
+            "NetworkConfig": {"EnableNetworkIsolation": True}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+
+class TestSM36MonitoringTrafficEncryption:
+    """SM-36: Monitoring schedule traffic encryption (SageMaker.22), with
+    named-definition resolution (same fix pattern as SM-13)."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm36_no_schedules_returns_na(self, mock_client):
+        check = sagemaker_app.check_sagemaker_monitoring_traffic_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{"MonitoringScheduleSummaries": []}]
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "SM-36"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm36_inline_definition_encrypted_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_monitoring_traffic_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"MonitoringScheduleSummaries": [{"MonitoringScheduleName": "sched-1"}]}
+        ]
+        mock_sm.describe_monitoring_schedule.return_value = {
+            "MonitoringScheduleConfig": {
+                "MonitoringJobDefinition": {
+                    "NetworkConfig": {"EnableInterContainerTrafficEncryption": True}
+                }
+            }
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm36_named_definition_resolves_encryption(self, mock_client):
+        """Regression test: named monitoring job definitions must be resolved
+        via the matching DescribeXJobDefinition API (shared helper with
+        SM-13), not defaulted to disabled."""
+        check = sagemaker_app.check_sagemaker_monitoring_traffic_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"MonitoringScheduleSummaries": [{"MonitoringScheduleName": "sched-named"}]}
+        ]
+        mock_sm.describe_monitoring_schedule.return_value = {
+            "MonitoringScheduleConfig": {
+                "MonitoringJobDefinitionName": "my-model-quality-job-def",
+                "MonitoringType": "ModelQuality",
+            }
+        }
+        mock_sm.describe_model_quality_job_definition.return_value = {
+            "NetworkConfig": {"EnableInterContainerTrafficEncryption": True}
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+        mock_sm.describe_model_quality_job_definition.assert_called_once_with(
+            JobDefinitionName="my-model-quality-job-def"
+        )
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm36_encryption_disabled_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_monitoring_traffic_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"MonitoringScheduleSummaries": [{"MonitoringScheduleName": "sched-fail"}]}
+        ]
+        mock_sm.describe_monitoring_schedule.return_value = {
+            "MonitoringScheduleConfig": {
+                "MonitoringJobDefinition": {
+                    "NetworkConfig": {"EnableInterContainerTrafficEncryption": False}
+                }
+            }
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "Medium"
+
+
+class TestSM37And38InferenceExperimentEncryption:
+    """SM-37 (SageMaker.23, instance storage) and SM-38 (SageMaker.24, data
+    storage) inference experiment encryption checks."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_no_experiments_returns_na_both(self, mock_client):
+        check = sagemaker_app.check_sagemaker_inference_experiment_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [{"InferenceExperiments": []}]
+        result = check()
+        findings = extract_csv_data(result)
+        check_ids = {f["Check_ID"] for f in findings}
+        assert check_ids == {"SM-37", "SM-38"}
+        for f in findings:
+            assert f["Status"] == "N/A"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_instance_storage_without_kms_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_inference_experiment_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"InferenceExperiments": [{"Name": "exp-1"}]}
+        ]
+        mock_sm.describe_inference_experiment.return_value = {}
+        result = check()
+        findings = extract_csv_data(result)
+        sm37 = [f for f in findings if f["Check_ID"] == "SM-37"]
+        sm38 = [f for f in findings if f["Check_ID"] == "SM-38"]
+        assert sm37 and sm37[0]["Status"] == "Failed"
+        # No DataStorageConfig means data capture is not enabled; SM-38 is N/A.
+        assert sm38 and sm38[0]["Status"] == "N/A"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_instance_storage_with_kms_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_inference_experiment_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"InferenceExperiments": [{"Name": "exp-1"}]}
+        ]
+        mock_sm.describe_inference_experiment.return_value = {
+            "KmsKey": "arn:aws:kms:us-east-1:123456789012:key/abcd"
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        sm37 = [f for f in findings if f["Check_ID"] == "SM-37"]
+        assert sm37 and sm37[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_data_capture_without_kms_returns_failed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_inference_experiment_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"InferenceExperiments": [{"Name": "exp-1"}]}
+        ]
+        mock_sm.describe_inference_experiment.return_value = {
+            "KmsKey": "arn:aws:kms:us-east-1:123456789012:key/abcd",
+            "DataStorageConfig": {"Destination": "s3://bucket/prefix"},
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        sm38 = [f for f in findings if f["Check_ID"] == "SM-38"]
+        assert sm38 and sm38[0]["Status"] == "Failed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_data_capture_with_kms_returns_passed(self, mock_client):
+        check = sagemaker_app.check_sagemaker_inference_experiment_encryption
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        paginator = MagicMock()
+        mock_sm.get_paginator.return_value = paginator
+        paginator.paginate.return_value = [
+            {"InferenceExperiments": [{"Name": "exp-1"}]}
+        ]
+        mock_sm.describe_inference_experiment.return_value = {
+            "KmsKey": "arn:aws:kms:us-east-1:123456789012:key/abcd",
+            "DataStorageConfig": {
+                "Destination": "s3://bucket/prefix",
+                "KmsKey": "arn:aws:kms:us-east-1:123456789012:key/data-key",
+            },
+        }
+        result = check()
+        findings = extract_csv_data(result)
+        sm38 = [f for f in findings if f["Check_ID"] == "SM-38"]
+        assert sm38 and sm38[0]["Status"] == "Passed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_exception_returns_error_findings_both(self, mock_client):
+        check = sagemaker_app.check_sagemaker_inference_experiment_encryption
+        mock_client.side_effect = Exception("SageMaker error")
+        result = check()
+        findings = extract_csv_data(result)
+        check_ids = {f["Check_ID"] for f in findings}
+        assert check_ids == {"SM-37", "SM-38"}
+        for f in findings:
+            assert f["Status"] == "N/A"
+            assert f["Severity"] == "Low"
+            assert f["Finding"].startswith("COULD NOT ASSESS")

@@ -117,6 +117,17 @@ REQUIRED_SAGEMAKER_ACTIONS = {
     "sagemaker:ListExperiments",
     "sagemaker:ListTrials",
     "sagemaker:ListAssociations",
+    # Gap-analysis PR-1/PR-3 additions
+    "sagemaker:ListEndpointConfigs",
+    "sagemaker:DescribeEndpointConfig",
+    "sagemaker:ListModelExplainabilityJobDefinitions",
+    "sagemaker:DescribeModelExplainabilityJobDefinition",
+    "sagemaker:ListModelBiasJobDefinitions",
+    "sagemaker:DescribeModelBiasJobDefinition",
+    "sagemaker:ListModelQualityJobDefinitions",
+    "sagemaker:DescribeModelQualityJobDefinition",
+    "sagemaker:ListInferenceExperiments",
+    "sagemaker:DescribeInferenceExperiment",
 }
 
 REQUIRED_AGENTCORE_ACTIONS = {
@@ -129,6 +140,9 @@ REQUIRED_AGENTCORE_ACTIONS = {
     "bedrock-agentcore:ListPolicyEngines",
     "bedrock-agentcore:GetPolicyEngine",
     "bedrock-agentcore:GetResourcePolicy",
+    # BedrockAgentCore.7 (AC-15, gap-analysis PR-2)
+    "bedrock-agentcore:ListCodeInterpreters",
+    "bedrock-agentcore:GetCodeInterpreter",
 }
 
 _ACTION_RE = re.compile(r"-\s+([a-z0-9-]+:[A-Za-z0-9]+)")

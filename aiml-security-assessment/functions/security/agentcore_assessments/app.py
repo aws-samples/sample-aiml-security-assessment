@@ -18,6 +18,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError, EndpointConnectionError
 
 from schema import create_finding, SeverityEnum, StatusEnum
+from severity_disposition import could_not_assess_row, COULD_NOT_ASSESS_PREFIX
 
 # Configure logging
 logger = logging.getLogger()
@@ -232,9 +233,17 @@ def check_timeout() -> bool:
 
 
 def _agentcore_list_all(
-    list_method_name: str, result_keys: List[str]
+    list_method_name: str,
+    result_keys: List[str],
+    extra_kwargs: Dict[str, Any] = None,
 ) -> List[Dict[str, Any]]:
-    """Collect all items from an AgentCore list API, following nextToken."""
+    """Collect all items from an AgentCore list API, following nextToken.
+
+    ``extra_kwargs`` is passed on every page call (e.g. ``{"type": "CUSTOM"}``
+    to restrict ListBrowsers/ListCodeInterpreters to customer-created
+    resources, matching the BrowserCustom/CodeInterpreterCustom resource types
+    that Security Hub controls BedrockAgentCore.5-.7 evaluate).
+    """
     if agentcore_client is None:
         return []
 
@@ -243,7 +252,7 @@ def _agentcore_list_all(
     list_method = getattr(agentcore_client, list_method_name)
 
     while True:
-        kwargs = {}
+        kwargs = dict(extra_kwargs) if extra_kwargs else {}
         if next_token:
             kwargs["nextToken"] = next_token
 
@@ -472,13 +481,13 @@ def write_to_s3(
 
 def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
     """
-    Check VPC configuration for AgentCore Runtimes, Code Interpreters, and Browser Tools.
+    Check that AgentCore Runtimes use VPC network mode.
 
-    Validates:
-    - VPC configuration exists
-    - Subnets are private (not public)
-    - Required VPC endpoints exist
-    - NAT gateway configuration
+    Aligns with AWS Security Hub control BedrockAgentCore.1 (severity High):
+    the control fails if the runtime's networkConfiguration.networkMode is
+    PUBLIC (an absent value defaults to PUBLIC and fails). Custom browsers and
+    code interpreters are covered by their own controls (BedrockAgentCore.5-.7)
+    and APIs, not by this check.
 
     Returns:
         List of findings
@@ -538,50 +547,10 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
                                     status=StatusEnum.FAILED,
                                 )
                             )
-                        else:
-                            # Validate VPC configuration
-                            subnet_ids = network_config.get("subnetIds", [])
-
-                            if subnet_ids:
-                                # Check if subnets are private
-                                try:
-                                    subnets_response = ec2_client.describe_subnets(
-                                        SubnetIds=subnet_ids
-                                    )
-                                    for subnet in subnets_response.get("Subnets", []):
-                                        subnet_id = subnet["SubnetId"]
-
-                                        # Check route tables for internet gateway
-                                        route_tables = ec2_client.describe_route_tables(
-                                            Filters=[
-                                                {
-                                                    "Name": "association.subnet-id",
-                                                    "Values": [subnet_id],
-                                                }
-                                            ]
-                                        )
-
-                                        for rt in route_tables.get("RouteTables", []):
-                                            for route in rt.get("Routes", []):
-                                                if route.get(
-                                                    "GatewayId", ""
-                                                ).startswith("igw-"):
-                                                    findings.append(
-                                                        create_finding(
-                                                            check_id="AC-01",
-                                                            finding_name="AgentCore Runtime Public Subnet",
-                                                            finding_details=f"Runtime '{runtime_name}' is in public subnet {subnet_id} with direct internet access",
-                                                            resolution="Move runtime to private subnets without direct internet gateway routes",
-                                                            reference=AGENTCORE_VPC_REFERENCE_URL,
-                                                            severity=SeverityEnum.MEDIUM,
-                                                            status=StatusEnum.FAILED,
-                                                        )
-                                                    )
-
-                                except ClientError as e:
-                                    logger.warning(
-                                        f"Error checking subnet configuration: {e}"
-                                    )
+                        # VPC mode passes: Security Hub control BedrockAgentCore.1
+                        # fails only when networkMode is PUBLIC. (VPC subnet
+                        # details live under networkConfiguration.networkModeConfig
+                        # .subnets, not a top-level subnetIds field.)
 
                     except ClientError as e:
                         if e.response["Error"]["Code"] == "ResourceNotFoundException":
@@ -596,9 +565,10 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
                 logger.error(f"Error listing runtimes: {e}")
                 raise
 
-        # Note: Code Interpreters and Browser Tools are configured as part of Runtime
-        # They don't have separate list/describe APIs in bedrock-agentcore-control
-        # VPC configuration for these tools is inherited from the Runtime configuration
+        # Note: custom browsers and code interpreters have their own APIs
+        # (ListBrowsers/GetBrowser, ListCodeInterpreters/GetCodeInterpreter)
+        # and their own Security Hub controls (BedrockAgentCore.5-.7). Browser
+        # session recording is covered by AC-06; this check covers runtimes only.
 
         # Return appropriate status based on whether resources were found
         if not findings:
@@ -630,14 +600,14 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in VPC configuration check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-01",
-                finding_name="AgentCore VPC Configuration Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference=AGENTCORE_STARTER_TOOLKIT_URL,
-                severity=SeverityEnum.HIGH,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-01",
+                "AgentCore VPC Configuration Check",
+                e,
+                AGENTCORE_STARTER_TOOLKIT_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -782,14 +752,14 @@ def check_agentcore_full_access_roles(
     except Exception as e:
         logger.error(f"Error in full access roles check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-02",
-                finding_name="AgentCore IAM Full Access Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
-                severity=SeverityEnum.HIGH,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-02",
+                "AgentCore IAM Full Access Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -1082,14 +1052,16 @@ def check_stale_agentcore_access(
                         f"Job timed out for {principal_type} {principal_name} after {max_wait_time}s"
                     )
                     findings.append(
-                        create_finding(
-                            check_id="AC-03",
-                            finding_name="AgentCore Stale Access Check Incomplete",
-                            finding_details=f"Could not determine last access for {principal_type} '{principal_name}' — IAM job timed out after {max_wait_time}s",
-                            resolution="Re-run the assessment or manually check service last accessed details for this principal",
-                            reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
-                            severity=SeverityEnum.LOW,
-                            status=StatusEnum.FAILED,
+                        could_not_assess_row(
+                            create_finding,
+                            "AC-03",
+                            "AgentCore Stale Access Check",
+                            f"Could not determine last access for {principal_type} "
+                            f"'{principal_name}' — IAM job timed out after "
+                            f"{max_wait_time}s",
+                            "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
+                            SeverityEnum,
+                            StatusEnum,
                         )
                     )
 
@@ -1100,14 +1072,14 @@ def check_stale_agentcore_access(
                 elif error_code == "AccessDenied":
                     logger.error(f"Access denied when checking {principal_name}: {e}")
                     findings.append(
-                        create_finding(
-                            check_id="AC-03",
-                            finding_name="AgentCore Stale Access Check",
-                            finding_details=f"Access denied when checking service last accessed for {principal_type} {principal_name}",
-                            resolution="Ensure Lambda execution role has iam:GenerateServiceLastAccessedDetails and iam:GetServiceLastAccessedDetails permissions",
-                            reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
-                            severity=SeverityEnum.HIGH,
-                            status=StatusEnum.FAILED,
+                        could_not_assess_row(
+                            create_finding,
+                            "AC-03",
+                            "AgentCore Stale Access Check",
+                            f"Access denied when checking service last accessed for {principal_type} {principal_name} ({e})",
+                            "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
+                            SeverityEnum,
+                            StatusEnum,
                         )
                     )
                     return findings
@@ -1175,14 +1147,14 @@ def check_stale_agentcore_access(
     except Exception as e:
         logger.error(f"Error in stale access check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-03",
-                finding_name="AgentCore Stale Access Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-03",
+                "AgentCore Stale Access Check",
+                e,
+                "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -1191,12 +1163,30 @@ def check_stale_agentcore_access(
 
 def check_agentcore_observability() -> List[Dict[str, Any]]:
     """
-    Check observability configuration for AgentCore resources.
+    Check observability configuration for AgentCore Runtimes.
+
+    GetAgentRuntime has no "loggingConfig"/"tracingConfig" toggle fields —
+    per the AWS API reference its response only contains
+    agentRuntimeArn/Id/Name/Version, agentRuntimeArtifact,
+    authorizerConfiguration, networkConfiguration, lifecycleConfiguration,
+    metadataConfiguration, protocolConfiguration, requestHeaderConfiguration,
+    filesystemConfigurations, roleArn, status, workloadIdentityDetails, and a
+    few timestamps. AWS's own docs state that for AgentCore-hosted runtimes,
+    CloudWatch Logs observability is automatically enabled with no additional
+    configuration (a log group is created by the service at
+    /aws/bedrock-agentcore/runtimes/{agentRuntimeId}-DEFAULT on first
+    invocation); X-Ray tracing is likewise enabled by default and has no
+    documented API-readable enabled/disabled flag on the runtime resource
+    itself. Neither aspect is something this check can verify definitively via
+    the Runtime control-plane API, so this check verifies what IS API-visible
+    (the log group's existence once the runtime has been invoked) and reports
+    an ADVISORY for the rest rather than fabricating a Failed/Passed verdict
+    from fields that don't exist.
 
     Validates:
-    - CloudWatch Logs configuration
-    - X-Ray tracing enabled
-    - CloudWatch custom metrics published
+    - The AgentCore-managed application log group exists for each runtime
+      (best-effort; a runtime that has never been invoked will not yet have
+      one, which is expected and not a security finding)
 
     Returns:
         List of findings
@@ -1220,8 +1210,10 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
     try:
         logger.info("Checking AgentCore observability configuration")
         resources_found = False
+        runtimes_missing_log_group = []
+        runtimes_checked = 0
 
-        # Check Runtimes for logging and tracing
+        # Check Runtimes for the AgentCore-managed application log group.
         try:
             runtimes = _agentcore_list_all("list_agent_runtimes", ["agentRuntimes"])
 
@@ -1236,77 +1228,66 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
                     runtime_name = runtime.get("agentRuntimeName", runtime_id)
 
                     try:
-                        runtime_details = agentcore_client.get_agent_runtime(
-                            agentRuntimeId=runtime_id
+                        # AgentCore creates this log group itself on the
+                        # runtime's first invocation; its absence just means
+                        # the runtime hasn't been invoked yet, not that
+                        # logging was disabled (there is no such toggle).
+                        log_group_name = (
+                            f"/aws/bedrock-agentcore/runtimes/{runtime_id}-DEFAULT"
                         )
-
-                        # Check CloudWatch Logs configuration
-                        logging_config = runtime_details.get("loggingConfig", {})
-                        cloudwatch_logs_config = logging_config.get(
-                            "cloudWatchLogsConfig"
+                        runtimes_checked += 1
+                        log_groups_response = logs_client.describe_log_groups(
+                            logGroupNamePrefix=log_group_name, limit=1
                         )
-
-                        if not cloudwatch_logs_config:
-                            findings.append(
-                                create_finding(
-                                    check_id="AC-04",
-                                    finding_name="AgentCore Runtime CloudWatch Logs",
-                                    finding_details=f"Runtime '{runtime_name}' ({runtime_id}) does not have CloudWatch Logs configured",
-                                    resolution="Enable CloudWatch Logs for monitoring and troubleshooting",
-                                    reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
-                                    severity=SeverityEnum.MEDIUM,
-                                    status=StatusEnum.FAILED,
-                                )
-                            )
-                        else:
-                            # Verify log group exists
-                            log_group_name = cloudwatch_logs_config.get("logGroupName")
-                            if log_group_name:
-                                try:
-                                    logs_client.describe_log_groups(
-                                        logGroupNamePrefix=log_group_name, limit=1
-                                    )
-                                except ClientError as e:
-                                    if (
-                                        e.response["Error"]["Code"]
-                                        == "ResourceNotFoundException"
-                                    ):
-                                        findings.append(
-                                            create_finding(
-                                                check_id="AC-04",
-                                                finding_name="AgentCore Runtime Log Group Missing",
-                                                finding_details=f"Runtime '{runtime_name}' has CloudWatch Logs configured but log group '{log_group_name}' does not exist",
-                                                resolution="Create the log group or update runtime configuration",
-                                                reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
-                                                severity=SeverityEnum.MEDIUM,
-                                                status=StatusEnum.FAILED,
-                                            )
-                                        )
-
-                        # Check X-Ray tracing configuration
-                        tracing_config = runtime_details.get("tracingConfig", {})
-                        tracing_enabled = tracing_config.get("enabled", False)
-
-                        if not tracing_enabled:
-                            findings.append(
-                                create_finding(
-                                    check_id="AC-04",
-                                    finding_name="AgentCore Runtime X-Ray Tracing",
-                                    finding_details=f"Runtime '{runtime_name}' ({runtime_id}) does not have X-Ray tracing enabled",
-                                    resolution="Enable X-Ray tracing for distributed tracing and performance analysis",
-                                    reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
-                                    severity=SeverityEnum.MEDIUM,
-                                    status=StatusEnum.FAILED,
-                                )
+                        if not log_groups_response.get("logGroups"):
+                            runtimes_missing_log_group.append(
+                                {"id": runtime_id, "name": runtime_name}
                             )
 
                     except ClientError as e:
-                        if e.response["Error"]["Code"] != "ResourceNotFoundException":
-                            logger.error(f"Error describing runtime {runtime_id}: {e}")
+                        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                            runtimes_missing_log_group.append(
+                                {"id": runtime_id, "name": runtime_name}
+                            )
+                        else:
+                            logger.error(
+                                f"Error checking log group for runtime {runtime_id}: {e}"
+                            )
 
         except ClientError as e:
             if e.response["Error"]["Code"] != "ResourceNotFoundException":
+                # Enumeration itself failed (e.g. AccessDenied) — re-raise so
+                # the outer handler reports COULD_NOT_ASSESS rather than
+                # silently falling through to a "no resources found" N/A,
+                # which would understate an access gap as a clean result.
                 logger.error(f"Error listing runtimes: {e}")
+                raise
+
+        if runtimes_missing_log_group:
+            names = ", ".join(f"'{r['name']}'" for r in runtimes_missing_log_group[:10])
+            findings.append(
+                create_finding(
+                    check_id="AC-04",
+                    finding_name="ADVISORY: AgentCore Runtime Log Group Not Yet Created",
+                    finding_details=(
+                        f"The AgentCore-managed application log group does not yet exist for: "
+                        f"{names}. AgentCore creates this log group automatically on the "
+                        "runtime's first invocation, so this is informational (the runtime may "
+                        "simply not have been invoked yet) rather than a misconfiguration — "
+                        "there is no API-exposed setting to enable or disable this logging."
+                    ),
+                    resolution=(
+                        "No action required unless you expect the runtime to have been "
+                        "invoked already. If so, verify the runtime is receiving traffic. "
+                        "X-Ray tracing and CloudWatch Logs delivery for AgentCore Runtimes are "
+                        "on by default and are not independently toggleable via the API, so "
+                        "they cannot be verified as 'disabled' by this check."
+                    ),
+                    reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
 
         # Return appropriate status based on whether resources were found
         if not findings:
@@ -1315,7 +1296,12 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
                     create_finding(
                         check_id="AC-04",
                         finding_name="AgentCore Observability Check",
-                        finding_details="All AgentCore resources have proper observability configuration",
+                        finding_details=(
+                            f"Verified the AgentCore-managed application log group exists for "
+                            f"all {runtimes_checked} invoked Runtime(s). X-Ray tracing and "
+                            "CloudWatch Logs delivery are enabled by default for AgentCore "
+                            "Runtimes and have no API-exposed disable setting to verify further."
+                        ),
                         resolution="No action required",
                         reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
                         severity=SeverityEnum.MEDIUM,
@@ -1338,14 +1324,14 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in observability check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-04",
-                finding_name="AgentCore Observability Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-04",
+                "AgentCore Observability Check",
+                e,
+                AGENTCORE_OBSERVABILITY_REFERENCE_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -1422,7 +1408,11 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
                         )
 
         except ClientError as e:
+            # Enumeration itself failed (e.g. AccessDenied) — re-raise so the
+            # outer handler reports COULD_NOT_ASSESS rather than silently
+            # falling through to a "no resources found" N/A.
             logger.warning(f"Error checking ECR repositories: {e}")
+            raise
 
         # Note: Browser Tool recording buckets and Code Interpreter storage are configured
         # as part of Runtime configuration, not as separate resources
@@ -1457,14 +1447,14 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in encryption check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-05",
-                finding_name="AgentCore Encryption Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference=AGENTCORE_DATA_ENCRYPTION_REFERENCE_URL,
-                severity=SeverityEnum.HIGH,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-05",
+                "AgentCore Encryption Check",
+                e,
+                AGENTCORE_DATA_ENCRYPTION_REFERENCE_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -1473,21 +1463,24 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
 
 def check_browser_tool_recording() -> List[Dict[str, Any]]:
     """
-    Check Browser Tool recording configuration.
+    Check that custom AgentCore browsers have session recording enabled with an
+    S3 destination configured.
 
-    Note: Browser Tools are configured as part of Runtime configuration in AgentCore.
-    This check validates that Runtimes have appropriate storage configuration.
-
-    Returns:
-        List of findings
+    Aligns with AWS Security Hub control BedrockAgentCore.6 (severity Medium):
+    the control fails if a custom browser does not have recording enabled or
+    does not have an S3 location configured for storing recordings. Only
+    customer-created browsers are evaluated (ListBrowsers type=CUSTOM); AWS
+    system browsers such as aws.browser.v1 are out of scope, matching the
+    control's AWS::BedrockAgentCore::BrowserCustom resource type.
     """
+    check_name = "AgentCore Browser Session Recording Check"
     findings = []
 
     if agentcore_client is None:
         findings.append(
             create_finding(
                 check_id="AC-06",
-                finding_name="AgentCore Browser Tool Recording Check",
+                finding_name=check_name,
                 finding_details="AgentCore client not available in this region",
                 resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
                 reference=AGENTCORE_BROWSER_REFERENCE_URL,
@@ -1497,22 +1490,54 @@ def check_browser_tool_recording() -> List[Dict[str, Any]]:
         )
         return findings
 
-    try:
-        logger.info(
-            "Checking Browser Tool recording configuration (via Runtime config)"
+    def _could_not_assess(detail: str, resolution: str) -> Dict[str, Any]:
+        # COULD_NOT_ASSESS disposition (severity methodology section 3.4): the
+        # check could not run, so report an unknown state (N/A, Low) instead of
+        # a false Failed or a silent "no resources" row.
+        return create_finding(
+            check_id="AC-06",
+            finding_name=f"COULD NOT ASSESS: {check_name}",
+            finding_details=detail,
+            resolution=resolution,
+            reference=AGENTCORE_BROWSER_REFERENCE_URL,
+            severity=SeverityEnum.LOW,
+            status=StatusEnum.NA,
         )
 
-        # Browser Tools are part of Runtime configuration
-        # Check if Runtimes have appropriate storage configured
-        runtimes = _agentcore_list_all("list_agent_runtimes", ["agentRuntimes"])
+    try:
+        logger.info("Checking custom browser session recording configuration")
+        try:
+            browsers = _agentcore_list_all(
+                "list_browsers", ["browserSummaries"], {"type": "CUSTOM"}
+            )
+        except ClientError as e:
+            if _is_access_denied_client_error(e):
+                return [
+                    _could_not_assess(
+                        f"Unable to list AgentCore browsers: {str(e)}. Custom "
+                        "browser session recording was NOT assessed.",
+                        "Grant bedrock-agentcore:ListBrowsers and "
+                        "bedrock-agentcore:GetBrowser to the assessment role "
+                        "and re-run the assessment.",
+                    )
+                ]
+            raise
+        except AttributeError:
+            return [
+                _could_not_assess(
+                    "Browser APIs are not available in this bedrock-agentcore-control "
+                    "client version. Custom browser session recording was NOT assessed.",
+                    "Ensure botocore meets the version floor in requirements.txt "
+                    "and re-run the assessment.",
+                )
+            ]
 
-        if not runtimes:
-            logger.info("No AgentCore Runtimes found")
+        if not browsers:
             findings.append(
                 create_finding(
                     check_id="AC-06",
-                    finding_name="AgentCore Browser Tool Recording Check",
-                    finding_details="No AgentCore Runtimes found to check browser tool configuration",
+                    finding_name=check_name,
+                    finding_details="No custom browsers found",
                     resolution="No action required",
                     reference=AGENTCORE_BROWSER_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
@@ -1521,45 +1546,69 @@ def check_browser_tool_recording() -> List[Dict[str, Any]]:
             )
             return findings
 
-        logger.info(f"Found {len(runtimes)} AgentCore Runtimes")
+        logger.info(f"Found {len(browsers)} custom browsers")
+        browsers_without_recording = []
+        browsers_with_recording = []
+        browsers_not_assessed = []
 
-        # Check if runtimes have storage configuration for browser tools
-        for runtime in runtimes:
-            runtime_id = runtime.get("agentRuntimeId", "unknown")
-            runtime_name = runtime.get("agentRuntimeName", runtime_id)
-
+        for browser in browsers:
+            browser_id = browser.get("browserId", "unknown")
+            browser_name = browser.get("name", browser_id)
             try:
-                runtime_details = agentcore_client.get_agent_runtime(
-                    agentRuntimeId=runtime_id
+                browser_details = agentcore_client.get_browser(browserId=browser_id)
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                    continue
+                logger.warning(f"Error describing browser {browser_id}: {e}")
+                browsers_not_assessed.append(browser_name)
+                continue
+
+            recording = browser_details.get("recording") or {}
+            recording_enabled = recording.get("enabled") is True
+            s3_bucket = (recording.get("s3Location") or {}).get("bucket")
+
+            if recording_enabled and s3_bucket:
+                browsers_with_recording.append(browser_name)
+            else:
+                browsers_without_recording.append(
+                    {"name": browser_name, "id": browser_id}
                 )
 
-                # Check for storage configuration (browser tools need storage)
-                storage_config = runtime_details.get("storageConfig", {})
-
-                if not storage_config:
-                    findings.append(
-                        create_finding(
-                            check_id="AC-06",
-                            finding_name="AgentCore Runtime Storage Configuration",
-                            finding_details=f"Runtime '{runtime_name}' ({runtime_id}) does not have storage configuration for browser tools",
-                            resolution="Configure S3 storage for browser tool session recordings and artifacts",
-                            reference=AGENTCORE_BROWSER_REFERENCE_URL,
-                            severity=SeverityEnum.MEDIUM,
-                            status=StatusEnum.FAILED,
-                        )
-                    )
-
-            except ClientError as e:
-                if e.response["Error"]["Code"] != "ResourceNotFoundException":
-                    logger.error(f"Error describing runtime {runtime_id}: {e}")
-
-        # If no findings, return passed
-        if not findings:
+        if browsers_without_recording:
+            browser_list = ", ".join(
+                f"'{b['name']}'" for b in browsers_without_recording
+            )
             findings.append(
                 create_finding(
                     check_id="AC-06",
-                    finding_name="AgentCore Browser Tool Recording Check",
-                    finding_details=f"All {len(runtimes)} Runtimes have proper storage configuration",
+                    finding_name="AgentCore Browser Session Recording Disabled",
+                    finding_details=(
+                        f"The following custom browsers do not have session recording "
+                        f"enabled with an S3 destination: {browser_list}. Without "
+                        "recording, automated browsing sessions cannot be audited for "
+                        "unauthorized access, data exfiltration, or malicious activity."
+                    ),
+                    resolution=(
+                        "Enable session recording with an S3 location when creating "
+                        "custom browsers (recording.enabled=true and "
+                        "recording.s3Location.bucket). Recording cannot be changed "
+                        "after creation; recreate the browser with recording enabled."
+                    ),
+                    reference=AGENTCORE_BROWSER_REFERENCE_URL,
+                    severity=SeverityEnum.MEDIUM,
+                    status=StatusEnum.FAILED,
+                )
+            )
+
+        if browsers_with_recording and not browsers_without_recording:
+            findings.append(
+                create_finding(
+                    check_id="AC-06",
+                    finding_name=check_name,
+                    finding_details=(
+                        f"All {len(browsers_with_recording)} custom browsers have "
+                        "session recording enabled with an S3 destination"
+                    ),
                     resolution="No action required",
                     reference=AGENTCORE_BROWSER_REFERENCE_URL,
                     severity=SeverityEnum.MEDIUM,
@@ -1567,17 +1616,387 @@ def check_browser_tool_recording() -> List[Dict[str, Any]]:
                 )
             )
 
+        if browsers_not_assessed:
+            findings.append(
+                _could_not_assess(
+                    "Unable to describe the following custom browsers: "
+                    f"{', '.join(browsers_not_assessed)}. Their session recording "
+                    "configuration was NOT assessed.",
+                    "Grant bedrock-agentcore:GetBrowser to the assessment role "
+                    "and re-run the assessment.",
+                )
+            )
+
     except Exception as e:
-        logger.error(f"Error in browser tool recording check: {e}")
+        logger.error(f"Error in browser session recording check: {e}")
+        findings.append(
+            _could_not_assess(
+                f"This check could not be completed (error: {str(e)}). Custom "
+                "browser session recording was NOT assessed.",
+                "Verify the assessment role's bedrock-agentcore permissions, "
+                "confirm the region supports AgentCore, and re-run the assessment.",
+            )
+        )
+
+    return findings
+
+
+def check_browser_network_mode() -> List[Dict[str, Any]]:
+    """
+    Check that custom AgentCore browsers are not configured with PUBLIC
+    network mode.
+
+    Aligns with AWS Security Hub control BedrockAgentCore.5 (severity High):
+    the control fails when a custom browser's
+    networkConfiguration.networkMode is PUBLIC. Only customer-created
+    browsers are evaluated (ListBrowsers type=CUSTOM, Rule 7); AWS system
+    browsers such as aws.browser.v1 are out of scope, matching the control's
+    AWS::BedrockAgentCore::BrowserCustom resource type.
+    """
+    check_name = "AgentCore Browser Network Mode Check"
+    findings = []
+
+    if agentcore_client is None:
         findings.append(
             create_finding(
-                check_id="AC-06",
-                finding_name="AgentCore Browser Tool Recording Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
+                check_id="AC-14",
+                finding_name=check_name,
+                finding_details="AgentCore client not available in this region",
+                resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
                 reference=AGENTCORE_BROWSER_REFERENCE_URL,
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+        return findings
+
+    def _could_not_assess(detail: str, resolution: str) -> Dict[str, Any]:
+        return create_finding(
+            check_id="AC-14",
+            finding_name=f"COULD NOT ASSESS: {check_name}",
+            finding_details=detail,
+            resolution=resolution,
+            reference=AGENTCORE_BROWSER_REFERENCE_URL,
+            severity=SeverityEnum.LOW,
+            status=StatusEnum.NA,
+        )
+
+    try:
+        logger.info("Checking custom browser network mode configuration")
+        try:
+            browsers = _agentcore_list_all(
+                "list_browsers", ["browserSummaries"], {"type": "CUSTOM"}
+            )
+        except ClientError as e:
+            if _is_access_denied_client_error(e):
+                return [
+                    _could_not_assess(
+                        f"Unable to list AgentCore browsers: {str(e)}. Custom "
+                        "browser network mode was NOT assessed.",
+                        "Grant bedrock-agentcore:ListBrowsers and "
+                        "bedrock-agentcore:GetBrowser to the assessment role "
+                        "and re-run the assessment.",
+                    )
+                ]
+            raise
+        except AttributeError:
+            return [
+                _could_not_assess(
+                    "Browser APIs are not available in this bedrock-agentcore-control "
+                    "client version. Custom browser network mode was NOT assessed.",
+                    "Ensure botocore meets the version floor in requirements.txt "
+                    "and re-run the assessment.",
+                )
+            ]
+
+        if not browsers:
+            findings.append(
+                create_finding(
+                    check_id="AC-14",
+                    finding_name=check_name,
+                    finding_details="No custom browsers found",
+                    resolution="No action required",
+                    reference=AGENTCORE_BROWSER_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            return findings
+
+        browsers_public = []
+        browsers_private = []
+        browsers_not_assessed = []
+
+        for browser in browsers:
+            browser_id = browser.get("browserId", "unknown")
+            browser_name = browser.get("name", browser_id)
+            try:
+                browser_details = agentcore_client.get_browser(browserId=browser_id)
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                    continue
+                logger.warning(f"Error describing browser {browser_id}: {e}")
+                browsers_not_assessed.append(browser_name)
+                continue
+
+            network_mode = browser_details.get("networkConfiguration", {}).get(
+                "networkMode", "PUBLIC"
+            )
+
+            if network_mode == "PUBLIC":
+                browsers_public.append(browser_name)
+            else:
+                browsers_private.append(browser_name)
+
+        if browsers_public:
+            browser_list = ", ".join(f"'{b}'" for b in browsers_public)
+            findings.append(
+                create_finding(
+                    check_id="AC-14",
+                    finding_name="AgentCore Browser Public Network Mode",
+                    finding_details=(
+                        f"The following custom browsers use PUBLIC network mode: "
+                        f"{browser_list}. Public network mode exposes the browser "
+                        "tool to the public internet."
+                    ),
+                    resolution=(
+                        "Configure custom browsers with VPC network mode "
+                        "(networkConfiguration.networkMode=VPC) and appropriate "
+                        "subnets/security groups. Network mode cannot be changed "
+                        "after creation; recreate the browser with VPC mode."
+                    ),
+                    reference=AGENTCORE_BROWSER_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.FAILED,
+                )
+            )
+
+        if browsers_private and not browsers_public:
+            findings.append(
+                create_finding(
+                    check_id="AC-14",
+                    finding_name=check_name,
+                    finding_details=(
+                        f"All {len(browsers_private)} custom browsers use VPC "
+                        "network mode"
+                    ),
+                    resolution="No action required",
+                    reference=AGENTCORE_BROWSER_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.PASSED,
+                )
+            )
+
+        if browsers_not_assessed:
+            findings.append(
+                _could_not_assess(
+                    "Unable to describe the following custom browsers: "
+                    f"{', '.join(browsers_not_assessed)}. Their network mode "
+                    "configuration was NOT assessed.",
+                    "Grant bedrock-agentcore:GetBrowser to the assessment role "
+                    "and re-run the assessment.",
+                )
+            )
+
+    except Exception as e:
+        logger.error(f"Error in browser network mode check: {e}")
+        findings.append(
+            _could_not_assess(
+                f"This check could not be completed (error: {str(e)}). Custom "
+                "browser network mode was NOT assessed.",
+                "Verify the assessment role's bedrock-agentcore permissions, "
+                "confirm the region supports AgentCore, and re-run the assessment.",
+            )
+        )
+
+    return findings
+
+
+CODE_INTERPRETER_REFERENCE_URL = (
+    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
+    "user-guide/builtin-tools/quickstart-code-interpreter.html"
+)
+
+
+def check_code_interpreter_network_mode() -> List[Dict[str, Any]]:
+    """
+    Check that custom AgentCore code interpreters are not configured with
+    PUBLIC or SANDBOX network mode.
+
+    Aligns with AWS Security Hub control BedrockAgentCore.7 (severity High):
+    the control fails when a custom code interpreter's
+    networkConfiguration.networkMode is PUBLIC or SANDBOX (only VPC mode
+    passes). Only customer-created code interpreters are evaluated
+    (ListCodeInterpreters type=CUSTOM, Rule 7); AWS system code interpreters
+    such as aws.codeinterpreter.v1 are out of scope, matching the control's
+    AWS::BedrockAgentCore::CodeInterpreterCustom resource type.
+    """
+    check_name = "AgentCore Code Interpreter Network Mode Check"
+    findings = []
+
+    if agentcore_client is None:
+        findings.append(
+            create_finding(
+                check_id="AC-15",
+                finding_name=check_name,
+                finding_details="AgentCore client not available in this region",
+                resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
+                reference=CODE_INTERPRETER_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+        return findings
+
+    def _could_not_assess(detail: str, resolution: str) -> Dict[str, Any]:
+        return create_finding(
+            check_id="AC-15",
+            finding_name=f"COULD NOT ASSESS: {check_name}",
+            finding_details=detail,
+            resolution=resolution,
+            reference=CODE_INTERPRETER_REFERENCE_URL,
+            severity=SeverityEnum.LOW,
+            status=StatusEnum.NA,
+        )
+
+    try:
+        logger.info("Checking custom code interpreter network mode configuration")
+        try:
+            code_interpreters = _agentcore_list_all(
+                "list_code_interpreters",
+                ["codeInterpreterSummaries"],
+                {"type": "CUSTOM"},
+            )
+        except ClientError as e:
+            if _is_access_denied_client_error(e):
+                return [
+                    _could_not_assess(
+                        f"Unable to list AgentCore code interpreters: {str(e)}. "
+                        "Custom code interpreter network mode was NOT assessed.",
+                        "Grant bedrock-agentcore:ListCodeInterpreters and "
+                        "bedrock-agentcore:GetCodeInterpreter to the assessment "
+                        "role and re-run the assessment.",
+                    )
+                ]
+            raise
+        except AttributeError:
+            return [
+                _could_not_assess(
+                    "Code interpreter APIs are not available in this "
+                    "bedrock-agentcore-control client version. Custom code "
+                    "interpreter network mode was NOT assessed.",
+                    "Ensure botocore meets the version floor in requirements.txt "
+                    "and re-run the assessment.",
+                )
+            ]
+
+        if not code_interpreters:
+            findings.append(
+                create_finding(
+                    check_id="AC-15",
+                    finding_name=check_name,
+                    finding_details="No custom code interpreters found",
+                    resolution="No action required",
+                    reference=CODE_INTERPRETER_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            return findings
+
+        interpreters_insecure = []
+        interpreters_vpc = []
+        interpreters_not_assessed = []
+
+        for interpreter in code_interpreters:
+            interpreter_id = interpreter.get("codeInterpreterId", "unknown")
+            interpreter_name = interpreter.get("name", interpreter_id)
+            try:
+                interpreter_details = agentcore_client.get_code_interpreter(
+                    codeInterpreterId=interpreter_id
+                )
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                    continue
+                logger.warning(
+                    f"Error describing code interpreter {interpreter_id}: {e}"
+                )
+                interpreters_not_assessed.append(interpreter_name)
+                continue
+
+            network_mode = interpreter_details.get("networkConfiguration", {}).get(
+                "networkMode", "PUBLIC"
+            )
+
+            if network_mode in ("PUBLIC", "SANDBOX"):
+                interpreters_insecure.append(
+                    {"name": interpreter_name, "network_mode": network_mode}
+                )
+            else:
+                interpreters_vpc.append(interpreter_name)
+
+        if interpreters_insecure:
+            details_list = ", ".join(
+                f"'{i['name']}' ({i['network_mode']})" for i in interpreters_insecure
+            )
+            findings.append(
+                create_finding(
+                    check_id="AC-15",
+                    finding_name="AgentCore Code Interpreter Insecure Network Mode",
+                    finding_details=(
+                        "The following custom code interpreters do not use VPC "
+                        f"network mode: {details_list}. PUBLIC and SANDBOX modes "
+                        "expose the code interpreter to broader network access "
+                        "than VPC mode."
+                    ),
+                    resolution=(
+                        "Configure custom code interpreters with VPC network mode "
+                        "(networkConfiguration.networkMode=VPC) and appropriate "
+                        "subnets/security groups. Network mode cannot be changed "
+                        "after creation; recreate the code interpreter with VPC "
+                        "mode."
+                    ),
+                    reference=CODE_INTERPRETER_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.FAILED,
+                )
+            )
+
+        if interpreters_vpc and not interpreters_insecure:
+            findings.append(
+                create_finding(
+                    check_id="AC-15",
+                    finding_name=check_name,
+                    finding_details=(
+                        f"All {len(interpreters_vpc)} custom code interpreters use "
+                        "VPC network mode"
+                    ),
+                    resolution="No action required",
+                    reference=CODE_INTERPRETER_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.PASSED,
+                )
+            )
+
+        if interpreters_not_assessed:
+            findings.append(
+                _could_not_assess(
+                    "Unable to describe the following custom code interpreters: "
+                    f"{', '.join(interpreters_not_assessed)}. Their network mode "
+                    "configuration was NOT assessed.",
+                    "Grant bedrock-agentcore:GetCodeInterpreter to the assessment "
+                    "role and re-run the assessment.",
+                )
+            )
+
+    except Exception as e:
+        logger.error(f"Error in code interpreter network mode check: {e}")
+        findings.append(
+            _could_not_assess(
+                f"This check could not be completed (error: {str(e)}). Custom "
+                "code interpreter network mode was NOT assessed.",
+                "Verify the assessment role's bedrock-agentcore permissions, "
+                "confirm the region supports AgentCore, and re-run the assessment.",
             )
         )
 
@@ -1666,7 +2085,9 @@ def check_agentcore_memory_configuration() -> List[Dict[str, Any]]:
                 if e.response["Error"]["Code"] != "ResourceNotFoundException":
                     logger.error(f"Error describing memory {memory_id}: {e}")
 
-        # If no findings, return passed
+        # If no findings, return passed. One severity per control (severity
+        # methodology section 3.4): BedrockAgentCore.3 is Medium, so the Passed
+        # row carries the same Medium as the Failed row above.
         if not findings:
             findings.append(
                 create_finding(
@@ -1675,7 +2096,7 @@ def check_agentcore_memory_configuration() -> List[Dict[str, Any]]:
                     finding_details=f"All {len(memories)} Memory resources have proper configuration",
                     resolution="No action required",
                     reference=AGENTCORE_MEMORY_REFERENCE_URL,
-                    severity=SeverityEnum.HIGH,
+                    severity=SeverityEnum.MEDIUM,
                     status=StatusEnum.PASSED,
                 )
             )
@@ -1683,14 +2104,14 @@ def check_agentcore_memory_configuration() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in memory configuration check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-07",
-                finding_name="AgentCore Memory Configuration Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference=AGENTCORE_MEMORY_REFERENCE_URL,
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-07",
+                "AgentCore Memory Configuration Check",
+                e,
+                AGENTCORE_MEMORY_REFERENCE_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -1840,14 +2261,14 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in VPC endpoints check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-08",
-                finding_name="AgentCore VPC Endpoints Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-08",
+                "AgentCore VPC Endpoints Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -1931,14 +2352,14 @@ def check_agentcore_service_linked_role() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in service-linked role check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-09",
-                finding_name="AgentCore Service-Linked Role Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-09",
+                "AgentCore Service-Linked Role Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -2031,7 +2452,11 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
 
         except ClientError as e:
             if e.response["Error"]["Code"] != "ResourceNotFoundException":
+                # Enumeration itself failed (e.g. AccessDenied) — re-raise so
+                # the outer handler reports COULD_NOT_ASSESS rather than
+                # silently proceeding as if there were zero runtimes to check.
                 logger.warning(f"Error listing runtimes: {e}")
+                raise
 
         # Check Gateways
         try:
@@ -2086,8 +2511,17 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                             f"Error checking policy for gateway {gateway_id}: {e}"
                         )
 
-        except (ClientError, AttributeError) as e:
+        except AttributeError as e:
+            # Gateway APIs are not present in this bedrock-agentcore-control
+            # client version — a genuine NOT_APPLICABLE, not an access gap.
             logger.info(f"Gateway APIs not available: {e}")
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "ResourceNotFoundException":
+                # Enumeration itself failed (e.g. AccessDenied) — re-raise so
+                # the outer handler reports COULD_NOT_ASSESS instead of
+                # silently treating it the same as "Gateway APIs unavailable".
+                logger.warning(f"Error listing gateways: {e}")
+                raise
 
         # Generate findings
         if resources_without_rbp:
@@ -2123,17 +2557,19 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
             findings.append(
                 create_finding(
                     check_id="AC-10",
-                    finding_name="AgentCore Resource-Based Policy Assessment Access Denied",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}AgentCore Resource-Based Policies Check",
                     finding_details=(
                         f"Unable to assess resource-based policies for {resource_list} "
-                        "because access to AgentCore resource policy metadata was denied."
+                        "because access to AgentCore resource policy metadata was denied. "
+                        "This control was NOT assessed for these resources."
                     ),
                     resolution=(
                         "Ensure the assessment role can call "
-                        "bedrock-agentcore:GetResourcePolicy for AgentCore resources."
+                        "bedrock-agentcore:GetResourcePolicy for AgentCore resources, "
+                        "then re-run the assessment."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
-                    severity=SeverityEnum.INFORMATIONAL,
+                    severity=SeverityEnum.LOW,
                     status=StatusEnum.NA,
                 )
             )
@@ -2149,10 +2585,11 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
             findings.append(
                 create_finding(
                     check_id="AC-10",
-                    finding_name="AgentCore Resource-Based Policy Assessment Incomplete",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}AgentCore Resource-Based Policies Check",
                     finding_details=(
                         f"Unable to fully assess resource-based policies for {resource_list} "
-                        f"due to AgentCore API errors: {', '.join(error_codes)}."
+                        f"due to AgentCore API errors: {', '.join(error_codes)}. This control "
+                        "was NOT assessed for these resources."
                     ),
                     resolution=(
                         "Re-run the assessment. If the issue persists, review AgentCore "
@@ -2193,14 +2630,14 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in resource-based policies check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-10",
-                finding_name="AgentCore Resource-Based Policies Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-10",
+                "AgentCore Resource-Based Policies Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -2341,14 +2778,14 @@ def check_agentcore_policy_engine_encryption() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in policy engine encryption check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-11",
-                finding_name="AgentCore Policy Engine Encryption Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-encryption.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-11",
+                "AgentCore Policy Engine Encryption Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-encryption.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -2442,7 +2879,12 @@ def check_agentcore_gateway_encryption() -> List[Dict[str, Any]]:
                         + "2. AWS-managed keys are single-tenant and region-specific\n"
                         + "3. Consider CMK for enhanced audit capabilities and key rotation control",
                         reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/data-encryption.html",
-                        severity=SeverityEnum.LOW,
+                        # BedrockAgentCore.4 is Medium severity in Security Hub.
+                        # One severity applies to every Passed/Failed row of a
+                        # control (severity methodology §3.4/Rule 2); this
+                        # previously emitted LOW on the Failed path while the
+                        # Passed path below used MEDIUM.
+                        severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.FAILED,
                     )
                 )
@@ -2489,14 +2931,14 @@ def check_agentcore_gateway_encryption() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in gateway encryption check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-12",
-                finding_name="AgentCore Gateway Encryption Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/data-encryption.html",
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-12",
+                "AgentCore Gateway Encryption Check",
+                e,
+                "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/data-encryption.html",
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -2609,14 +3051,14 @@ def check_agentcore_gateway_configuration() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error in gateway configuration check: {e}")
         findings.append(
-            create_finding(
-                check_id="AC-13",
-                finding_name="AgentCore Gateway Configuration Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
-                reference=AGENTCORE_GATEWAY_REFERENCE_URL,
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+            could_not_assess_row(
+                create_finding,
+                "AC-13",
+                "AgentCore Gateway Configuration Check",
+                e,
+                AGENTCORE_GATEWAY_REFERENCE_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         )
 
@@ -2670,23 +3112,33 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
             )
         ]
     except ClientError as e:
-        status = (
-            StatusEnum.NA if _is_access_denied_client_error(e) else StatusEnum.FAILED
-        )
-        severity = (
-            SeverityEnum.INFORMATIONAL
-            if status == StatusEnum.NA
-            else SeverityEnum.MEDIUM
-        )
+        if _is_access_denied_client_error(e):
+            # COULD_NOT_ASSESS disposition (severity methodology §3.4): the
+            # check could not run, so report an unknown state (N/A, Low)
+            # rather than the previous Informational, which understated an
+            # access gap as "no issue."
+            return [
+                could_not_assess_row(
+                    create_finding,
+                    "AG-24",
+                    "Agentic AI Gateway Security Controls",
+                    f"Unable to list AgentCore Gateways: {str(e)}. Gateway "
+                    "inbound authorization, tool policy enforcement, error "
+                    "detail exposure, and WAF protection were NOT assessed.",
+                    AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    SeverityEnum,
+                    StatusEnum,
+                )
+            ]
         return [
-            create_finding(
-                check_id="AG-24",
-                finding_name="Agentic AI Gateway Security Controls",
-                finding_details=f"Unable to list AgentCore Gateways: {str(e)}",
-                resolution="Grant bedrock-agentcore:ListGateways and retry the assessment",
-                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
-                severity=severity,
-                status=status,
+            could_not_assess_row(
+                create_finding,
+                "AG-24",
+                "Agentic AI Gateway Security Controls",
+                e,
+                AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                SeverityEnum,
+                StatusEnum,
             )
         ]
 
@@ -2738,14 +3190,14 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
             gateway_details = agentcore_client.get_gateway(gatewayIdentifier=gateway_id)
         except ClientError as e:
             findings.append(
-                create_finding(
-                    check_id="AG-24",
-                    finding_name="Agentic AI Gateway Security Controls",
-                    finding_details=f"Unable to retrieve Gateway '{gateway_name}' ({gateway_id}): {str(e)}",
-                    resolution="Grant bedrock-agentcore:GetGateway and retry the assessment",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
-                    severity=SeverityEnum.INFORMATIONAL,
-                    status=StatusEnum.NA,
+                could_not_assess_row(
+                    create_finding,
+                    "AG-24",
+                    f"Agentic AI Gateway Security Controls for '{gateway_name}' ({gateway_id})",
+                    e,
+                    AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    SeverityEnum,
+                    StatusEnum,
                 )
             )
             continue
@@ -2972,18 +3424,17 @@ def lambda_handler(event, context):
                     all_findings.extend(global_findings)
                 except Exception as e:
                     logger.error(f"Error in global check '{check_name}': {e}")
-                    all_findings.append(
-                        create_finding(
-                            check_id="AC-00",
-                            finding_name=f"AgentCore {check_name} Check Error",
-                            finding_details=f"Error during {check_name} check: {str(e)}",
-                            resolution="Investigate error and retry assessment",
-                            reference=AGENTCORE_STARTER_TOOLKIT_URL,
-                            severity=SeverityEnum.HIGH,
-                            status=StatusEnum.FAILED,
-                            region=GLOBAL_REGION_LABEL,
-                        )
+                    error_finding = could_not_assess_row(
+                        create_finding,
+                        "AC-00",
+                        f"AgentCore {check_name} Check",
+                        e,
+                        AGENTCORE_STARTER_TOOLKIT_URL,
+                        SeverityEnum,
+                        StatusEnum,
                     )
+                    error_finding["Region"] = GLOBAL_REGION_LABEL
+                    all_findings.append(error_finding)
 
         # Reset per-invocation so a warm container cannot leak a previous
         # region's client if creation below fails.
@@ -3086,6 +3537,8 @@ def lambda_handler(event, context):
             ("Observability", check_agentcore_observability),
             ("Encryption", check_agentcore_encryption),
             ("Browser Tool Recording", check_browser_tool_recording),
+            ("Browser Network Mode", check_browser_network_mode),
+            ("Code Interpreter Network Mode", check_code_interpreter_network_mode),
             ("Memory Configuration", check_agentcore_memory_configuration),
             ("Gateway Configuration", check_agentcore_gateway_configuration),
             ("VPC Endpoints", check_agentcore_vpc_endpoints),
@@ -3116,18 +3569,17 @@ def lambda_handler(event, context):
 
             except Exception as e:
                 logger.error(f"Error in check '{check_name}': {e}")
-                all_findings.append(
-                    create_finding(
-                        check_id="AC-00",
-                        finding_name=f"AgentCore {check_name} Check Error",
-                        finding_details=f"Error during {check_name} check: {str(e)}",
-                        resolution="Investigate error and retry assessment",
-                        reference=AGENTCORE_STARTER_TOOLKIT_URL,
-                        severity=SeverityEnum.HIGH,
-                        status=StatusEnum.FAILED,
-                        region=region,
-                    )
+                error_finding = could_not_assess_row(
+                    create_finding,
+                    "AC-00",
+                    f"AgentCore {check_name} Check",
+                    e,
+                    AGENTCORE_STARTER_TOOLKIT_URL,
+                    SeverityEnum,
+                    StatusEnum,
                 )
+                error_finding["Region"] = region
+                all_findings.append(error_finding)
 
         # Inject region into all findings that don't have it set
         for finding in all_findings:

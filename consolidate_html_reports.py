@@ -31,7 +31,7 @@ sys.path.insert(
     ),
 )
 
-from report_template import generate_html_report
+from report_template import generate_html_report, security_hub_controls
 
 # Sentinel region label used by the per-service assessments to tag IAM-only
 # findings that run once per execution rather than per region. It is not a real
@@ -133,6 +133,9 @@ def consolidate_html_reports():
                                 "severity": row.get("Severity", "N/A"),
                                 "status": row.get("Status", ""),
                                 "region": region,
+                                "security_hub_control": security_hub_controls(
+                                    row.get("Check_ID", "")
+                                ),
                             }
 
                             # Determine service from Check_ID prefix

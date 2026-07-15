@@ -472,6 +472,19 @@ def _build_mock_client(
             c.list_feature_groups.return_value = {"FeatureGroupSummaries": []}
             c.list_processing_jobs.return_value = {"ProcessingJobSummaries": []}
             c.list_models.return_value = {"Models": []}
+            c.list_model_cards.return_value = {"ModelCardSummaryList": []}
+            # A non-empty endpoint list is required so FS-39/FS-41 reach their
+            # monitoring-schedule check (an account with zero endpoints has no
+            # monitorable model and correctly short-circuits to N/A instead —
+            # this fixture models an account WITH a deployed endpoint that
+            # lacks bias/explainability monitoring, matching the BASELINE's
+            # Failed rows for those checks).
+            c.list_endpoints.return_value = {
+                "Endpoints": [{"EndpointName": "fixture-endpoint"}]
+            }
+            c.list_monitoring_schedules.return_value = {
+                "MonitoringScheduleSummaries": []
+            }
             pag = MagicMock()
             pag.paginate.return_value = [{}]
             c.get_paginator.return_value = pag
@@ -507,6 +520,16 @@ def _build_mock_client(
             return c
 
         if service == "agentcore":
+            c.list_agent_runtimes.return_value = {"agentRuntimes": []}
+            return c
+
+        if service == "bedrock-agentcore-control":
+            # No AgentCore runtimes deployed in this fixture account state —
+            # the FS-08/FS-66 checks call list_agent_runtimes first and, when
+            # empty, never reach get_agent_runtime. Kept as a distinct branch
+            # (rather than falling through to the catch-all MagicMock) so the
+            # "No AgentCore Runtimes Found" N/A path is exercised explicitly
+            # instead of relying on an unconfigured mock's default behavior.
             c.list_agent_runtimes.return_value = {"agentRuntimes": []}
             return c
 
@@ -606,7 +629,7 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-05', 'Bedrock CloudWatch Alarms Present', 'Passed', 'Medium', 'FFIEC CAT | DORA Art.6'),
     ('FS-06', 'AI/ML Service Budgets Configured', 'Passed', 'Medium', 'FFIEC CAT | SR 11-7'),
     ('FS-07', 'Agent Action Boundary Check', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT'),
-    ('FS-08', 'AgentCore Policy Engine Configured', 'Passed', 'High', 'SR 11-7 | MAS TRM 9.1'),
+    ('FS-08', 'No AgentCore Runtimes Found', 'N/A', 'Informational', 'SR 11-7 | MAS TRM 9.1'),
     ('FS-09', 'Agent Lambda Concurrency Limits Present', 'Passed', 'Medium', 'FFIEC CAT | SR 11-7'),
     ('FS-10', 'Human-in-the-Loop Check \u2014 No Agent Workflows Found', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-11', 'No Agent Rate Alarms Found', 'Failed', 'Medium', 'FFIEC CAT | DORA Art.6'),
@@ -660,7 +683,7 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-62', 'ADVISORY: Data Currency Disclaimer \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-63', 'Foundation Model Lifecycle Management', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT | ISO 27001 A.12'),
     ('FS-65', 'KB Data Source Buckets Missing S3 Event Notifications', 'Failed', 'Medium', 'FFIEC CAT | DORA Art.6 | ISO 27001 A.12'),
-    ('FS-66', 'AgentCore End-User Identity Propagation Configured', 'Passed', 'High', 'NYDFS 500 | SR 11-7 | MAS TRM 9 | PCI-DSS'),
+    ('FS-66', 'No AgentCore Runtimes Found', 'N/A', 'Informational', 'NYDFS 500 | SR 11-7 | MAS TRM 9 | PCI-DSS'),
     ('FS-67', 'Agent Action-Group Lambdas May Lack Transaction Thresholds', 'Failed', 'High', 'SR 11-7 | FFIEC CAT | MAS TRM 9 | PCI-DSS'),
     ('FS-68', 'API Gateway Request Body Size Limits Configured', 'Passed', 'Medium', 'DORA Art.6 | FFIEC CAT | PCI-DSS | OWASP LLM Top 10'),
     ('FS-69', 'Prompt Input Validation Functions Present', 'Passed', 'Medium', 'NYDFS 500 | FFIEC CAT | OWASP LLM Top 10'),

@@ -97,9 +97,9 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 sample-aiml-security-assessment/
 ├── aiml-security-assessment/
 │   ├── functions/security/
-│   │   ├── bedrock_assessments/      # Bedrock security checks (32)
-│   │   ├── sagemaker_assessments/    # SageMaker security checks (25)
-│   │   ├── agentcore_assessments/    # AgentCore security checks (13)
+│   │   ├── bedrock_assessments/      # Bedrock security checks (33)
+│   │   ├── sagemaker_assessments/    # SageMaker security checks (39)
+│   │   ├── agentcore_assessments/    # AgentCore security checks (15)
 │   │   ├── finserv_assessments/      # Optional Financial Services GenAI risk checks (64)
 │   │   ├── finserv_tests/            # FinServ-specific unit and coverage tests
 │   │   ├── iam_permission_caching/   # AWS IAM permissions cache

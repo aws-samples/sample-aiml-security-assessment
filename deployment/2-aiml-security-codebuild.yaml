@@ -223,6 +223,9 @@ Resources:
                   # Agent action groups (BR-21)
                   - bedrock:ListAgentActionGroups
                   - bedrock:GetAgentActionGroup
+                  # Knowledge base data source encryption (Bedrock.1, BR-33)
+                  - bedrock:ListDataSources
+                  - bedrock:GetDataSource
                   # Cross-account guardrails / quotas / monitoring
                   # (BR-15, BR-22, BR-32)
                   - organizations:DescribeOrganization
@@ -273,6 +276,21 @@ Resources:
                   - sagemaker:ListTrials
                   - sagemaker:DescribeTrial
                   - sagemaker:ListAssociations
+                  # SageMaker.4 endpoint config instance count
+                  - sagemaker:ListEndpointConfigs
+                  - sagemaker:DescribeEndpointConfig
+                  # SageMaker.10/.20 model explainability job definitions
+                  - sagemaker:ListModelExplainabilityJobDefinitions
+                  - sagemaker:DescribeModelExplainabilityJobDefinition
+                  # SageMaker.12/.15 model bias job definitions
+                  - sagemaker:ListModelBiasJobDefinitions
+                  - sagemaker:DescribeModelBiasJobDefinition
+                  # SageMaker.13/.25 model quality job definitions
+                  - sagemaker:ListModelQualityJobDefinitions
+                  - sagemaker:DescribeModelQualityJobDefinition
+                  # SageMaker.23/.24 inference experiments
+                  - sagemaker:ListInferenceExperiments
+                  - sagemaker:DescribeInferenceExperiment
                   # CloudTrail Permissions
                   - cloudtrail:ListTrails
                   - cloudtrail:GetTrail
@@ -310,6 +328,11 @@ Resources:
                   - bedrock-agentcore:ListPolicyEngines
                   - bedrock-agentcore:GetPolicyEngine
                   - bedrock-agentcore:GetResourcePolicy
+                  - bedrock-agentcore:ListBrowsers
+                  - bedrock-agentcore:GetBrowser
+                  # BedrockAgentCore.7 (AC-15)
+                  - bedrock-agentcore:ListCodeInterpreters
+                  - bedrock-agentcore:GetCodeInterpreter
                   # ECR Permissions for AgentCore encryption checks
                   - ecr:DescribeRepositories
                   - ecr:GetRepositoryPolicy

@@ -689,18 +689,21 @@ class TestFS07AgentActionBoundaries:
 
 
 class TestFS08AgentcorePolicyEngine:
-    """FS-08 — AgentCore Policy Engine Check."""
+    """FS-08 — AgentCore Policy Engine Check.
+
+    ListAgentRuntimes summaries do not include "authorizerConfiguration" (per
+    the AWS API reference) — only GetAgentRuntime does. The check now calls
+    GetAgentRuntime per runtime, so these mocks configure both calls.
+    """
 
     @patch("finserv_app.boto3.client")
     def test_pass_runtimes_with_authorizer(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {
-            "agentRuntimes": [
-                {
-                    "agentRuntimeName": "rt1",
-                    "authorizerConfiguration": {"customJWTAuthorizer": {}},
-                }
-            ]
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "rt1"}]
+        }
+        c.get_agent_runtime.return_value = {
+            "authorizerConfiguration": {"customJWTAuthorizer": {}}
         }
         mock_client.return_value = c
         result = app.check_agentcore_policy_engine()
@@ -711,8 +714,9 @@ class TestFS08AgentcorePolicyEngine:
     def test_warn_runtimes_without_authorizer(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {
-            "agentRuntimes": [{"agentRuntimeName": "rt1"}]
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "rt1"}]
         }
+        c.get_agent_runtime.return_value = {}
         mock_client.return_value = c
         result = app.check_agentcore_policy_engine()
         _assert_finding_structure(result)
@@ -734,6 +738,21 @@ class TestFS08AgentcorePolicyEngine:
         mock_client.return_value = c
         result = app.check_agentcore_policy_engine()
         _assert_finding_structure(result)
+        assert any(r["Status"] == "N/A" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_na_when_all_runtime_details_unassessable(self, mock_client):
+        """If GetAgentRuntime fails for every runtime, this must not be
+        reported as a confirmed Passed row — it's an unknown state."""
+        c = MagicMock()
+        c.list_agent_runtimes.return_value = {
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "rt1"}]
+        }
+        c.get_agent_runtime.side_effect = _client_error("AccessDeniedException")
+        mock_client.return_value = c
+        result = app.check_agentcore_policy_engine()
+        _assert_finding_structure(result)
+        assert all(r["Status"] != "Passed" for r in result["csv_data"])
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
     @patch("finserv_app.boto3.client")
@@ -776,6 +795,51 @@ class TestFS09AgentTransactionLimits:
         )
         result = app.check_agent_transaction_limits(inv)
         assert result["status"] == "ERROR"
+
+    @patch("finserv_app.boto3.client")
+    def test_excludes_tools_own_lambdas(self, mock_client):
+        """The assessment tool's own deployed Lambdas (aiml-security-<stack>-*)
+        must never be treated as 'agent-related' Lambdas — otherwise the tool
+        flags its own infrastructure regardless of actual account state."""
+        c = MagicMock()
+        c.get_function_concurrency.return_value = {}
+        mock_client.return_value = c
+        inv = make_resource_inventory(
+            lambda_functions=[
+                {"FunctionName": "aiml-security-mystack-BedrockAssessment"},
+                {"FunctionName": "aiml-security-mystack-AgentCoreAssessment"},
+                {"FunctionName": "aiml-security-mystack-FinServAssessment"},
+                {"FunctionName": "aiml-sec-otherstack-CleanupBucket"},
+            ]
+        )
+        result = app.check_agent_transaction_limits(inv)
+        _assert_finding_structure(result)
+        assert result["status"] == "PASS"
+        assert result["csv_data"][0]["Status"] == "N/A"
+        assert "0 agent Lambda" in result["csv_data"][0]["Finding_Details"]
+
+    @patch("finserv_app.boto3.client")
+    def test_flags_genuine_external_agent_lambda_alongside_own_infra(self, mock_client):
+        """A genuine customer-deployed agent Lambda must still be evaluated
+        even when the tool's own Lambdas are present in the same inventory."""
+        c = MagicMock()
+        c.get_function_concurrency.return_value = {}
+        mock_client.return_value = c
+        inv = make_resource_inventory(
+            lambda_functions=[
+                {"FunctionName": "aiml-security-mystack-BedrockAssessment"},
+                {"FunctionName": "customer-support-agent-handler"},
+            ]
+        )
+        result = app.check_agent_transaction_limits(inv)
+        _assert_finding_structure(result)
+        assert result["status"] == "WARN"
+        assert (
+            "customer-support-agent-handler" in result["csv_data"][0]["Finding_Details"]
+        )
+        assert "aiml-security-mystack-BedrockAssessment" not in str(
+            result["csv_data"][0]["Finding_Details"]
+        )
 
 
 class TestFS10HumanInTheLoop:
@@ -1636,7 +1700,62 @@ class TestFS38GuardrailWordFilters:
 
 
 class TestFS39SagemakerClarifyBias:
-    """FS-39 — SageMaker Clarify Bias."""
+    """FS-39 — SageMaker Clarify Bias.
+
+    SageMaker Clarify bias monitoring schedules can only observe a real-time
+    endpoint's live inference traffic — an account with zero SageMaker
+    endpoints has no monitorable model, so the check must report N/A rather
+    than a fabricated Failed (same "nothing deployed to check" pattern as
+    FS-16/FS-20/FS-36/FS-47's guardrail/resource-existence guards).
+    """
+
+    @patch("finserv_app.boto3.client")
+    def test_na_no_endpoints(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {"Endpoints": []}
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_bias()
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "N/A"
+        assert (
+            result["csv_data"][0]["Finding"]
+            == "No SageMaker Endpoints — Bias Monitoring Not Applicable"
+        )
+        # Must not have called list_monitoring_schedules once we've already
+        # established there is nothing to monitor.
+        c.list_monitoring_schedules.assert_not_called()
+
+    @patch("finserv_app.boto3.client")
+    def test_warn_endpoints_without_bias_monitoring(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {
+            "Endpoints": [{"EndpointName": "credit-risk-endpoint"}]
+        }
+        c.list_monitoring_schedules.return_value = {"MonitoringScheduleSummaries": []}
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_bias()
+        _assert_finding_structure(result)
+        assert result["status"] == "WARN"
+        assert result["csv_data"][0]["Status"] == "Failed"
+
+    @patch("finserv_app.boto3.client")
+    def test_pass_endpoints_with_bias_monitoring(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {
+            "Endpoints": [{"EndpointName": "credit-risk-endpoint"}]
+        }
+        c.list_monitoring_schedules.return_value = {
+            "MonitoringScheduleSummaries": [
+                {
+                    "MonitoringScheduleName": "bias-monitor",
+                    "MonitoringType": "ModelBias",
+                }
+            ]
+        }
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_bias()
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "Passed"
 
     @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
@@ -1656,7 +1775,58 @@ class TestFS40BedrockEvalBiasDatasets:
 
 
 class TestFS41SagemakerClarifyExplainability:
-    """FS-41 — SageMaker Clarify Explainability."""
+    """FS-41 — SageMaker Clarify Explainability.
+
+    Same "no endpoints -> N/A, not Failed" precondition as FS-39 (see class
+    docstring above) since explainability monitoring also requires a live
+    endpoint to observe.
+    """
+
+    @patch("finserv_app.boto3.client")
+    def test_na_no_endpoints(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {"Endpoints": []}
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_explainability()
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "N/A"
+        assert (
+            result["csv_data"][0]["Finding"]
+            == "No SageMaker Endpoints — Explainability Monitoring Not Applicable"
+        )
+        c.list_monitoring_schedules.assert_not_called()
+
+    @patch("finserv_app.boto3.client")
+    def test_warn_endpoints_without_explainability_monitoring(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {
+            "Endpoints": [{"EndpointName": "credit-risk-endpoint"}]
+        }
+        c.list_monitoring_schedules.return_value = {"MonitoringScheduleSummaries": []}
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_explainability()
+        _assert_finding_structure(result)
+        assert result["status"] == "WARN"
+        assert result["csv_data"][0]["Status"] == "Failed"
+
+    @patch("finserv_app.boto3.client")
+    def test_pass_endpoints_with_explainability_monitoring(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {
+            "Endpoints": [{"EndpointName": "credit-risk-endpoint"}]
+        }
+        c.list_monitoring_schedules.return_value = {
+            "MonitoringScheduleSummaries": [
+                {
+                    "MonitoringScheduleName": "explain-monitor",
+                    "MonitoringType": "ModelExplainability",
+                }
+            ]
+        }
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_explainability()
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "Passed"
 
     @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
@@ -1805,6 +1975,21 @@ class TestFS49HallucinationDisclaimer:
 class TestFS50GuardrailRelevanceGrounding:
     """FS-50 — Guardrail Relevance Grounding Check (renamed from check_automated_reasoning_checks_hallucination)."""
 
+    def test_na_no_guardrails(self):
+        """No guardrails configured -> N/A, not a fabricated Failed (matches
+        the sibling FS-36/FS-38/FS-45/FS-47 guardrail-existence guard, which
+        this check previously lacked)."""
+        inv = make_resource_inventory(
+            guardrails=app.GuardrailInventory(summaries=[], detail_by_id={})
+        )
+        result = app.check_guardrail_relevance_grounding(inv)
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "N/A"
+        assert (
+            result["csv_data"][0]["Finding"]
+            == "No Guardrails — Relevance Grounding Not Applicable"
+        )
+
     def test_pass_relevance_filter_present(self):
         inv = make_resource_inventory(
             guardrails=app.GuardrailInventory(
@@ -1894,6 +2079,57 @@ class TestFS52BedrockSdkVersionCurrency:
         )
         result = app.check_bedrock_sdk_version_currency(inv)
         assert result["status"] == "ERROR"
+
+    def test_excludes_tools_own_lambdas(self):
+        """The assessment tool's own deployed Lambdas (aiml-security-<stack>-*)
+        must never be treated as Bedrock-related Lambdas — otherwise the tool
+        flags its own infrastructure regardless of actual account state."""
+        inv = make_resource_inventory(
+            lambda_functions=[
+                {
+                    "FunctionName": "aiml-security-mystack-BedrockAssessment",
+                    "Runtime": "python3.8",
+                },
+                {
+                    "FunctionName": "aiml-security-mystack-AgentCoreAssessment",
+                    "Runtime": "python3.8",
+                },
+                {
+                    "FunctionName": "aiml-sec-otherstack-GenerateReport",
+                    "Runtime": "python3.8",
+                },
+            ]
+        )
+        result = app.check_bedrock_sdk_version_currency(inv)
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "N/A"
+        assert (
+            result["csv_data"][0]["Finding"]
+            == "No Bedrock-Related Lambda Functions Found"
+        )
+
+    def test_flags_genuine_external_bedrock_lambda_alongside_own_infra(self):
+        """A genuine customer-deployed Bedrock Lambda on a deprecated runtime
+        must still be flagged even when the tool's own Lambdas are present."""
+        inv = make_resource_inventory(
+            lambda_functions=[
+                {
+                    "FunctionName": "aiml-security-mystack-BedrockAssessment",
+                    "Runtime": "python3.12",
+                },
+                {
+                    "FunctionName": "customer-bedrock-invoke-fn",
+                    "Runtime": "python3.8",
+                },
+            ]
+        )
+        result = app.check_bedrock_sdk_version_currency(inv)
+        _assert_finding_structure(result)
+        assert result["status"] == "WARN"
+        assert "customer-bedrock-invoke-fn" in result["csv_data"][0]["Finding_Details"]
+        assert "aiml-security-mystack-BedrockAssessment" not in str(
+            result["csv_data"][0]["Finding_Details"]
+        )
 
 
 class TestFS53WafSqlInjectionRules:
@@ -2678,20 +2914,25 @@ class TestFS65KbDatasourceS3EventNotifications:
 
 
 class TestFS66AgentcoreEndUserIdentityPropagation:
-    """FS-66 — AgentCore End-User Identity Propagation Check."""
+    """FS-66 — AgentCore End-User Identity Propagation Check.
+
+    ListAgentRuntimes summaries do not include "authorizerConfiguration" (per
+    the AWS API reference) — only GetAgentRuntime does. The check now calls
+    GetAgentRuntime per runtime, so these mocks configure both calls. The
+    AgentRuntime AuthorizerConfiguration structure only defines
+    "customJWTAuthorizer" — there is no "iamAuthorizer" member.
+    """
 
     @patch("finserv_app.boto3.client")
     def test_pass_authorizer_configured(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {
-            "agentRuntimes": [
-                {
-                    "agentRuntimeName": "rt1",
-                    "authorizerConfiguration": {
-                        "customJWTAuthorizer": {"issuerUrl": "https://example.com"}
-                    },
-                }
-            ]
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "rt1"}]
+        }
+        c.get_agent_runtime.return_value = {
+            "authorizerConfiguration": {
+                "customJWTAuthorizer": {"issuerUrl": "https://example.com"}
+            }
         }
         mock_client.return_value = c
         result = app.check_agentcore_end_user_identity_propagation()
@@ -2702,10 +2943,9 @@ class TestFS66AgentcoreEndUserIdentityPropagation:
     def test_warn_no_authorizer(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {
-            "agentRuntimes": [
-                {"agentRuntimeName": "rt1", "authorizerConfiguration": {}}
-            ]
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "rt1"}]
         }
+        c.get_agent_runtime.return_value = {"authorizerConfiguration": {}}
         mock_client.return_value = c
         result = app.check_agentcore_end_user_identity_propagation()
         _assert_finding_structure(result)
@@ -2718,6 +2958,21 @@ class TestFS66AgentcoreEndUserIdentityPropagation:
         mock_client.return_value = c
         result = app.check_agentcore_end_user_identity_propagation()
         _assert_finding_structure(result)
+        assert any(r["Status"] == "N/A" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_na_when_all_runtime_details_unassessable(self, mock_client):
+        """If GetAgentRuntime fails for every runtime, this must not be
+        reported as a confirmed Passed row — it's an unknown state."""
+        c = MagicMock()
+        c.list_agent_runtimes.return_value = {
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "rt1"}]
+        }
+        c.get_agent_runtime.side_effect = _client_error("AccessDeniedException")
+        mock_client.return_value = c
+        result = app.check_agentcore_end_user_identity_propagation()
+        _assert_finding_structure(result)
+        assert all(r["Status"] != "Passed" for r in result["csv_data"])
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
     @patch("finserv_app.boto3.client")
@@ -2770,6 +3025,46 @@ class TestFS67AgentFinancialTransactionThresholds:
         )
         result = app.check_agent_financial_transaction_thresholds(inv)
         assert result["status"] == "ERROR"
+
+    def test_excludes_tools_own_lambdas(self):
+        """The assessment tool's own deployed Lambdas (aiml-security-<stack>-*)
+        must never be treated as agent action-group Lambdas — otherwise the
+        tool flags its own infrastructure regardless of actual account state."""
+        inv = make_resource_inventory(
+            lambda_functions=[
+                {"FunctionName": "aiml-security-mystack-FinServAssessment"},
+                {"FunctionName": "aiml-security-mystack-AgentCoreAssessment"},
+                {"FunctionName": "aiml-sec-otherstack-BedrockAssessment"},
+            ]
+        )
+        result = app.check_agent_financial_transaction_thresholds(inv)
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "N/A"
+        assert (
+            result["csv_data"][0]["Finding"]
+            == "No Agent Action-Group Lambda Functions Found"
+        )
+
+    def test_flags_genuine_external_agent_lambda_alongside_own_infra(self):
+        """A genuine customer-deployed agent action-group Lambda without
+        threshold config must still be flagged even when the tool's own
+        Lambdas are present in the same inventory."""
+        inv = make_resource_inventory(
+            lambda_functions=[
+                {"FunctionName": "aiml-security-mystack-FinServAssessment"},
+                {
+                    "FunctionName": "wire-transfer-agent-action",
+                    "Environment": {"Variables": {"LOG_LEVEL": "INFO"}},
+                },
+            ]
+        )
+        result = app.check_agent_financial_transaction_thresholds(inv)
+        _assert_finding_structure(result)
+        assert result["status"] == "WARN"
+        assert "wire-transfer-agent-action" in result["csv_data"][0]["Finding_Details"]
+        assert "aiml-security-mystack-FinServAssessment" not in str(
+            result["csv_data"][0]["Finding_Details"]
+        )
 
 
 class TestFS68ApiGatewayRequestBodySizeLimits:

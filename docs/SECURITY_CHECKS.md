@@ -1,6 +1,6 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 161 security checks performed by the AI/ML Security Assessment framework (70 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 27 Agentic AI Security checks, plus 64 Financial Services GenAI Risk checks).
+This document provides a comprehensive reference for all 178 security checks performed by the AI/ML Security Assessment framework (87 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 27 Agentic AI Security checks, plus 64 Financial Services GenAI Risk checks).
 
 ## Table of Contents
 
@@ -8,9 +8,9 @@ This document provides a comprehensive reference for all 161 security checks per
 - [Check ID Convention](#check-id-convention)
 - [Severity Levels](#severity-levels)
 - [Status Values](#status-values)
-- [Amazon SageMaker AI Security Checks (25)](#amazon-sagemaker-ai-security-checks-25)
-- [Amazon Bedrock Security Checks (32)](#amazon-bedrock-security-checks-32)
-- [Amazon Bedrock AgentCore Security Checks (13)](#amazon-bedrock-agentcore-security-checks-13)
+- [Amazon SageMaker AI Security Checks (39)](#amazon-sagemaker-ai-security-checks-39)
+- [Amazon Bedrock Security Checks (33)](#amazon-bedrock-security-checks-33)
+- [Amazon Bedrock AgentCore Security Checks (15)](#amazon-bedrock-agentcore-security-checks-15)
 - [Agentic AI Security Checks (27)](#agentic-ai-security-checks-27)
 - [Financial Services GenAI Risk Checks (64)](#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)
 
@@ -22,9 +22,9 @@ The framework evaluates your AI/ML workloads against AWS security best practices
 
 | Service | Number of Checks | Focus Areas |
 |---------|------------------|-------------|
-| Amazon SageMaker AI | 25 | Security Hub controls, encryption, network isolation, IAM, MLOps |
-| Amazon Bedrock | 32 | Guardrails, content filters, sensitive-information/PII filters, contextual grounding, automated reasoning, encryption (custom, imported, knowledge base, batch inference output), VPC endpoints, IAM permissions, agent guardrail association and least privilege, logging, CloudWatch alarms, cross-account policies, model evaluation, prompt flow validation, RAG evaluation, service quotas |
-| Amazon Bedrock AgentCore | 13 | VPC configuration, encryption, observability, resource policies |
+| Amazon SageMaker AI | 39 | Security Hub controls, encryption, network isolation, IAM, MLOps |
+| Amazon Bedrock | 33 | Guardrails, content filters, sensitive-information/PII filters, contextual grounding, automated reasoning, encryption (custom, imported, knowledge base, data source, batch inference output), VPC endpoints, IAM permissions, agent guardrail association and least privilege, logging, CloudWatch alarms, cross-account policies, model evaluation, prompt flow validation, RAG evaluation, service quotas |
+| Amazon Bedrock AgentCore | 15 | VPC configuration, browser/code-interpreter network mode, encryption, observability, resource policies |
 | Agentic AI Security | 27 | Bounded autonomy, agent identity, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability, abuse protection |
 | Financial Services GenAI Risk | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
 
@@ -66,24 +66,24 @@ Each security check has a unique identifier with a service prefix:
 
 ---
 
-## Amazon SageMaker AI Security Checks (25)
+## Amazon SageMaker AI Security Checks (39)
 
 ### SM-01: Internet Access
 
 - **Severity:** High
-- **AWS Security Hub Control:** SageMaker.2
-- **Description:** Checks for direct internet access on notebooks and domains.
+- **AWS Security Hub Control:** SageMaker.1 (notebook instances only — matches the control's scope exactly)
+- **Description:** Checks for direct internet access on SageMaker notebook instances. Domain network-access-type is checked separately by SM-27, which has no Security Hub mapping (SageMaker.1 scope is `NotebookInstance` only).
 
 ### SM-02: AWS IAM Permissions
 
 - **Severity:** High
 - **Description:** Identifies overly permissive policies, stale access, and IAM Identity Center configuration.
 
-### SM-03: Data Protection
+### SM-03: Notebook Storage Encryption
 
-- **Severity:** High
-- **AWS Security Hub Control:** SageMaker.1
-- **Description:** Verifies encryption at rest and in transit for notebooks and domains.
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.21 (notebook storage encryption)
+- **Description:** Verifies notebook instances have a KMS key configured for storage-volume encryption (presence-as-proxy; the check does not attempt to distinguish AWS-managed from customer-managed keys by string-matching the key id/ARN). Domain and training-job encryption are checked separately by SM-26, which has no Security Hub mapping.
 
 ### SM-04: Amazon GuardDuty Integration
 
@@ -125,14 +125,14 @@ Each security check has a unique identifier with a service prefix:
 ### SM-11: Model Network Isolation
 
 - **Severity:** High
-- **AWS Security Hub Control:** SageMaker.4
+- **AWS Security Hub Control:** SageMaker.5
 - **Description:** Checks inference containers have network isolation.
 
 ### SM-12: Endpoint Instance Count
 
 - **Severity:** Medium
-- **AWS Security Hub Control:** SageMaker.5
-- **Description:** Verifies endpoints have 2+ instances for high availability.
+- **AWS Security Hub Control:** SageMaker.4
+- **Description:** Verifies instance-based endpoints have 2+ instances for high availability. Serverless endpoint variants are out of scope and are not evaluated.
 
 ### SM-13: Monitoring Network Isolation
 
@@ -199,9 +199,93 @@ Each security check has a unique identifier with a service prefix:
 - **Severity:** Low
 - **Description:** Validates experiment tracking and lineage.
 
+### SM-26: Domain and Training Job Encryption
+
+- **Severity:** Medium
+- **Type:** Repo-specific (no Security Hub mapping)
+- **Description:** Verifies SageMaker Domain KMS/VPC configuration and Training Job output encryption plus inter-container traffic encryption. Split out of the former combined SM-03 check, which bundled these resources under a SageMaker.21 label that only covers notebook storage encryption.
+
+### SM-27: Domain Network Access
+
+- **Severity:** High
+- **Type:** Repo-specific (no Security Hub mapping)
+- **Description:** Verifies SageMaker Domains use `VpcOnly` network access. Split out of the former combined SM-01 check, which surfaced domain findings under the SageMaker.1 label even though that control's scope is `NotebookInstance` only.
+
+### SM-28: Notebook Platform
+
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.8
+- **Description:** Verifies notebook instances use the supported `notebook-al2-v3` (Amazon Linux 2) platform identifier.
+
+### SM-29: Explainability Traffic Encryption
+
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.10
+- **Description:** Verifies model explainability job definitions have inter-container traffic encryption enabled.
+
+### SM-30: Data Quality Network Isolation
+
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.11
+- **Description:** Verifies data quality job definitions have network isolation enabled.
+
+### SM-31: Model Bias Network Isolation
+
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.12
+- **Description:** Verifies model bias job definitions have network isolation enabled.
+
+### SM-32: Model Quality Traffic Encryption
+
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.13
+- **Description:** Verifies model quality job definitions have inter-container traffic encryption enabled.
+
+### SM-33: Model Bias Traffic Encryption
+
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.15
+- **Description:** Verifies multi-instance model bias job definitions have inter-container traffic encryption enabled. Only fails when the job's cluster has 2 or more instances.
+
+### SM-34: Online Feature Store Encryption
+
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.18
+- **Description:** Verifies standard-storage online feature stores have a KMS key configured (any KMS key satisfies this control).
+
+### SM-35: Explainability Network Isolation
+
+- **Severity:** High
+- **AWS Security Hub Control:** SageMaker.20
+- **Description:** Verifies model explainability job definitions have network isolation enabled. Register decision: seeded from the Security Hub published severity (High) even though sibling isolation controls (SageMaker.11/.12/.14) are Medium.
+
+### SM-36: Monitoring Traffic Encryption
+
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.22
+- **Description:** Verifies monitoring schedules have inter-container traffic encryption enabled. Resolves both inline and named job definitions (the same named-definition resolution used by SM-13).
+
+### SM-37: Inference Experiment Instance Storage Encryption
+
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.23
+- **Description:** Verifies inference experiments have a customer-managed KMS key configured for the instance storage volume.
+
+### SM-38: Inference Experiment Data Storage Encryption
+
+- **Severity:** Medium
+- **AWS Security Hub Control:** SageMaker.24
+- **Description:** Verifies inference experiments with data capture enabled have a customer-managed KMS key configured for the captured data storage. Skipped for experiments without data capture.
+
+### SM-39: Model Quality Network Isolation
+
+- **Severity:** High
+- **AWS Security Hub Control:** SageMaker.25
+- **Description:** Verifies model quality job definitions have network isolation enabled. Register decision: seeded from the Security Hub published severity (High), same rationale as SM-35.
+
 ---
 
-## Amazon Bedrock Security Checks (32)
+## Amazon Bedrock Security Checks (33)
 
 ### BR-01: AWS IAM Least Privilege
 
@@ -271,7 +355,8 @@ Each security check has a unique identifier with a service prefix:
 ### BR-14: Stale Bedrock Access
 
 - **Severity:** Medium
-- **Description:** Detects principals with Bedrock permissions that have not used the service recently, using IAM service-last-accessed data. As an IAM-global check, it runs once per execution and is tagged with the `Global` region in multi-region scans.
+- **Status:** Currently disabled — the check polls IAM service-last-accessed jobs for up to 30 seconds per identity, which can exhaust the Lambda timeout in accounts with many principals. It produces no findings until it is re-enabled with a bounded total wait.
+- **Description:** Detects principals with Bedrock permissions that have not used the service recently, using IAM service-last-accessed data. As an IAM-global check, it is designed to run once per execution tagged with the `Global` region in multi-region scans.
 
 ### BR-15: Cross-Account Guardrails Enforcement
 
@@ -381,9 +466,16 @@ Each security check has a unique identifier with a service prefix:
 - **Type:** Regional
 - **Description:** Verifies CloudWatch alarms exist on Amazon Bedrock runtime metrics (the `AWS/Bedrock` namespace) to detect abuse, denial-of-wallet, sustained throttling, and content-filter spikes. Uses `DescribeAlarms` and matches alarms that target the `AWS/Bedrock` namespace directly or via a metric-math expression. Only assessed in regions that have Bedrock resources.
 
+### BR-33: Knowledge Base Data Source Encryption
+
+- **Severity:** Medium
+- **AWS Security Hub Control:** Bedrock.1
+- **Type:** Regional
+- **Description:** Verifies Knowledge Base data sources are encrypted with a customer-managed KMS key. Reads `GetDataSource.dataSource.serverSideEncryptionConfiguration.kmsKeyArn`, a distinct control from the knowledge base's own vector-store encryption (BR-09/BR-20).
+
 ---
 
-## Amazon Bedrock AgentCore Security Checks (13)
+## Amazon Bedrock AgentCore Security Checks (15)
 
 ### AC-01: Runtime Amazon VPC Configuration
 
@@ -403,17 +495,18 @@ Each security check has a unique identifier with a service prefix:
 ### AC-04: Observability
 
 - **Severity:** Medium
-- **Description:** Verifies Amazon CloudWatch Logs and AWS X-Ray tracing configuration.
+- **Description:** Verifies the AgentCore-managed application log group exists for each Runtime. `GetAgentRuntime` has no `loggingConfig`/`tracingConfig` fields to inspect — AWS enables CloudWatch Logs and X-Ray tracing by default for AgentCore Runtimes with no API-exposed toggle to check — so this check verifies what IS visible via the API: the log group at `/aws/bedrock-agentcore/runtimes/{agentRuntimeId}-DEFAULT`. A runtime that has never been invoked has no log group yet; this is reported as an informational advisory rather than a failure, since there is nothing to have "failed" against.
 
 ### AC-05: Amazon ECR Repository Encryption
 
 - **Severity:** High
 - **Description:** Validates Amazon ECR repositories use encryption.
 
-### AC-06: Browser Tool Recording
+### AC-06: Browser Session Recording
 
 - **Severity:** Medium
-- **Description:** Checks storage configuration for browser tools.
+- **AWS Security Hub Control:** BedrockAgentCore.6
+- **Description:** Checks that custom AgentCore browsers have session recording enabled with an S3 destination. Only customer-created browsers are evaluated; AWS system browsers are out of scope.
 
 ### AC-07: Memory Encryption
 
@@ -449,6 +542,18 @@ Each security check has a unique identifier with a service prefix:
 
 - **Severity:** Medium
 - **Description:** Validates gateway security configuration.
+
+### AC-14: Browser Network Mode
+
+- **Severity:** High
+- **AWS Security Hub Control:** BedrockAgentCore.5
+- **Description:** Checks that custom AgentCore browsers do not use `PUBLIC` network mode. Only customer-created browsers are evaluated (`ListBrowsers` `type=CUSTOM`).
+
+### AC-15: Code Interpreter Network Mode
+
+- **Severity:** High
+- **AWS Security Hub Control:** BedrockAgentCore.7
+- **Description:** Checks that custom AgentCore code interpreters do not use `PUBLIC` or `SANDBOX` network mode (only `VPC` mode passes). Only customer-created code interpreters are evaluated (`ListCodeInterpreters` `type=CUSTOM`).
 
 ---
 

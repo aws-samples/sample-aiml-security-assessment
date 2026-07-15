@@ -1281,6 +1281,9 @@ class TestFS39ClarifyBiasPass:
     def test_pass_bias_schedules_found(self, mock_client):
         """Line 2352: bias monitoring schedules found → Passed."""
         c = MagicMock()
+        c.list_endpoints.return_value = {
+            "Endpoints": [{"EndpointName": "credit-risk-endpoint"}]
+        }
         c.list_monitoring_schedules.return_value = {
             "MonitoringScheduleSummaries": [
                 {
@@ -1323,6 +1326,9 @@ class TestFS41ClarifyExplainabilityPass:
     def test_pass_explainability_schedules_found(self, mock_client):
         """Line 2452: explainability monitoring schedules found → Passed."""
         c = MagicMock()
+        c.list_endpoints.return_value = {
+            "Endpoints": [{"EndpointName": "credit-risk-endpoint"}]
+        }
         c.list_monitoring_schedules.return_value = {
             "MonitoringScheduleSummaries": [
                 {

@@ -34,12 +34,25 @@ _ac_dir = os.path.abspath(
 if _ac_dir not in sys.path:
     sys.path.insert(0, _ac_dir)
 
-_spec = importlib.util.spec_from_file_location(
-    "agentcore_app", os.path.join(_ac_dir, "app.py")
-)
-agentcore_app = importlib.util.module_from_spec(_spec)
-sys.modules["agentcore_app"] = agentcore_app
-_spec.loader.exec_module(agentcore_app)
+if "agentcore_app" in sys.modules:
+    agentcore_app = sys.modules["agentcore_app"]
+else:
+    # agentcore_assessments, bedrock_assessments, and sagemaker_assessments
+    # each define their own same-named "schema"/"severity_disposition"
+    # modules. If another module's test already ran and cached
+    # sys.modules["severity_disposition"] (or ["schema"]) with its own
+    # version, agentcore_app.py's plain `from severity_disposition import
+    # ...` / `from schema import ...` would silently bind to that other
+    # module instead of its own. Evict any stale cache entries so the import
+    # below resolves against _ac_dir (already at the front of sys.path).
+    sys.modules.pop("severity_disposition", None)
+    sys.modules.pop("schema", None)
+    _spec = importlib.util.spec_from_file_location(
+        "agentcore_app", os.path.join(_ac_dir, "app.py")
+    )
+    agentcore_app = importlib.util.module_from_spec(_spec)
+    sys.modules["agentcore_app"] = agentcore_app
+    _spec.loader.exec_module(agentcore_app)
 
 
 # ---------------------------------------------------------------------------
@@ -112,11 +125,15 @@ class TestAC01VPCConfiguration:
 
     @patch("agentcore_app.agentcore_client")
     def test_ac01_exception_returns_error_finding(self, mock_ac):
+        """An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        rather than a false Failed/High — the check genuinely could not run."""
         mock_ac.list_agent_runtimes.side_effect = Exception("VPC error")
         result = agentcore_app.check_agentcore_vpc_configuration()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac01_schema_valid(self):
@@ -223,39 +240,13 @@ class TestAC03StaleAccess:
 # ===================================================================
 # AC-04: check_agentcore_observability
 # ===================================================================
-class TestAC04Observability:
-    """AC-04: Check AgentCore observability (logging/tracing)."""
-
-    @patch("agentcore_app.agentcore_client", None)
-    def test_ac04_client_unavailable_returns_na(self):
-        result = agentcore_app.check_agentcore_observability()
-        findings = extract_csv_data(result)
-        assert len(findings) >= 1
-        assert findings[0]["Check_ID"] == "AC-04"
-
-    @patch("agentcore_app.cloudwatch_client")
-    @patch("agentcore_app.xray_client")
-    @patch("agentcore_app.logs_client")
-    @patch("agentcore_app.agentcore_client")
-    def test_ac04_no_runtimes_returns_na(self, mock_ac, mock_logs, mock_xray, mock_cw):
-        mock_ac.list_agent_runtimes.return_value = {"agentRuntimes": []}
-        result = agentcore_app.check_agentcore_observability()
-        findings = extract_csv_data(result)
-        assert len(findings) >= 1
-
-    @patch("agentcore_app.agentcore_client")
-    def test_ac04_exception_returns_error_finding(self, mock_ac):
-        mock_ac.list_agent_runtimes.side_effect = Exception("Observability error")
-        result = agentcore_app.check_agentcore_observability()
-        findings = extract_csv_data(result)
-        assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
-
-    @patch("agentcore_app.agentcore_client", None)
-    def test_ac04_schema_valid(self):
-        result = agentcore_app.check_agentcore_observability()
-        for f in extract_csv_data(result):
-            assert_finding_schema(f)
+# NOTE: The full TestAC04Observability test class (covering the log-group-based
+# rewrite of this check) lives further down in this file, alongside the other
+# AC-04 fix commentary. It supersedes what used to be here — this check no
+# longer reads cloudwatch_client/xray_client at all (see the function's
+# docstring: GetAgentRuntime has no loggingConfig/tracingConfig fields, so
+# those clients were never a valid signal and the check was rewritten to
+# verify only the AgentCore-managed log group's existence).
 
 
 # ===================================================================
@@ -284,12 +275,16 @@ class TestAC05Encryption:
     @patch("agentcore_app.ecr_client")
     @patch("agentcore_app.agentcore_client")
     def test_ac05_exception_returns_error_finding(self, mock_ac, mock_ecr):
+        """An unexpected ECR enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         # Raise on the ECR call which is the first thing the check does
         mock_ecr.describe_repositories.side_effect = Exception("Encryption error")
         result = agentcore_app.check_agentcore_encryption()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.ecr_client")
     @patch("agentcore_app.agentcore_client", None)
@@ -304,7 +299,13 @@ class TestAC05Encryption:
 # AC-06: check_browser_tool_recording
 # ===================================================================
 class TestAC06BrowserToolRecording:
-    """AC-06: Check browser tool recording storage."""
+    """AC-06: custom browser session recording (Security Hub BedrockAgentCore.6).
+
+    The check evaluates ListBrowsers(type=CUSTOM)/GetBrowser recording config.
+    It must never read runtime storageConfig (a field that does not exist in
+    GetAgentRuntime and previously produced a false FAIL for every runtime),
+    and errors must surface as COULD NOT ASSESS (N/A, Low), never as Failed.
+    """
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac06_client_unavailable_returns_na(self):
@@ -314,23 +315,400 @@ class TestAC06BrowserToolRecording:
         assert findings[0]["Check_ID"] == "AC-06"
 
     @patch("agentcore_app.agentcore_client")
-    def test_ac06_no_runtimes_returns_na(self, mock_ac):
-        mock_ac.list_agent_runtimes.return_value = {"agentRuntimes": []}
+    def test_ac06_no_custom_browsers_returns_na(self, mock_ac):
+        mock_ac.list_browsers.return_value = {"browserSummaries": []}
         result = agentcore_app.check_browser_tool_recording()
         findings = extract_csv_data(result)
-        assert len(findings) >= 1
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
 
     @patch("agentcore_app.agentcore_client")
-    def test_ac06_exception_returns_error_finding(self, mock_ac):
-        mock_ac.list_agent_runtimes.side_effect = Exception("Browser tool error")
+    def test_ac06_lists_custom_browsers_only(self, mock_ac):
+        """The list call must pass type=CUSTOM so AWS system browsers (for
+        example aws.browser.v1) are excluded server-side, matching the
+        control's BrowserCustom resource type."""
+        mock_ac.list_browsers.return_value = {"browserSummaries": []}
+        agentcore_app.check_browser_tool_recording()
+        _, kwargs = mock_ac.list_browsers.call_args
+        assert kwargs.get("type") == "CUSTOM"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_recording_enabled_with_bucket_passes_medium(self, mock_ac):
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {
+            "browserId": "br-1",
+            "recording": {"enabled": True, "s3Location": {"bucket": "rec-bucket"}},
+        }
+        result = agentcore_app.check_browser_tool_recording()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_recording_disabled_fails_medium(self, mock_ac):
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {"browserId": "br-1"}
+        result = agentcore_app.check_browser_tool_recording()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "Medium"
+        assert "my-browser" in findings[0]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_recording_enabled_without_bucket_fails(self, mock_ac):
+        """BedrockAgentCore.6 fails when recording is enabled but no S3
+        location is configured."""
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {
+            "browserId": "br-1",
+            "recording": {"enabled": True},
+        }
+        result = agentcore_app.check_browser_tool_recording()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_access_denied_returns_could_not_assess(self, mock_ac):
+        """AccessDenied must yield a visible COULD NOT ASSESS row (N/A, Low),
+        never a false Failed and never a silent no-resources N/A."""
+        mock_ac.list_browsers.side_effect = _make_client_error(
+            "AccessDeniedException", "no ListBrowsers"
+        )
+        result = agentcore_app.check_browser_tool_recording()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_exception_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_browsers.side_effect = Exception("Browser tool error")
         result = agentcore_app.check_browser_tool_recording()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac06_never_reads_runtime_config(self, mock_ac):
+        """Regression guard: the previous implementation read a nonexistent
+        storageConfig field from GetAgentRuntime and false-failed every
+        runtime. The check must not call runtime APIs at all."""
+        mock_ac.list_browsers.return_value = {"browserSummaries": []}
+        agentcore_app.check_browser_tool_recording()
+        mock_ac.list_agent_runtimes.assert_not_called()
+        mock_ac.get_agent_runtime.assert_not_called()
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac06_schema_valid(self):
         result = agentcore_app.check_browser_tool_recording()
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+
+# ===================================================================
+# AC-14: check_browser_network_mode
+# ===================================================================
+class TestAC14BrowserNetworkMode:
+    """AC-14: custom browser network mode (Security Hub BedrockAgentCore.5).
+
+    The check evaluates ListBrowsers(type=CUSTOM)/GetBrowser
+    networkConfiguration.networkMode; only PUBLIC fails.
+    """
+
+    @patch("agentcore_app.agentcore_client", None)
+    def test_ac14_client_unavailable_returns_na(self):
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "AC-14"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_no_custom_browsers_returns_na(self, mock_ac):
+        mock_ac.list_browsers.return_value = {"browserSummaries": []}
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_lists_custom_browsers_only(self, mock_ac):
+        """The list call must pass type=CUSTOM so AWS system browsers (for
+        example aws.browser.v1) are excluded server-side, matching the
+        control's BrowserCustom resource type."""
+        mock_ac.list_browsers.return_value = {"browserSummaries": []}
+        agentcore_app.check_browser_network_mode()
+        _, kwargs = mock_ac.list_browsers.call_args
+        assert kwargs.get("type") == "CUSTOM"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_vpc_mode_passes_high(self, mock_ac):
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {
+            "browserId": "br-1",
+            "networkConfiguration": {"networkMode": "VPC"},
+        }
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+        assert findings[0]["Severity"] == "High"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_public_mode_fails_high(self, mock_ac):
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {
+            "browserId": "br-1",
+            "networkConfiguration": {"networkMode": "PUBLIC"},
+        }
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "High"
+        assert "my-browser" in findings[0]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_missing_network_config_defaults_to_public_fails(self, mock_ac):
+        """An absent networkConfiguration must default to PUBLIC (fail), not
+        be treated as VPC (pass)."""
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.return_value = {"browserId": "br-1"}
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_access_denied_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_browsers.side_effect = _make_client_error(
+            "AccessDeniedException", "no ListBrowsers"
+        )
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_exception_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_browsers.side_effect = Exception("Browser network mode error")
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_get_browser_error_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.side_effect = _make_client_error(
+            "InternalServerException", "boom"
+        )
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_resource_not_found_browser_skipped(self, mock_ac):
+        """A browser deleted between list and describe is silently skipped
+        (matches the existing AC-06 pattern); with no other browsers to
+        report on, the check yields no rows for this region."""
+        mock_ac.list_browsers.return_value = {
+            "browserSummaries": [{"browserId": "br-1", "name": "my-browser"}]
+        }
+        mock_ac.get_browser.side_effect = _make_client_error(
+            "ResourceNotFoundException", "gone"
+        )
+        result = agentcore_app.check_browser_network_mode()
+        findings = extract_csv_data(result)
+        assert findings == []
+
+    @patch("agentcore_app.agentcore_client", None)
+    def test_ac14_schema_valid(self):
+        result = agentcore_app.check_browser_network_mode()
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+
+# ===================================================================
+# AC-15: check_code_interpreter_network_mode
+# ===================================================================
+class TestAC15CodeInterpreterNetworkMode:
+    """AC-15: custom code interpreter network mode (Security Hub
+    BedrockAgentCore.7).
+
+    The check evaluates ListCodeInterpreters(type=CUSTOM)/GetCodeInterpreter
+    networkConfiguration.networkMode; only VPC passes (PUBLIC and SANDBOX
+    both fail).
+    """
+
+    @patch("agentcore_app.agentcore_client", None)
+    def test_ac15_client_unavailable_returns_na(self):
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Check_ID"] == "AC-15"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_no_custom_interpreters_returns_na(self, mock_ac):
+        mock_ac.list_code_interpreters.return_value = {"codeInterpreterSummaries": []}
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_lists_custom_interpreters_only(self, mock_ac):
+        """The list call must pass type=CUSTOM so AWS system code
+        interpreters (for example aws.codeinterpreter.v1) are excluded
+        server-side, matching the control's CodeInterpreterCustom resource
+        type."""
+        mock_ac.list_code_interpreters.return_value = {"codeInterpreterSummaries": []}
+        agentcore_app.check_code_interpreter_network_mode()
+        _, kwargs = mock_ac.list_code_interpreters.call_args
+        assert kwargs.get("type") == "CUSTOM"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_vpc_mode_passes_high(self, mock_ac):
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "my-interpreter"}
+            ]
+        }
+        mock_ac.get_code_interpreter.return_value = {
+            "codeInterpreterId": "ci-1",
+            "networkConfiguration": {"networkMode": "VPC"},
+        }
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+        assert findings[0]["Severity"] == "High"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_public_mode_fails_high(self, mock_ac):
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "my-interpreter"}
+            ]
+        }
+        mock_ac.get_code_interpreter.return_value = {
+            "codeInterpreterId": "ci-1",
+            "networkConfiguration": {"networkMode": "PUBLIC"},
+        }
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "High"
+        assert "my-interpreter" in findings[0]["Finding_Details"]
+        assert "PUBLIC" in findings[0]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_sandbox_mode_fails_high(self, mock_ac):
+        """SANDBOX mode must also fail; only VPC passes for this control."""
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "my-interpreter"}
+            ]
+        }
+        mock_ac.get_code_interpreter.return_value = {
+            "codeInterpreterId": "ci-1",
+            "networkConfiguration": {"networkMode": "SANDBOX"},
+        }
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+        assert "SANDBOX" in findings[0]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_missing_network_config_defaults_to_public_fails(self, mock_ac):
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "my-interpreter"}
+            ]
+        }
+        mock_ac.get_code_interpreter.return_value = {"codeInterpreterId": "ci-1"}
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Failed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_access_denied_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_code_interpreters.side_effect = _make_client_error(
+            "AccessDeniedException", "no ListCodeInterpreters"
+        )
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_exception_returns_could_not_assess(self, mock_ac):
+        mock_ac.list_code_interpreters.side_effect = Exception(
+            "Code interpreter network mode error"
+        )
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_resource_not_found_interpreter_skipped(self, mock_ac):
+        """A code interpreter deleted between list and describe is silently
+        skipped (matches the existing AC-06 pattern); with no other
+        interpreters to report on, the check yields no rows for this
+        region."""
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "my-interpreter"}
+            ]
+        }
+        mock_ac.get_code_interpreter.side_effect = _make_client_error(
+            "ResourceNotFoundException", "gone"
+        )
+        result = agentcore_app.check_code_interpreter_network_mode()
+        findings = extract_csv_data(result)
+        assert findings == []
+
+    @patch("agentcore_app.agentcore_client", None)
+    def test_ac15_schema_valid(self):
+        result = agentcore_app.check_code_interpreter_network_mode()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
 
@@ -370,14 +748,42 @@ class TestAC07MemoryConfiguration:
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Passed"
+        # One severity per control: BedrockAgentCore.3 is Medium, and the
+        # Passed row must carry the same severity as the Failed row.
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac07_pass_and_fail_severity_match(self, mock_ac):
+        """Regression guard for the pass-path severity drift (Passed was High
+        while Failed was Medium)."""
+        mock_ac.list_memories.return_value = {
+            "memories": [{"id": "mem-123456789012", "name": "TestMemory"}]
+        }
+        mock_ac.get_memory.return_value = {"memory": {"id": "mem-123456789012"}}
+        failed = extract_csv_data(agentcore_app.check_agentcore_memory_configuration())
+        assert failed[0]["Status"] == "Failed"
+
+        mock_ac.get_memory.return_value = {
+            "memory": {
+                "id": "mem-123456789012",
+                "encryptionKeyArn": "arn:aws:kms:us-east-1:123:key/abc",
+            }
+        }
+        passed = extract_csv_data(agentcore_app.check_agentcore_memory_configuration())
+        assert passed[0]["Status"] == "Passed"
+        assert str(failed[0]["Severity"]) == str(passed[0]["Severity"])
 
     @patch("agentcore_app.agentcore_client")
     def test_ac07_exception_returns_error_finding(self, mock_ac):
+        """An unexpected enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         mock_ac.list_memories.side_effect = Exception("Memory error")
         result = agentcore_app.check_agentcore_memory_configuration()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac07_schema_valid(self):
@@ -414,11 +820,15 @@ class TestAC08VPCEndpoints:
     @patch("agentcore_app.ec2_client")
     @patch("agentcore_app.agentcore_client")
     def test_ac08_exception_returns_error_finding(self, mock_ac, mock_ec2):
+        """An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        rather than a false Failed."""
         mock_ec2.describe_vpcs.side_effect = Exception("VPC endpoint error")
         result = agentcore_app.check_agentcore_vpc_endpoints()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.ec2_client")
     @patch("agentcore_app.agentcore_client", None)
@@ -476,23 +886,34 @@ class TestAC09ServiceLinkedRole:
     @patch("agentcore_app.iam_client")
     @patch("agentcore_app.agentcore_client")
     def test_ac09_slr_missing_returns_failed(self, mock_ac, mock_iam):
+        """Note: iam_client.exceptions.NoSuchEntityException can't be caught
+        when iam_client is a MagicMock (TypeError: catching classes that do
+        not inherit from BaseException), so this actually exercises the outer
+        COULD_NOT_ASSESS handler, not the intended NoSuchEntityException
+        branch — a mocking limitation, not a production behavior change."""
         mock_iam.get_role.side_effect = _make_client_error(
             "NoSuchEntity", "Role not found"
         )
         result = agentcore_app.check_agentcore_service_linked_role()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client")
     def test_ac09_exception_returns_error_finding(self, mock_ac):
+        """An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        rather than a false Failed."""
         # Patch iam_client to raise
         with patch("agentcore_app.iam_client") as mock_iam:
             mock_iam.get_role.side_effect = Exception("IAM error")
             result = agentcore_app.check_agentcore_service_linked_role()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.iam_client")
     @patch("agentcore_app.agentcore_client", None)
@@ -596,8 +1017,10 @@ class TestAC10ResourceBasedPolicies:
 
         assert len(findings) >= 1
         assert any(
-            f["Finding"] == "AgentCore Resource-Based Policy Assessment Access Denied"
+            f["Finding"].startswith("COULD NOT ASSESS")
+            and "Resource-Based Policies" in f["Finding"]
             and f["Status"] == "N/A"
+            and f["Severity"] == "Low"
             for f in findings
         )
 
@@ -622,18 +1045,24 @@ class TestAC10ResourceBasedPolicies:
 
         assert len(findings) >= 1
         assert any(
-            f["Finding"] == "AgentCore Resource-Based Policy Assessment Incomplete"
+            f["Finding"].startswith("COULD NOT ASSESS")
+            and "Resource-Based Policies" in f["Finding"]
             and f["Status"] == "N/A"
+            and f["Severity"] == "Low"
             for f in findings
         )
 
     @patch("agentcore_app.agentcore_client")
     def test_ac10_exception_returns_error_finding(self, mock_ac):
+        """An unexpected enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         mock_ac.list_agent_runtimes.side_effect = Exception("RBP error")
         result = agentcore_app.check_agentcore_resource_based_policies()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac10_schema_valid(self):
@@ -664,11 +1093,15 @@ class TestAC11PolicyEngineEncryption:
 
     @patch("agentcore_app.agentcore_client")
     def test_ac11_exception_returns_error_finding(self, mock_ac):
+        """An unexpected enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         mock_ac.list_policy_engines.side_effect = Exception("Policy engine error")
         result = agentcore_app.check_agentcore_policy_engine_encryption()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac11_schema_valid(self):
@@ -714,12 +1147,35 @@ class TestAC12GatewayEncryption:
         mock_ac.get_gateway.assert_called_once_with(gatewayIdentifier="gw-1")
 
     @patch("agentcore_app.agentcore_client")
-    def test_ac12_exception_returns_error_finding(self, mock_ac):
-        mock_ac.list_gateways.side_effect = Exception("Gateway encryption error")
+    def test_ac12_gateway_without_cmk_returns_failed_medium(self, mock_ac):
+        """Regression test (gap-analysis PR-0): BedrockAgentCore.4 is Medium
+        severity in Security Hub. Previously the Failed path emitted LOW
+        while the Passed path emitted MEDIUM (one severity must apply to
+        both Passed and Failed rows of the same control)."""
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "TestGateway"}]
+        }
+        mock_ac.get_gateway.return_value = {
+            "gatewayId": "gw-1",
+            "name": "TestGateway",
+        }
         result = agentcore_app.check_agentcore_gateway_encryption()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac12_exception_returns_error_finding(self, mock_ac):
+        """An unexpected enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
+        mock_ac.list_gateways.side_effect = Exception("Gateway encryption error")
+        result = agentcore_app.check_agentcore_gateway_encryption()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac12_schema_valid(self):
@@ -760,11 +1216,15 @@ class TestAC13GatewayConfiguration:
 
     @patch("agentcore_app.agentcore_client")
     def test_ac13_exception_returns_error_finding(self, mock_ac):
+        """An unexpected enumeration error must route through
+        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
         mock_ac.list_gateways.side_effect = Exception("Gateway config error")
         result = agentcore_app.check_agentcore_gateway_configuration()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac13_schema_valid(self):
@@ -778,6 +1238,22 @@ class TestAC13GatewayConfiguration:
 # ===================================================================
 class TestAgenticGatewaySecurity:
     """Agentic AI Gateway security checks."""
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ag24_list_gateways_access_denied_returns_could_not_assess(self, mock_ac):
+        """Regression test (gap-analysis PR-0): AccessDenied on ListGateways
+        must route through the COULD_NOT_ASSESS disposition (N/A, Low), not
+        the previous Informational, which understated an access gap as
+        "no issue"."""
+        mock_ac.list_gateways.side_effect = _make_client_error(
+            "AccessDeniedException", "no ListGateways"
+        )
+        findings = agentcore_app.check_agentcore_gateway_agentic_security()
+        assert len(findings) == 1
+        assert findings[0]["Check_ID"] == "AG-24"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS:")
 
     @patch("agentcore_app.agentcore_client")
     def test_gateway_policy_controls_fail_when_not_enforced(self, mock_ac):
@@ -889,8 +1365,11 @@ class TestAgenticGatewaySecurity:
         assert len(findings) == 1
         assert findings[0]["Check_ID"] == "AG-24"
         assert findings[0]["Status"] == "N/A"
-        assert findings[0]["Severity"] == "Informational"
-        assert "Unable to retrieve Gateway" in findings[0]["Finding_Details"]
+        # COULD_NOT_ASSESS disposition: an access gap is unknown state (Low),
+        # not a confirmed non-issue (Informational).
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
+        assert "gw-1" in findings[0]["Finding"]
         assert_finding_schema(findings[0])
 
     @patch("agentcore_app.agentcore_client")
@@ -1134,3 +1613,93 @@ class TestAgentCoreHandlerMultiRegion:
         # No false "not available" finding, and the regional checks executed.
         assert "AC-00" not in check_ids
         assert len(check_ids) > 3
+
+
+# ===================================================================
+# AC-04: check_agentcore_observability
+# ===================================================================
+class TestAC04Observability:
+    """AC-04: Verify the AgentCore-managed application log group exists for
+    each Runtime. GetAgentRuntime has no loggingConfig/tracingConfig fields,
+    so this check only verifies what is API-visible (the log group) and
+    reports an informational ADVISORY when it is absent (the runtime may
+    simply not have been invoked yet) rather than a false Failed."""
+
+    @patch("agentcore_app.agentcore_client", None)
+    def test_ac04_client_unavailable_returns_na(self):
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "AC-04"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac04_no_runtimes_returns_na(self, mock_ac):
+        mock_ac.list_agent_runtimes.return_value = {"agentRuntimes": []}
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("agentcore_app.logs_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_ac04_log_group_exists_returns_passed(self, mock_ac, mock_logs):
+        mock_ac.list_agent_runtimes.return_value = {
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "TestRT"}]
+        }
+        mock_logs.describe_log_groups.return_value = {
+            "logGroups": [
+                {"logGroupName": "/aws/bedrock-agentcore/runtimes/rt-1-DEFAULT"}
+            ]
+        }
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("agentcore_app.logs_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_ac04_log_group_missing_is_advisory_not_failed(self, mock_ac, mock_logs):
+        """A runtime that has never been invoked has no log group yet — this
+        must never be reported as Failed (there is no disable toggle to have
+        failed against); it is an informational advisory."""
+        mock_ac.list_agent_runtimes.return_value = {
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "TestRT"}]
+        }
+        mock_logs.describe_log_groups.return_value = {"logGroups": []}
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        for f in findings:
+            assert f["Status"] != "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert "TestRT" in findings[0]["Finding_Details"]
+
+    @patch("agentcore_app.logs_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_ac04_log_group_resource_not_found_is_advisory(self, mock_ac, mock_logs):
+        mock_ac.list_agent_runtimes.return_value = {
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "TestRT"}]
+        }
+        mock_logs.describe_log_groups.side_effect = _make_client_error(
+            "ResourceNotFoundException"
+        )
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        for f in findings:
+            assert f["Status"] != "Failed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac04_exception_returns_error_finding(self, mock_ac):
+        """An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        rather than a false Failed."""
+        mock_ac.list_agent_runtimes.side_effect = Exception("Observability error")
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
