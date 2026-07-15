@@ -495,7 +495,7 @@ Each security check has a unique identifier with a service prefix:
 ### AC-04: Observability
 
 - **Severity:** Medium
-- **Description:** Verifies Amazon CloudWatch Logs and AWS X-Ray tracing configuration.
+- **Description:** Verifies the AgentCore-managed application log group exists for each Runtime. `GetAgentRuntime` has no `loggingConfig`/`tracingConfig` fields to inspect — AWS enables CloudWatch Logs and X-Ray tracing by default for AgentCore Runtimes with no API-exposed toggle to check — so this check verifies what IS visible via the API: the log group at `/aws/bedrock-agentcore/runtimes/{agentRuntimeId}-DEFAULT`. A runtime that has never been invoked has no log group yet; this is reported as an informational advisory rather than a failure, since there is nothing to have "failed" against.
 
 ### AC-05: Amazon ECR Repository Encryption
 
