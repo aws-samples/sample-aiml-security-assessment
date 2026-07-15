@@ -240,43 +240,13 @@ class TestAC03StaleAccess:
 # ===================================================================
 # AC-04: check_agentcore_observability
 # ===================================================================
-class TestAC04Observability:
-    """AC-04: Check AgentCore observability (logging/tracing)."""
-
-    @patch("agentcore_app.agentcore_client", None)
-    def test_ac04_client_unavailable_returns_na(self):
-        result = agentcore_app.check_agentcore_observability()
-        findings = extract_csv_data(result)
-        assert len(findings) >= 1
-        assert findings[0]["Check_ID"] == "AC-04"
-
-    @patch("agentcore_app.cloudwatch_client")
-    @patch("agentcore_app.xray_client")
-    @patch("agentcore_app.logs_client")
-    @patch("agentcore_app.agentcore_client")
-    def test_ac04_no_runtimes_returns_na(self, mock_ac, mock_logs, mock_xray, mock_cw):
-        mock_ac.list_agent_runtimes.return_value = {"agentRuntimes": []}
-        result = agentcore_app.check_agentcore_observability()
-        findings = extract_csv_data(result)
-        assert len(findings) >= 1
-
-    @patch("agentcore_app.agentcore_client")
-    def test_ac04_exception_returns_error_finding(self, mock_ac):
-        """An unexpected enumeration error must route through
-        COULD_NOT_ASSESS (N/A, Low) rather than a false Failed."""
-        mock_ac.list_agent_runtimes.side_effect = Exception("Observability error")
-        result = agentcore_app.check_agentcore_observability()
-        findings = extract_csv_data(result)
-        assert len(findings) >= 1
-        assert findings[0]["Status"] == "N/A"
-        assert findings[0]["Severity"] == "Low"
-        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")
-
-    @patch("agentcore_app.agentcore_client", None)
-    def test_ac04_schema_valid(self):
-        result = agentcore_app.check_agentcore_observability()
-        for f in extract_csv_data(result):
-            assert_finding_schema(f)
+# NOTE: The full TestAC04Observability test class (covering the log-group-based
+# rewrite of this check) lives further down in this file, alongside the other
+# AC-04 fix commentary. It supersedes what used to be here — this check no
+# longer reads cloudwatch_client/xray_client at all (see the function's
+# docstring: GetAgentRuntime has no loggingConfig/tracingConfig fields, so
+# those clients were never a valid signal and the check was rewritten to
+# verify only the AgentCore-managed log group's existence).
 
 
 # ===================================================================
@@ -1643,3 +1613,93 @@ class TestAgentCoreHandlerMultiRegion:
         # No false "not available" finding, and the regional checks executed.
         assert "AC-00" not in check_ids
         assert len(check_ids) > 3
+
+
+# ===================================================================
+# AC-04: check_agentcore_observability
+# ===================================================================
+class TestAC04Observability:
+    """AC-04: Verify the AgentCore-managed application log group exists for
+    each Runtime. GetAgentRuntime has no loggingConfig/tracingConfig fields,
+    so this check only verifies what is API-visible (the log group) and
+    reports an informational ADVISORY when it is absent (the runtime may
+    simply not have been invoked yet) rather than a false Failed."""
+
+    @patch("agentcore_app.agentcore_client", None)
+    def test_ac04_client_unavailable_returns_na(self):
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "AC-04"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac04_no_runtimes_returns_na(self, mock_ac):
+        mock_ac.list_agent_runtimes.return_value = {"agentRuntimes": []}
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("agentcore_app.logs_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_ac04_log_group_exists_returns_passed(self, mock_ac, mock_logs):
+        mock_ac.list_agent_runtimes.return_value = {
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "TestRT"}]
+        }
+        mock_logs.describe_log_groups.return_value = {
+            "logGroups": [
+                {"logGroupName": "/aws/bedrock-agentcore/runtimes/rt-1-DEFAULT"}
+            ]
+        }
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Passed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("agentcore_app.logs_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_ac04_log_group_missing_is_advisory_not_failed(self, mock_ac, mock_logs):
+        """A runtime that has never been invoked has no log group yet — this
+        must never be reported as Failed (there is no disable toggle to have
+        failed against); it is an informational advisory."""
+        mock_ac.list_agent_runtimes.return_value = {
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "TestRT"}]
+        }
+        mock_logs.describe_log_groups.return_value = {"logGroups": []}
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        for f in findings:
+            assert f["Status"] != "Failed"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert "TestRT" in findings[0]["Finding_Details"]
+
+    @patch("agentcore_app.logs_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_ac04_log_group_resource_not_found_is_advisory(self, mock_ac, mock_logs):
+        mock_ac.list_agent_runtimes.return_value = {
+            "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "TestRT"}]
+        }
+        mock_logs.describe_log_groups.side_effect = _make_client_error(
+            "ResourceNotFoundException"
+        )
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        for f in findings:
+            assert f["Status"] != "Failed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac04_exception_returns_error_finding(self, mock_ac):
+        """An unexpected error must route through COULD_NOT_ASSESS (N/A, Low)
+        rather than a false Failed."""
+        mock_ac.list_agent_runtimes.side_effect = Exception("Observability error")
+        result = agentcore_app.check_agentcore_observability()
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Low"
+        assert findings[0]["Finding"].startswith("COULD NOT ASSESS")

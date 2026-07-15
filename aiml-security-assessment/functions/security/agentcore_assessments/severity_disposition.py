@@ -121,11 +121,14 @@ SEVERITY_REGISTER: dict = {
     "AgentCore Stale Access Check": "Low",
     "AgentCore Stale Access": "Medium",
     "AgentCore Unused Permissions": "Informational",
-    # --- AC-04 (repo-only observability hardening, Medium) ---
+    # --- AC-04 (repo-only observability hardening, Medium). GetAgentRuntime
+    # has no loggingConfig/tracingConfig fields, so this check can only
+    # verify the AgentCore-managed application log group's existence
+    # (informational — absence just means the runtime hasn't been invoked
+    # yet, not a misconfiguration; there is no API-exposed toggle for either
+    # CloudWatch Logs or X-Ray tracing on a Runtime to fail against). ---
     "AgentCore Observability Check": "Medium",
-    "AgentCore Runtime CloudWatch Logs": "Medium",
-    "AgentCore Runtime Log Group Missing": "Medium",
-    "AgentCore Runtime X-Ray Tracing": "Medium",
+    "ADVISORY: AgentCore Runtime Log Group Not Yet Created": "Informational",
     # --- AC-05 (repo-only ECR encryption hardening; missing=High, AWS-managed=Low) ---
     "AgentCore ECR Repository Encryption": "High",
     "AgentCore ECR Repository AWS-Managed Keys": "Low",

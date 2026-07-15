@@ -1163,12 +1163,30 @@ def check_stale_agentcore_access(
 
 def check_agentcore_observability() -> List[Dict[str, Any]]:
     """
-    Check observability configuration for AgentCore resources.
+    Check observability configuration for AgentCore Runtimes.
+
+    GetAgentRuntime has no "loggingConfig"/"tracingConfig" toggle fields —
+    per the AWS API reference its response only contains
+    agentRuntimeArn/Id/Name/Version, agentRuntimeArtifact,
+    authorizerConfiguration, networkConfiguration, lifecycleConfiguration,
+    metadataConfiguration, protocolConfiguration, requestHeaderConfiguration,
+    filesystemConfigurations, roleArn, status, workloadIdentityDetails, and a
+    few timestamps. AWS's own docs state that for AgentCore-hosted runtimes,
+    CloudWatch Logs observability is automatically enabled with no additional
+    configuration (a log group is created by the service at
+    /aws/bedrock-agentcore/runtimes/{agentRuntimeId}-DEFAULT on first
+    invocation); X-Ray tracing is likewise enabled by default and has no
+    documented API-readable enabled/disabled flag on the runtime resource
+    itself. Neither aspect is something this check can verify definitively via
+    the Runtime control-plane API, so this check verifies what IS API-visible
+    (the log group's existence once the runtime has been invoked) and reports
+    an ADVISORY for the rest rather than fabricating a Failed/Passed verdict
+    from fields that don't exist.
 
     Validates:
-    - CloudWatch Logs configuration
-    - X-Ray tracing enabled
-    - CloudWatch custom metrics published
+    - The AgentCore-managed application log group exists for each runtime
+      (best-effort; a runtime that has never been invoked will not yet have
+      one, which is expected and not a security finding)
 
     Returns:
         List of findings
@@ -1192,8 +1210,10 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
     try:
         logger.info("Checking AgentCore observability configuration")
         resources_found = False
+        runtimes_missing_log_group = []
+        runtimes_checked = 0
 
-        # Check Runtimes for logging and tracing
+        # Check Runtimes for the AgentCore-managed application log group.
         try:
             runtimes = _agentcore_list_all("list_agent_runtimes", ["agentRuntimes"])
 
@@ -1208,73 +1228,31 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
                     runtime_name = runtime.get("agentRuntimeName", runtime_id)
 
                     try:
-                        runtime_details = agentcore_client.get_agent_runtime(
-                            agentRuntimeId=runtime_id
+                        # AgentCore creates this log group itself on the
+                        # runtime's first invocation; its absence just means
+                        # the runtime hasn't been invoked yet, not that
+                        # logging was disabled (there is no such toggle).
+                        log_group_name = (
+                            f"/aws/bedrock-agentcore/runtimes/{runtime_id}-DEFAULT"
                         )
-
-                        # Check CloudWatch Logs configuration
-                        logging_config = runtime_details.get("loggingConfig", {})
-                        cloudwatch_logs_config = logging_config.get(
-                            "cloudWatchLogsConfig"
+                        runtimes_checked += 1
+                        log_groups_response = logs_client.describe_log_groups(
+                            logGroupNamePrefix=log_group_name, limit=1
                         )
-
-                        if not cloudwatch_logs_config:
-                            findings.append(
-                                create_finding(
-                                    check_id="AC-04",
-                                    finding_name="AgentCore Runtime CloudWatch Logs",
-                                    finding_details=f"Runtime '{runtime_name}' ({runtime_id}) does not have CloudWatch Logs configured",
-                                    resolution="Enable CloudWatch Logs for monitoring and troubleshooting",
-                                    reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
-                                    severity=SeverityEnum.MEDIUM,
-                                    status=StatusEnum.FAILED,
-                                )
-                            )
-                        else:
-                            # Verify log group exists
-                            log_group_name = cloudwatch_logs_config.get("logGroupName")
-                            if log_group_name:
-                                try:
-                                    logs_client.describe_log_groups(
-                                        logGroupNamePrefix=log_group_name, limit=1
-                                    )
-                                except ClientError as e:
-                                    if (
-                                        e.response["Error"]["Code"]
-                                        == "ResourceNotFoundException"
-                                    ):
-                                        findings.append(
-                                            create_finding(
-                                                check_id="AC-04",
-                                                finding_name="AgentCore Runtime Log Group Missing",
-                                                finding_details=f"Runtime '{runtime_name}' has CloudWatch Logs configured but log group '{log_group_name}' does not exist",
-                                                resolution="Create the log group or update runtime configuration",
-                                                reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
-                                                severity=SeverityEnum.MEDIUM,
-                                                status=StatusEnum.FAILED,
-                                            )
-                                        )
-
-                        # Check X-Ray tracing configuration
-                        tracing_config = runtime_details.get("tracingConfig", {})
-                        tracing_enabled = tracing_config.get("enabled", False)
-
-                        if not tracing_enabled:
-                            findings.append(
-                                create_finding(
-                                    check_id="AC-04",
-                                    finding_name="AgentCore Runtime X-Ray Tracing",
-                                    finding_details=f"Runtime '{runtime_name}' ({runtime_id}) does not have X-Ray tracing enabled",
-                                    resolution="Enable X-Ray tracing for distributed tracing and performance analysis",
-                                    reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
-                                    severity=SeverityEnum.MEDIUM,
-                                    status=StatusEnum.FAILED,
-                                )
+                        if not log_groups_response.get("logGroups"):
+                            runtimes_missing_log_group.append(
+                                {"id": runtime_id, "name": runtime_name}
                             )
 
                     except ClientError as e:
-                        if e.response["Error"]["Code"] != "ResourceNotFoundException":
-                            logger.error(f"Error describing runtime {runtime_id}: {e}")
+                        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                            runtimes_missing_log_group.append(
+                                {"id": runtime_id, "name": runtime_name}
+                            )
+                        else:
+                            logger.error(
+                                f"Error checking log group for runtime {runtime_id}: {e}"
+                            )
 
         except ClientError as e:
             if e.response["Error"]["Code"] != "ResourceNotFoundException":
@@ -1285,6 +1263,32 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
                 logger.error(f"Error listing runtimes: {e}")
                 raise
 
+        if runtimes_missing_log_group:
+            names = ", ".join(f"'{r['name']}'" for r in runtimes_missing_log_group[:10])
+            findings.append(
+                create_finding(
+                    check_id="AC-04",
+                    finding_name="ADVISORY: AgentCore Runtime Log Group Not Yet Created",
+                    finding_details=(
+                        f"The AgentCore-managed application log group does not yet exist for: "
+                        f"{names}. AgentCore creates this log group automatically on the "
+                        "runtime's first invocation, so this is informational (the runtime may "
+                        "simply not have been invoked yet) rather than a misconfiguration — "
+                        "there is no API-exposed setting to enable or disable this logging."
+                    ),
+                    resolution=(
+                        "No action required unless you expect the runtime to have been "
+                        "invoked already. If so, verify the runtime is receiving traffic. "
+                        "X-Ray tracing and CloudWatch Logs delivery for AgentCore Runtimes are "
+                        "on by default and are not independently toggleable via the API, so "
+                        "they cannot be verified as 'disabled' by this check."
+                    ),
+                    reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+
         # Return appropriate status based on whether resources were found
         if not findings:
             if resources_found:
@@ -1292,7 +1296,12 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
                     create_finding(
                         check_id="AC-04",
                         finding_name="AgentCore Observability Check",
-                        finding_details="All AgentCore resources have proper observability configuration",
+                        finding_details=(
+                            f"Verified the AgentCore-managed application log group exists for "
+                            f"all {runtimes_checked} invoked Runtime(s). X-Ray tracing and "
+                            "CloudWatch Logs delivery are enabled by default for AgentCore "
+                            "Runtimes and have no API-exposed disable setting to verify further."
+                        ),
                         resolution="No action required",
                         reference=AGENTCORE_OBSERVABILITY_REFERENCE_URL,
                         severity=SeverityEnum.MEDIUM,
