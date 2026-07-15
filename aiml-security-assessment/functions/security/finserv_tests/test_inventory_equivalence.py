@@ -472,6 +472,19 @@ def _build_mock_client(
             c.list_feature_groups.return_value = {"FeatureGroupSummaries": []}
             c.list_processing_jobs.return_value = {"ProcessingJobSummaries": []}
             c.list_models.return_value = {"Models": []}
+            c.list_model_cards.return_value = {"ModelCardSummaryList": []}
+            # A non-empty endpoint list is required so FS-39/FS-41 reach their
+            # monitoring-schedule check (an account with zero endpoints has no
+            # monitorable model and correctly short-circuits to N/A instead —
+            # this fixture models an account WITH a deployed endpoint that
+            # lacks bias/explainability monitoring, matching the BASELINE's
+            # Failed rows for those checks).
+            c.list_endpoints.return_value = {
+                "Endpoints": [{"EndpointName": "fixture-endpoint"}]
+            }
+            c.list_monitoring_schedules.return_value = {
+                "MonitoringScheduleSummaries": []
+            }
             pag = MagicMock()
             pag.paginate.return_value = [{}]
             c.get_paginator.return_value = pag

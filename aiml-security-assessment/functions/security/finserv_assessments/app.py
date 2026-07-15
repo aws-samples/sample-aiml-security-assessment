@@ -642,11 +642,13 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "No Guardrails With Word Filters": "Medium",
     "Guardrail Word Filters Configured": "Medium",
     # --- FS-39 (bias = High) ---
+    "No SageMaker Endpoints — Bias Monitoring Not Applicable": "Informational",
     "No SageMaker Clarify Bias Monitoring": "High",
     "SageMaker Clarify Bias Monitoring Active": "High",
     # --- FS-40 (advisory) ---
     "ADVISORY: Bias Dataset Coverage — Manual Review Required": "Informational",
     # --- FS-41 (explainability = High) ---
+    "No SageMaker Endpoints — Explainability Monitoring Not Applicable": "Informational",
     "No SageMaker Clarify Explainability Monitoring": "High",
     "SageMaker Clarify Explainability Active": "High",
     # --- FS-42 ---
@@ -677,6 +679,7 @@ SEVERITY_REGISTER: Dict[str, str] = {
     # --- FS-49 (advisory) ---
     "ADVISORY: Hallucination Disclaimer — Manual Review Required": "Informational",
     # --- FS-50 (relevance grounding = Medium) ---
+    "No Guardrails — Relevance Grounding Not Applicable": "Informational",
     "No Guardrails With Relevance Grounding Filters": "Medium",
     "Relevance Grounding Filters Present": "Medium",
     # --- FS-51 (prompt attack = High) ---
@@ -3757,6 +3760,32 @@ def check_sagemaker_clarify_bias() -> Dict[str, Any]:
     findings = _empty_findings("SageMaker Clarify Bias Check")
     try:
         sm = boto3.client("sagemaker", config=boto3_config)
+
+        # Model bias monitoring schedules can only be attached to a real-time
+        # SageMaker endpoint (SageMaker Clarify bias/explainability monitors
+        # observe live inference traffic) — an account with zero endpoints has
+        # no monitorable model to begin with, so this is not applicable rather
+        # than a failed control. See "Online explainability with SageMaker
+        # Clarify" (endpoint required) in the reference doc below.
+        endpoints = _paginate(sm, "list_endpoints", "Endpoints")
+        if not endpoints:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-39",
+                    finding_name="No SageMaker Endpoints — Bias Monitoring Not Applicable",
+                    finding_details=(
+                        "No SageMaker real-time endpoints found; there are no deployed models "
+                        "for Clarify bias monitoring to observe."
+                    ),
+                    resolution="If a credit/lending model is deployed to a SageMaker endpoint in the future, configure Clarify bias monitoring for it.",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-monitor-bias-drift.html",
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-39"],
+                )
+            )
+            return findings
+
         schedules = _paginate(
             sm, "list_monitoring_schedules", "MonitoringScheduleSummaries"
         )
@@ -3852,6 +3881,31 @@ def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
     findings = _empty_findings("SageMaker Clarify Explainability Check")
     try:
         sm = boto3.client("sagemaker", config=boto3_config)
+
+        # Explainability monitoring schedules can only be attached to a
+        # real-time SageMaker endpoint (SageMaker Clarify explainability
+        # monitors observe live inference traffic) — an account with zero
+        # endpoints has no monitorable model to begin with, so this is not
+        # applicable rather than a failed control.
+        endpoints = _paginate(sm, "list_endpoints", "Endpoints")
+        if not endpoints:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-41",
+                    finding_name="No SageMaker Endpoints — Explainability Monitoring Not Applicable",
+                    finding_details=(
+                        "No SageMaker real-time endpoints found; there are no deployed models "
+                        "for Clarify explainability monitoring to observe."
+                    ),
+                    resolution="If a credit/lending model is deployed to a SageMaker endpoint in the future, configure Clarify explainability monitoring for it.",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability.html",
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-41"],
+                )
+            )
+            return findings
+
         schedules = _paginate(
             sm, "list_monitoring_schedules", "MonitoringScheduleSummaries"
         )
@@ -4463,6 +4517,21 @@ def check_guardrail_relevance_grounding(inventory) -> Dict[str, Any]:
     try:
         guardrail_inv = require(inventory, "guardrails")
         guardrails = guardrail_inv.summaries
+
+        if not guardrails:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-50",
+                    finding_name="No Guardrails — Relevance Grounding Not Applicable",
+                    finding_details="No Bedrock Guardrails configured.",
+                    resolution="Configure guardrails with contextual grounding checks.",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-50"],
+                )
+            )
+            return findings
 
         guardrails_with_relevance = []
         for g in guardrails:

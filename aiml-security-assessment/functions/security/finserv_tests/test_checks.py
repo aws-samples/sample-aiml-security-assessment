@@ -1700,7 +1700,62 @@ class TestFS38GuardrailWordFilters:
 
 
 class TestFS39SagemakerClarifyBias:
-    """FS-39 — SageMaker Clarify Bias."""
+    """FS-39 — SageMaker Clarify Bias.
+
+    SageMaker Clarify bias monitoring schedules can only observe a real-time
+    endpoint's live inference traffic — an account with zero SageMaker
+    endpoints has no monitorable model, so the check must report N/A rather
+    than a fabricated Failed (same "nothing deployed to check" pattern as
+    FS-16/FS-20/FS-36/FS-47's guardrail/resource-existence guards).
+    """
+
+    @patch("finserv_app.boto3.client")
+    def test_na_no_endpoints(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {"Endpoints": []}
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_bias()
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "N/A"
+        assert (
+            result["csv_data"][0]["Finding"]
+            == "No SageMaker Endpoints — Bias Monitoring Not Applicable"
+        )
+        # Must not have called list_monitoring_schedules once we've already
+        # established there is nothing to monitor.
+        c.list_monitoring_schedules.assert_not_called()
+
+    @patch("finserv_app.boto3.client")
+    def test_warn_endpoints_without_bias_monitoring(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {
+            "Endpoints": [{"EndpointName": "credit-risk-endpoint"}]
+        }
+        c.list_monitoring_schedules.return_value = {"MonitoringScheduleSummaries": []}
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_bias()
+        _assert_finding_structure(result)
+        assert result["status"] == "WARN"
+        assert result["csv_data"][0]["Status"] == "Failed"
+
+    @patch("finserv_app.boto3.client")
+    def test_pass_endpoints_with_bias_monitoring(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {
+            "Endpoints": [{"EndpointName": "credit-risk-endpoint"}]
+        }
+        c.list_monitoring_schedules.return_value = {
+            "MonitoringScheduleSummaries": [
+                {
+                    "MonitoringScheduleName": "bias-monitor",
+                    "MonitoringType": "ModelBias",
+                }
+            ]
+        }
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_bias()
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "Passed"
 
     @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
@@ -1720,7 +1775,58 @@ class TestFS40BedrockEvalBiasDatasets:
 
 
 class TestFS41SagemakerClarifyExplainability:
-    """FS-41 — SageMaker Clarify Explainability."""
+    """FS-41 — SageMaker Clarify Explainability.
+
+    Same "no endpoints -> N/A, not Failed" precondition as FS-39 (see class
+    docstring above) since explainability monitoring also requires a live
+    endpoint to observe.
+    """
+
+    @patch("finserv_app.boto3.client")
+    def test_na_no_endpoints(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {"Endpoints": []}
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_explainability()
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "N/A"
+        assert (
+            result["csv_data"][0]["Finding"]
+            == "No SageMaker Endpoints — Explainability Monitoring Not Applicable"
+        )
+        c.list_monitoring_schedules.assert_not_called()
+
+    @patch("finserv_app.boto3.client")
+    def test_warn_endpoints_without_explainability_monitoring(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {
+            "Endpoints": [{"EndpointName": "credit-risk-endpoint"}]
+        }
+        c.list_monitoring_schedules.return_value = {"MonitoringScheduleSummaries": []}
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_explainability()
+        _assert_finding_structure(result)
+        assert result["status"] == "WARN"
+        assert result["csv_data"][0]["Status"] == "Failed"
+
+    @patch("finserv_app.boto3.client")
+    def test_pass_endpoints_with_explainability_monitoring(self, mock_client):
+        c = MagicMock()
+        c.list_endpoints.return_value = {
+            "Endpoints": [{"EndpointName": "credit-risk-endpoint"}]
+        }
+        c.list_monitoring_schedules.return_value = {
+            "MonitoringScheduleSummaries": [
+                {
+                    "MonitoringScheduleName": "explain-monitor",
+                    "MonitoringType": "ModelExplainability",
+                }
+            ]
+        }
+        mock_client.return_value = c
+        result = app.check_sagemaker_clarify_explainability()
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "Passed"
 
     @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
@@ -1868,6 +1974,21 @@ class TestFS49HallucinationDisclaimer:
 
 class TestFS50GuardrailRelevanceGrounding:
     """FS-50 — Guardrail Relevance Grounding Check (renamed from check_automated_reasoning_checks_hallucination)."""
+
+    def test_na_no_guardrails(self):
+        """No guardrails configured -> N/A, not a fabricated Failed (matches
+        the sibling FS-36/FS-38/FS-45/FS-47 guardrail-existence guard, which
+        this check previously lacked)."""
+        inv = make_resource_inventory(
+            guardrails=app.GuardrailInventory(summaries=[], detail_by_id={})
+        )
+        result = app.check_guardrail_relevance_grounding(inv)
+        _assert_finding_structure(result)
+        assert result["csv_data"][0]["Status"] == "N/A"
+        assert (
+            result["csv_data"][0]["Finding"]
+            == "No Guardrails — Relevance Grounding Not Applicable"
+        )
 
     def test_pass_relevance_filter_present(self):
         inv = make_resource_inventory(
