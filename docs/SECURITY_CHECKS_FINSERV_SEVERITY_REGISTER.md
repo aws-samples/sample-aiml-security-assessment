@@ -41,7 +41,7 @@ Medium (FS-02 was High); no `Critical` (capped at High).
 ### Category 1 — Unbounded Consumption (cost / rate-limiting family → Medium; Shield → Low)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-01 | AWS Shield Advanced Not Enabled | FAIL | 1 | 2 | **Low** | Δ High→Low |
 | FS-01 | AWS Shield Advanced Enabled | PASS | 1 | 2 | **Low** | Δ High→Low |
 | FS-01 | No Regional WAF Web ACLs Found | FAIL | 2 | 2 | **Medium** | Δ High→Medium |
@@ -64,7 +64,7 @@ Medium (FS-02 was High); no `Critical` (capped at High).
 ### Category 2 — Excessive Agency (access/agency family → High; cost → Medium)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-07 | Agent Action Boundary Check | NA-NotApplicable | – | – | **Informational** | keep |
 | FS-07 | Bedrock Agent Overly Broad Action Permissions | FAIL | 3 | 2 | **High** | keep |
 | FS-07 | Agent Action Boundaries Look Appropriate | PASS | 3 | 2 | **High** | keep |
@@ -83,7 +83,7 @@ Medium (FS-02 was High); no `Critical` (capped at High).
 ### Category 3 — Supply Chain (governance → Medium; SCP/scanning → High)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-12 | SCP Model Access Check — Not in Organization | NA-NotApplicable | – | – | **Informational** | Δ Low→Info |
 | FS-12 | No Bedrock-Scoped SCPs Found | FAIL | 3 | 2 | **High** | keep |
 | FS-12 | Bedrock SCPs Found | PASS | 3 | 2 | **High** | keep |
@@ -103,7 +103,7 @@ are converted to **advisory** (they cannot inspect dataset content). See the REQ
 ### Category 4 — Training Data & Model Poisoning (data integrity → High; governance → Medium)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-20 | No SageMaker Feature Groups Found | NA-NotApplicable | – | – | **Informational** | keep |
 | FS-20 | Feature Groups Without Offline Store | FAIL | 2 | 2 | **Medium** | keep |
 | FS-20 | Feature Store Offline Store Active | PASS | 2 | 2 | **Medium** | keep |
@@ -114,7 +114,7 @@ are converted to **advisory** (they cannot inspect dataset content). See the REQ
 ### Category 5 — Vector & Embedding Weaknesses (access/encryption → High; governance → Medium)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-22 | Overly Permissive Knowledge Base IAM Roles | FAIL | 3 | 2 | **High** | keep |
 | FS-22 | Knowledge Base IAM Permissions Look Appropriate | PASS | 3 | 2 | **High** | keep |
 | FS-24 | No Knowledge Bases Found | NA-NotApplicable | – | – | **Informational** | keep |
@@ -129,7 +129,7 @@ are converted to **advisory** (they cannot inspect dataset content). See the REQ
 ### Category 6 — Non-Compliant Output (grounding → High; ARC → Medium)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-27 | No Guardrails — Contextual Grounding Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ Medium→Info |
 | FS-27 | No Guardrails With Contextual Grounding | FAIL | 3 | 2 | **High** | keep |
 | FS-27 | Contextual Grounding Enabled on Guardrails | PASS | 3 | 2 | **High** | Δ Medium→High (match FAIL) |
@@ -161,13 +161,13 @@ recommendation lives in the finding details.
 ### Category 7 — Misinformation (eval governance → Medium)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-35 | ADVISORY: Harmful-Content Test Coverage — Manual Review Required | NA-Advisory | – | – | **Informational** | Δ to advisory (REQ-10a): can't verify dataset content; replaces N/A+PASS |
 
 ### Category 8 — Abusive/Harmful Output (content safety → High; word filters → Medium)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-36 | No Guardrails — Content Filters Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ High→Info |
 | FS-36 | No Guardrails With Content Filters | FAIL | 3 | 2 | **High** | keep |
 | FS-36 | Guardrail Content Filters on CLASSIC Tier | PASS | 3 | 2 | **High** | Δ Low→High; tier note → details ‡ |
@@ -180,7 +180,7 @@ recommendation lives in the finding details.
 ### Category 9 — Biased Output (fair-lending/ECOA → High)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-39 | No SageMaker Clarify Bias Monitoring | FAIL | 3 | 2 | **High** | keep |
 | FS-39 | SageMaker Clarify Bias Monitoring Active | PASS | 3 | 2 | **High** | keep |
 | FS-40 | ADVISORY: Bias Dataset Coverage — Manual Review Required | NA-Advisory | – | – | **Informational** | Δ to advisory (REQ-10a): can't verify dataset content; replaces N/A+PASS |
@@ -192,7 +192,7 @@ recommendation lives in the finding details.
 ### Category 10 — Sensitive Information Disclosure (data exposure → High; classification → Medium)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-43 | No CloudWatch Logs Data Protection Policies | FAIL | 3 | 2 | **High** | keep |
 | FS-43 | CloudWatch Logs Data Protection Policies Present | PASS | 3 | 2 | **High** | keep |
 | FS-44 | Amazon Macie Not Enabled | FAIL | 3 | 2 | **High** | keep |
@@ -207,7 +207,7 @@ recommendation lives in the finding details.
 ### Category 11 — Hallucination (grounding → High; relevance → Medium; advisory → Info)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-47 | No Guardrails — Grounding Threshold Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ High→Info |
 | FS-47 | Guardrails With Low Grounding Thresholds | FAIL | 3 | 2 | **High** | keep |
 | FS-47 | No Guardrails With a Grounding Filter | FAIL | 3 | 2 | **High** | keep |
@@ -221,7 +221,7 @@ recommendation lives in the finding details.
 ### Category 12 — Prompt Injection (prompt-attack → High; advisory → Info)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-51 | No Guardrails — Prompt Attack Filters Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ High→Info |
 | FS-51 | No Guardrails With Prompt Attack Filters | FAIL | 3 | 2 | **High** | keep |
 | FS-51 | Prompt Attack Filters on CLASSIC Tier | PASS | 3 | 2 | **High** | Δ Low→High; tier note → details ‡ |
@@ -234,7 +234,7 @@ recommendation lives in the finding details.
 ### Category 13 — Improper Output Handling (injection/XSS via WAF → see notes; advisory → Info)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-53 | No WAF Web ACLs — Injection Rules Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ High→Info |
 | FS-53 | WAF ACLs Missing Injection Protection Rules | FAIL | 3 | 2 | **High** | keep |
 | FS-53 | WAF Injection Protection Rules Present | PASS | 3 | 2 | **High** | keep |
@@ -249,7 +249,7 @@ recommendation lives in the finding details.
 ### Category 14 — Off-Topic & Inappropriate Output (topic allowlist → Medium; advisory → Info)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-59 | No Guardrails — Topic Allowlist Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ Medium→Info |
 | FS-59 | No Guardrails With Topic Restrictions | FAIL | 2 | 2 | **Medium** | keep |
 | FS-59 | Topic Restrictions Configured on CLASSIC Tier | PASS | 2 | 2 | **Medium** | Δ Low→Medium; tier note → details ‡ |
@@ -259,7 +259,7 @@ recommendation lives in the finding details.
 ### Category 15 — Out-of-Date Training Data (governance → Medium; advisory → Info)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-61 | No Knowledge Bases Found | NA-NotApplicable | – | – | **Informational** | keep |
 | FS-61 | No Automated KB Sync Schedules Detected | FAIL | 2 | 2 | **Medium** | keep |
 | FS-61 | Automated KB Sync Schedules Present | PASS | 2 | 2 | **Medium** | keep |
@@ -270,7 +270,7 @@ recommendation lives in the finding details.
 ### Material Gap Checks (FS-65 to FS-69)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | FS-65 | No Knowledge Bases Found | NA-NotApplicable | – | – | **Informational** | keep |
 | FS-65 | KB Data Source References a Deleted S3 Bucket | FAIL | 3 | 2 | **High** | keep (distinct risk) |
 | FS-65 | KB Data Source Buckets Missing S3 Event Notifications | FAIL | 2 | 2 | **Medium** | keep (distinct risk) |
@@ -291,7 +291,7 @@ recommendation lives in the finding details.
 ### Cross-cutting synthesized row
 
 | Source | Finding name | Disposition | Sev (new) | Δ from current |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `_could_not_assess_row()` | `COULD NOT ASSESS: <check name>` (any check that errors with no rows) | NA-CouldNotAssess | **Low** | Δ Medium→Low (unify with inline access-checks) |
 
 ---
@@ -299,7 +299,7 @@ recommendation lives in the finding details.
 ## Change summary
 
 | Change class | Count (approx) | Net effect |
-|---|---|---|
+| --- | --- | --- |
 | NOT_APPLICABLE N/A → Informational | ~21 rows (7 High, 10 Medium, ~4 Low/other) | removes misleading High/Medium **N/A** rows; no pass-rate impact (N/A excluded) |
 | COULD_NOT_ASSESS → Low (unify) | 4 inline + generic row | consistent "unknown" signaling |
 | FS-01 Shield High→Low | 2 rows | fixes reviewer Finding 6 |

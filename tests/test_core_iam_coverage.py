@@ -7,6 +7,9 @@ import pytest
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+_INSPECTOR_ACTIONS = {"inspector2:BatchGetAccountStatus"}  # BR-33
+
+
 _SECTION_CHECKS = [
     {
         "path": os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
@@ -143,4 +146,31 @@ def test_required_core_bedrock_actions_are_granted(check):
     assert not missing, (
         f"{os.path.basename(check['path'])} section starting at "
         f"'{check['start']}' is missing required IAM action(s): {missing}"
+    )
+
+
+_INSPECTOR_GRANT_TEMPLATES = [
+    os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
+    os.path.join(_REPO_ROOT, "aiml-security-assessment", "template-multi-account.yaml"),
+    os.path.join(_REPO_ROOT, "deployment", "1-aiml-security-member-roles.yaml"),
+    os.path.join(_REPO_ROOT, "deployment", "2-aiml-security-codebuild.yaml"),
+    os.path.join(_REPO_ROOT, "deployment", "aiml-security-single-account.yaml"),
+]
+
+
+@pytest.mark.parametrize(
+    "template",
+    _INSPECTOR_GRANT_TEMPLATES,
+    ids=lambda p: os.path.basename(p),
+)
+def test_br33_inspector_actions_granted(template):
+    """BR-33 (Amazon Inspector Lambda code scanning) requires inspector2:BatchGetAccountStatus
+    in every policy location. A missing grant silently resolves to N/A + AccessDenied
+    and the check disappears from the report."""
+    with open(template, encoding="utf-8") as fh:
+        text = fh.read()
+    missing = sorted(action for action in _INSPECTOR_ACTIONS if action not in text)
+    assert not missing, (
+        f"{os.path.basename(template)} is missing required Inspector IAM action(s): "
+        f"{missing}. Grant them or BR-33 will surface as AccessDenied / N/A."
     )

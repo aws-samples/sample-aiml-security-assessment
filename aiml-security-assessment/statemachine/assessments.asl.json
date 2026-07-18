@@ -287,6 +287,23 @@
                                                     }
                                                 ],
                                                 "Next": "FinServ Security Assessment"
+                                            },
+                                            {
+                                                "And": [
+                                                    {
+                                                        "Variable": "$.OriginalInput.enableOWASP",
+                                                        "IsPresent": true
+                                                    },
+                                                    {
+                                                        "Variable": "$.OriginalInput.enableOWASP",
+                                                        "StringEquals": "true"
+                                                    },
+                                                    {
+                                                        "Variable": "$.RegionIndex",
+                                                        "NumericEquals": 0
+                                                    }
+                                                ],
+                                                "Next": "FinServ Security Assessment"
                                             }
                                         ],
                                         "Default": "FinServ Assessment Skipped"
@@ -354,6 +371,85 @@
                                 }
                             }
                         ],
+                        "ResultPath": null,
+                        "Next": "OWASP Enabled?"
+                    },
+                    "OWASP Enabled?": {
+                        "Type": "Choice",
+                        "Choices": [
+                            {
+                                "And": [
+                                    {
+                                        "Variable": "$.OriginalInput.enableOWASP",
+                                        "IsPresent": true
+                                    },
+                                    {
+                                        "Variable": "$.OriginalInput.enableOWASP",
+                                        "StringEquals": "true"
+                                    }
+                                ],
+                                "Next": "OWASP Security Assessment"
+                            }
+                        ],
+                        "Default": "OWASP Assessment Skipped"
+                    },
+                    "OWASP Security Assessment": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:states:::lambda:invoke",
+                        "Parameters": {
+                            "FunctionName": "${OWASPSecurityAssessmentFunction}",
+                            "Payload": {
+                                "Execution.$": "$.Execution",
+                                "StateMachine.$": "$.StateMachine",
+                                "Region.$": "$.Region",
+                                "RegionIndex.$": "$.RegionIndex"
+                            }
+                        },
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.SdkClientException",
+                                    "Lambda.TooManyRequestsException"
+                                ],
+                                "IntervalSeconds": 1,
+                                "MaxAttempts": 3,
+                                "BackoffRate": 2,
+                                "JitterStrategy": "FULL"
+                            }
+                        ],
+                        "Catch": [
+                            {
+                                "ErrorEquals": [
+                                    "States.ALL"
+                                ],
+                                "ResultPath": "$.owaspError",
+                                "Next": "OWASP Assessment Incomplete"
+                            }
+                        ],
+                        "End": true
+                    },
+                    "OWASP Assessment Incomplete": {
+                        "Type": "Pass",
+                        "Result": {
+                            "statusCode": 207,
+                            "incomplete": true,
+                            "body": {
+                                "findings": []
+                            }
+                        },
+                        "End": true
+                    },
+                    "OWASP Assessment Skipped": {
+                        "Type": "Pass",
+                        "Result": {
+                            "statusCode": 200,
+                            "skipped": true,
+                            "body": {
+                                "findings": []
+                            }
+                        },
                         "End": true
                     }
                 }
@@ -367,7 +463,8 @@
             "Parameters": {
                 "FunctionName": "${GenerateConsolidatedReportFunction}",
                 "Payload": {
-                    "Execution.$": "$$.Execution"
+                    "Execution.$": "$$.Execution",
+                    "OriginalInput.$": "$"
                 }
             },
             "Retry": [

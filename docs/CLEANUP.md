@@ -92,11 +92,13 @@ To remove all resources deployed for multi-account assessment:
    - Before deleting each stack, open **Outputs** and record the `AssessmentBucketName` value
    - Click **Delete**
    - Alternatively, use the AWS CLI to delete across accounts:
+
      ```bash
      # Assume role in member account and delete stack
      aws cloudformation delete-stack --stack-name aiml-security-<account_id> \
        --region <deployment-region>
      ```
+
    - The assessment buckets are retained by design, so delete them manually using the S3 cleanup helper above if you no longer need the report artifacts
 
 2. **Delete the central AWS CodeBuild infrastructure stack**:
@@ -131,7 +133,7 @@ To remove all resources deployed for multi-account assessment:
 The deployment creates multiple AWS CloudFormation stacks. Here's how to identify them:
 
 | Stack Type | How to Identify | Action |
-|------------|-----------------|--------|
+| --- | --- | --- |
 | **Infrastructure Stack** (yours) | The name you chose (for example, `aiml-security-single-account`) | Delete after assessment stacks |
 | **Assessment Stack** (auto-generated) | `aiml-sec-{account_id}` (single) or `aiml-security-{account_id}` (multi) | Delete before the infrastructure stack |
 

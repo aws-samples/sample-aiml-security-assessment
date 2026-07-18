@@ -31,7 +31,7 @@ sys.path.insert(
     ),
 )
 
-from report_template import generate_html_report
+from report_template import COMPLIANCE_STANDARDS, generate_html_report
 
 # Sentinel region label used by the per-service assessments to tag IAM-only
 # findings that run once per execution rather than per region. It is not a real
@@ -77,22 +77,33 @@ def consolidate_html_reports():
         print("Error: BUCKET_REPORT environment variable is not set")
         raise ValueError("BUCKET_REPORT environment variable is required")
 
+    # When ENABLE_OWASP=true but ENABLE_FINSERV=false, the state machine still
+    # runs FinServ (OWASP mappings depend on FS-* rows), but the FinServ UI
+    # must stay hidden. Read the same env vars the buildspec exports.
+    enable_finserv = os.environ.get("ENABLE_FINSERV", "false").strip().lower() == "true"
+    show_finserv = enable_finserv
+
     all_findings = []
     account_ids = set()
     regions = set()
+    # Fixed per-service categories + agentic lens, followed by every
+    # registered compliance standard from the shared registry.
+    compliance_slugs = [std["slug"] for std in COMPLIANCE_STANDARDS]
+    all_report_slugs = [
+        "bedrock",
+        "sagemaker",
+        "agentcore",
+        "agentic",
+        "finserv",
+    ] + compliance_slugs
     service_stats = {
-        "bedrock": {"passed": 0, "failed": 0, "na": 0},
-        "sagemaker": {"passed": 0, "failed": 0, "na": 0},
-        "agentcore": {"passed": 0, "failed": 0, "na": 0},
-        "agentic": {"passed": 0, "failed": 0, "na": 0},
-        "finserv": {"passed": 0, "failed": 0, "na": 0},
+        slug: {"passed": 0, "failed": 0, "na": 0} for slug in all_report_slugs
     }
-    service_findings = {
-        "bedrock": [],
-        "sagemaker": [],
-        "agentcore": [],
-        "agentic": [],
-        "finserv": [],
+    service_findings = {slug: [] for slug in all_report_slugs}
+    # Check_ID prefix (uppercase, without trailing dash) → report slug for
+    # compliance standards. Used to route rows by Check_ID prefix.
+    compliance_prefix_to_slug = {
+        std["prefix"].upper().rstrip("-"): std["slug"] for std in COMPLIANCE_STANDARDS
     }
 
     for account_dir in glob.glob(os.path.join(_account_files_dir(), "*/")):
@@ -139,6 +150,9 @@ def consolidate_html_reports():
                             check_id = finding["check_id"].upper()
                             status = finding["status"].lower()
 
+                            check_id_prefix = (
+                                check_id.split("-", 1)[0] if "-" in check_id else ""
+                            )
                             if check_id.startswith("BR-"):
                                 service = "bedrock"
                             elif check_id.startswith("SM-"):
@@ -149,6 +163,8 @@ def consolidate_html_reports():
                                 service = "agentic"
                             elif check_id.startswith("FS-"):
                                 service = "finserv"
+                            elif check_id_prefix in compliance_prefix_to_slug:
+                                service = compliance_prefix_to_slug[check_id_prefix]
                             else:
                                 # Fallback to finding name analysis
                                 finding_name = finding["finding"].lower()
@@ -166,6 +182,11 @@ def consolidate_html_reports():
                                     service = "agentcore"
                                 else:
                                     service = "bedrock"
+
+                            # Suppress FinServ rows when FinServ ran only as an
+                            # OWASP dependency (see enable_finserv above).
+                            if not show_finserv and service == "finserv":
+                                continue
 
                             finding["_service"] = service
                             all_findings.append(finding)

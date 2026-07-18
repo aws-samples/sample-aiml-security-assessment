@@ -33,6 +33,11 @@ phases:
       # branch runs only when this is "true".
       - export ENABLE_FINSERV="${ENABLE_FINSERV:-false}"
       - echo "FinServ assessment enabled is $ENABLE_FINSERV"
+      # EnableOWASPAssessment toggle (CodeBuild env var; default false). Threaded
+      # into the Step Functions execution input as enableOWASP; the ASL OWASP
+      # branch runs only when this is "true".
+      - export ENABLE_OWASP="${ENABLE_OWASP:-false}"
+      - echo "OWASP assessment enabled is $ENABLE_OWASP"
       - |
         # Validate required environment variables
         missing_vars=()
@@ -171,7 +176,7 @@ phases:
 
             STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name aiml-security-$accountId --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
             if [[ $STATE_MACHINE_ARN != "" && $STATE_MACHINE_ARN != "None" ]]; then
-              if EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$accountId\",\"enableFinServ\":\"$ENABLE_FINSERV\"}" --query 'executionArn' --output text); then
+              if EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$accountId\",\"enableFinServ\":\"$ENABLE_FINSERV\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
                 echo "Started execution: $EXECUTION_ARN"
                 # Save execution ARN for post-build phase
                 echo "$EXECUTION_ARN" > /tmp/execution_arns/$accountId.txt
@@ -199,7 +204,7 @@ phases:
           else
             STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name aiml-security-mgmt --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
             if [[ $STATE_MACHINE_ARN != "" && $STATE_MACHINE_ARN != "None" ]]; then
-              if MGMT_EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableFinServ\":\"$ENABLE_FINSERV\"}" --query 'executionArn' --output text); then
+              if MGMT_EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableFinServ\":\"$ENABLE_FINSERV\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
                 echo "Started management account execution: $MGMT_EXECUTION_ARN"
                 # Save execution ARN for post-build phase
                 echo "$MGMT_EXECUTION_ARN" > /tmp/execution_arns/$AWS_ACCOUNT_ID.txt
@@ -228,7 +233,7 @@ phases:
             exit 1
           fi
           # Capture execution ARN for post-build phase to wait on
-          EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableFinServ\":\"$ENABLE_FINSERV\"}" --query 'executionArn' --output text)
+          EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableFinServ\":\"$ENABLE_FINSERV\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text)
           if [[ -z "$EXECUTION_ARN" || "$EXECUTION_ARN" == "None" ]]; then
             echo "ERROR: Failed to start Step Function execution"
             exit 1

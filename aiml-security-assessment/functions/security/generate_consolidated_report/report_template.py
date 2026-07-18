@@ -7,7 +7,9 @@ This module provides a unified report generation function used by both:
 """
 
 from datetime import datetime, timezone
+import html
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 # FinServ service icon (no official AWS icon exists for "Financial Services").
 FINSERV_ICON = (
@@ -47,6 +49,69 @@ FINSERV_GUIDE_URL = (
     "introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/"
 )
 
+# OWASP Top 10 for LLM icon (no official AWS icon; shield outline).
+OWASP_ICON = (
+    '<span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
+    '<rect fill="#10B981" width="80" height="80"/>'
+    '<path fill="#FFF" d="M40 12 20 20v18c0 14 8 26 20 30 12-4 20-16 20-30V20L40 12zm0 8 12 4.8V38c0 10-5.2 18.6-12 22-6.8-3.4-12-12-12-22V24.8L40 20zm-3 12h6l-3 8-3-8z"/></svg></span>'
+)
+OWASP_ICON_SMALL = (
+    '<span class="service-icon" style="width: 18px; height: 18px;">'
+    '<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
+    '<rect fill="#10B981" width="80" height="80"/>'
+    '<path fill="#FFF" d="M40 12 20 20v18c0 14 8 26 20 30 12-4 20-16 20-30V20L40 12zm0 8 12 4.8V38c0 10-5.2 18.6-12 22-6.8-3.4-12-12-12-22V24.8L40 20zm-3 12h6l-3 8-3-8z"/></svg></span>'
+)
+OWASP_LLM_TOP10_URL = "https://genai.owasp.org/llm-top-10/"
+
+# COMPLIANCE_STANDARDS — registry of compliance-standard sections.
+# Each entry produces a sidebar nav item + service card + section + filter
+# option + scope chip in the report. Callers (generate_consolidated_report
+# and consolidate_html_reports) also iterate this list to initialise
+# service_stats/service_findings and route Check_ID prefixes, so appending a
+# new entry here (with a unique slug + Check_ID prefix) is sufficient — no
+# loop-body edits required in the report layer or its callers.
+COMPLIANCE_STANDARDS: List[Dict[str, str]] = [
+    {
+        "slug": "owasp",
+        "name": "OWASP Top 10 LLM",
+        "prefix": "OW-",
+        "icon": OWASP_ICON,
+        "icon_small": OWASP_ICON_SMALL,
+        "reference_url": OWASP_LLM_TOP10_URL,
+        "section_title": "OWASP Top 10 for LLM Findings",
+        "scope_text": (
+            "Scope: mapping-based derivation from existing BR/SM/AC/AG/FS checks "
+            "plus two net-new checks for LLM07 (System Prompt Leakage). "
+            "Each finding's OWASP category (LLM01–LLM10) is encoded in the "
+            "Finding_Details text. Preliminary and illustrative — validate "
+            "mappings with your Security/Compliance team before using as evidence."
+        ),
+    },
+    # Future: {"slug": "nist", "name": "NIST AI RMF", "prefix": "NR-", ...}
+    # Future: {"slug": "euaiact", "name": "EU AI Act", "prefix": "EU-", ...}
+]
+
+
+def _escape_text(value) -> str:
+    """Escape untrusted text before placing it in HTML body text."""
+    return html.escape("" if value is None else str(value), quote=False)
+
+
+def _escape_attr(value) -> str:
+    """Escape untrusted text before placing it in an HTML attribute."""
+    return html.escape("" if value is None else str(value), quote=True)
+
+
+def _safe_https_url(value) -> Optional[str]:
+    """Return an escaped HTTPS URL, or None when the value is not link-safe."""
+    raw = "" if value is None else str(value).strip()
+    if not raw or raw == "-":
+        return None
+    parsed = urlparse(raw)
+    if parsed.scheme != "https" or not parsed.netloc:
+        return None
+    return _escape_attr(raw)
+
 
 def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -> str:
     """
@@ -78,13 +143,14 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
         resolution = finding.get("resolution", finding.get("Resolution", ""))
         ref = finding.get("reference", finding.get("Reference", ""))
 
-        if ref and ref.strip() and ref.strip() != "-":
-            ref_html = f'''<a href="{ref}" target="_blank" class="reference-btn" title="View AWS Documentation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>'''
+        safe_ref = _safe_https_url(ref)
+        if safe_ref:
+            ref_html = f'''<a href="{safe_ref}" target="_blank" rel="noopener noreferrer" class="reference-btn" title="View AWS Documentation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>'''
         else:
             ref_html = '<span style="color: var(--text-3);">-</span>'
 
         data_attrs = (
-            f'data-service="{service}" data-severity="{severity}" data-status="{status}" data-account="{account_id}" data-region="{region}"'
+            f'data-service="{_escape_attr(service)}" data-severity="{_escape_attr(severity)}" data-status="{_escape_attr(status)}" data-account="{_escape_attr(account_id)}" data-region="{_escape_attr(region)}"'
             if include_data_attrs
             else ""
         )
@@ -95,22 +161,22 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
         status_display = finding.get("status", finding.get("Status", ""))
 
         row = f"""<tr {data_attrs}>
-            <td><code>{account_id}</code></td>
-            <td><code>{region}</code></td>
-            <td><code>{check_id}</code></td>
+            <td><code>{_escape_text(account_id)}</code></td>
+            <td><code>{_escape_text(region)}</code></td>
+            <td><code>{_escape_text(check_id)}</code></td>
             <td class="finding-summary">
-                <div class="col-domain">{finding_name}</div>
+                <div class="col-domain">{_escape_text(finding_name)}</div>
                 <details class="finding-more">
                     <summary>Details and remediation</summary>
                     <div class="finding-more-body">
-                        <div><strong>Details</strong><p>{details}</p></div>
-                        <div><strong>Resolution</strong><p>{resolution}</p></div>
+                        <div><strong>Details</strong><p>{_escape_text(details)}</p></div>
+                        <div><strong>Resolution</strong><p>{_escape_text(resolution)}</p></div>
                         <div><strong>Reference</strong><p>{ref_html}</p></div>
                     </div>
                 </details>
             </td>
-            <td><span class="severity {severity_class}">{severity_display}</span></td>
-            <td><span class="status {"success" if status_class == "passed" else "error" if status_class == "failed" else "warning"}">{status_display}</span></td>
+            <td><span class="severity {severity_class}">{_escape_text(severity_display)}</span></td>
+            <td><span class="status {"success" if status_class == "passed" else "error" if status_class == "failed" else "warning"}">{_escape_text(status_display)}</span></td>
         </tr>"""
         rows.append(row)
 
@@ -144,8 +210,8 @@ def generate_assessment_summary(
                         <div class="metric"><div class="metric-label">Total</div><div class="metric-value">{total}</div><div class="metric-sub">Rows in report</div></div>
                     </div>
                     <div class="assessment-actions">
-                        <button class="btn btn-reset" data-filter-service="{service_key}" data-filter-status="failed">View failed findings</button>
-                        <button class="btn btn-reset" data-filter-service="{service_key}" data-filter-status="">View all rows</button>
+                        <button class="btn btn-reset" data-filter-service="{_escape_attr(service_key)}" data-filter-status="failed">View failed findings</button>
+                        <button class="btn btn-reset" data-filter-service="{_escape_attr(service_key)}" data-filter-status="">View all rows</button>
                     </div>
                 </div></div>"""
 
@@ -234,6 +300,11 @@ def get_html_template() -> str:
         .industry-nav .nav-item:hover {{ background: var(--accent-soft); color: var(--accent); }}
         .industry-nav .nav-item.active {{ background: var(--accent-soft); color: var(--accent); }}
         .industry-nav .nav-item .count {{ background: var(--accent); color: #fff; }}
+        .nav-section.compliance-nav {{ border-top: 1px solid var(--border); padding-top: 16px; margin-top: -8px; }}
+        .compliance-nav .nav-item {{ background: var(--success-soft); color: var(--text); box-shadow: inset 3px 0 0 var(--success); font-size: 13px; white-space: nowrap; padding: 10px 10px; gap: 6px; }}
+        .compliance-nav .nav-item:hover {{ background: var(--success-soft); color: var(--success); }}
+        .compliance-nav .nav-item.active {{ background: var(--success-soft); color: var(--success); }}
+        .compliance-nav .nav-item .count {{ background: var(--success); color: #fff; padding: 2px 6px; font-size: 11px; }}
         .sidebar-footer {{ margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-3); }}
         .sidebar-footer a {{ color: var(--accent); text-decoration: none; }}
         .main {{ padding: 32px 40px; max-width: 1400px; }}
@@ -384,6 +455,7 @@ def get_html_template() -> str:
 	            </nav>
 	            {lens_nav}
 	            {industry_nav}
+	            {compliance_nav}
 	            <div class="sidebar-footer">
 	                <p>Generated: {date_display}</p>
 	                <p>{account_info}</p>
@@ -400,12 +472,12 @@ def get_html_template() -> str:
                     </div>
                 </div>
                 <div class="metrics">
-                    <div class="metric"><div class="metric-label">Security Checks</div><div class="metric-value">{security_checks}</div><div class="metric-sub">{security_checks_sub}</div></div>
-                    <div class="metric"><div class="metric-label">Total Findings</div><div class="metric-value">{total_findings}</div><div class="metric-sub">{findings_sub}</div></div>
-                    <div class="metric danger"><div class="metric-label">Actionable Findings</div><div class="metric-value">{actionable_findings}</div><div class="metric-sub">Failed High, Medium, and Low findings</div></div>
-                    <div class="metric danger"><div class="metric-label">High Severity</div><div class="metric-value">{high_passed}/{high_count}</div><div class="metric-sub">{high_pass_rate}% passed · Immediate action required</div></div>
-                    <div class="metric warning"><div class="metric-label">Medium Severity</div><div class="metric-value">{medium_passed}/{medium_count}</div><div class="metric-sub">{medium_pass_rate}% passed · Should be addressed</div></div>
-                    <div class="metric highlight"><div class="metric-label">Low Severity</div><div class="metric-value">{low_passed}/{low_count}</div><div class="metric-sub">{low_pass_rate}% passed · Best practices</div></div>
+                    <div class="metric"><div class="metric-label">Unique Check IDs</div><div class="metric-value">{security_checks}</div><div class="metric-sub">{security_checks_sub}</div></div>
+                    <div class="metric"><div class="metric-label">Report Rows</div><div class="metric-value">{total_findings}</div><div class="metric-sub">{findings_sub}</div></div>
+                    <div class="metric danger"><div class="metric-label">Open Action Items</div><div class="metric-value">{actionable_findings}</div><div class="metric-sub">Direct failed service rows</div></div>
+                    <div class="metric"><div class="metric-label">Lens / Compliance Rows</div><div class="metric-value">{contextual_rows}</div><div class="metric-sub">{contextual_failed} failed; may map to service rows</div></div>
+                    <div class="metric danger"><div class="metric-label">Failed High</div><div class="metric-value">{failed_high_count}</div><div class="metric-sub">{high_passed} of {high_count} direct high rows passed</div></div>
+                    <div class="metric warning"><div class="metric-label">Failed Medium / Low</div><div class="metric-value">{failed_medium_count}/{failed_low_count}</div><div class="metric-sub">Direct Medium / Low failed rows</div></div>
                 </div>
                 <div class="card"><div class="card-header"><h3>Priority Recommendations</h3></div><div class="card-body"><div class="alerts">{alerts}</div></div></div>
                 <div class="card">
@@ -417,7 +489,7 @@ def get_html_template() -> str:
                                 <tr><td style="text-align: center;"><span class="severity high">High</span></td><td class="finding-details">Direct security risk - IAM/access control gaps, missing audit trails, guardrail bypasses that could lead to unauthorized access or data exposure</td><td class="resolution-text">Remediate within <strong>7 days</strong></td></tr>
                                 <tr><td style="text-align: center;"><span class="severity medium">Medium</span></td><td class="finding-details">Defense-in-depth gaps - encryption, logging, or configuration issues that reduce security posture</td><td class="resolution-text">Remediate within <strong>30 days</strong></td></tr>
                                 <tr><td style="text-align: center;"><span class="severity low">Low</span></td><td class="finding-details">Best practice deviations - optimization opportunities that improve security hygiene</td><td class="resolution-text">Remediate within <strong>90 days</strong></td></tr>
-                                <tr><td style="text-align: center;"><span class="severity na">Informational</span></td><td class="finding-details">No resources found or advisory recommendations - check does not apply or suggests optional improvements</td><td class="resolution-text">No action required</td></tr>
+                                <tr><td style="text-align: center;"><span class="severity na">Informational</span></td><td class="finding-details">Not applicable, unavailable, no resources found, or advisory-only rows</td><td class="resolution-text">No action required</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -425,12 +497,12 @@ def get_html_template() -> str:
             </section>
             <section id="risk" class="section">
                 <div class="section-title"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Risk Distribution</div>
-                <h4 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Pass Rate by Severity</h4>
+                <h4 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Direct Service Scored Row Results by Severity</h4>
                 <div class="metrics" style="margin-bottom: 32px;">
-                    <div class="metric danger"><div class="metric-label"><span class="severity high" style="padding: 2px 6px; font-size: 10px;">HIGH</span></div><div class="metric-value">{high_pass_rate}%</div><div class="metric-sub">{high_passed} of {high_count} checks passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {high_pass_rate}%; height: 100%; background: var(--danger);"></div></div></div>
-                    <div class="metric warning"><div class="metric-label"><span class="severity medium" style="padding: 2px 6px; font-size: 10px;">MEDIUM</span></div><div class="metric-value">{medium_pass_rate}%</div><div class="metric-sub">{medium_passed} of {medium_count} checks passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {medium_pass_rate}%; height: 100%; background: var(--warning);"></div></div></div>
-                    <div class="metric" style="border-color: var(--accent);"><div class="metric-label"><span class="severity low" style="padding: 2px 6px; font-size: 10px;">LOW</span></div><div class="metric-value" style="color: var(--accent);">{low_pass_rate}%</div><div class="metric-sub">{low_passed} of {low_count} checks passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {low_pass_rate}%; height: 100%; background: var(--accent);"></div></div></div>
-                    <div class="metric"><div class="metric-label">Overall</div><div class="metric-value">{pass_rate}%</div><div class="metric-sub">{passed_count} of {scored_findings} scored checks passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {pass_rate}%; height: 100%; background: var(--text-3);"></div></div></div>
+                    <div class="metric danger"><div class="metric-label"><span class="severity high" style="padding: 2px 6px; font-size: 10px;">HIGH</span></div><div class="metric-value">{high_pass_rate}%</div><div class="metric-sub">{high_passed} of {high_count} scored rows passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {high_pass_rate}%; height: 100%; background: var(--danger);"></div></div></div>
+                    <div class="metric warning"><div class="metric-label"><span class="severity medium" style="padding: 2px 6px; font-size: 10px;">MEDIUM</span></div><div class="metric-value">{medium_pass_rate}%</div><div class="metric-sub">{medium_passed} of {medium_count} scored rows passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {medium_pass_rate}%; height: 100%; background: var(--warning);"></div></div></div>
+                    <div class="metric" style="border-color: var(--accent);"><div class="metric-label"><span class="severity low" style="padding: 2px 6px; font-size: 10px;">LOW</span></div><div class="metric-value" style="color: var(--accent);">{low_pass_rate}%</div><div class="metric-sub">{low_passed} of {low_count} scored rows passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {low_pass_rate}%; height: 100%; background: var(--accent);"></div></div></div>
+                    <div class="metric"><div class="metric-label">Overall</div><div class="metric-value">{pass_rate}%</div><div class="metric-sub">{passed_count} of {scored_findings} scored rows passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {pass_rate}%; height: 100%; background: var(--text-3);"></div></div></div>
                 </div>
                 {account_risk_section}
                 {region_risk_section}
@@ -441,6 +513,7 @@ def get_html_template() -> str:
                     <div class="metric"><div class="metric-label"><span class="service-icon" style="width: 18px; height: 18px;"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" d="M67.372,28.073L64.178,26.792 62.933,23.634C62.781,23.252 62.412,23.001 62.002,23.001 61.591,23.001 61.222,23.253 61.071,23.636L59.814,26.838 56.638,28.071C56.253,28.22 55.999,28.592 56,29.005 56.001,29.419 56.257,29.79 56.643,29.937L59.89,31.178 61.063,34.348C61.205,34.735 61.572,34.995 61.985,35.001L62,35.001C62.407,35.001 62.774,34.754 62.928,34.375L64.231,31.142 67.36,29.934C67.743,29.786 67.997,29.418 68,29.007 68.003,28.597 67.754,28.226 67.372,28.073ZM63.106,29.432C62.849,29.532 62.643,29.734 62.539,29.991L62.04,31.228 61.607,30.058C61.508,29.788 61.296,29.574 61.027,29.471L59.782,28.996 60.947,28.543C61.207,28.442 61.414,28.237 61.516,27.977L62.004,26.732 62.435,27.822C62.523,28.142 62.767,28.398 63.079,28.506L64.269,28.983 63.106,29.432ZM64.053,38.6L54.914,34.935 51.351,25.902C51.123,25.325 50.575,24.953 49.955,24.953 49.335,24.954 48.786,25.327 48.56,25.905L44.958,35.083 42,36.23 42,16C42,15.569 41.725,15.188 41.316,15.051L32.316,12.051C32.042,11.961 31.744,11.991 31.496,12.136L19.496,19.136C19.189,19.315 19,19.645 19,20L19,29.42 12.504,33.132C12.192,33.31 12,33.641 12,34L12,46C12,46.359 12.192,46.69 12.504,46.868L19,50.58 19,60C19,60.355 19.189,60.685 19.496,60.864L31.496,67.864C31.65,67.954 31.825,68 32,68 32.106,68 32.213,67.983 32.316,67.949L41.316,64.949C41.725,64.813 42,64.431 42,64L42,43.738 45.2,44.961 48.561,54.046C48.777,54.632 49.32,55.017 49.945,55.026L49.969,55.026C50.584,55.026 51.128,54.66 51.359,54.087L55.089,44.845 64.035,41.392C64.614,41.168 64.991,40.623 64.995,40.001 64.999,39.381 64.629,38.831 64.053,38.6ZM32.113,65.908L28.865,64.014 35.53,59.848 34.47,58.186 26.913,62.759 21,58.441 21,50.566 26.555,46.832 25.445,45.168 19.959,48.825 14,45.42 14,40.58 20.496,36.868 19.504,35.132 14,38.277 14,34.58 20,31.152 26,34.58 26,38.434 21.485,41.143 22.515,42.857 27,40.166 31.485,42.857 32.515,41.143 28,38.434 28,34.535 33.555,30.832C33.833,30.646 34,30.334 34,30L34,24 32,24 32,29.465 26.959,32.825 21,29.42 21,20.574 26,17.658 26,27 28,27 28,16.491 32.113,14.092 40,16.721 40,45.434 25.485,54.143 26.515,55.857 40,47.766 40,63.279 32.113,65.908ZM53.964,43.135C53.706,43.235 53.501,43.438 53.397,43.694L49.988,52.14 46.918,43.842C46.818,43.572 46.607,43.358 46.338,43.255L42,41.597 42,38.375 46.09,36.788C46.351,36.687 46.558,36.481 46.659,36.221L49.957,27.818 53.14,35.886C53.209,36.252 53.486,36.548 53.84,36.659L62.129,39.983 53.964,43.135Z"/></svg></span> AgentCore</div><div class="metric-value">{agentcore_total}</div><div class="metric-sub">{agentcore_failed} Failed · {agentcore_passed} Passed</div></div>
                     {agentic_service_card}
                     {finserv_service_card}
+                    {compliance_service_card}
                 </div>
             </section>
             <section id="findings" class="section">
@@ -449,7 +522,7 @@ def get_html_template() -> str:
                     <div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="searchInput"></div>
                     {account_filter}
                     {region_filter}
-                    <div class="filter-group"><label>Assessment Area</label><select id="serviceFilter"><option value="">All Assessment Areas</option><option value="bedrock">Bedrock</option><option value="sagemaker">SageMaker</option><option value="agentcore">AgentCore</option>{agentic_filter_option}{finserv_filter_option}</select></div>
+                    <div class="filter-group"><label>Assessment Area</label><select id="serviceFilter"><option value="">All Assessment Areas</option><option value="bedrock">Bedrock</option><option value="sagemaker">SageMaker</option><option value="agentcore">AgentCore</option>{agentic_filter_option}{finserv_filter_option}{compliance_filter_option}</select></div>
                     <div class="filter-group"><label>Severity</label><select id="severityFilter"><option value="">All Severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="informational">Informational</option></select></div>
                     <div class="filter-group"><label>Status</label><select id="statusFilter"><option value="">All Statuses</option><option value="failed" selected>Failed</option><option value="passed">Passed</option><option value="n/a">N/A</option></select></div>
                     <button class="btn btn-reset" id="resetFilters"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>
@@ -470,6 +543,7 @@ def get_html_template() -> str:
             </section>
             {agentic_section}
             {finserv_section}
+            {compliance_section}
             <section id="methodology" class="section">
                 <div class="section-title"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Assessment Methodology</div>
                 <div class="card"><div class="card-header" style="padding: 12px 16px;"><h3 style="font-size: 14px;">Assessment Notes</h3></div><div class="card-body" style="padding: 12px 16px; font-size: 12px; color: var(--text-2); line-height: 1.6;"><strong style="color: var(--text);">Point-in-time:</strong> Security posture changes as resources are modified. <strong style="color: var(--text);">Scope limited:</strong> Passed checks verify tested controls only. <strong style="color: var(--text);">Context matters:</strong> Adjust severity for compliance requirements and environment type.</div></div>
@@ -649,53 +723,89 @@ def generate_html_report(
     Returns:
         Complete HTML report string
     """
-    # Calculate metrics
-    total_findings = len(all_findings)  # All findings including N/A for table display
-    unique_check_ids = set(
-        f.get("check_id", f.get("Check_ID", "")) for f in all_findings
+
+    def finding_severity(finding: Dict) -> str:
+        return finding.get("severity", finding.get("Severity", "")).lower()
+
+    def finding_status(finding: Dict) -> str:
+        return finding.get("status", finding.get("Status", "")).lower()
+
+    def finding_service(finding: Dict) -> str:
+        return finding.get("_service", "").lower()
+
+    scored_severities = {"high", "medium", "low"}
+    compliance_slugs = {std["slug"] for std in COMPLIANCE_STANDARDS}
+    contextual_services = {"agentic", *compliance_slugs}
+
+    def is_scored_row(finding: Dict) -> bool:
+        return finding_severity(finding) in scored_severities
+
+    def is_failed_scored_row(finding: Dict) -> bool:
+        return is_scored_row(finding) and finding_status(finding) == "failed"
+
+    def is_contextual_row(finding: Dict) -> bool:
+        return finding_service(finding) in contextual_services
+
+    def is_direct_risk_row(finding: Dict) -> bool:
+        return not is_contextual_row(finding)
+
+    # Calculate metrics. "Total findings" is intentionally the visible row
+    # count, including N/A rows; unique checks excludes blank Check_ID values so
+    # malformed rows do not inflate the apparent assessment coverage.
+    total_findings = len(all_findings)
+    direct_risk_findings = [f for f in all_findings if is_direct_risk_row(f)]
+    unique_check_ids = {
+        check_id
+        for check_id in (
+            f.get("check_id", f.get("Check_ID", "")).strip() for f in all_findings
+        )
+        if check_id
+    }
+    security_checks = len(unique_check_ids)
+    contextual_rows = sum(1 for f in all_findings if is_contextual_row(f))
+    contextual_failed = sum(
+        1 for f in all_findings if is_contextual_row(f) and is_failed_scored_row(f)
     )
-    security_checks = len(unique_check_ids)  # Unique security controls evaluated
-    high_count = sum(
-        1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "high"
-    )
+    high_count = sum(1 for f in direct_risk_findings if finding_severity(f) == "high")
     medium_count = sum(
-        1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "medium"
+        1 for f in direct_risk_findings if finding_severity(f) == "medium"
     )
-    low_count = sum(
-        1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "low"
-    )
+    low_count = sum(1 for f in direct_risk_findings if finding_severity(f) == "low")
     scored_findings = high_count + medium_count + low_count
     actionable_findings = sum(
+        1 for f in direct_risk_findings if is_failed_scored_row(f)
+    )
+    failed_high_count = sum(
         1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() in {"high", "medium", "low"}
-        and f.get("status", f.get("Status", "")).lower() == "failed"
+        for f in direct_risk_findings
+        if finding_severity(f) == "high" and finding_status(f) == "failed"
+    )
+    failed_medium_count = sum(
+        1
+        for f in direct_risk_findings
+        if finding_severity(f) == "medium" and finding_status(f) == "failed"
+    )
+    failed_low_count = sum(
+        1
+        for f in direct_risk_findings
+        if finding_severity(f) == "low" and finding_status(f) == "failed"
     )
 
     # Severity-specific pass rates
     high_passed = sum(
         1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "high"
-        and f.get("status", f.get("Status", "")).lower() == "passed"
+        for f in direct_risk_findings
+        if finding_severity(f) == "high" and finding_status(f) == "passed"
     )
     medium_passed = sum(
         1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "medium"
-        and f.get("status", f.get("Status", "")).lower() == "passed"
+        for f in direct_risk_findings
+        if finding_severity(f) == "medium" and finding_status(f) == "passed"
     )
     low_passed = sum(
         1
-        for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "low"
-        and f.get("status", f.get("Status", "")).lower() == "passed"
+        for f in direct_risk_findings
+        if finding_severity(f) == "low" and finding_status(f) == "passed"
     )
     passed_count = high_passed + medium_passed + low_passed
     pass_rate = (
@@ -716,18 +826,33 @@ def generate_html_report(
     high_priority = [
         f
         for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "high"
-        and f.get("status", f.get("Status", "")).lower() == "failed"
+        if finding_severity(f) == "high" and finding_status(f) == "failed"
     ]
     medium_priority = [
         f
         for f in all_findings
-        if f.get("severity", f.get("Severity", "")).lower() == "medium"
-        and f.get("status", f.get("Status", "")).lower() == "failed"
+        if finding_severity(f) == "medium" and finding_status(f) == "failed"
     ]
 
     alerts_html = ""
     alert_groups = {}
+    compliance_display_names = {
+        std["slug"]: std["name"] for std in COMPLIANCE_STANDARDS
+    }
+
+    def service_display_name(service_slug: str) -> str:
+        fixed_names = {
+            "bedrock": "Bedrock",
+            "sagemaker": "SageMaker",
+            "agentcore": "AgentCore",
+            "agentic": "Agentic AI",
+            "finserv": "FinServ",
+        }
+        return fixed_names.get(
+            service_slug,
+            compliance_display_names.get(service_slug, service_slug or "Unknown"),
+        )
+
     for f in high_priority[:4]:
         key = f.get("finding", f.get("Finding", ""))
         if key not in alert_groups:
@@ -736,42 +861,22 @@ def generate_html_report(
 
     for key, data in list(alert_groups.items())[:3]:
         f = data["finding"]
-        service_name = (
-            "Bedrock"
-            if f.get("_service") == "bedrock"
-            else "SageMaker"
-            if f.get("_service") == "sagemaker"
-            else "Agentic AI"
-            if f.get("_service") == "agentic"
-            else "FinServ"
-            if f.get("_service") == "finserv"
-            else "AgentCore"
-        )
+        service_name = service_display_name(f.get("_service", ""))
         alerts_html += f"""<div class="alert-item critical">
             <div class="alert-count">{data["count"]}</div>
             <div class="alert-info">
-                <div class="alert-domain">{f.get("finding", f.get("Finding", ""))}</div>
-                <div class="alert-category">{service_name}</div>
+                <div class="alert-domain">{_escape_text(f.get("finding", f.get("Finding", "")))}</div>
+                <div class="alert-category">{_escape_text(service_name)}</div>
             </div>
         </div>"""
 
     for f in medium_priority[:1]:
-        service_name = (
-            "Bedrock"
-            if f.get("_service") == "bedrock"
-            else "SageMaker"
-            if f.get("_service") == "sagemaker"
-            else "Agentic AI"
-            if f.get("_service") == "agentic"
-            else "FinServ"
-            if f.get("_service") == "finserv"
-            else "AgentCore"
-        )
+        service_name = service_display_name(f.get("_service", ""))
         alerts_html += f"""<div class="alert-item warning">
             <div class="alert-count">1</div>
             <div class="alert-info">
-                <div class="alert-domain">{f.get("finding", f.get("Finding", ""))}</div>
-                <div class="alert-category">{service_name}</div>
+                <div class="alert-domain">{_escape_text(f.get("finding", f.get("Finding", "")))}</div>
+                <div class="alert-category">{_escape_text(service_name)}</div>
             </div>
         </div>"""
 
@@ -793,7 +898,10 @@ def generate_html_report(
     num_real_regions = len(regions) if regions else 0
     if num_real_regions + (1 if has_global else 0) > 1:
         region_options = "".join(
-            [f'<option value="{r}">{r}</option>' for r in sorted(regions or [])]
+            [
+                f'<option value="{_escape_attr(r)}">{_escape_text(r)}</option>'
+                for r in sorted(regions or [])
+            ]
         )
         if has_global:
             region_options += '<option value="Global">Global</option>'
@@ -805,20 +913,20 @@ def generate_html_report(
         high = sum(
             1
             for finding in findings
-            if finding.get("severity", finding.get("Severity", "")).lower() == "high"
-            and finding.get("status", finding.get("Status", "")).lower() == "failed"
+            if finding_severity(finding) == "high"
+            and finding_status(finding) == "failed"
         )
         medium = sum(
             1
             for finding in findings
-            if finding.get("severity", finding.get("Severity", "")).lower() == "medium"
-            and finding.get("status", finding.get("Status", "")).lower() == "failed"
+            if finding_severity(finding) == "medium"
+            and finding_status(finding) == "failed"
         )
         low = sum(
             1
             for finding in findings
-            if finding.get("severity", finding.get("Severity", "")).lower() == "low"
-            and finding.get("status", finding.get("Status", "")).lower() == "failed"
+            if finding_severity(finding) == "low"
+            and finding_status(finding) == "failed"
         )
         return high, medium, low
 
@@ -834,7 +942,7 @@ def generate_html_report(
             risk_class = ""
             border_color = "var(--success)"
 
-        return f"""<div class="metric {risk_class}" style="border-left: 3px solid {border_color};"><div class="metric-label" style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">{label}</div><div class="metric-value">{total_failed}</div><div class="metric-sub"><span style="color: var(--danger);">{high} High</span> · <span style="color: var(--warning);">{medium} Med</span> · <span style="color: var(--accent);">{low} Low</span></div></div>"""
+        return f"""<div class="metric {risk_class}" style="border-left: 3px solid {border_color};"><div class="metric-label" style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">{_escape_text(label)}</div><div class="metric-value">{total_failed}</div><div class="metric-sub"><span style="color: var(--danger);">{high} High</span> · <span style="color: var(--warning);">{medium} Med</span> · <span style="color: var(--accent);">{low} Low</span></div></div>"""
 
     # Mode-specific content
     num_accounts = len(account_ids) if account_ids else 1
@@ -845,14 +953,15 @@ def generate_html_report(
         account_info = f"Accounts: {num_accounts}"
         header_account_info = f"{num_accounts} Accounts"
         if num_regions > 1:
-            findings_sub = f"Across {num_accounts} accounts · {num_regions} regions"
-            security_checks_sub = f"Evaluated across {num_regions} regions"
+            findings_sub = (
+                f"Visible rows across {num_accounts} accounts · {num_regions} regions"
+            )
         else:
-            findings_sub = f"Across {num_accounts} accounts"
-            security_checks_sub = "Evaluated per account"
+            findings_sub = f"Visible rows across {num_accounts} accounts"
+        security_checks_sub = "Distinct Check_ID values represented"
         account_options = "".join(
             [
-                f'<option value="{acc}">{acc}</option>'
+                f'<option value="{_escape_attr(acc)}">{_escape_text(acc)}</option>'
                 for acc in sorted(account_ids or [])
             ]
         )
@@ -863,7 +972,7 @@ def generate_html_report(
         for acc_id in sorted(account_ids or []):
             acc_findings = [
                 f
-                for f in all_findings
+                for f in direct_risk_findings
                 if f.get("account_id", f.get("Account_ID", "")) == acc_id
             ]
             acc_high, acc_medium, acc_low = failed_severity_counts(acc_findings)
@@ -871,22 +980,19 @@ def generate_html_report(
                 acc_id, acc_high, acc_medium, acc_low
             )
 
-        account_risk_section = f"""<h4 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Risk by Account</h4>
+        account_risk_section = f"""<h4 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Direct Failed Rows by Account</h4>
                 <div class="metrics" style="margin-bottom: 32px;">{account_metrics_html}</div>"""
     else:
         title = "AI/ML Security Assessment Report"
         sidebar_subtitle = "Assessment Report"
-        account_info = f"Account: {account_id or 'Unknown'}"
+        account_info = f"Account: {_escape_text(account_id or 'Unknown')}"
         if num_regions > 1:
-            header_account_info = (
-                f"Account: {account_id or 'Unknown'} · {num_regions} Regions"
-            )
-            findings_sub = f"Across {num_regions} regions"
-            security_checks_sub = f"Evaluated across {num_regions} regions"
+            header_account_info = f"Account: {_escape_text(account_id or 'Unknown')} · {num_regions} Regions"
+            findings_sub = f"Visible rows across {num_regions} regions"
         else:
-            header_account_info = f"Account: {account_id or 'Unknown'}"
-            findings_sub = "Across 1 account"
-            security_checks_sub = "Evaluated per account"
+            header_account_info = f"Account: {_escape_text(account_id or 'Unknown')}"
+            findings_sub = "Visible rows for this account"
+        security_checks_sub = "Distinct Check_ID values represented"
         account_filter = ""
         account_risk_section = ""
 
@@ -895,7 +1001,9 @@ def generate_html_report(
         region_metrics_html = ""
         for reg in sorted(regions or []):
             reg_findings = [
-                f for f in all_findings if f.get("region", f.get("Region", "")) == reg
+                f
+                for f in direct_risk_findings
+                if f.get("region", f.get("Region", "")) == reg
             ]
             reg_high, reg_medium, reg_low = failed_severity_counts(reg_findings)
             region_metrics_html += risk_metric_card(reg, reg_high, reg_medium, reg_low)
@@ -903,7 +1011,7 @@ def generate_html_report(
         if has_global:
             global_findings = [
                 f
-                for f in all_findings
+                for f in direct_risk_findings
                 if f.get("region", f.get("Region", "")) == "Global"
             ]
             global_high, global_medium, global_low = failed_severity_counts(
@@ -913,7 +1021,7 @@ def generate_html_report(
                 "Global", global_high, global_medium, global_low
             )
 
-        region_risk_section = f"""<h4 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Risk by Region / Scope</h4>
+        region_risk_section = f"""<h4 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Direct Failed Rows by Region / Scope</h4>
                 <div class="metrics" style="margin-bottom: 32px;">{region_metrics_html}</div>"""
     else:
         region_risk_section = ""
@@ -926,6 +1034,7 @@ def generate_html_report(
     )
     agentic_failed = service_stats.get("agentic", {}).get("failed", 0)
     agentic_passed = service_stats.get("agentic", {}).get("passed", 0)
+    agentic_na = service_stats.get("agentic", {}).get("na", 0)
     if agentic_total > 0:
         agentic_nav = (
             '<a href="#agentic" class="nav-item">'
@@ -943,7 +1052,7 @@ def generate_html_report(
             '<div class="metric"><div class="metric-label">'
             + AGENTIC_ICON_SMALL
             + f' Agentic AI Security</div><div class="metric-value">{agentic_total}</div>'
-            + f'<div class="metric-sub">{agentic_failed} Failed &middot; {agentic_passed} Passed</div></div>'
+            + f'<div class="metric-sub">{agentic_failed} Failed &middot; {agentic_passed} Passed &middot; {agentic_na} N/A</div></div>'
         )
         agentic_section = (
             '<section id="agentic" class="section">'
@@ -989,6 +1098,7 @@ def generate_html_report(
     )
     finserv_failed = service_stats.get("finserv", {}).get("failed", 0)
     finserv_passed = service_stats.get("finserv", {}).get("passed", 0)
+    finserv_na = service_stats.get("finserv", {}).get("na", 0)
     if finserv_total > 0:
         finserv_nav = (
             '<a href="#finserv" class="nav-item industry-item">'
@@ -1006,7 +1116,7 @@ def generate_html_report(
             '<div class="metric"><div class="metric-label">'
             + FINSERV_ICON_SMALL
             + f' Financial Services Risk</div><div class="metric-value">{finserv_total}</div>'
-            + f'<div class="metric-sub">{finserv_failed} Failed \u00b7 {finserv_passed} Passed</div></div>'
+            + f'<div class="metric-sub">{finserv_failed} Failed \u00b7 {finserv_passed} Passed \u00b7 {finserv_na} N/A</div></div>'
         )
         finserv_scope_industry_block = (
             '<div class="scope-industry" data-scope-service="finserv">'
@@ -1043,6 +1153,97 @@ def generate_html_report(
         finserv_scope_industry_block = ""
         finserv_scope_source = ""
         finserv_section = ""
+
+    # Compliance standards (OWASP + future NIST / EU AI Act). Data-driven loop
+    # over COMPLIANCE_STANDARDS so adding a new standard is a data-only change
+    # HERE — but callers must also initialise service_stats/service_findings
+    # from COMPLIANCE_STANDARDS. See generate_consolidated_report/app.py and
+    # consolidate_html_reports.py for the reference wiring.
+    compliance_nav_items: List[str] = []
+    compliance_filter_options_list: List[str] = []
+    compliance_service_cards_list: List[str] = []
+    compliance_sections_list: List[str] = []
+    compliance_scope_chips_list: List[str] = []
+    compliance_scope_sources_list: List[str] = []
+    for _std in COMPLIANCE_STANDARDS:
+        _slug = _std["slug"]
+        _slug_attr = _escape_attr(_slug)
+        _stats = service_stats.get(_slug, {})
+        _total = _stats.get("passed", 0) + _stats.get("failed", 0) + _stats.get("na", 0)
+        if _total <= 0:
+            continue
+        _failed = _stats.get("failed", 0)
+        _passed = _stats.get("passed", 0)
+        _na = _stats.get("na", 0)
+        _name = _std["name"]
+        _name_text = _escape_text(_name)
+        _icon = _std["icon"]
+        _icon_small = _std["icon_small"]
+        _section_title = _std.get("section_title", _name + " Findings")
+        _section_title_text = _escape_text(_section_title)
+        _scope_text = _std.get("scope_text", "")
+        _reference_url = _safe_https_url(_std.get("reference_url", ""))
+
+        compliance_nav_items.append(
+            f'<a href="#{_slug_attr}" class="nav-item">'
+            + _icon
+            + f" {_name_text}"
+            + f'<span class="count">{_total}</span></a>'
+        )
+        compliance_filter_options_list.append(
+            f'<option value="{_slug_attr}">{_name_text}</option>'
+        )
+        compliance_service_cards_list.append(
+            '<div class="metric"><div class="metric-label">'
+            + _icon_small
+            + f' {_name_text}</div><div class="metric-value">{_total}</div>'
+            + f'<div class="metric-sub">{_failed} Failed · {_passed} Passed · {_na} N/A</div></div>'
+        )
+        compliance_sections_list.append(
+            f'<section id="{_slug_attr}" class="section">'
+            '<div class="section-title">'
+            + _icon
+            + f"{_section_title_text}</div>"
+            + generate_assessment_summary(
+                _slug, _total, _failed, _passed, _na, _scope_text
+            )
+            + "</section>"
+        )
+        compliance_scope_chips_list.append(
+            f'<div class="scope-chip industry-chip" data-scope-service="{_slug_attr}">'
+            + _icon_small
+            + f'<span style="font-size: 13px; font-weight: 500;">{_name_text}</span></div>'
+        )
+        if _reference_url:
+            compliance_scope_sources_list.append(
+                f' {_name_text} references <a href="{_reference_url}" target="_blank" rel="noopener noreferrer">{_name_text}</a>.'
+            )
+
+    if compliance_nav_items:
+        compliance_nav = (
+            '<nav class="nav-section compliance-nav"><h3>By Compliance Standard</h3>'
+            + "".join(compliance_nav_items)
+            + "</nav>"
+        )
+    else:
+        compliance_nav = ""
+    compliance_filter_option = "".join(compliance_filter_options_list)
+    compliance_service_card = "".join(compliance_service_cards_list)
+    compliance_section = "".join(compliance_sections_list)
+    # Group all compliance chips under a single "By Compliance Standard" label
+    # so adding NIST/EU alongside OWASP renders one heading with N chips, not
+    # N duplicated headings.
+    if compliance_scope_chips_list:
+        compliance_scope_block = (
+            '<div class="scope-industry" data-scope-service="compliance-standards">'
+            '<div class="scope-industry-label">By Compliance Standard</div>'
+            '<div class="scope-chip-row">'
+            + "".join(compliance_scope_chips_list)
+            + "</div></div>"
+        )
+    else:
+        compliance_scope_block = ""
+    compliance_scope_source = "".join(compliance_scope_sources_list)
 
     def service_total(service_name: str) -> int:
         stats = service_stats.get(service_name, {})
@@ -1099,6 +1300,11 @@ def generate_html_report(
         total_findings=total_findings,
         findings_sub=findings_sub,
         actionable_findings=actionable_findings,
+        contextual_rows=contextual_rows,
+        contextual_failed=contextual_failed,
+        failed_high_count=failed_high_count,
+        failed_medium_count=failed_medium_count,
+        failed_low_count=failed_low_count,
         scored_findings=scored_findings,
         total_rows=total_findings,
         high_count=high_count,
@@ -1139,6 +1345,10 @@ def generate_html_report(
         finserv_filter_option=finserv_filter_option,
         finserv_service_card=finserv_service_card,
         finserv_section=finserv_section,
+        compliance_nav=compliance_nav,
+        compliance_filter_option=compliance_filter_option,
+        compliance_service_card=compliance_service_card,
+        compliance_section=compliance_section,
         account_risk_section=account_risk_section,
         region_risk_section=region_risk_section,
     )
@@ -1152,7 +1362,9 @@ def generate_html_report(
         base_scope_source,
         1,
     )
-    scope_extension_blocks = agentic_scope_block + finserv_scope_industry_block
+    scope_extension_blocks = (
+        agentic_scope_block + finserv_scope_industry_block + compliance_scope_block
+    )
     if scope_extension_blocks:
         rendered_html = rendered_html.replace(
             '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div></div><p style=',
@@ -1162,7 +1374,9 @@ def generate_html_report(
             + "<p style=",
             1,
         )
-    scope_extension_source = agentic_scope_source + finserv_scope_source
+    scope_extension_source = (
+        agentic_scope_source + finserv_scope_source + compliance_scope_source
+    )
     if scope_extension_source:
         rendered_html = rendered_html.replace(
             base_scope_source,

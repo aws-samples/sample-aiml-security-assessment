@@ -43,6 +43,37 @@ REGION_UNAVAILABLE_ERROR_CODES = {
     "OptInRequired",
 }
 
+ACCESS_DENIED_ERROR_CODES = {
+    "AccessDenied",
+    "AccessDeniedException",
+    "UnauthorizedOperation",
+}
+
+COULD_NOT_ASSESS_RESOLUTION = (
+    "No action required on the assessed workload. Resolve the assessment "
+    "prerequisite or permission issue and rerun the assessment."
+)
+
+
+def get_assessment_error_label(error: Exception) -> str:
+    """Return a report-safe error label without leaking raw exception text."""
+    if isinstance(error, ClientError):
+        code = error.response.get("Error", {}).get("Code", "")
+        if code:
+            return code
+    if isinstance(error, EndpointConnectionError):
+        return "EndpointConnectionError"
+    return type(error).__name__
+
+
+def build_could_not_assess_detail(error: Exception, region: str = "") -> str:
+    """Build a standardized N/A detail for scanner/tooling failures."""
+    location = f" in {region}" if region else ""
+    return (
+        f"Could not assess this check{location}. Assessment error: "
+        f"{get_assessment_error_label(error)}."
+    )
+
 
 def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
     """
@@ -246,11 +277,11 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-01",
                     finding_name="SageMaker Internet Access Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -306,17 +337,15 @@ def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
                 )
             )
     except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        error_message = e.response["Error"]["Message"]
         findings["csv_data"].append(
             create_finding(
                 check_id="SM-04",
                 finding_name="GuardDuty Check Error",
-                finding_details=f"Error checking GuardDuty status: {error_code} - {error_message}",
-                resolution="Ensure proper IAM permissions to check GuardDuty status",
+                finding_details=build_could_not_assess_detail(e, region),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
                 reference="https://docs.aws.amazon.com/guardduty/latest/ug/security-iam.html",
-                severity="High",
-                status="Failed",
+                severity="Informational",
+                status="N/A",
                 region=region,
             )
         )
@@ -325,11 +354,11 @@ def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
             create_finding(
                 check_id="SM-04",
                 finding_name="GuardDuty Check Error",
-                finding_details=f"Unexpected error checking GuardDuty status: {str(e)}",
-                resolution="Investigate and resolve the unexpected error",
+                finding_details=build_could_not_assess_detail(e, region),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
                 reference="https://docs.aws.amazon.com/guardduty/latest/ug/what-is-guardduty.html",
-                severity="High",
-                status="Failed",
+                severity="Informational",
+                status="N/A",
                 region=region,
             )
         )
@@ -848,11 +877,11 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-03",
                     finding_name="SageMaker Data Protection Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -1396,11 +1425,11 @@ def check_sagemaker_notebook_root_access(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-09",
                     finding_name="SageMaker Notebook Root Access Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -1512,11 +1541,11 @@ def check_sagemaker_notebook_vpc_deployment(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-10",
                     finding_name="SageMaker Notebook VPC Deployment Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -1645,11 +1674,11 @@ def check_sagemaker_model_network_isolation(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-11",
                     finding_name="SageMaker Model Network Isolation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -1776,11 +1805,11 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-12",
                     finding_name="SageMaker Endpoint Instance Count Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -1900,11 +1929,11 @@ def check_sagemaker_monitoring_network_isolation(region: str = "") -> Dict[str, 
                 create_finding(
                     check_id="SM-13",
                     finding_name="SageMaker Monitoring Network Isolation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -2063,11 +2092,11 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
                 create_finding(
                     check_id="SM-14",
                     finding_name="SageMaker Model Container Repository Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -2186,11 +2215,11 @@ def check_sagemaker_feature_store_encryption(region: str = "") -> Dict[str, Any]
                 create_finding(
                     check_id="SM-15",
                     finding_name="SageMaker Feature Store Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -2302,11 +2331,11 @@ def check_sagemaker_data_quality_encryption(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-16",
                     finding_name="SageMaker Data Quality Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -2435,11 +2464,11 @@ def check_sagemaker_processing_job_encryption(region: str = "") -> Dict[str, Any
                 create_finding(
                     check_id="SM-17",
                     finding_name="SageMaker Processing Job Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -2565,11 +2594,11 @@ def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]
                 create_finding(
                     check_id="SM-18",
                     finding_name="SageMaker Transform Job Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -2704,11 +2733,11 @@ def check_sagemaker_hyperparameter_tuning_encryption(
                 create_finding(
                     check_id="SM-19",
                     finding_name="SageMaker Hyperparameter Tuning Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -2832,11 +2861,11 @@ def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, An
                 create_finding(
                     check_id="SM-20",
                     finding_name="SageMaker Compilation Job Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -2964,11 +2993,11 @@ def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]
                 create_finding(
                     check_id="SM-21",
                     finding_name="SageMaker AutoML Network Isolation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -3010,14 +3039,23 @@ def check_model_approval_workflow(region: str = "") -> Dict[str, Any]:
 
                     if group_name:
                         try:
-                            # List model packages in this group
-                            models_response = sagemaker_client.list_model_packages(
-                                ModelPackageGroupName=group_name, MaxResults=100
+                            # Paginate — list_model_packages returns newest-first
+                            # and caps at 100 per page. A single MaxResults=100
+                            # call truncates active MLOps groups and silently
+                            # skews approval-status ratios (recently-approved
+                            # top page hides older Pending/Rejected packages),
+                            # which can flip the SM-22 "Auto-Approval Suspected"
+                            # and "Stale Pending Models" signals.
+                            mp_paginator = sagemaker_client.get_paginator(
+                                "list_model_packages"
                             )
-
-                            model_packages = models_response.get(
-                                "ModelPackageSummaryList", []
-                            )
+                            model_packages = []
+                            for mp_page in mp_paginator.paginate(
+                                ModelPackageGroupName=group_name
+                            ):
+                                model_packages.extend(
+                                    mp_page.get("ModelPackageSummaryList", [])
+                                )
 
                             if not model_packages:
                                 continue
@@ -3121,11 +3159,11 @@ def check_model_approval_workflow(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-22",
                     finding_name="Model Approval Workflow Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -3311,11 +3349,11 @@ def check_model_drift_detection(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-23",
                     finding_name="Model Drift Detection Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -3497,11 +3535,11 @@ def check_ab_testing_shadow_deployment(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-24",
                     finding_name="A/B Testing Shadow Deployment Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -3662,11 +3700,11 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-25",
                     finding_name="ML Lineage Tracking Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ]
@@ -4203,4 +4241,4 @@ def lambda_handler(event, context):
 
     except Exception as e:
         logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
-        return {"statusCode": 500, "body": f"Error during security checks: {str(e)}"}
+        raise

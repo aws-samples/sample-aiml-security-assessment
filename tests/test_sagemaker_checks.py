@@ -5,7 +5,7 @@ Each check is tested for:
 - No resources found -> N/A status
 - Compliant resources -> Passed status
 - Non-compliant resources -> Failed with correct severity
-- Exception handling -> returns error finding (csv_data not empty)
+- Exception handling -> returns could-not-assess finding (csv_data not empty)
 - Output schema validity
 """
 
@@ -34,6 +34,13 @@ _spec = importlib.util.spec_from_file_location(
 sagemaker_app = importlib.util.module_from_spec(_spec)
 sys.modules["sagemaker_app"] = sagemaker_app
 _spec.loader.exec_module(sagemaker_app)
+
+
+def assert_could_not_assess_finding(finding):
+    assert finding["Status"] == "N/A"
+    assert finding["Severity"] == "Informational"
+    assert "Could not assess this check" in finding["Finding_Details"]
+    assert "Error during check" not in finding["Finding_Details"]
 
 
 # ===================================================================
@@ -114,7 +121,7 @@ class TestSM01InternetAccess:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm01_schema_valid(self, mock_client):
@@ -256,7 +263,7 @@ class TestSM03DataProtection:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm03_schema_valid(self, mock_client):
@@ -308,7 +315,7 @@ class TestSM04GuardDuty:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm04_schema_valid(self, mock_client):
@@ -554,7 +561,7 @@ class TestSM09NotebookRootAccess:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm09_schema_valid(self, mock_client):
@@ -632,7 +639,7 @@ class TestSM10NotebookVPC:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm10_schema_valid(self, mock_client):
@@ -707,7 +714,7 @@ class TestSM11ModelNetworkIsolation:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
 
 # ===================================================================
@@ -772,7 +779,7 @@ class TestSM12EndpointInstanceCount:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
 
 # ===================================================================
@@ -801,7 +808,7 @@ class TestSM13MonitoringNetworkIsolation:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
 
 # ===================================================================
@@ -830,7 +837,7 @@ class TestSM14ContainerRepository:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
 
 # ===================================================================
@@ -902,7 +909,7 @@ class TestSM15FeatureStoreEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
 
 # ===================================================================
@@ -931,7 +938,7 @@ class TestSM16DataQualityEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm16_schema_valid(self, mock_client):
@@ -1018,7 +1025,7 @@ class TestSM17ProcessingJobEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
 
 # ===================================================================
@@ -1047,7 +1054,7 @@ class TestSM18TransformJobEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm18_schema_valid(self, mock_client):
@@ -1088,7 +1095,7 @@ class TestSM19HPTuningEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm19_schema_valid(self, mock_client):
@@ -1129,7 +1136,7 @@ class TestSM20CompilationJobEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm20_schema_valid(self, mock_client):
@@ -1168,7 +1175,7 @@ class TestSM21AutoMLNetworkIsolation:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm21_schema_valid(self, mock_client):
@@ -1207,7 +1214,7 @@ class TestSM22ModelApproval:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm22_schema_valid(self, mock_client):
@@ -1220,6 +1227,125 @@ class TestSM22ModelApproval:
         result = check()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
+
+    @staticmethod
+    def _wire_sm22_paginators(mock_sm, group_page, package_pages):
+        """Wire both paginators used by check_model_approval_workflow.
+
+        group_page:  single page dict for list_model_package_groups
+        package_pages: list of page dicts for list_model_packages
+        """
+        group_paginator = MagicMock()
+        package_paginator = MagicMock()
+        group_paginator.paginate.return_value = [group_page]
+        package_paginator.paginate.return_value = package_pages
+        mock_sm.get_paginator.side_effect = lambda name: (
+            group_paginator
+            if name == "list_model_package_groups"
+            else package_paginator
+        )
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm22_paginates_model_packages_across_pages(self, mock_client):
+        """Regression: a group with >100 model packages must be scored on the
+        FULL population, not the first page. The bug was a single MaxResults=100
+        list_model_packages call that silently truncated the sample, skewing
+        the auto-approval / stale-pending ratios computed downstream."""
+        check = sagemaker_app.check_model_approval_workflow
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+
+        # 100 Approved packages on page 1 (newest first, as SageMaker returns).
+        # 20 Pending + 5 Rejected on page 2. Under the old truncating code the
+        # check saw only page 1 and (wrongly) fired "Auto-Approval Suspected"
+        # for a group that actually has pending and rejected packages.
+        page_1_approved = [
+            {"ModelApprovalStatus": "Approved"} for _ in range(100)
+        ]
+        page_2_mixed = (
+            [{"ModelApprovalStatus": "PendingManualApproval"} for _ in range(20)]
+            + [{"ModelApprovalStatus": "Rejected"} for _ in range(5)]
+        )
+        self._wire_sm22_paginators(
+            mock_sm,
+            group_page={
+                "ModelPackageGroupSummaryList": [
+                    {"ModelPackageGroupName": "grp-active"}
+                ]
+            },
+            package_pages=[
+                {"ModelPackageSummaryList": page_1_approved},
+                {"ModelPackageSummaryList": page_2_mixed},
+            ],
+        )
+
+        result = check()
+        findings = extract_csv_data(result)
+
+        # With the fix, both pages are considered — the group has pending +
+        # rejected packages, so "Auto-Approval Suspected" must NOT fire.
+        names_all = " | ".join(f["Finding"] for f in findings)
+        assert "Auto-Approval Suspected" not in names_all, (
+            "SM-22 misfired 'Auto-Approval Suspected' when list_model_packages "
+            "was truncated to the first page (approved-only) and hid the older "
+            "Pending/Rejected packages."
+        )
+        # And "Stale Pending Models" should fire because pending_count=20 > 5.
+        assert any("Stale Pending Models" in f["Finding"] for f in findings), (
+            "SM-22 missed 'Stale Pending Models' — the 20 pending packages on "
+            "page 2 were invisible before pagination was fixed."
+        )
+        # Cross-check the accumulated count reached page 2's contribution.
+        stale_row = next(f for f in findings if "Stale Pending Models" in f["Finding"])
+        assert "20 models pending" in stale_row["Finding_Details"], (
+            f"Expected pending count of 20 in details; got: {stale_row['Finding_Details']!r}"
+        )
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm22_auto_approval_detected_only_when_full_population_is_approved(
+        self, mock_client
+    ):
+        """Full-population Approved case: page 1 = 100 Approved, page 2 = 10
+        Approved, no Pending/Rejected. Must still fire 'Auto-Approval Suspected'
+        because the fix does not change the true-positive path."""
+        check = sagemaker_app.check_model_approval_workflow
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+
+        self._wire_sm22_paginators(
+            mock_sm,
+            group_page={
+                "ModelPackageGroupSummaryList": [
+                    {"ModelPackageGroupName": "grp-auto"}
+                ]
+            },
+            package_pages=[
+                {
+                    "ModelPackageSummaryList": [
+                        {"ModelApprovalStatus": "Approved"} for _ in range(100)
+                    ]
+                },
+                {
+                    "ModelPackageSummaryList": [
+                        {"ModelApprovalStatus": "Approved"} for _ in range(10)
+                    ]
+                },
+            ],
+        )
+
+        result = check()
+        findings = extract_csv_data(result)
+        assert any(
+            "Auto-Approval Suspected" in f["Finding"] for f in findings
+        ), "SM-22 must still detect the true-positive auto-approval case"
+        # Details should reference the actual full-population total (110), not 100.
+        auto_row = next(
+            f for f in findings if "Auto-Approval Suspected" in f["Finding"]
+        )
+        assert "110 models" in auto_row["Finding_Details"], (
+            f"Expected full-population count '110 models' in details; "
+            f"got: {auto_row['Finding_Details']!r}"
+        )
 
 
 # ===================================================================
@@ -1248,7 +1374,7 @@ class TestSM23DriftDetection:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm23_schema_valid(self, mock_client):
@@ -1312,7 +1438,7 @@ class TestSM24ABTesting:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm24_schema_valid(self, mock_client):
@@ -1374,7 +1500,7 @@ class TestSM25LineageTracking:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_sm25_schema_valid(self, mock_client):

@@ -29,7 +29,7 @@ authoritative per-finding assignments in the
 
 ## Table of Contents
 
-**Shared reference**
+Shared reference:
 
 - [About the source](#about-the-source)
 - [Guide traceability](#guide-traceability)
@@ -39,7 +39,7 @@ authoritative per-finding assignments in the
 - [Relationship to upstream SM/BR/AC checks](#relationship-to-upstream-smbrac-checks)
 - [Compliance Framework Mapping](#compliance-framework-mapping)
 
-**Checks**
+Checks:
 
 - [Part 1 — Infrastructure & Resource Controls (FS-01 to FS-26)](#part-1--infrastructure--resource-controls-fs-01-to-fs-26)
 - [Part 2 — Guardrails & Content Safety (FS-27 to FS-46)](#part-2--guardrails--content-safety-fs-27-to-fs-46)
@@ -77,7 +77,7 @@ authoritative per-finding assignments are in
 and [`SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
 
 | Severity | Criteria (ASFF-aligned) |
-|---|---|
+| --- | --- |
 | **High** | Control whose absence can lead to direct regulatory breach, data exposure, large-scale financial loss, or full bypass of safety guardrails. |
 | **Medium** | Control whose absence materially increases the likelihood or impact of a risk category but does not by itself produce a breach. |
 | **Low** | Control that reduces residual risk or supports audit/observability but has alternative or compensating controls. |
@@ -136,7 +136,7 @@ Because `aws-samples` is an OSPO-managed organization, pushes to your personal f
 ## Relationship to upstream SM/BR/AC checks
 
 The upstream [sample-aiml-security-assessment](https://github.com/aws-samples/sample-aiml-security-assessment)
-framework already provides 70 core security checks (SM-01 to SM-25, BR-01 to BR-32, AC-01 to AC-13) and 27 always-on Agentic AI Security checks (AG-01 to AG-27).
+framework already provides 71 core security checks (SM-01 to SM-25, BR-01 to BR-33, AC-01 to AC-13) and 27 always-on Agentic AI Security checks (AG-01 to AG-27).
 The 69 FS checks in this document are **additive**: they enhance the upstream with FinServ-specific
 detection and remediation guidance drawn from the Responsible AI GRC guide. A few FS
 checks overlap with upstream checks — in those cases, the FS check adds FinServ-specific depth
@@ -152,7 +152,7 @@ whether the FS check adds FinServ-specific regulatory specificity, (3) severity 
 - **Keep separate** — ship as a standalone FS check alongside the upstream check. Best when the FS check targets a different AWS resource, has materially different severity, or encodes a FinServ-specific regulatory requirement that would be diluted by merging.
 
 | FS check | Upstream check | Overlap analysis | Recommendation |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | FS-17 (Model Monitor Data Quality) | SM-07 (Model Monitor) | Same resource (`sagemaker:ListMonitoringSchedules`); FS-17 adds training-data-drift-specific guidance, exact CloudWatch namespace (`/aws/sagemaker/Endpoints/data-metric`), and `emit_metrics` requirement. | **Extend SM-07** — add FS-17's detection detail (namespace, `emit_metrics`) as a refinement of the existing check |
 | FS-18 (Model Drift Detection) | SM-23 (Model Drift Detection) | Same name, same resource, same detection logic (`MonitoringType=ModelQuality`). FS-18 adds Guide §1.2.14 low-entropy classification monitoring as an early-warning poisoning indicator. | **Extend SM-23** — add low-entropy monitoring as a new remediation step on SM-23; do not ship FS-18 separately |
 | FS-19 (Model Registry Approval) | SM-08 (Model Registry) / SM-22 (Model Approval Workflow) | SM-22 is conceptually identical. FS-19 specifies exact `ModelApprovalStatus=PendingManualApproval` default and flags auto-approved latest versions. | **Extend SM-22** — add FS-19's detection specificity (flag auto-approved latest versions) to SM-22; do not ship FS-19 separately |
@@ -179,8 +179,7 @@ whether the FS check adds FinServ-specific regulatory specificity, (3) severity 
 - **Extend upstream (5 FS checks merged into 5 upstream checks):** FS-17 → SM-07; FS-18 → SM-23; FS-19 → SM-22; FS-23 → BR-06; FS-64 → BR-04. These checks are replaced by upstream-extension notes in Parts 1 and 3 and are removed from `finserv_assessments/app.py`.
 - **Keep separate (64 FS checks):** All other FS checks ship as standalone entries. This includes FS-20, FS-22, FS-25, FS-26, FS-39, FS-41, all Guardrail-policy-level checks (FS-27, FS-28, FS-36, FS-38, FS-45, FS-47, FS-50, FS-51, FS-59), and all FS checks that have no upstream overlap at all.
 
-After consolidation the combined framework contains **70 upstream + 27 AG + 64 FS = 161 distinct checks** (down from 70 + 27 AG + 69 FS = 166 before merging FinServ overlaps). The consolidation reduces duplication without losing FinServ-specific regulatory depth.
-
+After FinServ consolidation the framework contains **71 upstream + 27 AG + 64 FS = 162 distinct checks** before optional OWASP checks. With the 12 optional OWASP Top 10 for LLM checks enabled, the full catalog contains **174 distinct checks**. The FinServ consolidation reduces duplication without losing FinServ-specific regulatory depth.
 
 ---
 
@@ -197,7 +196,7 @@ After consolidation the combined framework contains **70 upstream + 27 AG + 64 F
 Each FS check maps to one or more FinServ regulatory frameworks (preliminary mapping):
 
 | Framework | Description | Relevant Checks |
-|-----------|-------------|-----------------|
+| ----------- | ------------- | ----------------- |
 | SR 11-7 | Federal Reserve Model Risk Management Guidance | FS-03, FS-04, FS-06 to FS-10, FS-12 to FS-15, FS-20, FS-21, FS-27 to FS-42, FS-47 to FS-50, FS-59 to FS-63, FS-66, FS-67 |
 | FFIEC CAT | Cybersecurity Assessment Tool | All FS checks except FS-08, FS-56, FS-66 |
 | NYDFS 500 | NY Cybersecurity Regulation | FS-22, FS-24 to FS-26, FS-28 to FS-30, FS-43 to FS-46, FS-51 to FS-54, FS-56, FS-57, FS-66, FS-69 |
@@ -229,7 +228,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-01 — WAF and Shield Protection
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium (WAF) / Low (Shield Advanced) |
 | Guide ref | [Guide §1.2.11] — "Protect your LLM APIs and Amazon Bedrock-hosted LLMs by using AWS WAF and AWS Shield Advanced." Also covers: "To protect your API endpoints, set maximum length limits for input requests when you use large language models (LLMs) directly or through Amazon Bedrock." |
 | Description | Verifies AWS WAF Web ACLs and Shield Advanced protect GenAI API endpoints, and verifies the Web ACL enforces both rate-based limits and body-size (input-length) constraints. |
@@ -240,7 +239,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-02 — API Gateway Rate Limiting
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.11] — "protect your API endpoints by implementing rate limits and quotas for APIs that access large language models (LLMs)". |
 | Description | Checks API Gateway usage plans enforce throttling on GenAI endpoints. |
@@ -251,7 +250,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-03 — Bedrock Token Quota Review
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.11, extension] — guide practical guidance notes "Bedrock has default quota on model inference based on token usage" and recommends optimising `max_tokens`. Quota review as an operational control is an extension aligned with this guidance. |
 | Description | Verifies Bedrock TPM/RPM quotas have been reviewed and set appropriately. |
@@ -262,7 +261,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-04 — Cost Anomaly Detection
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.11] — "Track, allocate, and manage your costs and usage for generative AI." |
 | Description | Checks AWS Cost Anomaly Detection monitors cover Bedrock/SageMaker. |
@@ -273,7 +272,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-05 — CloudWatch Token Usage Alarms
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.11] — guide practical guidance cites CloudWatch metrics for token usage; alarms operationalise that guidance. |
 | Description | Verifies CloudWatch alarms exist for Bedrock throttling and token metrics. |
@@ -284,7 +283,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-06 — AWS Budgets AI/ML Spend
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.11] — "Track, allocate, and manage your costs and usage for generative AI." |
 | Description | Checks AWS Budgets are configured with alerts for AI/ML service spend. |
@@ -305,7 +304,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-07 — Agent Action Boundaries
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.9] — "grant only the minimum permissions required"; "Define and enforce explicit action boundaries in the agent configuration". |
 | Description | Verifies Bedrock agent execution roles have no wildcard sensitive actions (iam:\*, s3:\*, ec2:\*, lambda:\*, \*). |
@@ -316,7 +315,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-08 — AgentCore Policy Engine and Observability
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.9] — "Use Amazon Bedrock AgentCore to manage complex tasks and connect securely"; "Define and enforce explicit action boundaries"; **"Implement audit logging of all actions taken by AI agents, including the reasoning chain that led to each action."** (The audit-logging mitigation's guide reference is "Observe your agent applications on Amazon Bedrock AgentCore Observability.") |
 | Description | Checks AgentCore Gateways have a Policy Engine attached to authorize agent-to-tool interactions, verifies AgentCore Runtimes have an inbound authorizer configured, and verifies AgentCore Observability is enabled so agent reasoning chains and tool calls are auditable. |
@@ -327,7 +326,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-09 — Agent Transaction Limits
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.9, extension] — Lambda reserved concurrency is not named in the guide, but it directly implements the guide mitigation "Monitor agent call rates and alarm upon exceeding defined thresholds" by capping execution parallelism. |
 | Description | Verifies agent Lambda functions have reserved concurrency limits to cap execution parallelism. |
@@ -338,7 +337,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-10 — Human-in-the-Loop Approval
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.9, §1.2.1, §1.2.2, §1.2.3, §1.2.7, §1.2.10] — "For internal AI systems, validate outputs with human review before business use (human-in-the-loop)." HITL is referenced in six separate guide risk sections. |
 | Description | Checks Step Functions workflows have human approval steps for high-risk agent actions. |
@@ -349,7 +348,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-11 — Agent Rate Alarms
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.9] — "Monitor agent call rates and alarm upon exceeding defined thresholds." |
 | Description | Verifies CloudWatch alarms exist for agent invocation rates. |
@@ -373,7 +372,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-12 — SCP Model Access Restrictions
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.12 — Practical guidance] — "Implement an allow-list of models using a Service Control Policy (SCP) for your AWS organization." |
 | Description | Checks SCPs restrict Bedrock model access to approved models only. |
@@ -384,7 +383,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-13 — Model Inventory Tagging
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.12] — "Maintain a model inventory that records the provenance, version, license terms, and risk assessment status of all models in use across the organization." |
 | Description | Verifies models are tagged with provenance metadata (source, version, approval-date). |
@@ -395,7 +394,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-14 — Model Onboarding Governance
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.12] — "To onboard a model, follow these steps: Review EULA, Complete procurement, Follow security and compliance procedures, Assess MRM requirements, Document findings, Get necessary approvals from stakeholders." |
 | Description | Checks AWS Config rules enforce model onboarding governance (EULA review, MRM assessment, stakeholder approval). |
@@ -406,7 +405,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-15 — Adversarial Model Evaluation
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.12 — Practical guidance] — "Amazon Bedrock Evaluations can help to evaluate models against specific types of attacks by automating your test cases, scoring, reporting and to enable comparison of different models." |
 | Description | Verifies Bedrock evaluation jobs include adversarial test datasets. |
@@ -417,7 +416,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-16 — ECR Image Scanning
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.12, extension] — ECR image scanning is not named in the guide, but directly mitigates the guide's listed risk "Third-party package vulnerabilities" in LLM supply chains. Included for completeness of the supply-chain risk category. |
 | Description | Checks ECR repositories have scan-on-push enabled for supply chain security of model containers. |
@@ -462,6 +461,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 > Detection)** check in the upstream repo.
 >
 > **What to add to SM-23:**
+>
 > - Filter `ListMonitoringSchedules` results for `MonitoringType=ModelQuality`.
 > - Add a new remediation step for **low-entropy classification monitoring** (Guide §1.2.14
 >   mitigation): publish custom CloudWatch metrics tracking prediction confidence distributions,
@@ -480,6 +480,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 > Workflow)** check in the upstream repo.
 >
 > **What to add to SM-22:**
+>
 > - Explicitly check that `ModelApprovalStatus=PendingManualApproval` is the default for new
 >   model package versions (not `Approved`).
 > - Flag any model package group where the latest version has `ModelApprovalStatus=Approved`
@@ -492,7 +493,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-20 — Feature Store Rollback
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.14] — "Create a rollback plan by using versioned training data and models. This ensures that you can revert to a stable, working model if failures occur." References "Amazon SageMaker AI Feature Store". |
 | Description | Checks SageMaker Feature Store has offline store for rollback capability. |
@@ -503,7 +504,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-21 — Training Data S3 Versioning and Audit Trail
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.14] — "Use trusted data sources for your training data. Implement audit controls that let you track and review changes, including who made them and when they occurred." |
 | Description | Verifies S3 buckets used for training data have versioning enabled so poisoned datasets can be rolled back. Recommends CloudTrail data-event logging as remediation to record who modified training data and when. |
@@ -525,7 +526,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-22 — Knowledge Base IAM Least Privilege
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.15] — "Apply the principle of least privilege to control access to your vector and embedding database. Only grant users and services the minimum permissions they need to perform their tasks." |
 | Description | Checks IAM roles accessing Knowledge Bases have no wildcard `bedrock:*` permissions covering KB actions. |
@@ -540,6 +541,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 > Logging)** check in the upstream repo.
 >
 > **What to add to BR-06:**
+>
 > - After verifying that a CloudTrail trail is active and logging Bedrock management events,
 >   additionally check for an **advanced event selector** with
 >   `resources.type = AWS::Bedrock::KnowledgeBase` to capture `Retrieve` and
@@ -556,7 +558,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-24 — Knowledge Base Metadata Filtering
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.15] — "Implement access controls at the document or record level within knowledge bases where different users or applications should only have access to specific subsets of data. Use Amazon Bedrock Knowledge Bases metadata filtering to enforce data segmentation." |
 | Description | Advisory: verifies KB metadata fields support tenant-level filtering for multi-tenancy. |
@@ -567,7 +569,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-25 — OpenSearch Serverless Encryption
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.15] — "Enable encryption at rest and in transit for vector and embedding databases." |
 | Description | Checks OpenSearch Serverless collections used by KBs have CMK encryption policies. |
@@ -578,7 +580,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-26 — Knowledge Base VPC Access
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.15, extension] — network isolation is not verbatim in the guide but directly implements "Apply the principle of least privilege to control access to your vector and embedding database" at the network layer. |
 | Description | Verifies OpenSearch Serverless collections have VPC-only network policies (no public access). |
@@ -605,7 +607,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-27 — Automated Reasoning Checks
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High (contextual grounding) / Medium (Automated Reasoning) |
 | Guide ref | [Guide §1.2.1, §1.2.7] — "Automated Reasoning checks in Amazon Bedrock Guardrails uses automated reasoning to verify that natural language content complies with your defined policies. This mathematical verification helps ensure that your content strictly follows your guardrails." |
 | Description | Verifies Bedrock Guardrails have Automated Reasoning checks or contextual grounding enabled. |
@@ -616,7 +618,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-28 — Financial Denied Topics
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.1] — "Configure content filters and guardrails to restrict model responses to approved topics" with reference "Amazon Bedrock User Guide – Guardrails – Denied topics". |
 | Description | Checks guardrails have denied topics for regulated financial advice. |
@@ -627,7 +629,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-29 — Compliance Disclaimer
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.1, extension] — disclaimers are not verbatim in §1.2.1 but the guide references "Implement response disclaimers in customer-facing applications" under §1.2.7 Hallucination, which is conceptually the same control applied here for non-compliant financial-advice output. |
 | Description | Advisory: verifies application adds required regulatory disclaimers to AI-generated outputs. |
@@ -638,7 +640,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-30 — Compliance Evaluation Datasets
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.1, extension] — the Guide §1.2.12 practical guidance mentions "Amazon Bedrock Evaluations can help to evaluate models against specific types of attacks"; this check extends that concept to compliance-specific evaluation for FS-regulated outputs. |
 | Description | Checks Bedrock evaluation jobs use compliance-specific test datasets. |
@@ -659,7 +661,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-31 — Knowledge Base Data Source Sync
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.3, §1.2.10] — "Verify that your knowledge base data sources are up-to-date, accurate, reliable, and complete"; "Sync your data with your Amazon Bedrock knowledge base". |
 | Description | Verifies KB data sources have been synced within 7 days. |
@@ -670,7 +672,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-32 — Source Attribution
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.3, §1.2.10] — "Use source attribution in RAG-based response for end users to verify provenance of information" (§1.2.3); "Use source attribution in RAG-based response for end users to verify currency of information" (§1.2.10). |
 | Description | Advisory: verifies application implements source citations in RAG responses. |
@@ -681,7 +683,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-33 — Knowledge Base Integrity Monitoring
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High (deleted bucket) / Medium (versioning) |
 | Guide ref | [Guide §1.2.3] — "Use integrity monitoring on knowledge base data sources to detect unauthorized modifications. Track changes to documents used in knowledge bases." References "For example on S3 data sources use Amazon S3 event notification to track changes to documents." |
 | Description | Checks KB data source S3 buckets have versioning enabled and S3 event notifications (EventBridge or SNS) configured to detect unauthorized document modifications in real time. |
@@ -697,7 +699,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-34 — Third-Party Risk Management (TPRM) for Foundation Model Providers
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.12] — *"Update existing third-party risk management processes to continuously monitor model providers and third-party dependencies, including tracking vendor security advisories, model deprecation notices, and change to terms and conditions."* (Note: moved from the Misinformation section in the prior draft; the guide places TPRM under Supply Chain.) |
 | Description | Verifies a documented third-party risk management (TPRM) process exists to monitor FM providers for security advisories, model deprecation notices, and T&C changes; also flags legacy FMs currently in use. |
@@ -720,7 +722,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-35 — FMEval Harmful Content
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.4] — "Foundation Model Evaluations (FMEval) evaluates your model to detect inappropriate content, including sexual references, profanity, hate speech, aggression, insults, flirtation, identity-based attacks, and threats." |
 | Description | Checks Bedrock evaluation jobs test for harmful/toxic content. |
@@ -731,7 +733,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-36 — Guardrail Content Filters
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.4] — "Use Amazon Bedrock's guardrails to detect and filter harmful content." |
 | Description | Verifies guardrails have content filters for hate, violence, sexual, and other harmful content. |
@@ -742,7 +744,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-37 — User Feedback Mechanism
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.4] — "Implement a user reporting mechanism that allows end users to flag abusive or harmful outputs. Reported incidents [are] reviewed within a defined process to refine content filters." |
 | Description | Advisory: verifies application has a user reporting mechanism for harmful outputs. |
@@ -753,7 +755,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-38 — Guardrail Word Filters and Business Term Allowlists
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.4 — Practical guidance] — "Create allowlists for business terms that include approved terminology for: brand names, product names, industry terms, and technical vocabulary. Also test filter settings to verify that your content filters allow necessary business communications and generate accurate alerts. Monitor and adjust regularly your filtering system to reduce false positives." |
 | Description | Checks guardrails have word/phrase block filters configured and that approved business terminology allowlists are defined to prevent false positives on legitimate financial services vocabulary. |
@@ -777,7 +779,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-39 — SageMaker Clarify Bias
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.5] — "Use Amazon SageMaker Clarify to detect bias, increase transparency, and explain predictions for your fine-tuned and self-trained AI models." |
 | Description | Verifies Clarify model bias monitoring is configured for financial decision models. |
@@ -788,7 +790,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-40 — Bedrock Bias Evaluation Datasets and Cadence
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.5] — "Develop and maintain a bias testing dataset that includes representative test cases across demographic groups, geographic regions, and other sensitive attributes relevant to your use case. Run these test cases periodically and after model updates." |
 | Description | Checks evaluation jobs include demographic fairness test cases across protected groups and verifies evaluations are run on a defined periodic schedule and after each model update. |
@@ -799,7 +801,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-41 — SageMaker Clarify Explainability
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.5, extension] — Guide §1.2.5 recommends "Amazon SageMaker Clarify to detect bias, increase transparency, and explain predictions". ECOA/Fair Housing adverse-action-notice use case is an FS-specific extension of Clarify explainability not named verbatim in the guide. |
 | Description | Verifies Clarify explainability monitoring for adverse action notices (commonly cited under ECOA for credit decisions; this is an FS industry-practice extension, not a guide-prescribed control). |
@@ -810,7 +812,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-42 — AI Service Cards
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.4, §1.2.5, §1.2.14] — "Amazon provides AI Service Cards for models that are pre-trained for AWS services like Amazon Bedrock and Amazon Q. These cards help you understand how Amazon addresses toxicity in each model." Referenced in three separate guide risk sections. |
 | Description | Checks SageMaker Model Cards document intended use and bias evaluations. |
@@ -835,7 +837,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-43 — CloudWatch Log PII Masking
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.6] — "If you implement model invocation logging for the LLM or custom logging logic in your application, make sure to mask sensitive information in your log data." References "Amazon CloudWatch – Help protect sensitive log data with masking". |
 | Description | Checks CloudWatch Logs data protection policies mask PII in Bedrock invocation logs. |
@@ -846,7 +848,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-44 — Amazon Macie PII Scanning and Pre-Processing
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.6] — "Monitor personally identifiable information (PII) in your data when you train models, fine-tune them, or use retrieval-augmented generation (RAG)" and "Remove, mask, or tokenize personally identifiable information (PII) or sensitive data before you use it for training, fine-tuning, or retrieval-augmented generation (RAG)." |
 | Description | Verifies Macie is enabled and scanning AI/ML data buckets, and checks that a PII pre-processing step (tokenization, masking, or removal) exists in training and RAG ingestion pipelines before data reaches the model. |
@@ -857,7 +859,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-45 — Guardrail PII Filters
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.6] — "Use Amazon Bedrock Guardrails to detect and filter structured sensitive information in model inputs and outputs, such as personally identifiable information (PII), protected health information (PHI)." |
 | Description | Checks guardrails have PII entity filters for SSN, credit card, and account numbers. |
@@ -868,7 +870,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-46 — Data Classification Tagging
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.6] — "Implement data classification scanning and access controls on the data sources connected to your AI system to prevent disclosure of company-confidential or proprietary information." |
 | Description | Verifies AI/ML S3 buckets are tagged with data classification labels. |
@@ -897,7 +899,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-47 — Guardrail Grounding Threshold
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.7] — "You can use Amazon Bedrock Guardrails to detect and filter hallucinations in model responses by performing contextual grounding checks when you provide a reference source and query." |
 | Description | Verifies guardrail grounding thresholds are set appropriately for financial use cases (this assessment recommends ≥ 0.7; AWS does not prescribe a specific minimum, but the valid range is 0 to 0.99). Note: contextual grounding checks are not supported for conversational chatbot use cases — only for summarization, paraphrasing, and Q&A. |
@@ -908,7 +910,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-48 — RAG Knowledge Base
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.1, §1.2.7, §1.2.10] — "Use Retrieval-Augmented Generation (RAG) to enhance your model responses with information from trusted knowledge bases." Referenced in three separate guide risk sections. |
 | Description | Checks active Knowledge Bases are configured for RAG grounding. |
@@ -919,7 +921,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-49 — Hallucination Disclaimer
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.7] — "Implement response disclaimers in customer-facing applications, to inform end users that AI-generated responses should be verified for critical decisions." References "AWS Well-Architected Framework Generative AI Lens - Implement guardrails to mitigate harmful or incorrect model responses". |
 | Description | Advisory: verifies application adds hallucination disclaimers to AI-generated outputs. |
@@ -930,7 +932,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-50 — Relevance Grounding Filters
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.2, §1.2.7] — "Use Amazon Bedrock Guardrails to detect and filter hallucinations in model responses by performing contextual grounding checks." Contextual grounding covers both `GROUNDING` and `RELEVANCE` filter sub-types. |
 | Description | Checks guardrails have relevance grounding filters to prevent off-topic responses. |
@@ -955,7 +957,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-51 — Prompt Attack Filters
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.8] — "Use Amazon Bedrock Guardrails to detect and block user inputs that attempt to override system instructions through prompt attacks." |
 | Description | Verifies guardrails have PROMPT_ATTACK content filters enabled and are configured correctly for the Standard tier. |
@@ -966,7 +968,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-52 — Bedrock SDK Version Currency
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.8] — "Stay Updated – Keep your Amazon Bedrock SDK, libraries, and dependencies current to receive the latest security patches and updates." |
 | Description | Checks Bedrock Lambda functions use current (non-deprecated) runtimes and SDK versions. |
@@ -977,7 +979,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-53 — WAF Injection Protection Rules
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.8, extension] — WAF SQLi and known-bad-inputs rule groups are not named in the guide, but implement the guide mitigation "Secure Coding Practices – use parameterized queries, avoid string concatenation for input, grant minimal access privileges" at the network edge for web-facing GenAI endpoints. |
 | Description | Verifies WAF ACLs include SQL injection (`AWSManagedRulesSQLiRuleSet`) and known-bad-inputs (`AWSManagedRulesKnownBadInputsRuleSet`) managed rule groups for GenAI endpoints. |
@@ -988,7 +990,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-54 — Penetration Testing Evidence
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.8] — "Security Testing – Test your applications regularly for prompt injection and other security vulnerabilities. Use penetration testing, static code analysis, and dynamic application security testing (DAST)." |
 | Description | Advisory: verifies GenAI applications have been penetration tested for prompt injection and other AI-specific vulnerabilities. |
@@ -1010,7 +1012,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-55 — Output Validation Lambda
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.13] — "Implement output validation rules specific to the expected response format. For example, if the AI system is expected to return structured data (JSON, SQL), validate the output against the expected schema before processing." |
 | Description | Checks for Lambda functions implementing output validation/sanitization before AI responses reach downstream consumers. |
@@ -1021,7 +1023,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-56 — XSS Prevention WAF
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.13, extension] — WAF XSS rule groups are not named in the guide, but implement the guide mitigation "Apply context-specific output sanitization ... apply HTML encoding for web applications" at the network edge. |
 | Description | Verifies WAF ACLs include XSS prevention rules to protect against AI-generated outputs containing malicious scripts. |
@@ -1032,7 +1034,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-57 — Output Encoding
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.13] — "Apply context-specific output sanitization based on the downstream consumer. For example, apply HTML encoding for web applications, SQL parameterization for database queries, and command escaping for system integrations." Practical guidance: "Use Amazon Bedrock Agents to securely integrate with AWS native and third-party services and implement output encoding in the action group Lambda function under an Amazon Bedrock Agent. Encoding all output text presented to end-users makes it automatically non-executable by JavaScript or Markdown." |
 | Description | Advisory: verifies application encodes GenAI outputs appropriately for the rendering context (HTML, JSON, SQL). |
@@ -1043,7 +1045,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-58 — Output Schema Validation
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.13] — "Implement output validation rules specific to the expected response format. For example, if the AI system is expected to return structured data (JSON, SQL), validate the output against the expected schema before processing." |
 | Description | Checks for structured output validation in GenAI pipelines (JSON schema, XML schema, or custom validators). |
@@ -1062,7 +1064,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-59 — Guardrail Topic Allowlist
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.2] — "Configure content filters and guardrails to restrict model responses to approved topics." The check name uses "allowlist" loosely — implementation uses denied-topic lists to block out-of-scope content. |
 | Description | Verifies guardrails restrict GenAI to on-topic financial services responses via denied topics. |
@@ -1073,7 +1075,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-60 — Contextual Grounding for Off-Topic
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.2] — "Use prompt engineering techniques to guide the model toward appropriate topics and prevent unwanted responses. Include an allowlist of approved topics aligned with the business purpose." Use of Bedrock Prompt Management for system prompt versioning is an implementation choice. |
 | Description | Advisory: verifies system prompts explicitly scope the assistant's role to prevent off-topic responses. |
@@ -1093,7 +1095,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-61 — Knowledge Base Sync Schedule
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.10] — "Keep your knowledge bases up to date." Automated scheduling via EventBridge operationalises this mitigation. |
 | Description | Checks EventBridge Scheduler or EventBridge rules automate KB data source sync on a regular schedule. |
@@ -1104,7 +1106,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-62 — Data Currency Disclaimer
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Informational |
 | Guide ref | [Guide §1.2.10] — "Include data currency disclaimers in AI system responses where appropriate. Use source attribution in RAG-based response for end users to verify currency of information." |
 | Description | Advisory: verifies application adds data currency disclaimers to AI-generated outputs. |
@@ -1115,7 +1117,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 #### FS-63 — Foundation Model Lifecycle Policy
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.10, extension] — FM currency is conceptually related to "out-of-date training data" but the specific Bedrock lifecycle-status check is not named in the guide. The guide's "1.1.6 Monitor and improve" general guidance says "Update your foundation models when new versions become available" — this FS check operationalises that guidance. See also FS-34 (TPRM) which the guide places under §1.2.12. |
 | Description | Checks for a model lifecycle management process and Config rules to ensure models are updated when new versions are available. |
@@ -1137,6 +1139,7 @@ standalone checks.
 > Logging)** check in the upstream repo.
 >
 > **What to add to BR-04:**
+>
 > - After verifying that `bedrock:GetModelInvocationLoggingConfiguration` shows logging is
 >   enabled, additionally verify the log output captures **guardrail trace data**: when
 >   guardrails are applied during inference, the invocation log contains a `guardrailTrace`
@@ -1160,7 +1163,7 @@ standalone checks.
 #### FS-65 — KB Data Source S3 Event Notifications
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High (deleted bucket) / Medium (notifications) |
 | Guide ref | [Guide §1.2.3] — "Use integrity monitoring on knowledge base data sources to detect unauthorized modifications... For example on S3 data sources use Amazon S3 event notification to track changes to documents." **Note:** This check overlaps with FS-33; FS-33 verifies notifications are *enabled* on the bucket, while FS-65 verifies that notifications are *routed to an alerting destination* (SNS/Lambda/EventBridge rule with a target). In the final PR to aws-samples these two checks may be consolidated into a single check at the reviewer's discretion. |
 | Description | Checks that S3 event notifications on KB data-source buckets are routed to an alerting destination (EventBridge rule with SNS/Lambda target, or direct SNS/SQS/Lambda notification) — not just enabled with no consumer. |
@@ -1171,7 +1174,7 @@ standalone checks.
 #### FS-66 — AgentCore End-User Identity Propagation
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.6 — Practical guidance] — "1. Implement least privilege for identities associated with agents and tool services. 2. Where supported by the tool service ensure that communications to tool services or agents are authorized by the end user. 3. Customers building their own tool services should consider propagating end-user identities separately; ensuring these identities can be validated and are not revealed to unauthorized third parties." |
 | Description | Verifies AgentCore runtimes are configured to propagate end-user identities to downstream tool services, ensuring tool calls are authorized by the originating user and not solely by the agent execution role. |
@@ -1182,7 +1185,7 @@ standalone checks.
 #### FS-67 — Agent Financial Transaction Value Thresholds
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | High |
 | Guide ref | [Guide §1.2.9] — "Enforce transaction value thresholds and action boundaries on agent tool calls (for example to cap financial transaction amounts)." |
 | Description | Checks AgentCore Policy Engine (attached to Gateways) or action-group Lambda functions enforce maximum transaction-value limits (e.g., cap on financial amounts an agent can initiate) to prevent runaway or unauthorized high-value transactions. |
@@ -1193,7 +1196,7 @@ standalone checks.
 #### FS-68 — API Gateway Request Body Size Limits
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.11] — "To protect your API endpoints, set maximum length limits for input requests when you use large language models (LLMs) directly or through Amazon Bedrock." |
 | Description | Verifies API Gateway REST/HTTP APIs fronting GenAI endpoints have WAF `SizeConstraintStatement` rules enforcing a maximum request body size, optionally paired with an API Gateway request-body JSON schema that bounds individual field lengths — to prevent token-exhaustion attacks via oversized prompts. |
@@ -1204,7 +1207,7 @@ standalone checks.
 #### FS-69 — Prompt Input Validation Function
 
 | Field | Detail |
-|-------|--------|
+| ------- | -------- |
 | Severity | Medium |
 | Guide ref | [Guide §1.2.8] — "Input Validation – Before you send user input to Amazon Bedrock or the tokenizer, validate and sanitize it by removing special characters or using escape sequences. Make sure the input matches your expected format." |
 | Description | Checks for a Lambda function or API Gateway request validator that sanitizes user prompt input (strips special characters, enforces expected format, rejects oversized inputs) before forwarding to Bedrock, complementing WAF-level controls. |

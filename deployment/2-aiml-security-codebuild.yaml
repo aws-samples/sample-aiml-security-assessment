@@ -11,6 +11,7 @@ Metadata:
           - MultiAccountListOverride
           - TargetRegions
           - EnableFinServAssessment
+          - EnableOWASPAssessment
           - EmailAddress
       - Label:
           default: Advanced Options
@@ -29,6 +30,8 @@ Metadata:
         default: AWS regions to scan
       EnableFinServAssessment:
         default: Financial Services GenAI risk checks
+      EnableOWASPAssessment:
+        default: OWASP Top 10 for LLM checks
       EmailAddress:
         default: Notification email address
       ConcurrentAccountScans:
@@ -135,6 +138,16 @@ Parameters:
       scanned account. Enable this only when you need the additional industry
       risk assessment; the findings add a dedicated report section and increase
       report size.
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
+  EnableOWASPAssessment:
+    Description: >
+      Run the OWASP Top 10 for LLM checks (OW-01 through OW-12) in every scanned
+      account. Enable this only when you need the additional compliance-standard
+      assessment; the findings add a dedicated "By Compliance Standard" report
+      section.
     Type: String
     AllowedValues: ["true", "false"]
     Default: "false"
@@ -313,6 +326,8 @@ Resources:
                   # ECR Permissions for AgentCore encryption checks
                   - ecr:DescribeRepositories
                   - ecr:GetRepositoryPolicy
+                  # Amazon Inspector Permissions (BR-33)
+                  - inspector2:BatchGetAccountStatus
                   # CloudWatch Logs Permissions for AgentCore observability checks
                   - logs:DescribeLogGroups
                   - logs:DescribeLogStreams
@@ -650,6 +665,9 @@ Resources:
             Type: PLAINTEXT
           - Name: ENABLE_FINSERV
             Value: !Ref EnableFinServAssessment
+            Type: PLAINTEXT
+          - Name: ENABLE_OWASP
+            Value: !Ref EnableOWASPAssessment
             Type: PLAINTEXT
       Description: Run AIML Security multi-account assessment
       ServiceRole: !GetAtt MultiAccountCodeBuildRole.Arn

@@ -3186,9 +3186,4 @@ def lambda_handler(event, context):
 
     except Exception as e:
         logger.error(f"Fatal error in lambda_handler: {e}", exc_info=True)
-        return {
-            "statusCode": 500,
-            "body": json.dumps(
-                {"message": "AgentCore security assessment failed", "error": str(e)}
-            ),
-        }
+        raise

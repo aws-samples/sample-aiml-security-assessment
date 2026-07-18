@@ -178,7 +178,8 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertIn("Methodology", content)
             self.assertIn("Severity Legend", content)
             self.assertIn("sortable", content)
-            self.assertIn("Failed High, Medium, and Low findings", content)
+            self.assertIn("Direct failed service rows", content)
+            self.assertIn("Lens / Compliance Rows", content)
             self.assertIn('<option value="failed" selected>Failed</option>', content)
             self.assertIn('class="single-account-report"', content)
             self.assertIn("Details and remediation", content)
@@ -534,7 +535,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
             regions=["eu-west-1", "us-east-1", "us-west-2"],
         )
 
-        self.assertIn("Risk by Region / Scope", html)
+        self.assertIn("Direct Failed Rows by Region / Scope", html)
         self.assertIn('>eu-west-1</div><div class="metric-value">0</div>', html)
         self.assertIn('>us-east-1</div><div class="metric-value">0</div>', html)
         self.assertIn('>us-west-2</div><div class="metric-value">0</div>', html)

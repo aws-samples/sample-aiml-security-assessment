@@ -44,7 +44,7 @@
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 70 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 27 always-on Agentic AI Security checks, with an optional 64-check Financial Services GenAI risk assessment, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 71 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 27 always-on Agentic AI Security checks, with optional 64-check Financial Services GenAI risk and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
 
 ### Security Design Principles
 
@@ -58,12 +58,15 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 ## Architecture Diagrams
 
 ### Phase 1: Deployment Setup (AWS CloudFormation)
+
 ![Deployment Phase](./diagrams/deployment-phase.png)
 
 ### Phase 2: Assessment Execution (AWS CodeBuild)
+
 ![Execution Phase](./diagrams/execution-phase.png)
 
 ### Service-Level Assessment Architecture
+
 ![Service-Level Architecture](./diagrams/service-level-architecture.png)
 
 ## Two-Phase Architecture
@@ -71,11 +74,13 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 ### Phase 1: Infrastructure Deployment
 
 #### Step 1: Member Account Roles (`1-aiml-security-member-roles.yaml`)
+
 - **AWS CloudFormation StackSets Deployment**: Deploys `AIMLSecurityMemberRole` to all target accounts
 - **Cross-Account Trust**: Establishes trust relationship with the central assessment account
 - **Assessment and Deployment Permissions**: Grants read-oriented service permissions for assessment checks and deployment permissions needed for CodeBuild to create or update per-account SAM stacks
 
 #### Step 2: Central Infrastructure (`2-aiml-security-codebuild.yaml`)
+
 - **AWS CodeBuild Project**: Orchestrates multi-account deployments and assessments
 - **Amazon S3 Bucket**: Central storage for consolidated assessment results
 - **AWS IAM Role**: `MultiAccountCodeBuildRole` with cross-account access permissions
@@ -86,21 +91,24 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 ### Phase 2: Assessment Execution (AWS CodeBuild Orchestration)
 
 #### AWS CodeBuild Execution Flow
+
 1. **Account Discovery**: In multi-account mode, lists active accounts from AWS Organizations or uses `MultiAccountListOverride`
 2. **Role Assumption**: In multi-account mode, assumes `AIMLSecurityMemberRole` in each target account
 3. **AWS SAM Deployment**: Deploys or updates the AI/ML assessment stack through AWS SAM
-4. **Assessment Execution**: Triggers AWS Step Functions workflow in each account, passing `enableFinServ` from the deployment parameter
+4. **Assessment Execution**: Triggers AWS Step Functions workflow in each account, passing `enableFinServ` and `enableOWASP` from the deployment parameters
 5. **Results Consolidation**: Syncs per-account reports to the infrastructure bucket and creates a consolidated report for multi-account runs
 
 #### Project Structure
-```
+
+```text
 sample-aiml-security-assessment/
 ├── aiml-security-assessment/
 │   ├── functions/security/
-│   │   ├── bedrock_assessments/      # Bedrock security checks (32)
+│   │   ├── bedrock_assessments/      # Bedrock security checks (33)
 │   │   ├── sagemaker_assessments/    # SageMaker security checks (25)
 │   │   ├── agentcore_assessments/    # AgentCore security checks (13)
 │   │   ├── finserv_assessments/      # Optional Financial Services GenAI risk checks (64)
+│   │   ├── owasp_assessments/        # Optional OWASP Top 10 for LLM checks (12)
 │   │   ├── finserv_tests/            # FinServ-specific unit and coverage tests
 │   │   ├── iam_permission_caching/   # AWS IAM permissions cache
 │   │   ├── cleanup_bucket/           # Amazon S3 cleanup
@@ -118,6 +126,7 @@ sample-aiml-security-assessment/
 │   ├── DEVELOPER_GUIDE.md            # This guide
 │   ├── SECURITY_CHECKS.md            # Security checks reference (core + Agentic)
 │   ├── SECURITY_CHECKS_FINSERV.md    # FinServ GenAI risk checks reference
+│   ├── SECURITY_CHECKS_OWASP.md      # OWASP Top 10 for LLM checks reference
 │   ├── SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md  # FinServ severity model
 │   ├── SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md     # FinServ per-finding severities
 │   ├── TROUBLESHOOTING.md            # Troubleshooting guide
@@ -136,14 +145,16 @@ sample-aiml-security-assessment/
 ```
 
 #### Member Account Resources (Deployed by AWS SAM)
+
 - **AWS SAM Application**: AI/ML security assessment stack
 - **AWS Step Functions**: Single workflow orchestrating all assessments
-- **AWS Lambda Functions**: One per core service (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore), one FinServ assessment Lambda invoked only when enabled, plus utilities
+- **AWS Lambda Functions**: One per core service (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore), one FinServ assessment Lambda invoked when FinServ or OWASP needs FS-* source rows, one OWASP assessment Lambda invoked only when enabled, plus utilities
 - **Local Amazon S3 Bucket**: Storage for account-specific results
 
 ### Assessment Execution Workflow
 
 #### AWS CodeBuild Orchestration
+
 ```bash
 # buildspec.yml execution flow
 1. Get active accounts from AWS Organizations
@@ -155,6 +166,7 @@ sample-aiml-security-assessment/
 ```
 
 #### AWS Step Functions (Per Module)
+
 ```json
 {
   "Comment": "AI/ML Assessment Module",
@@ -192,7 +204,7 @@ sample-aiml-security-assessment/
                 "States": {
                   "FinServ Enabled?": {
                     "Type": "Choice",
-                    "Comment": "Runs FinServ only when enableFinServ is true and RegionIndex is 0"
+                    "Comment": "Runs FinServ when enableFinServ or enableOWASP is true and RegionIndex is 0"
                   },
                   "FinServ Security Assessment": {"Type": "Task", "Resource": "arn:aws:states:::lambda:invoke", "End": true},
                   "FinServ Assessment Skipped": {"Type": "Pass", "End": true}
@@ -215,11 +227,12 @@ sample-aiml-security-assessment/
 
 ## Assessment Structure
 
-The framework includes **70 core security checks** across three AI/ML services, plus **27 always-on Agentic AI Security checks** and **64 optional Financial Services GenAI risk checks** when `EnableFinServAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **71 core security checks** across three AI/ML services, plus **27 always-on Agentic AI Security checks**, **64 optional Financial Services GenAI risk checks** when `EnableFinServAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
 Each core service assessment AWS Lambda function:
+
 1. Receives execution context and target region from AWS Step Functions (via the Map state)
 2. Verifies the service is available in the target region (returns N/A finding if not)
 3. Reads cached AWS IAM permissions from Amazon S3
@@ -229,9 +242,10 @@ Each core service assessment AWS Lambda function:
 7. Uploads results to Amazon S3 with region-suffixed filename
 8. Returns findings summary to AWS Step Functions
 
-The Financial Services assessment Lambda is different. It is deployed in both SAM templates, but Step Functions invokes it only when the execution input includes `"enableFinServ": "true"` and only from the first region iteration (`RegionIndex == 0`). It receives the full `TargetRegions` list and emits FinServ findings with Region values so the report can display the same regional filters as the core services.
+The Financial Services assessment Lambda is different. It is deployed in both SAM templates, but Step Functions invokes it only from the first region iteration (`RegionIndex == 0`) when the execution input includes `"enableFinServ": "true"` or `"enableOWASP": "true"`. The OWASP path uses FinServ findings as hidden source rows unless FinServ was explicitly enabled. FinServ receives the full `TargetRegions` list and emits findings with Region values so the report can display the same regional filters as the core services.
 
 **Additional Functions:**
+
 - **AWS IAM Permission Caching**: Pre-fetches AWS IAM policies to optimize assessment (global, runs once)
 - **Cleanup Bucket**: Removes old assessment data
 - **Resolve Regions**: Resolves target regions from `TargetRegions` parameter for the Map state
@@ -244,13 +258,15 @@ To add a new AI/ML service (for example, Amazon Comprehend, Amazon Textract):
 ### Step 1: Create Service Assessment Function
 
 1. **Create Function Directory** (One function per service):
+
 ```bash
 # Example: Adding Comprehend security assessment
 mkdir -p aiml-security-assessment/functions/security/comprehend_assessments
 cd aiml-security-assessment/functions/security/comprehend_assessments
 ```
 
-2. **Create Function Files**:
+1. **Create Function Files**:
+
 ```python
 # app.py
 import boto3
@@ -321,14 +337,16 @@ def check_new_service_security(permission_cache, region: str = ""):
     return findings
 ```
 
-3. **Create Requirements File**:
+1. **Create Requirements File**:
+
 ```txt
 # requirements.txt
 boto3>=1.26.0
 botocore>=1.29.0
 ```
 
-4. **Create Schema File**:
+1. **Create Schema File**:
+
 ```python
 # schema.py
 from enum import Enum
@@ -443,6 +461,7 @@ Add the new service to the `Run Security Assessments` parallel branch inside the
 Add required permissions to every role that may deploy or run the new service assessment:
 
 **In `deployment/1-aiml-security-member-roles.yaml`**:
+
 ```yaml
 - Effect: Allow
   Action:
@@ -453,6 +472,7 @@ Add required permissions to every role that may deploy or run the new service as
 ```
 
 **In `deployment/aiml-security-single-account.yaml`** (for single account mode):
+
 ```yaml
 - comprehend:List*
 - comprehend:Describe*
@@ -460,6 +480,7 @@ Add required permissions to every role that may deploy or run the new service as
 ```
 
 **In `deployment/2-aiml-security-codebuild.yaml`** (for management-account multi-account mode):
+
 ```yaml
 - comprehend:List*
 - comprehend:Describe*
@@ -481,6 +502,7 @@ sam local invoke ComprehendSecurityAssessmentFunction --event testfile.json
 ## Assessment Best Practices
 
 ### 1. Security Check Implementation
+
 - **Use Cached Permissions**: Always use the AWS IAM permission cache to avoid API throttling
 - **Handle Exceptions**: Implement proper error handling and logging
 - **Follow Least Privilege**: Only request necessary permissions
@@ -498,12 +520,14 @@ sam local invoke ComprehendSecurityAssessmentFunction --event testfile.json
   - `N/A`: Check not applicable (typically paired with N/A status)
 
 ### 2. Performance Optimization
+
 - **Batch API Calls**: Use pagination and batch operations where possible
 - **Implement Retries**: Use exponential backoff for AWS API calls
 - **Cache Results**: Store intermediate results to avoid redundant API calls
 - **Set Appropriate Timeouts**: Configure AWS Lambda timeout based on assessment complexity
 
 ### 3. Error Handling
+
 ```python
 try:
     # Assessment logic
@@ -535,6 +559,7 @@ except Exception as e:
 ## Testing Your Extensions
 
 ### 1. Local Testing
+
 ```bash
 # Test an individual SAM function
 cd aiml-security-assessment
@@ -543,6 +568,7 @@ sam local invoke NewServiceSecurityAssessmentFunction --event test-event.json
 ```
 
 ### 2. Integration Testing
+
 ```bash
 # Deploy to test account
 sam deploy --stack-name aiml-security-test --capabilities CAPABILITY_IAM
@@ -550,10 +576,11 @@ sam deploy --stack-name aiml-security-test --capabilities CAPABILITY_IAM
 # Execute AWS Step Functions
 aws stepfunctions start-execution \
   --state-machine-arn arn:aws:states:region:account:stateMachine:TestStateMachine \
-  --input '{"accountId":"123456789012","enableFinServ":"false"}'
+  --input '{"accountId":"123456789012","enableFinServ":"false","enableOWASP":"false"}'
 ```
 
 ### 3. Multi-Account Testing
+
 1. Deploy member roles to test accounts using AWS CloudFormation StackSets
 2. Deploy central infrastructure with test parameters
 3. Monitor AWS CodeBuild logs for deployment and execution status
@@ -566,19 +593,23 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 ## Development Roadmap
 
 ### Current Status
-- **AI/ML Assessment**: 70 core checks across three services, 27 always-on Agentic AI Security checks, plus 64 optional Financial Services GenAI risk checks (see [Security Checks Reference](SECURITY_CHECKS.md))
+
+- **AI/ML Assessment**: 71 core checks across three services, 27 always-on Agentic AI Security checks, plus 64 optional Financial Services GenAI risk checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
 
 ### Potential Additions
+
 - **Amazon Comprehend**: Data privacy, access controls, entity recognition security
 - **Amazon Textract**: Document processing security, PII detection
 - **Amazon Rekognition**: Image analysis security, content moderation
 - **Amazon Polly/Amazon Transcribe**: Voice AI security assessments
 
 ### Development Pattern
+
 - Each AWS AI/ML service gets its own dedicated AWS Lambda function
 - AWS Step Functions orchestrates parallel execution of service assessments
 - Multi-region scans use a Step Functions Map state with configurable `MaxRegionConcurrency`
-- FinServ checks are opt-in through `EnableFinServAssessment`; the Lambda is deployed by default but invoked only when enabled
+- FinServ checks are opt-in through `EnableFinServAssessment`; the Lambda is deployed by default and also runs as a hidden OWASP source dependency when `EnableOWASPAssessment` is enabled
+- OWASP checks are opt-in through `EnableOWASPAssessment`; the Lambda is deployed by default but invoked only when enabled
 - Results are consolidated into a single HTML/CSV report
 - AWS CodeBuild orchestrates deployment and execution across multiple accounts
 
@@ -588,7 +619,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 
 Report generation uses a single shared template (`report_template.py`) for both deployment modes:
 
-```
+```text
 aiml-security-assessment/functions/security/generate_consolidated_report/
 ├── app.py              # Lambda handler (single-account)
 ├── report_template.py  # Shared HTML/CSS/JS template
@@ -600,7 +631,7 @@ consolidate_html_reports.py  # CodeBuild script (multi-account)
 ### How It Works
 
 | Component | Mode | Description |
-|-----------|------|-------------|
+| --- | --- | --- |
 | `app.py` (AWS Lambda) | `mode='single'` | Generates per-account HTML reports during AWS Step Functions execution |
 | `consolidate_html_reports.py` | `mode='multi'` | Consolidates all account reports in AWS CodeBuild post-build phase |
 
@@ -616,6 +647,80 @@ To update report styling, layout, or features:
    - `get_html_template()` - HTML/CSS/JS structure
    - `generate_table_rows()` - Finding row generation
    - `generate_html_report()` - Main entry point with `mode` parameter ('single' or 'multi')
+
+## Adding a Compliance Standard (OWASP-style)
+
+The "By Compliance Standard" sidebar section is **data-driven**. Adding a
+new standard such as NIST AI RMF or the EU AI Act follows the OWASP pattern
+end-to-end. Concrete steps:
+
+1. **Choose a 2–3 letter prefix** that satisfies `^[A-Z]{2,3}-\d{2}$`:
+   - OWASP → `OW-` (already implemented)
+   - NIST AI RMF → suggested `NR-`
+   - EU AI Act → suggested `EU-`
+
+2. **Create a new Lambda package** under `aiml-security-assessment/functions/security/<slug>_assessments/`:
+   - Copy `owasp_assessments/schema.py` verbatim.
+   - Copy `owasp_assessments/requirements.txt`.
+   - Author `app.py` following the OWASP pattern: read per-service CSVs
+     from S3, apply your `<STANDARD>_CHECK_MAPPINGS` dict, run any native
+     checks, write `<slug>_security_report_<execution>_<region>.csv`.
+
+3. **Wire the CloudFormation opt-in parameter** in seven places, following
+   the `EnableOWASPAssessment` model:
+   - `deployment/aiml-security-single-account.yaml` (parameter definition,
+     parameter group, CodeBuild env var)
+   - `deployment/2-aiml-security-codebuild.yaml` (parameter definition,
+     parameter group, CodeBuild env var)
+   - `buildspec.yml` (`ENABLE_<STANDARD>` export and the three `aws
+     stepfunctions start-execution` calls)
+   - `aiml-security-assessment/template.yaml` (new function resource,
+     `LambdaInvokePolicy`, definition-substitution entry)
+   - `aiml-security-assessment/template-multi-account.yaml` (same)
+
+4. **Add IAM grants** for any AWS APIs the new Lambda calls in all five
+   policy locations per CLAUDE.md. Scope each grant correctly:
+   - In `aiml-security-assessment/template.yaml` and
+     `aiml-security-assessment/template-multi-account.yaml`, add the grant
+     to the **specific function's `Policies` block** that actually makes
+     the call — not to another function's policy.
+   - In `deployment/1-aiml-security-member-roles.yaml` (cross-account
+     member role), `deployment/2-aiml-security-codebuild.yaml` (local
+     `MemberRole` mirror), and `deployment/aiml-security-single-account.yaml`
+     (single-account role), append the actions to the assessment
+     permissions policy. Diff `2-aiml-security-codebuild.yaml`'s local
+     `MemberRole` against `1-aiml-security-member-roles.yaml` to confirm
+     parity — this pair drifts easily.
+
+5. **Add the Step Functions Choice state** in
+   `aiml-security-assessment/statemachine/assessments.asl.json`:
+   - Add a `<Standard> Enabled?` Choice state that reads
+     `$.OriginalInput.enable<Standard>`.
+   - Add the `<Standard> Security Assessment` Task state that invokes the
+     new function.
+   - Chain: `Run Security Assessments (Parallel)` → `OWASP Enabled?` →
+     ... → `<Standard> Enabled?` → ... → back to the region map end.
+
+6. **Register the standard in the report** by appending a new dict to
+   `COMPLIANCE_STANDARDS` in `report_template.py`. Each entry needs
+   `slug`, `name`, `prefix`, `icon`, `icon_small`, `reference_url`,
+   `section_title`, and `scope_text`. Choose an icon colour that does not
+   clash with `--warning` (used by "By Lens"), `--accent` (used by "By
+   Industry"), or `--success` (used by OWASP).
+
+7. **Caller routing is data-driven.** The report generator
+   (`aiml-security-assessment/functions/security/generate_consolidated_report/app.py`)
+   and the multi-account consolidator (`consolidate_html_reports.py`) both
+   iterate `COMPLIANCE_STANDARDS` to initialise `service_stats` /
+   `service_findings` and to route by Check_ID prefix, so appending a new
+   entry in step 6 is sufficient — no edits needed in these files.
+
+8. **Update docs**: add a `SECURITY_CHECKS_<STANDARD>.md` in the OWASP
+   style, bump the check count in `README.md` and `docs/SECURITY_CHECKS.md`.
+
+9. **Add tests**: mapping emission, native-check behavior, routing, and
+   report-template rendering. See `tests/test_owasp_checks.py` and
+   `tests/test_report_template_owasp.py` as templates.
 
 ## Documentation and Screenshots
 
@@ -652,6 +757,7 @@ python sample-reports/scripts/capture_screenshots.py
 ```
 
 **What the script does:**
+
 - Opens HTML reports in a headless browser
 - Captures key views (dashboard, findings table, dark mode)
 - Automatically optimizes images (target: 200-300KB each)
@@ -661,6 +767,7 @@ python sample-reports/scripts/capture_screenshots.py
 **What gets generated:**
 
 The script captures 4 screenshots:
+
 - `dashboard-overview-light.png` - Executive dashboard in light mode
 - `dashboard-overview-dark.png` - Executive dashboard in dark mode
 - `findings-table.png` - Detailed findings table with filters
@@ -698,6 +805,7 @@ SCREENSHOTS = [
 ```
 
 **Available action types:**
+
 - `wait` - Wait for selector (for example, `{"type": "wait", "selector": ".metrics", "timeout": 2000}`)
 - `click` - Click element (for example, `{"type": "click", "selector": ".theme-toggle"}`)
 - `scroll` - Scroll to position (for example, `{"type": "scroll", "position": 500}`)
@@ -706,7 +814,7 @@ SCREENSHOTS = [
 **Troubleshooting:**
 
 | Issue | Solution |
-|-------|----------|
+| ------- | ---------- |
 | `playwright not installed` | `pip install playwright && playwright install chromium` |
 | Sample reports not found | Run from repository root |
 | Screenshots too large | Lower `JPEG_QUALITY` or reduce viewport size |
@@ -721,10 +829,10 @@ After generating new screenshots, update the README to reference them:
 
 **Preview:**
 
-![Executive Dashboard](sample-reports/dashboard-overview-light.png)
+![Executive Dashboard](../sample-reports/dashboard-overview-light.png)
 *Executive summary with severity counts and assessment-area breakdown*
 
-![Findings Table](sample-reports/findings-table.png)
+![Findings Table](../sample-reports/findings-table.png)
 *Interactive findings table with filtering capabilities*
 ```
 
@@ -743,7 +851,7 @@ GitHub Actions workflows run automatically to validate code quality and security
 ### PR Checks
 
 | Workflow | File | What It Checks |
-|----------|------|----------------|
+| ---------- | ------ | ---------------- |
 | **Python Code Quality** | `.github/workflows/python-lint.yml` | `ruff check` (lint) and `ruff format --check` (formatting) on changed `.py` files |
 | **Python Tests** | `.github/workflows/python-tests.yml` | Runs upstream tests, FinServ tests, and report-pipeline tests in separate pytest sessions |
 | **CloudFormation Lint** | `.github/workflows/cfn-lint.yml` | Validates deployment and SAM templates with `cfn-lint` |
@@ -753,7 +861,7 @@ GitHub Actions workflows run automatically to validate code quality and security
 Additional workflows run post-merge or on schedule:
 
 | Workflow | File | Trigger |
-|----------|------|---------|
+| --- | --- | --- |
 | **ASH Full Repository Scan** | `.github/workflows/ash-full-repository-scan.yml` | Push to main, monthly schedule, manual |
 | **Labeler** | `.github/workflows/label.yml` | Auto-labels PRs by changed paths (bedrock, sagemaker, agentcore, deployment, docs) |
 
@@ -804,6 +912,7 @@ sam build --template template-multi-account.yaml
 ## Support and Resources
 
 ### Documentation
+
 - [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
 - [AWS Security Best Practices](https://aws.amazon.com/security/security-resources/)
 - [AWS SAM Developer Guide](https://docs.aws.amazon.com/serverless-application-model/)
