@@ -9,10 +9,13 @@ Covers:
 
 import importlib.util
 import os
+from pathlib import Path
+import re
 import sys
 from unittest.mock import MagicMock, patch
 
 from botocore.exceptions import ClientError, EndpointConnectionError
+import pytest
 
 from tests.test_helpers import assert_finding_schema
 
@@ -33,6 +36,20 @@ _spec = importlib.util.spec_from_file_location(
 owasp_app = importlib.util.module_from_spec(_spec)
 sys.modules["owasp_app"] = owasp_app
 _spec.loader.exec_module(owasp_app)
+
+_security_functions_dir = Path(_owasp_dir).parent
+SOURCE_CHECK_ID_FILES = {
+    "BR": _security_functions_dir / "bedrock_assessments" / "app.py",
+    "SM": _security_functions_dir / "sagemaker_assessments" / "app.py",
+    "AC": _security_functions_dir / "agentcore_assessments" / "app.py",
+    "FS": _security_functions_dir / "finserv_assessments" / "app.py",
+}
+
+
+def _discover_source_check_ids(prefix):
+    source = SOURCE_CHECK_ID_FILES[prefix].read_text(encoding="utf-8")
+    pattern = rf"check_id\s*=\s*['\"]({prefix}-\d{{2}})['\"]"
+    return set(re.findall(pattern, source))
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +232,46 @@ class TestOWASPMappings:
         assert "LLM03" in rows[0]["Finding_Details"]
         assert "BR-33" in rows[0]["Finding_Details"]
 
+    def test_native_sagemaker_checks_map_to_owasp_categories(self):
+        source_rows = [
+            {
+                "Check_ID": "SM-03",
+                "Finding_Details": "Training Job 'x' - No output encryption configured",
+                "Severity": "High",
+                "Status": "Failed",
+                "Region": "us-east-1",
+            },
+            {
+                "Check_ID": "SM-11",
+                "Finding_Details": "Model 'm' does not have network isolation enabled.",
+                "Severity": "High",
+                "Status": "Failed",
+                "Region": "us-east-1",
+            },
+            {
+                "Check_ID": "SM-22",
+                "Finding_Details": "Manual approval workflow may not be enforced.",
+                "Severity": "Medium",
+                "Status": "Failed",
+                "Region": "us-east-1",
+            },
+        ]
+        rows = owasp_app.build_owasp_mapping_findings(source_rows, region="us-east-1")
+        rows_by_source = {}
+        for row in rows:
+            source_id = row["Finding_Details"].split("Source check ", 1)[1][:5]
+            rows_by_source.setdefault(source_id, []).append(row["Check_ID"])
+
+        assert rows_by_source == {
+            "SM-03": ["OW-02"],
+            "SM-11": ["OW-03", "OW-10"],
+            "SM-22": ["OW-04", "OW-09"],
+        }
+        assert all(row["Status"] == "Failed" for row in rows)
+        assert all(
+            row["Reference"].startswith("https://genai.owasp.org/") for row in rows
+        )
+
     def test_all_ow_ids_referenced_by_mappings_are_valid_check_ids(self):
         # Every OW-## ID must satisfy the schema regex ^[A-Z]{2,3}-\d{2}$.
         for mapping_list in owasp_app.OWASP_CHECK_MAPPINGS.values():
@@ -227,6 +284,12 @@ class TestOWASPMappings:
         for mapping_list in owasp_app.OWASP_CHECK_MAPPINGS.values():
             for m in mapping_list:
                 assert m["check_id"] in owasp_app.OWASP_LLM_REFERENCE_URLS
+
+    @pytest.mark.parametrize("source_check_id", sorted(owasp_app.OWASP_CHECK_MAPPINGS))
+    def test_all_source_check_ids_referenced_by_mappings_exist(self, source_check_id):
+        prefix = source_check_id.split("-", 1)[0]
+        assert prefix in SOURCE_CHECK_ID_FILES
+        assert source_check_id in _discover_source_check_ids(prefix)
 
     def test_malformed_source_row_does_not_abort_other_mappings(self):
         # Per CLAUDE.md / AGENTS.md, per-row failures in a list loop must be

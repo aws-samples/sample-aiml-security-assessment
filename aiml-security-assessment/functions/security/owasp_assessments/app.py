@@ -244,6 +244,22 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
             "resolution": "Tag training and knowledge-base S3 buckets with a data-classification tag so downstream automations enforce controls consistent with the sensitivity level.",
         }
     ],
+    "SM-03": [
+        {
+            "check_id": "OW-02",
+            "owasp_category": "LLM02:2025 Sensitive Information Disclosure",
+            "finding": "OWASP LLM02: SageMaker Data Encryption",
+            "resolution": "Configure SageMaker notebooks, domains, and training jobs to use customer-managed KMS keys and encryption in transit for sensitive training and inference data.",
+        }
+    ],
+    "SM-15": [
+        {
+            "check_id": "OW-02",
+            "owasp_category": "LLM02:2025 Sensitive Information Disclosure",
+            "finding": "OWASP LLM02: SageMaker Feature Store Encryption",
+            "resolution": "Encrypt SageMaker Feature Store offline stores with customer-managed KMS keys so sensitive feature data is protected at rest.",
+        }
+    ],
     # LLM03 Supply Chain
     "BR-30": [
         {
@@ -301,6 +317,66 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
             "resolution": "Enable Amazon Inspector Lambda standard scanning and Lambda code scanning so vulnerable dependencies and hardcoded secrets in Bedrock-calling Lambda functions are detected as part of the GenAI supply chain.",
         }
     ],
+    "SM-01": [
+        {
+            "check_id": "OW-03",
+            "owasp_category": "LLM03:2025 Supply Chain",
+            "finding": "OWASP LLM03: SageMaker Internet Exposure",
+            "resolution": "Disable direct internet access on SageMaker notebooks and configure domains for VPC-only access to reduce supply-chain exposure from unmanaged network paths.",
+        }
+    ],
+    "SM-10": [
+        {
+            "check_id": "OW-03",
+            "owasp_category": "LLM03:2025 Supply Chain",
+            "finding": "OWASP LLM03: SageMaker Notebook VPC Deployment",
+            "resolution": "Deploy SageMaker notebook instances inside a VPC so package, data, and model artifact access can be controlled through private network paths.",
+        }
+    ],
+    "SM-11": [
+        {
+            "check_id": "OW-03",
+            "owasp_category": "LLM03:2025 Supply Chain",
+            "finding": "OWASP LLM03: SageMaker Model Network Isolation",
+            "resolution": "Enable network isolation on SageMaker models so inference containers cannot make unmanaged outbound calls that alter dependencies or exfiltrate model artifacts.",
+        },
+        {
+            "check_id": "OW-10",
+            "owasp_category": "LLM10:2025 Unbounded Consumption",
+            "finding": "OWASP LLM10: SageMaker Model Outbound Network Control",
+            "resolution": "Enable SageMaker model network isolation to prevent deployed model containers from making uncontrolled outbound calls that can amplify consumption or abuse downstream services.",
+        },
+    ],
+    "SM-14": [
+        {
+            "check_id": "OW-03",
+            "owasp_category": "LLM03:2025 Supply Chain",
+            "finding": "OWASP LLM03: SageMaker Container Repository Access",
+            "resolution": "Configure SageMaker models to pull container images from private ECR repositories through VPC repository access instead of platform or public registry paths.",
+        }
+    ],
+    "SM-21": [
+        {
+            "check_id": "OW-03",
+            "owasp_category": "LLM03:2025 Supply Chain",
+            "finding": "OWASP LLM03: SageMaker AutoML Network Isolation",
+            "resolution": "Enable network isolation on AutoML jobs so generated training containers cannot fetch unapproved dependencies or send data over unmanaged network paths.",
+        }
+    ],
+    "SM-25": [
+        {
+            "check_id": "OW-03",
+            "owasp_category": "LLM03:2025 Supply Chain",
+            "finding": "OWASP LLM03: SageMaker ML Lineage Tracking",
+            "resolution": "Use SageMaker Experiments and lineage associations to track training runs, parameters, artifacts, and model package provenance across the ML supply chain.",
+        },
+        {
+            "check_id": "OW-04",
+            "owasp_category": "LLM04:2025 Data and Model Poisoning",
+            "finding": "OWASP LLM04: SageMaker ML Lineage Tracking",
+            "resolution": "Track SageMaker training lineage from source data through model artifacts so poisoned data or model versions can be traced and remediated.",
+        },
+    ],
     # LLM04 Data and Model Poisoning
     "BR-25": [
         {
@@ -344,6 +420,48 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
             "owasp_category": "LLM09:2025 Misinformation",
             "finding": "OWASP LLM09: SageMaker Model Card Documentation",
             "resolution": "Document each production model's intended use, known limitations, and evaluation results in a SageMaker Model Card so misinformation risks tied to model behaviour are traceable to a reviewed system card.",
+        },
+    ],
+    "SM-07": [
+        {
+            "check_id": "OW-04",
+            "owasp_category": "LLM04:2025 Data and Model Poisoning",
+            "finding": "OWASP LLM04: SageMaker Model Monitor Coverage",
+            "resolution": "Configure active SageMaker Model Monitor schedules so data-quality and model-quality regressions caused by poisoned inputs or drift are detected.",
+        },
+        {
+            "check_id": "OW-09",
+            "owasp_category": "LLM09:2025 Misinformation",
+            "finding": "OWASP LLM09: SageMaker Model Monitor Coverage",
+            "resolution": "Configure SageMaker Model Monitor schedules for production models so quality regressions that can produce incorrect outputs are detected.",
+        },
+    ],
+    "SM-22": [
+        {
+            "check_id": "OW-04",
+            "owasp_category": "LLM04:2025 Data and Model Poisoning",
+            "finding": "OWASP LLM04: SageMaker Model Approval Workflow",
+            "resolution": "Require SageMaker Model Registry approval workflows before production deployment so poisoned or unreviewed model versions are not promoted automatically.",
+        },
+        {
+            "check_id": "OW-09",
+            "owasp_category": "LLM09:2025 Misinformation",
+            "finding": "OWASP LLM09: SageMaker Model Approval Workflow",
+            "resolution": "Use SageMaker Model Registry approval workflows to ensure model behavior, intended use, and validation evidence are reviewed before production release.",
+        },
+    ],
+    "SM-23": [
+        {
+            "check_id": "OW-04",
+            "owasp_category": "LLM04:2025 Data and Model Poisoning",
+            "finding": "OWASP LLM04: SageMaker Model Drift Detection",
+            "resolution": "Enable SageMaker Model Monitor drift detection for production endpoints so poisoning, data drift, and model-quality degradation are identified.",
+        },
+        {
+            "check_id": "OW-09",
+            "owasp_category": "LLM09:2025 Misinformation",
+            "finding": "OWASP LLM09: SageMaker Model Drift Detection",
+            "resolution": "Configure data-quality and model-quality monitoring for SageMaker endpoints so degraded model behavior that can produce misinformation is detected.",
         },
     ],
     # LLM05 Improper Output Handling
@@ -565,6 +683,14 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
             "owasp_category": "LLM09:2025 Misinformation",
             "finding": "OWASP LLM09: Active Knowledge Base Present",
             "resolution": "Deploy at least one ACTIVE Knowledge Base when Bedrock models are used, so grounded retrieval is available.",
+        }
+    ],
+    "SM-06": [
+        {
+            "check_id": "OW-09",
+            "owasp_category": "LLM09:2025 Misinformation",
+            "finding": "OWASP LLM09: SageMaker Clarify Evaluation",
+            "resolution": "Use SageMaker Clarify to evaluate bias and explainability for models whose generated outputs can influence user decisions.",
         }
     ],
     # LLM10 Unbounded Consumption

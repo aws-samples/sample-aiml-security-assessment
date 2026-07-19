@@ -100,6 +100,8 @@ Maps from:
 | FS-44 | Amazon Macie sensitive-data discovery |
 | FS-45 | Guardrail PII entities coverage (FinServ) |
 | FS-46 | S3 data-classification tagging |
+| SM-03 | SageMaker notebooks, domains, and training jobs use encryption controls |
+| SM-15 | SageMaker Feature Store offline stores use KMS encryption |
 
 ### LLM03 Supply Chain — OW-03
 
@@ -114,6 +116,12 @@ Maps from:
 | FS-14 | AWS Config rules for model onboarding |
 | FS-15 | Adversarial evaluation coverage |
 | FS-16 | ECR image scanning |
+| SM-01 | SageMaker notebooks/domains avoid direct internet exposure |
+| SM-10 | SageMaker notebooks are deployed inside a VPC |
+| SM-11 | SageMaker model containers use network isolation |
+| SM-14 | SageMaker models pull containers through controlled repository access |
+| SM-21 | SageMaker AutoML jobs use network isolation |
+| SM-25 | SageMaker Experiments and lineage associations track model provenance |
 
 ### LLM04 Data and Model Poisoning — OW-04
 
@@ -126,6 +134,10 @@ Maps from:
 | FS-20 | Feature Store OfflineStoreConfig |
 | FS-21 | Training-data S3 versioning |
 | FS-42 | SageMaker Model Card documentation (§3.1 model system card reviews) |
+| SM-07 | SageMaker Model Monitor schedules detect quality regressions |
+| SM-22 | SageMaker Model Registry approval workflows gate model promotion |
+| SM-23 | SageMaker drift detection monitors production endpoints |
+| SM-25 | SageMaker lineage tracking links data, training runs, and model artifacts |
 
 ### LLM05 Improper Output Handling — OW-05
 
@@ -221,6 +233,10 @@ Maps from:
 | FS-42 | SageMaker Model Card documentation (§3.1 model system card reviews) |
 | FS-47 | Grounding filter threshold ≥ 0.70 |
 | FS-48 | Active Knowledge Base present |
+| SM-06 | SageMaker Clarify evaluates bias and explainability |
+| SM-07 | SageMaker Model Monitor schedules detect quality regressions |
+| SM-22 | SageMaker Model Registry approval workflows gate production release |
+| SM-23 | SageMaker drift detection monitors production endpoints |
 
 ### LLM10 Unbounded Consumption — OW-10
 
@@ -237,6 +253,7 @@ Maps from:
 | FS-05 | Token / throttle alarms |
 | FS-06 | AWS Budgets with Bedrock filters |
 | FS-68 | API Gateway request body size limits |
+| SM-11 | SageMaker model network isolation limits uncontrolled outbound calls |
 
 ## Severity / status semantics
 
