@@ -1259,13 +1259,10 @@ class TestSM22ModelApproval:
         # 20 Pending + 5 Rejected on page 2. Under the old truncating code the
         # check saw only page 1 and (wrongly) fired "Auto-Approval Suspected"
         # for a group that actually has pending and rejected packages.
-        page_1_approved = [
-            {"ModelApprovalStatus": "Approved"} for _ in range(100)
-        ]
-        page_2_mixed = (
-            [{"ModelApprovalStatus": "PendingManualApproval"} for _ in range(20)]
-            + [{"ModelApprovalStatus": "Rejected"} for _ in range(5)]
-        )
+        page_1_approved = [{"ModelApprovalStatus": "Approved"} for _ in range(100)]
+        page_2_mixed = [
+            {"ModelApprovalStatus": "PendingManualApproval"} for _ in range(20)
+        ] + [{"ModelApprovalStatus": "Rejected"} for _ in range(5)]
         self._wire_sm22_paginators(
             mock_sm,
             group_page={
@@ -1315,9 +1312,7 @@ class TestSM22ModelApproval:
         self._wire_sm22_paginators(
             mock_sm,
             group_page={
-                "ModelPackageGroupSummaryList": [
-                    {"ModelPackageGroupName": "grp-auto"}
-                ]
+                "ModelPackageGroupSummaryList": [{"ModelPackageGroupName": "grp-auto"}]
             },
             package_pages=[
                 {
@@ -1335,9 +1330,9 @@ class TestSM22ModelApproval:
 
         result = check()
         findings = extract_csv_data(result)
-        assert any(
-            "Auto-Approval Suspected" in f["Finding"] for f in findings
-        ), "SM-22 must still detect the true-positive auto-approval case"
+        assert any("Auto-Approval Suspected" in f["Finding"] for f in findings), (
+            "SM-22 must still detect the true-positive auto-approval case"
+        )
         # Details should reference the actual full-population total (110), not 100.
         auto_row = next(
             f for f in findings if "Auto-Approval Suspected" in f["Finding"]
