@@ -211,15 +211,51 @@ The HTML report includes a Region column, filter dropdown, and "Risk by Region /
 
 ### Optional: Financial Services GenAI Risk Checks (`EnableFinServAssessment`)
 
-The 64 Financial Services (FS-XX) GenAI risk checks are **opt-in** and default to `false`. Set the `EnableFinServAssessment` deployment parameter to `true` when you want the additional Financial Services GenAI risk assessment. When enabled, the FinServ assessment Lambda runs and its findings appear in a dedicated **Financial Services** section of the HTML report. When left `false`, no FinServ findings are produced and the report omits the FinServ section entirely. The toggle is threaded into the Step Functions execution input (`enableFinServ`); the FinServ Lambda is always deployed but is invoked only when the flag is `true`.
+The 64 Financial Services (FS-XX) GenAI risk checks are **opt-in** and default
+to `false`. Set the `EnableFinServAssessment` deployment parameter to `true`
+when you want the additional Financial Services GenAI risk assessment. When
+enabled, the FinServ assessment Lambda runs and its findings appear in a
+dedicated **Financial Services** section of the HTML report. When left `false`,
+no FinServ findings are produced and the report omits the FinServ section
+entirely. The toggle is threaded into the Step Functions execution input
+(`enableFinServ`); the FinServ Lambda is always deployed but is invoked only
+when the flag is `true`.
 
-> **Deployment path note.** The `EnableFinServAssessment` parameter is wired through the CodeBuild-based deployment templates (`deployment/aiml-security-single-account.yaml` and `deployment/2-aiml-security-codebuild.yaml`), which thread it into every Step Functions `start-execution` call as `enableFinServ`. This is the supported install path. If you instead deploy `aiml-security-assessment/template.yaml` directly with `sam deploy` and start executions yourself, the state machine has no built-in trigger, so FinServ stays **off** unless you include `"enableFinServ": "true"` in the execution input you pass to `StartExecution`.
+> **Deployment path note.** The `EnableFinServAssessment` parameter is wired
+> through the CodeBuild-based deployment templates
+> (`deployment/aiml-security-single-account.yaml` and
+> `deployment/2-aiml-security-codebuild.yaml`), which thread it into every Step
+> Functions `start-execution` call as `enableFinServ`. This is the supported
+> install path. If you instead deploy `aiml-security-assessment/template.yaml`
+> directly with `sam deploy` and start executions yourself, the state machine has
+> no built-in trigger, so FinServ stays **off** unless you include
+> `"enableFinServ": "true"` in the execution input you pass to `StartExecution`.
 
 ### Optional: OWASP Top 10 for LLM Checks (`EnableOWASPAssessment`)
 
-The 12 OWASP Top 10 for LLM (OW-XX) checks are **opt-in** and default to `false`. Set the `EnableOWASPAssessment` deployment parameter to `true` when you want the additional compliance-standard assessment. When enabled, the OWASP Lambda runs per region after the Bedrock/SageMaker/AgentCore/FinServ Lambdas complete: it reads each service's per-region CSV, applies mapping rules to emit OW-01..OW-10 rows derived from existing findings, and runs two net-new checks for LLM07 (System Prompt Leakage). Findings appear in a new **"By Compliance Standard"** sidebar section of the HTML report. When left `false`, no OWASP findings are produced and the section is omitted entirely. The toggle is threaded into the Step Functions execution input (`enableOWASP`); the OWASP Lambda is always deployed but is invoked only when the flag is `true`.
+The 12 OWASP Top 10 for LLM (OW-XX) checks are **opt-in** and default to
+`false`. Set the `EnableOWASPAssessment` deployment parameter to `true` when
+you want the additional compliance-standard assessment. When enabled, the OWASP
+Lambda runs per region after the Bedrock/SageMaker/AgentCore/FinServ Lambdas
+complete: it reads each service's per-region CSV, applies mapping rules to emit
+OW-01..OW-10 rows derived from existing findings, and runs two net-new checks
+for LLM07 (System Prompt Leakage). Findings appear in a new **"By Compliance
+Standard"** sidebar section of the HTML report. When left `false`, no OWASP
+findings are produced and the section is omitted entirely. The toggle is
+threaded into the Step Functions execution input (`enableOWASP`); the OWASP
+Lambda is always deployed but is invoked only when the flag is `true`.
 
-> **OWASP → FinServ dependency (transparent to users).** Roughly two-thirds of the OWASP mapping rows — including all of LLM05 (Improper Output Handling) — derive from the FinServ (FS-XX) checks. To guarantee **full** OWASP coverage, the state machine automatically runs the FinServ Lambda whenever `EnableOWASPAssessment=true`, even when `EnableFinServAssessment=false`. When the customer did not enable FinServ explicitly, its findings are used only to power the OW-XX mappings and are **hidden from the report UI** — no FinServ nav item, service card, or section appears. Setting both flags to `true` surfaces the FinServ section normally.
+> **OWASP → FinServ dependency (transparent to users).** Roughly two-thirds of
+> the OWASP mapping rows — including all of LLM05 (Improper Output Handling) —
+> derive from the FinServ (FS-XX) checks. To guarantee **full** OWASP coverage,
+> the state machine automatically runs the FinServ Lambda whenever
+> `EnableOWASPAssessment=true`, even when `EnableFinServAssessment=false`. When
+> the customer did not enable FinServ explicitly, its findings are used only to
+> power the OW-XX mappings, are **hidden from the report UI** — no FinServ nav
+> item, service card, or section appears — and the raw
+> `finserv_security_report_*.csv` is not copied to the customer-facing report
+> bucket. Setting both flags to `true` surfaces the FinServ section and CSV
+> normally.
 
 The "By Compliance Standard" section is **extensible**: adding NIST AI RMF (`EnableNISTAssessment`) or EU AI Act (`EnableEUAIActAssessment`) later follows the same pattern.
 
@@ -321,8 +357,12 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
   - `bedrock_security_report_{execution_id}.csv` - Amazon Bedrock security assessment results
   - `sagemaker_security_report_{execution_id}.csv` - Amazon SageMaker AI security assessment results
   - `agentcore_security_report_{execution_id}.csv` - Amazon Bedrock AgentCore security assessment results
-  - `finserv_security_report_{execution_id}.csv` - Financial Services GenAI risk assessment results (64 FS-XX checks)
-  - `owasp_security_report_{execution_id}.csv` - OWASP Top 10 for LLM assessment results (12 OW-XX checks; present only when EnableOWASPAssessment is enabled)
+  - `finserv_security_report_{execution_id}.csv` - Financial Services GenAI
+    risk assessment results (64 FS-XX checks; present in the report bucket only
+    when `EnableFinServAssessment` is enabled)
+  - `owasp_security_report_{execution_id}.csv` - OWASP Top 10 for LLM
+    assessment results (12 OW-XX checks; present only when
+    `EnableOWASPAssessment` is enabled)
   - `permissions_cache_{execution_id}.json` - IAM permissions cache
   - `security_assessment_single_account_{timestamp}.html` - Consolidated HTML report (same features as multi-account report)
 

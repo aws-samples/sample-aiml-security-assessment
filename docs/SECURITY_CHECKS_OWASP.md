@@ -15,8 +15,10 @@ underlying BR/SM/AC/FS checks it is derived from.
   full OWASP coverage, the state machine automatically runs the FinServ
   Lambda whenever `EnableOWASPAssessment=true`, even when
   `EnableFinServAssessment=false`. In that case, FinServ findings are used
-  only to derive OW-XX rows and are **hidden from the report UI** (no
-  FinServ nav item, service card, or section). Enable
+  only to derive OW-XX rows, are **hidden from the report UI** (no
+  FinServ nav item, service card, or section), and the raw
+  `finserv_security_report_*.csv` is not copied to the customer-facing
+  report bucket. Enable
   `EnableFinServAssessment=true` explicitly if you want the FinServ section
   to appear alongside OWASP.
 
@@ -33,10 +35,12 @@ OW-01 through OW-10 are **derived** by mapping existing findings, so the
 OWASP Lambda itself does not call AWS APIs for those mapped rows. When OWASP
 is enabled and FinServ is not, the state machine still runs FinServ once to
 produce the FS-* source findings that feed OWASP mappings; that can increase
-scan time and use the FinServ IAM surface. OW-11 and OW-12 are the only
-**native** OWASP checks: they inspect Bedrock guardrails and Lambda env vars
-for signals specific to LLM07 (System Prompt Leakage) that the existing
-checks do not cover.
+scan time and use the FinServ IAM surface. In CodeBuild-based deployments,
+the FinServ source CSV is filtered out when results are copied to the
+customer-facing report bucket unless `EnableFinServAssessment=true`. OW-11
+and OW-12 are the only **native** OWASP checks: they inspect Bedrock guardrails
+and Lambda env vars for signals specific to LLM07 (System Prompt Leakage) that
+the existing checks do not cover.
 
 The OWASP Lambda runs after the per-service Lambdas (Bedrock, SageMaker,
 AgentCore, FinServ) have written their per-region CSVs. It reads those CSVs,

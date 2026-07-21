@@ -105,6 +105,10 @@ def consolidate_html_reports():
     compliance_prefix_to_slug = {
         std["prefix"].upper().rstrip("-"): std["slug"] for std in COMPLIANCE_STANDARDS
     }
+    # Dedup identical findings, mirroring the generate_consolidated_report Lambda.
+    # Overlapping account CSVs (or a re-synced bucket) would otherwise double-count
+    # rows in the multi-account rollup. Key on the same fields the Lambda uses.
+    seen_findings = set()
 
     for account_dir in glob.glob(os.path.join(_account_files_dir(), "*/")):
         account_id = os.path.basename(account_dir.rstrip("/"))
@@ -187,6 +191,17 @@ def consolidate_html_reports():
                             # OWASP dependency (see enable_finserv above).
                             if not show_finserv and service == "finserv":
                                 continue
+
+                            dedup_key = (
+                                finding["account_id"],
+                                service,
+                                finding["check_id"],
+                                finding["region"],
+                                finding["details"],
+                            )
+                            if dedup_key in seen_findings:
+                                continue
+                            seen_findings.add(dedup_key)
 
                             finding["_service"] = service
                             all_findings.append(finding)

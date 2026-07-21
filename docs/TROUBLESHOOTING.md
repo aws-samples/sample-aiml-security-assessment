@@ -106,15 +106,28 @@ For full bucket cleanup guidance, see [Cleanup Guide](CLEANUP.md#emptying-and-de
 
 ### 6. Financial Services Checks Do Not Appear in the Report
 
-**Symptoms:** The report does not include the **Financial Services** section or any `FS-` findings.
+**Symptoms:** The report does not include the **Financial Services** section or
+any `FS-` findings.
+
+**Expected when OWASP-only:** If `EnableOWASPAssessment=true` and
+`EnableFinServAssessment=false`, FinServ still runs as an OWASP source
+dependency, but the Financial Services section, `FS-` rows, and
+`finserv_security_report_*.csv` are intentionally omitted from the
+customer-facing report bucket.
 
 **Solutions:**
 
-- Confirm the infrastructure stack parameter `EnableFinServAssessment` is set to `true`
+- Confirm the infrastructure stack parameter `EnableFinServAssessment` is set to
+  `true`
 - Confirm CodeBuild logs show `FinServ assessment enabled is true`
-- If you updated an existing deployment, re-run the CodeBuild project after the CloudFormation update completes. The parameter is passed to the Step Functions execution input when CodeBuild starts the assessment
-- Use the CodeBuild-based deployment templates for normal operation. If you deploy the SAM template directly and start Step Functions manually, include `"enableFinServ": "true"` in the `StartExecution` input
-- Check the Step Functions execution for the `FinServ Enabled?` choice state and `FinServ Security Assessment` task
+- If you updated an existing deployment, re-run the CodeBuild project after the
+  CloudFormation update completes. The parameter is passed to the Step Functions
+  execution input when CodeBuild starts the assessment.
+- Use the CodeBuild-based deployment templates for normal operation. If you
+  deploy the SAM template directly and start Step Functions manually, include
+  `"enableFinServ": "true"` in the `StartExecution` input.
+- Check the Step Functions execution for the `FinServ Enabled?` choice state and
+  `FinServ Security Assessment` task.
 
 ### 7. TargetRegions Validation or Unexpected Region Coverage
 
@@ -164,11 +177,24 @@ For full bucket cleanup guidance, see [Cleanup Guide](CLEANUP.md#emptying-and-de
 
 **Solutions:**
 
-1. **Wrong bucket**: Use the bucket from the **Infrastructure Stack** outputs, not the assessment stack
-2. **Still running**: Check CodeBuild console. Multi-region, multi-account, or FinServ-enabled assessments can take longer than a single-region run
-3. **Wrong prefix**: Look under `{account_id}/` for per-account reports and `consolidated-reports/` for the multi-account consolidated HTML report
-4. **Post-build copy failed**: In multi-account mode, CodeBuild copies CSV/HTML files from each account's SAM assessment bucket into the central infrastructure bucket. Search CodeBuild logs for `Copying files from`, `Failed to list bucket contents`, or `No files to copy`
-5. **Permissions**: Check CloudWatch Logs for Lambda execution errors and CodeBuild logs for S3 sync errors
+1. **Wrong bucket**: Use the bucket from the **Infrastructure Stack** outputs,
+   not the assessment stack.
+2. **Still running**: Check CodeBuild console. Multi-region, multi-account, or
+   FinServ-enabled assessments can take longer than a single-region run.
+3. **Wrong prefix**: Look under `{account_id}/` for per-account reports and
+   `consolidated-reports/` for the multi-account consolidated HTML report.
+4. **Post-build copy failed**: In multi-account mode, CodeBuild copies CSV/HTML
+   files from each account's SAM assessment bucket into the central
+   infrastructure bucket. Search CodeBuild logs for `Copying files from`,
+   `Failed to list bucket contents`, or `No files to copy`.
+5. **Permissions**: Check CloudWatch Logs for Lambda execution errors and
+   CodeBuild logs for S3 sync errors.
+
+**Note:** If OWASP is enabled and FinServ is disabled, absence of
+`finserv_security_report_*.csv` in the report bucket is expected. The internal
+SAM assessment bucket may still contain FinServ source artifacts created during
+the run; use the infrastructure stack's report bucket for customer-facing
+results.
 
 ### 11. Confused by Multiple CloudFormation Stacks
 
@@ -338,7 +364,16 @@ A: Minimal ongoing costs:
 
 **Q: Can I customize which security checks are included?**
 
-A: Currently, all 71 core checks and 27 Agentic AI Security checks run by default to provide comprehensive coverage. If `EnableFinServAssessment` is enabled, the 64 optional Financial Services GenAI risk checks also run. If `EnableOWASPAssessment` is enabled, the 12 optional OWASP Top 10 for LLM checks run; FinServ also runs as a hidden source dependency when OWASP needs FS-* mappings. You can filter results in the generated HTML reports by severity, status, assessment area, industry, compliance standard, or region. Future versions may support selective check execution.
+A: Currently, all 71 core checks and 27 Agentic AI Security checks run by
+default to provide comprehensive coverage. If `EnableFinServAssessment` is
+enabled, the 64 optional Financial Services GenAI risk checks also run. If
+`EnableOWASPAssessment` is enabled, the 12 optional OWASP Top 10 for LLM checks
+run; FinServ also runs as a hidden source dependency when OWASP needs `FS-*`
+mappings, but its UI rows and raw CSV are omitted from the customer-facing
+report bucket unless FinServ is explicitly enabled. You can filter results in
+the generated HTML reports by severity, status, assessment area, industry,
+compliance standard, or region. Future versions may support selective check
+execution.
 
 **Q: Can I add custom security checks?**
 

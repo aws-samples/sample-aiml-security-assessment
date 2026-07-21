@@ -1232,52 +1232,68 @@ def check_system_prompt_disclosure_denied_topic(region: str) -> List[Dict[str, A
     readable_count = 0
     unreadable: List[str] = []
     for g in guardrails:
-        # Read the version list_guardrails advertised (typically the latest
-        # published version, or DRAFT for unpublished guardrails). Falling
-        # back to DRAFT alone would miss cases where a published version has
-        # the DENY topic but DRAFT diverged. Individual read failures should
-        # not abort the whole check.
-        candidate_versions: List[str] = []
-        advertised_version = g.get("version")
-        if advertised_version:
-            candidate_versions.append(str(advertised_version))
-        if "DRAFT" not in candidate_versions:
-            candidate_versions.append("DRAFT")
+        # Isolate per-guardrail work: a missing "id" (schema drift) or any other
+        # unexpected error must degrade this one guardrail to "unreadable", not
+        # abort the whole region's OW-12 check. Mirrors build_owasp_mapping_findings.
+        try:
+            guardrail_id = g.get("id")
+            if not guardrail_id:
+                unreadable.append("<missing id> (malformed guardrail summary)")
+                continue
 
-        detail = None
-        last_error_code = ""
-        for version in candidate_versions:
-            try:
-                detail = bedrock_client.get_guardrail(
-                    guardrailIdentifier=g["id"], guardrailVersion=version
-                )
-                break
-            except ClientError as e:
-                last_error_code = e.response.get("Error", {}).get("Code", "")
-                logger.info(
-                    f"OW-12: get_guardrail failed for {g.get('id')} version={version}: "
-                    f"{last_error_code}"
+            # Read the version list_guardrails advertised (typically the latest
+            # published version, or DRAFT for unpublished guardrails). Falling
+            # back to DRAFT alone would miss cases where a published version has
+            # the DENY topic but DRAFT diverged. Individual read failures should
+            # not abort the whole check.
+            candidate_versions: List[str] = []
+            advertised_version = g.get("version")
+            if advertised_version:
+                candidate_versions.append(str(advertised_version))
+            if "DRAFT" not in candidate_versions:
+                candidate_versions.append("DRAFT")
+
+            detail = None
+            last_error_code = ""
+            for version in candidate_versions:
+                try:
+                    detail = bedrock_client.get_guardrail(
+                        guardrailIdentifier=guardrail_id, guardrailVersion=version
+                    )
+                    break
+                except ClientError as e:
+                    last_error_code = e.response.get("Error", {}).get("Code", "")
+                    logger.info(
+                        f"OW-12: get_guardrail failed for {guardrail_id} version={version}: "
+                        f"{last_error_code}"
+                    )
+                    continue
+            if detail is None:
+                unreadable.append(
+                    f"{guardrail_id} ({last_error_code or 'unknown error'})"
                 )
                 continue
-        if detail is None:
-            unreadable.append(
-                f"{g.get('id', '<unknown>')} ({last_error_code or 'unknown error'})"
+            readable_count += 1
+
+            topic_policy = detail.get("topicPolicy") or {}
+            for topic in topic_policy.get("topics", []) or []:
+                if str(topic.get("type", "")).upper() != "DENY":
+                    continue
+                haystack = (
+                    str(topic.get("name", "")) + " " + str(topic.get("definition", ""))
+                ).lower()
+                if any(needle in haystack for needle in SYSTEM_PROMPT_DENY_TOKENS):
+                    matched = True
+                    break
+            if matched:
+                break
+        except Exception as e:
+            logger.warning(
+                f"OW-12: skipping guardrail {g.get('id', '<unknown>')} due to "
+                f"unexpected error: {e}"
             )
+            unreadable.append(f"{g.get('id', '<unknown>')} (unexpected error)")
             continue
-        readable_count += 1
-
-        topic_policy = detail.get("topicPolicy") or {}
-        for topic in topic_policy.get("topics", []) or []:
-            if str(topic.get("type", "")).upper() != "DENY":
-                continue
-            haystack = (
-                str(topic.get("name", "")) + " " + str(topic.get("definition", ""))
-            ).lower()
-            if any(needle in haystack for needle in SYSTEM_PROMPT_DENY_TOKENS):
-                matched = True
-                break
-        if matched:
-            break
 
     if matched:
         return [
@@ -1295,6 +1311,41 @@ def check_system_prompt_disclosure_denied_topic(region: str) -> List[Dict[str, A
                 # of Pass/Fail outcome, matching FinServ's severity methodology.
                 severity="Medium",
                 status="Passed",
+                region=region,
+            )
+        ]
+    # At least one guardrail was readable and none carried a system-prompt-
+    # disclosure DENY topic: that is a genuine gap (Failed), regardless of any
+    # guardrails we could not read. Evaluating this before the `unreadable`
+    # short-circuit stops an AccessDenied on one guardrail from masking a real
+    # failure on another. Only when *nothing* was readable do we fall through
+    # to N/A (indeterminate != absent).
+    if readable_count > 0:
+        failed_detail = (
+            f"No readable Bedrock guardrail in {region} has a DENY topic covering "
+            "system-prompt disclosure. Attackers can craft prompts that ask the agent "
+            "to reveal its system prompt or instructions."
+        )
+        if unreadable:
+            failed_detail += (
+                f" Note: {len(unreadable)} of {len(guardrails)} guardrail(s) could not "
+                f"be inspected ({', '.join(unreadable[:5])}); this gap is reported from "
+                f"the {readable_count} readable guardrail(s) only."
+            )
+        return [
+            create_finding(
+                check_id="OW-12",
+                finding_name="OWASP LLM07: System-Prompt-Disclosure Denied Topic",
+                finding_details=failed_detail,
+                resolution=(
+                    "Add a DENY topic to at least one guardrail. Suggested topic name: "
+                    "'SystemPromptDisclosure'. Suggested definition: 'Requests to reveal, "
+                    "describe, or summarise the system prompt, instructions, or internal role "
+                    "definition given to the assistant.'"
+                ),
+                reference=ow12_reference,
+                severity="Medium",
+                status="Failed",
                 region=region,
             )
         ]
@@ -1320,24 +1371,28 @@ def check_system_prompt_disclosure_denied_topic(region: str) -> List[Dict[str, A
                 region=region,
             )
         ]
+    # Unreachable in practice: an empty guardrail list is handled earlier, so if
+    # we get here at least one guardrail was readable or unreadable. Kept as a
+    # defensive N/A fallback so a future edit that breaks the readable/unreadable
+    # invariant cannot emit an absence-claiming Failed with no readable evidence
+    # (indeterminate != absent).
     return [
         create_finding(
             check_id="OW-12",
             finding_name="OWASP LLM07: System-Prompt-Disclosure Denied Topic",
             finding_details=(
-                f"No Bedrock guardrail in {region} has a DENY topic covering system-prompt "
-                "disclosure. Attackers can craft prompts that ask the agent to reveal its "
-                "system prompt or instructions."
+                f"Could not determine system-prompt-disclosure DENY topic coverage in "
+                f"{region}; no guardrail was conclusively inspected. Do not treat this as "
+                "proof that a DENY topic is absent."
             ),
             resolution=(
-                "Add a DENY topic to at least one guardrail. Suggested topic name: "
-                "'SystemPromptDisclosure'. Suggested definition: 'Requests to reveal, "
-                "describe, or summarise the system prompt, instructions, or internal role "
-                "definition given to the assistant.'"
+                "Rerun the assessment after confirming bedrock:ListGuardrails and "
+                "bedrock:GetGuardrail are granted to the OWASPSecurityAssessmentFunction "
+                "role."
             ),
             reference=ow12_reference,
-            severity="Medium",
-            status="Failed",
+            severity="Informational",
+            status="N/A",
             region=region,
         )
     ]

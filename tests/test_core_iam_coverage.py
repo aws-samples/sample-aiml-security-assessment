@@ -123,6 +123,33 @@ _SECTION_CHECKS = [
         "end": 'Resource: "arn:aws:s3:::*"',
         "required": {"s3:GetEncryptionConfiguration"},
     },
+    # OWASP native checks (OW-11 / OW-12) run on the dedicated
+    # OWASPSecurityAssessmentFunction. FinServ grants the same actions elsewhere
+    # in the SAM templates, so a file-wide search would pass even if the OWASP
+    # function's own grants were deleted (OW-11/OW-12 would then silently degrade
+    # to AccessDenied -> N/A). Scope these assertions to the OWASP policy block.
+    {
+        "path": os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
+        "start": "- Sid: OWASPBedrockPermissions",
+        "end": "AIMLAssessmentBucket",
+        "required": {
+            "bedrock:ListGuardrails",  # OW-12
+            "bedrock:GetGuardrail",  # OW-12
+            "lambda:ListFunctions",  # OW-11
+        },
+    },
+    {
+        "path": os.path.join(
+            _REPO_ROOT, "aiml-security-assessment", "template-multi-account.yaml"
+        ),
+        "start": "- Sid: OWASPBedrockPermissions",
+        "end": "AIMLAssessmentBucket",
+        "required": {
+            "bedrock:ListGuardrails",  # OW-12
+            "bedrock:GetGuardrail",  # OW-12
+            "lambda:ListFunctions",  # OW-11
+        },
+    },
 ]
 
 

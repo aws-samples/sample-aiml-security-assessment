@@ -537,6 +537,59 @@ class TestOW12DeniedTopic:
         assert "Could not inspect" in rows[0]["Finding_Details"]
         assert "No Bedrock guardrail" not in rows[0]["Finding_Details"]
 
+    def test_partial_gap_readable_fail_not_masked_by_unreadable(self):
+        """A readable guardrail with no system-prompt DENY topic is a genuine
+        FAIL; an AccessDenied on a *second* guardrail must not downgrade it to
+        N/A."""
+        client = MagicMock()
+        client.list_guardrails.return_value = {
+            "guardrails": [{"id": "gr-readable"}, {"id": "gr-denied"}]
+        }
+
+        def get_guardrail(**kwargs):
+            if kwargs["guardrailIdentifier"] == "gr-readable":
+                # Readable, but no system-prompt DENY topic -> real gap.
+                return {
+                    "topicPolicy": {
+                        "topics": [
+                            {
+                                "type": "DENY",
+                                "name": "OffTopic",
+                                "definition": "off-topic discussions",
+                            }
+                        ]
+                    }
+                }
+            raise ClientError(
+                {"Error": {"Code": "AccessDeniedException", "Message": "denied"}},
+                "GetGuardrail",
+            )
+
+        client.get_guardrail.side_effect = get_guardrail
+        with patch.object(owasp_app.boto3, "client", return_value=client):
+            rows = owasp_app.check_system_prompt_disclosure_denied_topic(
+                region="us-east-1"
+            )
+        assert rows[0]["Status"] == "Failed"
+        assert rows[0]["Severity"] == "Medium"
+        # The finding must acknowledge the partial inspection, not claim absence.
+        assert "could not be inspected" in rows[0]["Finding_Details"]
+
+    def test_malformed_guardrail_missing_id_does_not_crash(self):
+        """A guardrail summary missing 'id' (schema drift) must degrade to
+        unreadable, not raise KeyError and abort the whole OW-12 check."""
+        client = self._fake_bedrock_client(
+            guardrails=[{"name": "no-id-guardrail"}]  # no "id" key
+        )
+        with patch.object(owasp_app.boto3, "client", return_value=client):
+            rows = owasp_app.check_system_prompt_disclosure_denied_topic(
+                region="us-east-1"
+            )
+        # Nothing readable -> N/A (indeterminate), not a crash.
+        assert rows[0]["Check_ID"] == "OW-12"
+        assert rows[0]["Status"] == "N/A"
+        assert rows[0]["Severity"] == "Informational"
+
 
 # ---------------------------------------------------------------------------
 # S3 CSV reader — FinServ un-suffixed key must be read only when include_finserv
