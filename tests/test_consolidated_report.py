@@ -238,3 +238,175 @@ class TestAgenticFindingClassification:
         assert captured["service_stats"]["agentic"]["passed"] == 1
         assert captured["service_stats"]["bedrock"]["passed"] == 0
         assert captured["service_findings"]["agentic"][0]["_service"] == "agentic"
+
+
+class TestOWASPFindingClassification:
+    """OW-* rows are classified into the OWASP compliance-standard area."""
+
+    def _run(self, monkeypatch, results):
+        captured = {}
+        monkeypatch.setattr(
+            consolidated_app,
+            "generate_report_from_template",
+            lambda **kwargs: captured.update(kwargs) or "<html></html>",
+        )
+        consolidated_app.generate_html_report(results)
+        return captured
+
+    def test_ow_rows_from_owasp_csv_route_to_owasp_bucket(self, monkeypatch):
+        results = {
+            "execution_id": "exec-123",
+            "account_id": "111122223333",
+            "bedrock": {},
+            "sagemaker": {},
+            "agentcore": {},
+            "finserv": {},
+            "owasp": {
+                "owasp_security_report_exec-123_us-east-1": [
+                    _finding(
+                        "OW-01",
+                        "us-east-1",
+                        status="Failed",
+                        name="OWASP LLM01: Prompt Injection Controls",
+                    ),
+                    _finding(
+                        "OW-11",
+                        "us-east-1",
+                        status="Passed",
+                        name="OWASP LLM07: System Prompt in Env Var",
+                    ),
+                ],
+            },
+        }
+        captured = self._run(monkeypatch, results)
+        assert captured["service_stats"]["owasp"]["failed"] == 1
+        assert captured["service_stats"]["owasp"]["passed"] == 1
+        assert all(
+            f["_service"] == "owasp" for f in captured["service_findings"]["owasp"]
+        )
+
+    def test_ow_row_landing_in_bedrock_csv_still_routes_to_owasp(self, monkeypatch):
+        """Defensive: even if an OW-* row ever lands in a non-OWASP CSV, the
+        Check_ID prefix routing should still send it to the OWASP bucket."""
+        results = _build_results(
+            {
+                "bedrock_security_report_exec-123_us-east-1": [
+                    _finding(
+                        "OW-06",
+                        "us-east-1",
+                        status="Failed",
+                        name="OWASP LLM06: Excessive Agency",
+                    ),
+                ],
+            }
+        )
+        captured = self._run(monkeypatch, results)
+        assert captured["service_stats"]["owasp"]["failed"] == 1
+        assert captured["service_stats"]["bedrock"]["failed"] == 0
+
+
+class TestFinServSuppressionWhenOWASPOnly:
+    """When FinServ runs only as an OWASP dependency (customer did not enable
+    it explicitly), FS-* rows must be hidden from the report entirely — no
+    findings, no service_stats, no service_findings — while OW-* rows are
+    kept intact.
+    """
+
+    def _run(self, monkeypatch, results, show_finserv):
+        captured = {}
+        monkeypatch.setattr(
+            consolidated_app,
+            "generate_report_from_template",
+            lambda **kwargs: captured.update(kwargs) or "<html></html>",
+        )
+        consolidated_app.generate_html_report(results, show_finserv=show_finserv)
+        return captured
+
+    def test_show_finserv_false_hides_fs_rows(self, monkeypatch):
+        results = {
+            "execution_id": "exec-123",
+            "account_id": "111122223333",
+            "bedrock": {},
+            "sagemaker": {},
+            "agentcore": {},
+            "finserv": {
+                "finserv_security_report_exec-123": [
+                    _finding("FS-51", "us-east-1", status="Failed"),
+                    _finding("FS-52", "us-east-1", status="Passed"),
+                ],
+            },
+            "owasp": {
+                "owasp_security_report_exec-123_us-east-1": [
+                    _finding("OW-01", "us-east-1", status="Failed"),
+                ],
+            },
+        }
+        captured = self._run(monkeypatch, results, show_finserv=False)
+        assert captured["service_stats"]["finserv"] == {
+            "passed": 0,
+            "failed": 0,
+            "na": 0,
+        }
+        assert captured["service_findings"]["finserv"] == []
+        # OWASP rows survive untouched.
+        assert captured["service_stats"]["owasp"]["failed"] == 1
+
+    def test_show_finserv_true_keeps_fs_rows(self, monkeypatch):
+        results = {
+            "execution_id": "exec-123",
+            "account_id": "111122223333",
+            "bedrock": {},
+            "sagemaker": {},
+            "agentcore": {},
+            "finserv": {
+                "finserv_security_report_exec-123": [
+                    _finding("FS-51", "us-east-1", status="Failed"),
+                ],
+            },
+        }
+        captured = self._run(monkeypatch, results, show_finserv=True)
+        assert captured["service_stats"]["finserv"]["failed"] == 1
+
+    def test_show_finserv_defaults_to_true(self, monkeypatch):
+        # Backwards compatibility: existing callers that don't pass the kwarg
+        # must keep seeing FinServ rows.
+        results = {
+            "execution_id": "exec-123",
+            "account_id": "111122223333",
+            "bedrock": {},
+            "sagemaker": {},
+            "agentcore": {},
+            "finserv": {
+                "finserv_security_report_exec-123": [
+                    _finding("FS-51", "us-east-1", status="Failed"),
+                ],
+            },
+        }
+        captured = {}
+        monkeypatch.setattr(
+            consolidated_app,
+            "generate_report_from_template",
+            lambda **kwargs: captured.update(kwargs) or "<html></html>",
+        )
+        consolidated_app.generate_html_report(results)
+        assert captured["service_stats"]["finserv"]["failed"] == 1
+
+
+class TestFlagParsing:
+    """The Step Functions payload may carry booleans OR strings for flags."""
+
+    def test_flag_is_true_accepts_string_true(self):
+        assert consolidated_app._flag_is_true("true") is True
+        assert consolidated_app._flag_is_true("True") is True
+        assert consolidated_app._flag_is_true(" TRUE ") is True
+
+    def test_flag_is_true_accepts_boolean_true(self):
+        assert consolidated_app._flag_is_true(True) is True
+
+    def test_flag_is_true_rejects_everything_else(self):
+        assert consolidated_app._flag_is_true(None) is False
+        assert consolidated_app._flag_is_true("false") is False
+        assert consolidated_app._flag_is_true("") is False
+        assert consolidated_app._flag_is_true(0) is False
+        assert consolidated_app._flag_is_true(1) is False  # int, not bool
+        assert consolidated_app._flag_is_true("yes") is False

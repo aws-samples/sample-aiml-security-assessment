@@ -8,7 +8,10 @@ from io import StringIO
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from report_template import generate_html_report as generate_report_from_template
+from report_template import (
+    COMPLIANCE_STANDARDS,
+    generate_html_report as generate_report_from_template,
+)
 
 # Sentinel region label used by the per-service assessments to tag findings that
 # are derived purely from global (IAM) data and run once per execution rather
@@ -49,6 +52,19 @@ def parse_csv_content(csv_content: str) -> List[Dict[str, str]]:
     return results
 
 
+def _flag_is_true(value: Any) -> bool:
+    """Interpret a Step Functions payload flag as a boolean.
+
+    Accepts the string "true" (case-insensitive) or the boolean True. Any
+    other value (missing key, "false", None, unrelated string) is False.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return False
+
+
 def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[str, Any]:
     """
     Download and parse Bedrock, SageMaker, AgentCore, and FinServ assessment CSV files for a given execution
@@ -70,13 +86,14 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         s3_bucket = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
         paginator = s3_client.get_paginator("list_objects_v2")
 
-        # One prefix per service; each matches every region's report file.
-        prefixes = [
-            f"bedrock_security_report_{execution_id}",
-            f"sagemaker_security_report_{execution_id}",
-            f"agentcore_security_report_{execution_id}",
-            f"finserv_security_report_{execution_id}",
+        # Category slug → CSV filename fragment (also matched in S3 key). The
+        # first four are hard-coded per-service Lambdas; compliance-standard
+        # entries (owasp, and future NIST/EU AI Act) come from the shared
+        # COMPLIANCE_STANDARDS registry so adding a standard is data-only.
+        category_slugs = ["bedrock", "sagemaker", "agentcore", "finserv"] + [
+            std["slug"] for std in COMPLIANCE_STANDARDS
         ]
+        prefixes = [f"{slug}_security_report_{execution_id}" for slug in category_slugs]
 
         all_objects = []
         for prefix in prefixes:
@@ -87,18 +104,27 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
             logger.warning(f"No assessment files found for execution {execution_id}")
             return {}
 
+        # Categories the report understands: per-service (bedrock/sagemaker/
+        # agentcore/finserv), the reconstructed agentic lens, and every
+        # registered compliance standard.
+        report_categories = [
+            "bedrock",
+            "sagemaker",
+            "agentcore",
+            "agentic",
+            "finserv",
+        ] + [std["slug"] for std in COMPLIANCE_STANDARDS]
         assessment_results = {
             "execution_id": execution_id,
             "account_id": account_id,
             "timestamp": datetime.now().isoformat(),
-            "bedrock": {},
-            "sagemaker": {},
-            "agentcore": {},
-            "agentic": {},
-            "finserv": {},
         }
+        for cat in report_categories:
+            assessment_results[cat] = {}
 
-        # Process each CSV file
+        # Process each CSV file. Match category by filename prefix (e.g.
+        # `owasp_security_report_...`); no substring collisions exist among
+        # the registered slugs so first-match wins is safe.
         for obj in all_objects:
             s3_key = obj["Key"]
 
@@ -107,40 +133,26 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
                 continue
 
             try:
-                # Get the file content
                 response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
-
-                # Read CSV content
                 csv_content = response["Body"].read().decode("utf-8")
-
-                # Parse CSV content
                 parsed_data = parse_csv_content(csv_content)
 
-                # Add account_id to each row if provided
                 if account_id:
                     for row in parsed_data:
                         row["Account_ID"] = account_id
 
-                # Determine which category this file belongs to based on the path
                 file_name = os.path.basename(s3_key)
                 category = None
-
-                if "bedrock" in s3_key.lower():
-                    category = "bedrock"
-                elif "sagemaker" in s3_key.lower():
-                    category = "sagemaker"
-                elif "agentcore" in s3_key.lower():
-                    category = "agentcore"
-                elif "finserv" in s3_key.lower():
-                    category = "finserv"
-                else:
+                for slug in category_slugs:
+                    if file_name.lower().startswith(f"{slug}_security_report_"):
+                        category = slug
+                        break
+                if category is None:
                     logger.warning(f"Unknown assessment type for file: {s3_key}")
                     continue
 
-                # Store parsed data in appropriate category
                 assessment_type = file_name.replace(".csv", "").lower()
                 assessment_results[category][assessment_type] = parsed_data
-
                 logger.info(
                     f"Successfully processed {file_name} for {category} assessment"
                 )
@@ -149,25 +161,16 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
                 logger.error(f"Error processing file {s3_key}: {str(e)}", exc_info=True)
                 continue
 
-        # Add summary information
         assessment_results["summary"] = {
-            "total_files_processed": len(assessment_results["bedrock"])
-            + len(assessment_results["sagemaker"])
-            + len(assessment_results["agentcore"])
-            + len(assessment_results["agentic"])
-            + len(assessment_results["finserv"]),
+            "total_files_processed": sum(
+                len(assessment_results[cat]) for cat in report_categories
+            ),
             "categories_found": [
-                cat
-                for cat in ["bedrock", "sagemaker", "agentcore", "agentic", "finserv"]
-                if assessment_results[cat]
+                cat for cat in report_categories if assessment_results[cat]
             ],
             "rows": assessment_results["bedrock"],
             "assessment_types": {
-                "bedrock": list(assessment_results["bedrock"].keys()),
-                "sagemaker": list(assessment_results["sagemaker"].keys()),
-                "agentcore": list(assessment_results["agentcore"].keys()),
-                "agentic": list(assessment_results["agentic"].keys()),
-                "finserv": list(assessment_results["finserv"].keys()),
+                cat: list(assessment_results[cat].keys()) for cat in report_categories
             },
         }
 
@@ -188,7 +191,9 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         raise
 
 
-def generate_html_report(assessment_results: Dict[str, Any]) -> str:
+def generate_html_report(
+    assessment_results: Dict[str, Any], show_finserv: bool = True
+) -> str:
     """
     Generate HTML report from assessment results.
 
@@ -197,25 +202,35 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
 
     Args:
         assessment_results: Dict containing bedrock, sagemaker, agentcore, finserv findings
+        show_finserv: When False, FinServ (FS-*) rows are excluded from the
+            report entirely. Used when FinServ was executed only as an OWASP
+            dependency (enableFinServ=false, enableOWASP=true) so its rows
+            still power OW-* mappings but are not surfaced in the UI.
 
     Returns:
         HTML report string
     """
-    # Transform assessment_results into flat findings lists
+    # Transform assessment_results into flat findings lists. Bedrock/SageMaker/
+    # AgentCore/Agentic/FinServ are fixed report categories; compliance
+    # standards (OWASP + future NIST/EU AI Act) are appended from the shared
+    # COMPLIANCE_STANDARDS registry so adding a standard is data-only.
+    compliance_slugs = [std["slug"] for std in COMPLIANCE_STANDARDS]
+    all_report_slugs = [
+        "bedrock",
+        "sagemaker",
+        "agentcore",
+        "agentic",
+        "finserv",
+    ] + compliance_slugs
     all_findings = []
     service_stats = {
-        "bedrock": {"passed": 0, "failed": 0, "na": 0},
-        "sagemaker": {"passed": 0, "failed": 0, "na": 0},
-        "agentcore": {"passed": 0, "failed": 0, "na": 0},
-        "agentic": {"passed": 0, "failed": 0, "na": 0},
-        "finserv": {"passed": 0, "failed": 0, "na": 0},
+        slug: {"passed": 0, "failed": 0, "na": 0} for slug in all_report_slugs
     }
-    service_findings = {
-        "bedrock": [],
-        "sagemaker": [],
-        "agentcore": [],
-        "agentic": [],
-        "finserv": [],
+    service_findings = {slug: [] for slug in all_report_slugs}
+    # Check_ID prefix (uppercase, without trailing dash) → report-service slug
+    # for the compliance standards; used to route rows by Check_ID prefix.
+    compliance_prefix_to_slug = {
+        std["prefix"].upper().rstrip("-"): std["slug"] for std in COMPLIANCE_STANDARDS
     }
     regions = set()
 
@@ -228,15 +243,34 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
     # account; account is included so a future multi-account merge is unaffected.
     seen_findings = set()
 
-    for service in ["bedrock", "sagemaker", "agentcore", "finserv"]:
+    csv_source_slugs = [
+        "bedrock",
+        "sagemaker",
+        "agentcore",
+        "finserv",
+    ] + compliance_slugs
+    for service in csv_source_slugs:
         if service in assessment_results:
             for report_type, findings in assessment_results[service].items():
                 for finding in findings:
-                    output_service = (
-                        "agentic"
-                        if finding.get("Check_ID", "").upper().startswith("AG-")
-                        else service
-                    )
+                    check_id_upper = finding.get("Check_ID", "").upper()
+                    if check_id_upper.startswith("AG-"):
+                        output_service = "agentic"
+                    elif (
+                        "-" in check_id_upper
+                        and check_id_upper.split("-", 1)[0] in compliance_prefix_to_slug
+                    ):
+                        output_service = compliance_prefix_to_slug[
+                            check_id_upper.split("-", 1)[0]
+                        ]
+                    else:
+                        output_service = service
+                    # When FinServ ran only as an OWASP dependency (customer
+                    # did not enable it explicitly), drop FS-* rows so the
+                    # UI shows a clean OWASP-only view. FS rows still fed
+                    # the OW-* mappings inside the OWASP Lambda upstream.
+                    if not show_finserv and output_service == "finserv":
+                        continue
                     dedup_key = (
                         finding.get("Account_ID", ""),
                         output_service,
@@ -351,13 +385,23 @@ def lambda_handler(event, context):
                 "AIML_ASSESSMENT_BUCKET_NAME environment variable is required"
             )
 
+        # The state machine now forces FinServ to run whenever OWASP is
+        # enabled (OWASP's FS→OW mappings need the FinServ CSV). Show the
+        # FinServ UI only when the customer asked for it explicitly. When
+        # OWASP is on but FinServ is off, FS-* rows are consumed silently
+        # by OWASP and hidden from the report.
+        original_input = event.get("OriginalInput") or {}
+        show_finserv = _flag_is_true(original_input.get("enableFinServ"))
+
         # Get assessment results
         assessment_results = get_assessment_results(execution_id, account_id)
         if not assessment_results:
             raise ValueError(f"No assessment results found: {execution_id}")
 
         # Generate HTML report
-        html_content = generate_html_report(assessment_results)
+        html_content = generate_html_report(
+            assessment_results, show_finserv=show_finserv
+        )
 
         # Write HTML report to S3
         s3_key = write_html_to_s3(html_content, s3_bucket, execution_id, account_id)
@@ -390,8 +434,4 @@ def lambda_handler(event, context):
 
     except Exception as e:
         logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
-        return {
-            "statusCode": 500,
-            "executionId": execution_id if "execution_id" in locals() else "unknown",
-            "body": f"Error generating HTML report: {str(e)}",
-        }
+        raise

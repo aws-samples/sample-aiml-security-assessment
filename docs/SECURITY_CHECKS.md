@@ -1,6 +1,6 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 161 security checks performed by the AI/ML Security Assessment framework (70 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 27 Agentic AI Security checks, plus 64 Financial Services GenAI Risk checks).
+This document provides a comprehensive reference for all 174 security checks performed by the AI/ML Security Assessment framework (71 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 27 Agentic AI Security checks, 64 Financial Services GenAI Risk checks, and 12 OWASP Top 10 for LLM checks).
 
 ## Table of Contents
 
@@ -9,10 +9,11 @@ This document provides a comprehensive reference for all 161 security checks per
 - [Severity Levels](#severity-levels)
 - [Status Values](#status-values)
 - [Amazon SageMaker AI Security Checks (25)](#amazon-sagemaker-ai-security-checks-25)
-- [Amazon Bedrock Security Checks (32)](#amazon-bedrock-security-checks-32)
+- [Amazon Bedrock Security Checks (33)](#amazon-bedrock-security-checks-33)
 - [Amazon Bedrock AgentCore Security Checks (13)](#amazon-bedrock-agentcore-security-checks-13)
 - [Agentic AI Security Checks (27)](#agentic-ai-security-checks-27)
 - [Financial Services GenAI Risk Checks (64)](#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)
+- [OWASP Top 10 for LLM Checks (12)](#owasp-top-10-for-llm-checks-12)
 
 ---
 
@@ -21,12 +22,13 @@ This document provides a comprehensive reference for all 161 security checks per
 The framework evaluates your AI/ML workloads against AWS security best practices across three services:
 
 | Service | Number of Checks | Focus Areas |
-|---------|------------------|-------------|
+| --------- | ------------------ | ------------- |
 | Amazon SageMaker AI | 25 | Security Hub controls, encryption, network isolation, IAM, MLOps |
-| Amazon Bedrock | 32 | Guardrails, content filters, sensitive-information/PII filters, contextual grounding, automated reasoning, encryption (custom, imported, knowledge base, batch inference output), VPC endpoints, IAM permissions, agent guardrail association and least privilege, logging, CloudWatch alarms, cross-account policies, model evaluation, prompt flow validation, RAG evaluation, service quotas |
+| Amazon Bedrock | 33 | Guardrails, content filters, sensitive-information/PII filters, contextual grounding, automated reasoning, encryption (custom, imported, knowledge base, batch inference output), VPC endpoints, IAM permissions, agent guardrail association and least privilege, logging, CloudWatch alarms, cross-account policies, model evaluation, prompt flow validation, RAG evaluation, service quotas, Lambda code scanning (Amazon Inspector) |
 | Amazon Bedrock AgentCore | 13 | VPC configuration, encryption, observability, resource policies |
 | Agentic AI Security | 27 | Bounded autonomy, agent identity, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability, abuse protection |
 | Financial Services GenAI Risk | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
+| OWASP Top 10 for LLM | 12 | LLM01 Prompt Injection, LLM02 Sensitive Info Disclosure, LLM03 Supply Chain, LLM04 Data/Model Poisoning, LLM05 Improper Output Handling, LLM06 Excessive Agency, LLM07 System Prompt Leakage, LLM08 Vector/Embedding Weaknesses, LLM09 Misinformation, LLM10 Unbounded Consumption |
 
 ---
 
@@ -35,19 +37,20 @@ The framework evaluates your AI/ML workloads against AWS security best practices
 Each security check has a unique identifier with a service prefix:
 
 | Prefix | Service | Example |
-|--------|---------|---------|
+| -------- | --------- | --------- |
 | **SM-XX** | Amazon SageMaker | SM-01, SM-25 |
-| **BR-XX** | Amazon Bedrock | BR-01, BR-32 |
+| **BR-XX** | Amazon Bedrock | BR-01, BR-33 |
 | **AC-XX** | Amazon Bedrock AgentCore | AC-01, AC-13 |
 | **AG-XX** | Agentic AI Security | AG-01, AG-27 |
 | **FS-XX** | Financial Services GenAI Risk | FS-01, FS-69 |
+| **OW-XX** | OWASP Top 10 for LLM | OW-01, OW-12 |
 
 ---
 
 ## Severity Levels
 
 | Severity | Description | Action Required |
-|----------|-------------|-----------------|
+| ---------- | ------------- | ----------------- |
 | **High** | Critical security issues that could lead to data exposure, unauthorized access, or compliance violations | Immediate remediation recommended |
 | **Medium** | Important security improvements that strengthen your security posture | Address in next maintenance window |
 | **Low** | Minor optimizations and best practice recommendations | Address when convenient |
@@ -59,7 +62,7 @@ Each security check has a unique identifier with a service prefix:
 ## Status Values
 
 | Status | Description |
-|--------|-------------|
+| -------- | ------------- |
 | **Failed** | Security issue identified that requires remediation |
 | **Passed** | Checked resources met the assessed best practice at time of scan |
 | **N/A** | No resources exist to check (for example, no notebooks, no guardrails configured) |
@@ -201,7 +204,7 @@ Each security check has a unique identifier with a service prefix:
 
 ---
 
-## Amazon Bedrock Security Checks (32)
+## Amazon Bedrock Security Checks (33)
 
 ### BR-01: AWS IAM Least Privilege
 
@@ -380,6 +383,12 @@ Each security check has a unique identifier with a service prefix:
 - **Severity:** Medium
 - **Type:** Regional
 - **Description:** Verifies CloudWatch alarms exist on Amazon Bedrock runtime metrics (the `AWS/Bedrock` namespace) to detect abuse, denial-of-wallet, sustained throttling, and content-filter spikes. Uses `DescribeAlarms` and matches alarms that target the `AWS/Bedrock` namespace directly or via a metric-math expression. Only assessed in regions that have Bedrock resources.
+
+### BR-33: Amazon Inspector Lambda Code Scanning
+
+- **Severity:** Medium
+- **Type:** Regional
+- **Description:** When Lambda functions with Bedrock indicators are detected in the region, verifies Amazon Inspector Lambda standard scanning (`lambda`) and Lambda code scanning (`lambdaCode`) are both enabled so those in-scope functions and their dependencies are scanned for vulnerable packages and hardcoded secrets. Calls `lambda:ListFunctions` for scoping and `inspector2:BatchGetAccountStatus` for Inspector status. Reports `Failed` only when in-scope Lambda functions exist and either `resourceState.lambda.status` or `resourceState.lambdaCode.status` is not `ENABLED`. No in-scope Lambda functions, access denied, and region-unavailable states resolve to `N/A`.
 
 ---
 
@@ -694,3 +703,41 @@ The same document includes the shared intro, severity rubric, validation note,
 upstream-overlap table, and the compliance framework mapping table
 (SR 11-7, FFIEC CAT, NYDFS 500.06, PCI-DSS 12.3.2, DORA Art.6, MAS TRM 9,
 ISO 27001 A.12, ECOA, OWASP LLM Top 10).
+
+---
+
+## OWASP Top 10 for LLM Checks (12)
+
+These 12 checks (OW-XX) map the AI/ML Security Assessment findings to the
+[OWASP Top 10 for LLM 2025](https://genai.owasp.org/llm-top-10/) categories.
+OW-01..OW-10 are **derived by mapping** from existing BR/SM/AC/FS findings.
+The OWASP Lambda itself does not call AWS APIs for mapped rows, but enabling
+OWASP can auto-run FinServ to produce FS-* source findings when FinServ is
+otherwise disabled. OW-11 and OW-12 are net-new checks that address LLM07
+(System Prompt Leakage), which the existing checks do not directly cover.
+If a required source CSV is missing, the OWASP Lambda emits an informational
+`OW-00` completeness row rather than silently dropping derived rows.
+
+**Opt-in.** OWASP checks run only when the `EnableOWASPAssessment` deployment
+parameter is `true` and the Step Functions execution includes `"enableOWASP": "true"`.
+
+**Rendered under a new "By Compliance Standard" sidebar section** of the HTML
+report, alongside future NIST AI RMF and EU AI Act sections.
+
+The full catalog is in **[`SECURITY_CHECKS_OWASP.md`](./SECURITY_CHECKS_OWASP.md)**,
+organized by OWASP category:
+
+- **LLM01 Prompt Injection** — OW-01
+- **LLM02 Sensitive Information Disclosure** — OW-02
+- **LLM03 Supply Chain** — OW-03
+- **LLM04 Data and Model Poisoning** — OW-04
+- **LLM05 Improper Output Handling** — OW-05
+- **LLM06 Excessive Agency** — OW-06
+- **LLM07 System Prompt Leakage** — OW-07 (mapping-based) + OW-11, OW-12 (native)
+- **LLM08 Vector and Embedding Weaknesses** — OW-08
+- **LLM09 Misinformation** — OW-09
+- **LLM10 Unbounded Consumption** — OW-10
+
+**Preliminary and illustrative.** OWASP mappings have not been reviewed by
+external auditors. Validate mappings with your Security/Compliance team
+before using as audit evidence.

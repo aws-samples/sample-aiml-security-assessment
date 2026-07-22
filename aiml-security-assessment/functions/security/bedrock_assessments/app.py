@@ -154,6 +154,31 @@ ACCESS_DENIED_ERROR_CODES = {
     "UnauthorizedOperation",
 }
 
+COULD_NOT_ASSESS_RESOLUTION = (
+    "No action required on the assessed workload. Resolve the assessment "
+    "prerequisite or permission issue and rerun the assessment."
+)
+
+
+def get_assessment_error_label(error: Exception) -> str:
+    """Return a report-safe error label without leaking raw exception text."""
+    if isinstance(error, ClientError):
+        code = error.response.get("Error", {}).get("Code", "")
+        if code:
+            return code
+    if isinstance(error, EndpointConnectionError):
+        return "EndpointConnectionError"
+    return type(error).__name__
+
+
+def build_could_not_assess_detail(error: Exception, region: str = "") -> str:
+    """Build a standardized N/A detail for scanner/tooling failures."""
+    location = f" in {region}" if region else ""
+    return (
+        f"Could not assess this check{location}. Assessment error: "
+        f"{get_assessment_error_label(error)}."
+    )
+
 
 def is_account_not_authorized(error: Exception) -> bool:
     """
@@ -586,11 +611,11 @@ def check_marketplace_subscription_access(
                 create_finding(
                     check_id="BR-03",
                     finding_name="Marketplace Subscription Access Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -833,11 +858,11 @@ def check_stale_bedrock_access(permission_cache, region: str = "") -> Dict[str, 
                 create_finding(
                     check_id="BR-14",
                     finding_name="Stale Bedrock Access Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -1215,11 +1240,11 @@ def check_bedrock_access_and_vpc_endpoints(
                 create_finding(
                     check_id="BR-02",
                     finding_name="Bedrock VPC Endpoint Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -1313,11 +1338,11 @@ def check_bedrock_guardrails(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-05",
                     finding_name="Bedrock Guardrails Check",
-                    finding_details=f"Error checking Bedrock Guardrails configuration: {str(e)}",
-                    resolution="Verify your AWS credentials and permissions to access Bedrock Guardrails.",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             )
@@ -1334,11 +1359,11 @@ def check_bedrock_guardrails(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-05",
                     finding_name="Bedrock Guardrails Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -1471,11 +1496,11 @@ def check_bedrock_logging_configuration(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-04",
                     finding_name="Bedrock Logging Configuration Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -1623,11 +1648,11 @@ def check_bedrock_cloudtrail_logging(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-06",
                     finding_name="Bedrock CloudTrail Logging Check",
-                    finding_details=f"Error checking CloudTrail configuration for Bedrock logging: {str(e)}",
-                    resolution="Verify your AWS credentials and permissions to access CloudTrail.",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             )
@@ -1646,11 +1671,11 @@ def check_bedrock_cloudtrail_logging(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-06",
                     finding_name="Bedrock CloudTrail Logging Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -1787,11 +1812,11 @@ def check_bedrock_prompt_management(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-07",
                     finding_name="Bedrock Prompt Management Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -1972,8 +1997,8 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
                         create_finding(
                             check_id="BR-09",
                             finding_name="Bedrock Knowledge Base Encryption Check",
-                            finding_details=f"Error checking Knowledge Base encryption: {str(e)}",
-                            resolution="Verify your AWS credentials and permissions to access Bedrock Knowledge Bases",
+                            finding_details=build_could_not_assess_detail(e, region),
+                            resolution=COULD_NOT_ASSESS_RESOLUTION,
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
                             severity="Informational",
                             status="N/A",
@@ -1997,11 +2022,11 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-09",
                     finding_name="Bedrock Knowledge Base Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -2191,11 +2216,11 @@ def check_bedrock_guardrail_iam_enforcement(
                 create_finding(
                     check_id="BR-10",
                     finding_name="Bedrock Guardrail IAM Enforcement Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -2351,11 +2376,11 @@ def check_bedrock_custom_model_encryption(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-11",
                     finding_name="Bedrock Custom Model Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -2525,11 +2550,11 @@ def check_bedrock_invocation_log_encryption(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-12",
                     finding_name="Bedrock Invocation Log Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -2718,11 +2743,11 @@ def check_bedrock_flows_guardrails(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-13",
                     finding_name="Bedrock Flows Guardrails Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -2899,11 +2924,11 @@ def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, A
                 create_finding(
                     check_id="BR-08",
                     finding_name="Bedrock Agent IAM Roles Check",
-                    finding_details=f"Error checking Bedrock agent configurations: {str(e)}",
-                    resolution="Verify your AWS credentials and permissions to access Bedrock agents.",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/gensec05-bp01.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             )
@@ -2920,11 +2945,11 @@ def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, A
                 create_finding(
                     check_id="BR-08",
                     finding_name="Bedrock Agent IAM Roles Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -3119,11 +3144,11 @@ def check_bedrock_cross_account_guardrails(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-15",
                     finding_name="Cross-Account Guardrails Enforcement Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-enforcements.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -3299,11 +3324,11 @@ def check_bedrock_guardrail_tier(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-16",
                     finding_name="Guardrail Tier Validation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
-                    severity="Medium",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -3458,11 +3483,11 @@ def check_bedrock_custom_model_kms_encryption(region: str = "") -> Dict[str, Any
                 create_finding(
                     check_id="BR-17",
                     finding_name="Custom Model Customer-Managed KMS Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -3662,11 +3687,11 @@ def check_bedrock_model_evaluations(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-18",
                     finding_name="Model Evaluation Implementation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
-                    severity="Medium",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -3871,11 +3896,11 @@ def check_bedrock_prompt_flow_validation(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-19",
                     finding_name="Prompt Flow Validation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows.html",
-                    severity="Medium",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -4123,11 +4148,11 @@ def check_bedrock_knowledge_base_kms_encryption(region: str = "") -> Dict[str, A
                 create_finding(
                     check_id="BR-20",
                     finding_name="Knowledge Base Customer-Managed KMS Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -4411,11 +4436,11 @@ def check_bedrock_agent_action_group_iam(
                 create_finding(
                     check_id="BR-21",
                     finding_name="Agent Action Group IAM Least Privilege Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-permissions.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -4656,11 +4681,11 @@ def check_bedrock_service_quotas_throttling(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-22",
                     finding_name="Model Invocation Throttling Limits Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
-                    severity="Medium",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -4859,11 +4884,11 @@ def check_bedrock_guardrail_content_filters(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-23",
                     finding_name="Guardrail Content Filter Coverage Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -5037,11 +5062,11 @@ def check_bedrock_automated_reasoning_policy(region: str = "") -> Dict[str, Any]
                 create_finding(
                     check_id="BR-24",
                     finding_name="Automated Reasoning Policy Implementation Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/deploy-automated-reasoning-policy.html",
-                    severity="Medium",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -5245,11 +5270,11 @@ def check_bedrock_rag_evaluation_jobs(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-25",
                     finding_name="RAG Evaluation Jobs Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-kb.html",
-                    severity="Low",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -5426,11 +5451,11 @@ def check_bedrock_guardrail_pii_filters(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-26",
                     finding_name="Guardrail Sensitive Information Filter Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-sensitive-filters.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -5609,11 +5634,11 @@ def check_bedrock_guardrail_contextual_grounding(region: str = "") -> Dict[str, 
                 create_finding(
                     check_id="BR-27",
                     finding_name="Guardrail Contextual Grounding Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
-                    severity="Medium",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -5763,11 +5788,11 @@ def check_bedrock_agent_guardrail_association(region: str = "") -> Dict[str, Any
                 create_finding(
                     check_id="BR-28",
                     finding_name="Agent Guardrail Association Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -5938,11 +5963,11 @@ def check_bedrock_agent_idle_session_ttl(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-29",
                     finding_name="Agent Idle Session TTL Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-create.html",
-                    severity="Low",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -6121,11 +6146,11 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                 create_finding(
                     check_id="BR-30",
                     finding_name="Imported Model Customer-Managed KMS Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
-                    severity="High",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -6295,11 +6320,11 @@ def check_bedrock_batch_inference_output_encryption(
                 create_finding(
                     check_id="BR-31",
                     finding_name="Batch Inference Output Encryption Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html",
-                    severity="Medium",
-                    status="Failed",
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -6429,11 +6454,310 @@ def check_bedrock_cloudwatch_alarms(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="BR-32",
                     finding_name="Bedrock CloudWatch Alarm Check",
-                    finding_details=f"Error during check: {str(e)}",
-                    resolution="Investigate error and retry assessment",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-runtime-metrics.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            ],
+        }
+
+
+BEDROCK_LAMBDA_INDICATORS = (
+    "bedrock",
+    "amazonbedrock",
+    "bedrock-runtime",
+    "bedrock-agent",
+    "invokemodel",
+    "invoke_model",
+    "retrieveandgenerate",
+    "retrieve_and_generate",
+)
+
+
+def _lambda_has_bedrock_indicator(function_config: Dict[str, Any]) -> bool:
+    """Best-effort scope check for Lambda functions likely to call Bedrock."""
+    values = [
+        function_config.get("FunctionName", ""),
+        function_config.get("FunctionArn", ""),
+        function_config.get("Description", ""),
+        function_config.get("Handler", ""),
+        function_config.get("Role", ""),
+    ]
+    env_vars = (function_config.get("Environment") or {}).get("Variables") or {}
+    for name, value in env_vars.items():
+        values.extend([name, value])
+    haystack = " ".join(str(v).lower() for v in values if v is not None)
+    return any(indicator in haystack for indicator in BEDROCK_LAMBDA_INDICATORS)
+
+
+def _list_bedrock_related_lambdas(region: str) -> List[Dict[str, Any]]:
+    """List Lambda functions whose configuration contains Bedrock indicators."""
+    lambda_client = boto3.client("lambda", config=boto3_config, region_name=region)
+    functions = _list_all_items(
+        lambda_client,
+        "list_functions",
+        "Functions",
+        max_results_param="MaxItems",
+        token_param="Marker",
+        token_response_keys=("NextMarker",),
+        max_results=50,
+    )
+    return [fn for fn in functions if _lambda_has_bedrock_indicator(fn)]
+
+
+def check_inspector_lambda_code_scanning(region: str = "") -> Dict[str, Any]:
+    """
+    BR-33: Verify Amazon Inspector Lambda code scanning is enabled in this
+    region, so Lambda code that may invoke Bedrock is scanned for vulnerable
+    dependencies and hardcoded secrets. This addresses the LLM03 supply-chain
+    surface for GenAI Lambda workloads (SBOM / static analysis).
+    """
+    reference = "https://docs.aws.amazon.com/inspector/latest/user/scanning-lambda.html"
+    findings = {
+        "check_name": "Amazon Inspector Lambda Code Scanning Check",
+        "status": "PASS",
+        "details": "",
+        "csv_data": [],
+    }
+
+    try:
+        try:
+            bedrock_related_lambdas = _list_bedrock_related_lambdas(region)
+        except (ClientError, EndpointConnectionError) as e:
+            code = ""
+            if isinstance(e, ClientError):
+                code = e.response.get("Error", {}).get("Code", "")
+            if (
+                code in REGION_UNAVAILABLE_ERROR_CODES
+                or isinstance(e, EndpointConnectionError)
+                or is_region_unsupported(e)
+            ):
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-33",
+                        finding_name="Amazon Inspector Lambda Code Scanning Check",
+                        finding_details=describe_api_error(e, "AWS Lambda", region),
+                        resolution="No action required. AWS Lambda is not available in this region.",
+                        reference=reference,
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+            if code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-33",
+                        finding_name="Amazon Inspector Lambda Code Scanning Check",
+                        finding_details=(
+                            "Access denied when listing Lambda functions. The assessment "
+                            "could not determine whether any Lambda functions are in scope "
+                            "for Bedrock supply-chain scanning."
+                        ),
+                        resolution="Grant lambda:ListFunctions to the Bedrock assessment role and retry.",
+                        reference=reference,
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+            raise
+
+        if not bedrock_related_lambdas:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-33",
+                    finding_name="Amazon Inspector Lambda Code Scanning Check",
+                    finding_details=(
+                        f"No Lambda functions with Bedrock indicators were found in "
+                        f"{region}; Inspector Lambda code-scanning coverage was not "
+                        "assessed for Bedrock-calling Lambda workloads."
+                    ),
+                    resolution=(
+                        "No action required. If Bedrock-calling Lambda functions exist, "
+                        "ensure their function name, ARN, description, handler, role, or "
+                        "environment variables contain a Bedrock identifier that the "
+                        "assessment can detect, or evaluate Inspector coverage manually."
+                    ),
+                    reference=reference,
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+            return findings
+
+        sample_functions = ", ".join(
+            sorted(
+                fn.get("FunctionName", "<unknown>")
+                for fn in bedrock_related_lambdas[:5]
+            )
+        )
+        more_functions = (
+            ""
+            if len(bedrock_related_lambdas) <= 5
+            else f" (and {len(bedrock_related_lambdas) - 5} more)"
+        )
+
+        inspector_client = boto3.client(
+            "inspector2", config=boto3_config, region_name=region
+        )
+
+        try:
+            response = inspector_client.batch_get_account_status()
+        except (ClientError, EndpointConnectionError) as e:
+            code = ""
+            if isinstance(e, ClientError):
+                code = e.response.get("Error", {}).get("Code", "")
+            if (
+                code in REGION_UNAVAILABLE_ERROR_CODES
+                or isinstance(e, EndpointConnectionError)
+                or is_region_unsupported(e)
+            ):
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-33",
+                        finding_name="Amazon Inspector Lambda Code Scanning Check",
+                        finding_details=describe_api_error(
+                            e, "Amazon Inspector", region
+                        ),
+                        resolution="No action required. Amazon Inspector is not available in this region.",
+                        reference=reference,
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+            if code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-33",
+                        finding_name="Amazon Inspector Lambda Code Scanning Check",
+                        finding_details=(
+                            "Access denied when calling inspector2:BatchGetAccountStatus. "
+                            "The assessment role is missing the required permission, so "
+                            "Lambda code-scanning coverage cannot be evaluated in this region."
+                        ),
+                        resolution="Grant inspector2:BatchGetAccountStatus to the assessment role and retry.",
+                        reference=reference,
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+            raise
+
+        accounts = response.get("accounts") or []
+        if not accounts:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-33",
+                    finding_name="Amazon Inspector Lambda Code Scanning Check",
+                    finding_details=(
+                        f"Amazon Inspector returned no account status entries in {region}; "
+                        "code-scanning coverage could not be determined."
+                    ),
+                    resolution="Verify Amazon Inspector is activated for this account, then retry.",
+                    reference=reference,
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+            return findings
+
+        # There is normally one entry (the caller's account). If cross-account
+        # aggregation returns several, require every entry to be ENABLED — a
+        # single account with scanning disabled is enough to make BR-33 fail.
+        lambda_states = []
+        lambda_code_states = []
+        for account in accounts:
+            resource_state = account.get("resourceState") or {}
+            lambda_states.append(
+                (resource_state.get("lambda") or {}).get("status", "UNKNOWN")
+            )
+            lambda_code_states.append(
+                (resource_state.get("lambdaCode") or {}).get("status", "UNKNOWN")
+            )
+
+        lambda_enabled = all(s == "ENABLED" for s in lambda_states)
+        lambda_code_enabled = all(s == "ENABLED" for s in lambda_code_states)
+
+        if lambda_enabled and lambda_code_enabled:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-33",
+                    finding_name="Amazon Inspector Lambda Code Scanning Check",
+                    finding_details=(
+                        f"Amazon Inspector Lambda standard scanning and Lambda code "
+                        f"scanning are both ENABLED in {region}. Detected "
+                        f"{len(bedrock_related_lambdas)} Lambda function(s) with "
+                        f"Bedrock indicators: {sample_functions}{more_functions}."
+                    ),
+                    resolution="No action required.",
+                    reference=reference,
+                    severity="Medium",
+                    status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["status"] = "FAIL"
+            findings["details"] = (
+                f"Inspector Lambda scanning status in {region}: "
+                f"lambda={lambda_states}, lambdaCode={lambda_code_states}"
+            )
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-33",
+                    finding_name="Amazon Inspector Lambda Code Scanning Check",
+                    finding_details=(
+                        f"Amazon Inspector Lambda scanning is not fully enabled in {region}. "
+                        f"Lambda standard scan status: {', '.join(sorted(set(lambda_states)))}. "
+                        f"Lambda code scan status: {', '.join(sorted(set(lambda_code_states)))}. "
+                        f"Detected {len(bedrock_related_lambdas)} Lambda function(s) "
+                        f"with Bedrock indicators: {sample_functions}{more_functions}. "
+                        "Without both scan types enabled, vulnerable dependencies and "
+                        "hardcoded secrets in these in-scope functions will not be detected."
+                    ),
+                    resolution=(
+                        "Enable both Lambda standard scanning and Lambda code scanning in "
+                        "Amazon Inspector for this account and region. Console: Inspector -> "
+                        "Account management -> Activate for Lambda functions and Lambda code."
+                    ),
+                    reference=reference,
                     severity="Medium",
                     status="Failed",
+                    region=region,
+                )
+            )
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_inspector_lambda_code_scanning: {str(e)}", exc_info=True
+        )
+        return {
+            "check_name": "Amazon Inspector Lambda Code Scanning Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-33",
+                    finding_name="Amazon Inspector Lambda Code Scanning Check",
+                    finding_details=build_could_not_assess_detail(e, region),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
+                    reference=reference,
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             ],
@@ -6807,6 +7131,10 @@ def lambda_handler(event, context):
         cloudwatch_alarm_findings = check_bedrock_cloudwatch_alarms(region=region)
         all_findings.append(cloudwatch_alarm_findings)
 
+        logger.info("Running Amazon Inspector Lambda code scanning check (BR-33)")
+        inspector_lambda_findings = check_inspector_lambda_code_scanning(region=region)
+        all_findings.append(inspector_lambda_findings)
+
         logger.info("Building Agentic AI Security findings from Bedrock results")
         all_findings.append(build_agentic_bedrock_security_findings(all_findings))
 
@@ -6834,4 +7162,4 @@ def lambda_handler(event, context):
 
     except Exception as e:
         logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
-        return {"statusCode": 500, "body": f"Error during security checks: {str(e)}"}
+        raise

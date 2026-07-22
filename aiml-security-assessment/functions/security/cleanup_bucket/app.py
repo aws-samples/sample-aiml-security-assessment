@@ -63,7 +63,4 @@ def lambda_handler(event, context):
 
     except Exception as e:
         logger.error(f"Error during bucket cleanup: {str(e)}", exc_info=True)
-        return {
-            "statusCode": 500,
-            "body": f"Error during bucket cleanup: {str(e)}",
-        }
+        raise

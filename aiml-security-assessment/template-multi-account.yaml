@@ -57,6 +57,7 @@ Resources:
         SagemakerSecurityAssessmentFunction: !GetAtt SagemakerSecurityAssessmentFunction.Arn
         AgentCoreSecurityAssessmentFunction: !GetAtt AgentCoreSecurityAssessmentFunction.Arn
         FinServSecurityAssessmentFunction: !GetAtt FinServSecurityAssessmentFunction.Arn
+        OWASPSecurityAssessmentFunction: !GetAtt OWASPSecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
         MaxRegionConcurrency: !Ref MaxRegionConcurrency
@@ -75,6 +76,8 @@ Resources:
             FunctionName: !Ref AgentCoreSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref FinServSecurityAssessmentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref OWASPSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref GenerateConsolidatedReportFunction
         - S3CrudPolicy:
@@ -264,6 +267,7 @@ Resources:
               Effect: Allow
               Action:
                 - lambda:ListFunctions
+                - lambda:GetFunction
               Resource: '*'
             - Sid: ECSPermissions
               Effect: Allow
@@ -277,6 +281,11 @@ Resources:
               Action:
                 - ec2:DescribeVpcEndpoints
                 - ec2:DescribeVpcs
+              Resource: '*'
+            - Sid: InspectorPermissions
+              Effect: Allow
+              Action:
+                - inspector2:BatchGetAccountStatus # BR-33
               Resource: '*'
 
   SagemakerSecurityAssessmentFunction:
@@ -586,6 +595,7 @@ Resources:
                 - sagemaker:ListModelPackages
                 - sagemaker:ListFeatureGroups
                 - sagemaker:ListModels
+                - sagemaker:ListEndpoints
                 - sagemaker:ListModelCards
                 - sagemaker:ListTags
               Resource: '*'
@@ -644,6 +654,38 @@ Resources:
                 - s3:GetBucketEncryption
                 - s3:GetBucketNotification
               Resource: 'arn:aws:s3:::*'
+
+  OWASPSecurityAssessmentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-OWASPAssessment'
+      CodeUri: functions/security/owasp_assessments/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      Timeout: 600 # 10 minutes
+      MemorySize: 1024
+      Environment:
+        Variables:
+          AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref AIMLAssessmentBucket
+        - Statement:
+            - Sid: OWASPBedrockPermissions
+              Effect: Allow
+              Action:
+                - bedrock:ListGuardrails
+                - bedrock:GetGuardrail
+              Resource: '*'
+            - Sid: OWASPLambdaPermissions
+              Effect: Allow
+              Action:
+                # OW-11 reads env vars from the list_functions response
+                # itself; no per-function GetFunctionConfiguration is needed.
+                - lambda:ListFunctions
+              Resource: '*'
 
   # S3 bucket (always created for local storage)
   AIMLAssessmentBucket:

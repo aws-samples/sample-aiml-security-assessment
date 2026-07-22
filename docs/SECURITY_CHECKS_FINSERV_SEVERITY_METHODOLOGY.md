@@ -10,7 +10,7 @@ FinServ (`FS-`) check is assigned a severity. It answers reviewer Finding 6 ("Ho
 ## 1. Research basis (authoritative sources reviewed)
 
 | Standard | What it contributes | Why we did / didn't adopt it wholesale |
-|---|---|---|
+| --- | --- | --- |
 | **AWS Security Hub ASFF Severity** ([API_Severity](https://docs.aws.amazon.com/securityhub/1.0/APIReference/API_Severity.html)) | The AWS-native label set (`INFORMATIONAL/LOW/MEDIUM/HIGH/CRITICAL`) with precise semantics and normalized 0–100 ranges. | **Adopted as the target label vocabulary** so findings align with Security Hub, the service customers use to aggregate posture findings. |
 | **AWS exposure-finding severity factors** ([doc](https://docs.aws.amazon.com/securityhub/latest/userguide/exposure-findings-severity.html)) | AWS's own model: *Awareness, Ease of discovery, Ease of exploit, Likelihood of exploit, Impact* — i.e. **Likelihood × Impact**. | **Adopted the Likelihood × Impact shape**; AWS itself uses it, so it is the most defensible AWS-aligned model. |
 | **NIST SP 800-30 r1** ([CSRC](https://csrc.nist.gov/pubs/sp/800/30/final)) | Risk = Likelihood × Impact, a 5×5 qualitative matrix with a published lookup table. | **Adopted the matrix-lookup approach** (foundational US-government risk standard; FinServ regulators expect NIST-lineage rigor). Simplified to 3×3 for explainability. |
@@ -31,7 +31,7 @@ We use the ASFF labels with AWS's exact semantics. The tool's `SeverityEnum` tod
 `High | Medium | Low | Informational` (no `Critical`) and is shared with the upstream services.
 
 | Label | ASFF meaning | ASFF normalized | Used by FinServ for |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Informational** | No issue / not action-bearing on its own | 0 | Advisory checks (no API to verify) and `N/A` (nothing to assess / could-not-assess) |
 | **Low** | Does not require action on its own | 1–39 | Residual-risk / observability controls, or controls with strong compensating alternatives |
 | **Medium** | Must be addressed, not urgently | 40–69 | Controls whose absence materially increases risk but is not itself a breach |
@@ -50,7 +50,7 @@ findings keep their documented severity.
 ### 3.1 Impact (I) — harm if the control is absent and the risk materializes
 
 | Score | Criteria (any one qualifies) |
-|---|---|
+| --- | --- |
 | **3 — High** | Direct regulatory breach (e.g., fair-lending/ECOA, disclosure rules); sensitive-data/PII exposure; large-scale financial loss; full bypass of safety guardrails; unsafe automated financial action. |
 | **2 — Medium** | Materially weakens oversight, model-risk governance, or assurance; increases blast radius of another failure; degraded auditability of a regulated decision — but not a breach by itself. |
 | **1 — Low** | Reduces residual risk, supports observability/audit, or is fully covered by a compensating control; cost-optimization or defense-in-depth value. |
@@ -62,18 +62,18 @@ controls. Applies to both attack-driven risks (prompt injection, cost exhaustion
 governance-driven risks (an unreviewed model reaches production).
 
 | Score | Criteria |
-|---|---|
+| --- | --- |
 | **3 — High** | Internet-reachable or default-on surface; common, automatable attack pattern; or near-certain to occur in normal operation; no compensating control. |
 | **2 — Medium** | Reachable under common conditions; partial or adjacent compensating control exists; periodic rather than continuous exposure. |
 | **1 — Low** | Requires unusual conditions or insider access; strong compensating controls substantially reduce exposure; rare in practice. |
 
 ### 3.3 Lookup matrix (3×3 → ASFF label)
 
-|              | **L = Low (1)** | **L = Medium (2)** | **L = High (3)** |
-|--------------|-----------------|--------------------|------------------|
-| **I = High (3)**   | Medium | High | High *(Critical-eligible — see §6)* |
+| Impact / Likelihood | **L = Low (1)** | **L = Medium (2)** | **L = High (3)** |
+| --- | --- | --- | --- |
+| **I = High (3)** | Medium | High | High *(Critical-eligible — see §6)* |
 | **I = Medium (2)** | Low | Medium | High |
-| **I = Low (1)**    | Low | Low | Medium |
+| **I = Low (1)** | Low | Low | Medium |
 
 Equivalent rule: `score = I × L`; `1–2 → Low`, `3–4 → Medium`, `6–9 → High` (with the
 `I=3,L=3 → 9` cell Critical-eligible). Advisory/non-verifiable and `N/A` outcomes are handled by
@@ -88,7 +88,7 @@ the disposition rules in §3.4 (they are not risk-scored).
 row maps to exactly one **disposition**, and the disposition fixes the severity:
 
 | Disposition | When it applies | Severity | ASFF rationale |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **FAIL** | control assessed, not satisfied | control severity (§3.3) | the asserted issue |
 | **PASS** | control assessed, satisfied | control severity (§3.3) | Round-2 invariant: pass keeps documented severity |
 | **NOT_APPLICABLE** | the control's resource type is absent (no KBs, no guardrails, no WAF, no REST APIs, not in an Org) | **Informational** | ASFF: *"INFORMATIONAL — No issue was found."* The "you should create guardrails/eval jobs" signal belongs to that resource's **own** existence check, not to every sub-check (avoids double-counting). |
@@ -111,7 +111,7 @@ To guarantee similar controls get the same severity, every FS control is assigne
 a default band. Per-control I×L may refine within ±1 with a documented reason.
 
 | Family | Risk on absence | Default | Example checks |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Safety-guardrail / content safety** | harmful output, guardrail bypass, PII leak | **High** | FS-36 content, FS-45 PII, FS-47 grounding threshold, FS-51 prompt-attack, FS-53 injection, FS-27 contextual grounding |
 | **Sensitive-data exposure / integrity** | PII exposure or training-data tampering | **High** | FS-21 training-data versioning, FS-25 KB encryption, FS-43 log data-protection, FS-44 Macie |
 | **Excessive agency / access control / isolation** | unauthorized action, over-broad permissions, regulated-decision breach | **High** | FS-07, FS-08, FS-10, FS-12, FS-22, FS-26, FS-39 bias, FS-41 explainability, FS-66, FS-67 |
@@ -125,14 +125,12 @@ a default band. Per-control I×L may refine within ±1 with a documented reason.
 The authoritative per-finding assignments are in
 [`SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
 
-
-
 ---
 
 ## 4. Worked examples (including the reviewer's case)
 
 | Check | Control | I | L | Rationale | Result |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | **FS-01 (Shield Advanced)** | Shield Advanced subscription | **1** | **2** | Impact Low: Shield *Standard* is always-on and free; WAF rate-limiting (FS-01 WAF / FS-02 usage plans) is a compensating control; absence is a premium-cost decision (~$3,000/mo), not a breach. Likelihood Medium: endpoints are discoverable but volumetric DDoS on a Bedrock-fronting endpoint is not the common case. | **Low** *(was High — fixes Finding 6)* |
 | **FS-01 (Regional WAF)** | WAF Web ACL present | **2** | **2** | Impact Medium: no WAF → exposed to abusive callers / cost exhaustion, but API Gateway usage-plan throttling (FS-02) is a compensating control and there is no direct breach. Likelihood Medium: common but mitigated by throttling. | **Medium** |
 | **FS-43-style (PII in logs / data exposure)** | Sensitive-data masking | **3** | **2** | Impact High: PII exposure = regulatory breach. Likelihood Medium: requires logging misconfig. | **High** |

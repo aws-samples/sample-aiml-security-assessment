@@ -66,7 +66,14 @@ class TestConsolidateFinservCategorization(unittest.TestCase):
             patch.object(chr, "generate_html_report", side_effect=fake_render),
             patch.dict(
                 os.environ,
-                {"BUCKET_REPORT": "test-bucket", "ACCOUNT_FILES_DIR": self.BASE},
+                {
+                    "BUCKET_REPORT": "test-bucket",
+                    "ACCOUNT_FILES_DIR": self.BASE,
+                    # The consolidator hides FS-* rows unless the customer
+                    # asked for FinServ explicitly. This test's purpose is
+                    # the FS→finserv categorisation path, so enable it.
+                    "ENABLE_FINSERV": "true",
+                },
             ),
         ):
             mock_boto3.client.return_value = MagicMock()
@@ -81,6 +88,40 @@ class TestConsolidateFinservCategorization(unittest.TestCase):
         self.assertIn("BR-01", bedrock_ids)
         self.assertEqual(captured["service_stats"]["finserv"]["failed"], 1)
         self.assertEqual(captured["service_stats"]["finserv"]["passed"], 1)
+
+    def test_fs_rows_hidden_when_enable_finserv_false(self):
+        # When FinServ ran only as an OWASP dependency (ENABLE_FINSERV=false
+        # but ENABLE_OWASP=true), the consolidator must drop FS-* rows so
+        # the multi-account report shows an OWASP-only view.
+        captured = {}
+
+        def fake_render(**kwargs):
+            captured.update(kwargs)
+            return "<html>ok</html>"
+
+        with (
+            patch.object(chr, "boto3") as mock_boto3,
+            patch.object(chr, "generate_html_report", side_effect=fake_render),
+            patch.dict(
+                os.environ,
+                {
+                    "BUCKET_REPORT": "test-bucket",
+                    "ACCOUNT_FILES_DIR": self.BASE,
+                    "ENABLE_FINSERV": "false",
+                    "ENABLE_OWASP": "true",
+                },
+            ),
+        ):
+            mock_boto3.client.return_value = MagicMock()
+            chr.consolidate_html_reports()
+
+        sf = captured["service_findings"]
+        stats = captured["service_stats"]
+        self.assertEqual(sf["finserv"], [])
+        self.assertEqual(stats["finserv"], {"passed": 0, "failed": 0, "na": 0})
+        # BR-01 must still appear — only FS-* rows are dropped.
+        bedrock_ids = {f["check_id"] for f in sf["bedrock"]}
+        self.assertIn("BR-01", bedrock_ids)
 
 
 if __name__ == "__main__":

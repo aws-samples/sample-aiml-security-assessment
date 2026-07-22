@@ -5,7 +5,7 @@ Each check is tested for:
 - No resources / empty cache -> N/A status
 - Compliant resources -> Passed status
 - Non-compliant resources -> Failed with correct severity
-- Exception handling -> returns error finding (csv_data not empty)
+- Exception handling -> returns could-not-assess finding (csv_data not empty)
 - Output schema validity
 """
 
@@ -35,6 +35,13 @@ _spec = importlib.util.spec_from_file_location(
 bedrock_app = importlib.util.module_from_spec(_spec)
 sys.modules["bedrock_app"] = bedrock_app
 _spec.loader.exec_module(bedrock_app)
+
+
+def assert_could_not_assess_finding(finding):
+    assert finding["Status"] == "N/A"
+    assert finding["Severity"] == "Informational"
+    assert "Could not assess this check" in finding["Finding_Details"]
+    assert "Error during check" not in finding["Finding_Details"]
 
 
 # ===================================================================
@@ -154,8 +161,7 @@ class TestBR02VPCEndpoints:
         result = check(permission_cache_compliant)
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
-        assert "Error" in findings[0]["Finding_Details"]
+        assert_could_not_assess_finding(findings[0])
 
     @patch("bedrock_app.check_bedrock_vpc_endpoints")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
@@ -270,7 +276,7 @@ class TestBR04LoggingConfiguration:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("boto3.client")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
@@ -360,7 +366,7 @@ class TestBR05Guardrails:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("boto3.client")
     def test_br05_schema_valid(self, mock_client):
@@ -461,7 +467,7 @@ class TestBR06CloudTrailLogging:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("boto3.client")
     @patch("bedrock_app.detect_bedrock_regional_footprint", return_value=True)
@@ -538,7 +544,7 @@ class TestBR07PromptManagement:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("boto3.client")
     def test_br07_list_prompts_api_error_returns_na(self, mock_client):
@@ -640,7 +646,7 @@ class TestBR08AgentRoles:
         result = check(empty_permission_cache)
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("boto3.client")
     def test_br08_schema_valid(self, mock_client, empty_permission_cache):
@@ -726,7 +732,7 @@ class TestBR09KBEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("boto3.client")
     def test_br09_access_denied_returns_na(self, mock_client):
@@ -823,7 +829,7 @@ class TestBR10GuardrailIAMEnforcement:
         result = check(empty_permission_cache)
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("boto3.client")
     def test_br10_schema_valid(self, mock_client, empty_permission_cache):
@@ -906,7 +912,7 @@ class TestBR11CustomModelEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("boto3.client")
     def test_br11_schema_valid(self, mock_client):
@@ -1049,7 +1055,7 @@ class TestBR12InvocationLogEncryption:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("boto3.client")
     def test_br12_access_denied_returns_na(self, mock_client):
@@ -1175,7 +1181,7 @@ class TestBR13FlowsGuardrails:
         result = check()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert_could_not_assess_finding(findings[0])
 
     @patch("boto3.client")
     def test_br13_schema_valid(self, mock_client):
@@ -1400,7 +1406,7 @@ class TestBedrockHandlerMultiRegion:
         assert "BR-00" not in check_ids
         assert len(check_ids) > 3
 
-    # Regional checks BR-26..32 (function name -> check id) that the handler must
+    # Regional checks BR-26..33 (function name -> check id) that the handler must
     # invoke once per scanned region, passing region=region.
     NEW_REGIONAL_CHECKS = {
         "check_bedrock_guardrail_pii_filters": "BR-26",
@@ -1410,6 +1416,7 @@ class TestBedrockHandlerMultiRegion:
         "check_bedrock_imported_model_kms_encryption": "BR-30",
         "check_bedrock_batch_inference_output_encryption": "BR-31",
         "check_bedrock_cloudwatch_alarms": "BR-32",
+        "check_inspector_lambda_code_scanning": "BR-33",
     }
 
     def _run_handler_with_check_spies(self, event):
@@ -3236,6 +3243,214 @@ class TestBR32CloudWatchAlarms:
         paginator.paginate.return_value = [{"MetricAlarms": []}]
         cw_client.get_paginator.return_value = paginator
         mock_client.return_value = cw_client
+
+        result = check(region="us-east-1")
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+
+# ===================================================================
+# BR-33: check_inspector_lambda_code_scanning
+# ===================================================================
+class TestBR33InspectorLambdaCodeScanning:
+    """BR-33: Verify Amazon Inspector Lambda + Lambda code scanning is enabled."""
+
+    def _inspector_response(self, lambda_status, lambda_code_status):
+        return {
+            "accounts": [
+                {
+                    "accountId": "123456789012",
+                    "resourceState": {
+                        "lambda": {"status": lambda_status},
+                        "lambdaCode": {"status": lambda_code_status},
+                    },
+                }
+            ]
+        }
+
+    def _bedrock_lambda(self, name="bedrock-chat-handler"):
+        return {
+            "FunctionName": name,
+            "FunctionArn": f"arn:aws:lambda:us-east-1:123456789012:function:{name}",
+            "Description": "Invokes Amazon Bedrock models",
+            "Environment": {"Variables": {"BEDROCK_MODEL_ID": "anthropic.test"}},
+        }
+
+    def _wire_clients(
+        self,
+        mock_client,
+        *,
+        lambda_functions=None,
+        lambda_error=None,
+        inspector_response=None,
+        inspector_error=None,
+    ):
+        lambda_client = MagicMock()
+        if lambda_error is not None:
+            lambda_client.list_functions.side_effect = lambda_error
+        else:
+            lambda_client.list_functions.return_value = {
+                "Functions": lambda_functions
+                if lambda_functions is not None
+                else [self._bedrock_lambda()]
+            }
+
+        inspector_client = MagicMock()
+        if inspector_error is not None:
+            inspector_client.batch_get_account_status.side_effect = inspector_error
+        else:
+            inspector_client.batch_get_account_status.return_value = (
+                inspector_response
+                if inspector_response is not None
+                else self._inspector_response("ENABLED", "ENABLED")
+            )
+
+        def client(service_name, *args, **kwargs):
+            if service_name == "lambda":
+                return lambda_client
+            if service_name == "inspector2":
+                return inspector_client
+            return MagicMock()
+
+        mock_client.side_effect = client
+        return lambda_client, inspector_client
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_both_enabled_returns_passed(self, mock_client):
+        check = bedrock_app.check_inspector_lambda_code_scanning
+        self._wire_clients(
+            mock_client,
+            inspector_response=self._inspector_response("ENABLED", "ENABLED"),
+        )
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert findings[0]["Status"] == "Passed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_code_scanning_disabled_returns_failed(self, mock_client):
+        check = bedrock_app.check_inspector_lambda_code_scanning
+        self._wire_clients(
+            mock_client,
+            inspector_response=self._inspector_response("ENABLED", "DISABLED"),
+        )
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_lambda_disabled_returns_failed(self, mock_client):
+        check = bedrock_app.check_inspector_lambda_code_scanning
+        self._wire_clients(
+            mock_client,
+            inspector_response=self._inspector_response("DISABLED", "DISABLED"),
+        )
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert findings[0]["Status"] == "Failed"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_region_unavailable_returns_na(self, mock_client):
+        check = bedrock_app.check_inspector_lambda_code_scanning
+        self._wire_clients(
+            mock_client,
+            inspector_error=_make_client_error("UnrecognizedClientException"),
+        )
+
+        result = check(region="ap-south-2")
+        findings = extract_csv_data(result)
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_access_denied_returns_na_informational(self, mock_client):
+        check = bedrock_app.check_inspector_lambda_code_scanning
+        self._wire_clients(
+            mock_client,
+            inspector_error=_make_client_error("AccessDeniedException"),
+        )
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_endpoint_connection_error_returns_na(self, mock_client):
+        check = bedrock_app.check_inspector_lambda_code_scanning
+        self._wire_clients(
+            mock_client,
+            inspector_error=EndpointConnectionError(
+                endpoint_url="https://inspector2.example/"
+            ),
+        )
+
+        result = check(region="us-gov-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_empty_accounts_returns_na(self, mock_client):
+        check = bedrock_app.check_inspector_lambda_code_scanning
+        self._wire_clients(mock_client, inspector_response={"accounts": []})
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert findings[0]["Status"] == "N/A"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_no_bedrock_related_lambdas_returns_na(self, mock_client):
+        check = bedrock_app.check_inspector_lambda_code_scanning
+        _, inspector_client = self._wire_clients(
+            mock_client,
+            lambda_functions=[
+                {
+                    "FunctionName": "ordinary-worker",
+                    "Description": "generic background task",
+                    "Environment": {"Variables": {"QUEUE_NAME": "jobs"}},
+                }
+            ],
+        )
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        inspector_client.batch_get_account_status.assert_not_called()
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_lambda_list_access_denied_returns_na(self, mock_client):
+        check = bedrock_app.check_inspector_lambda_code_scanning
+        self._wire_clients(
+            mock_client,
+            lambda_error=_make_client_error("AccessDeniedException"),
+        )
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert findings[0]["Check_ID"] == "BR-33"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br33_schema_valid(self, mock_client):
+        check = bedrock_app.check_inspector_lambda_code_scanning
+        self._wire_clients(
+            mock_client,
+            inspector_response=self._inspector_response("ENABLED", "ENABLED"),
+        )
 
         result = check(region="us-east-1")
         for f in extract_csv_data(result):

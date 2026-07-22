@@ -201,6 +201,11 @@ Resources:
                   - ecr:DescribeRepositories
                   - ecr:GetRepositoryPolicy
                 Resource: "*"
+              # Amazon Inspector Permissions (BR-33)
+              - Effect: Allow
+                Action:
+                  - inspector2:BatchGetAccountStatus
+                Resource: "*"
               # CloudWatch Logs Permissions
               - Effect: Allow
                 Action:

@@ -30,9 +30,16 @@ phases:
       - echo "Starting AIML Security Assessment"
       # EnableFinServAssessment toggle (CodeBuild env var; default false). Threaded
       # into the Step Functions execution input as enableFinServ; the ASL FinServ
-      # branch runs only when this is "true".
-      - export ENABLE_FINSERV="${ENABLE_FINSERV:-false}"
+      # branch runs only when this is "true". Lower-cased here so the ASL's
+      # case-sensitive StringEquals "true" gate matches a "True"/"TRUE" input.
+      - export ENABLE_FINSERV="$(echo "${ENABLE_FINSERV:-false}" | tr '[:upper:]' '[:lower:]')"
       - echo "FinServ assessment enabled is $ENABLE_FINSERV"
+      # EnableOWASPAssessment toggle (CodeBuild env var; default false). Threaded
+      # into the Step Functions execution input as enableOWASP; the ASL OWASP
+      # branch runs only when this is "true". Lower-cased here so the ASL's
+      # case-sensitive StringEquals "true" gate matches a "True"/"TRUE" input.
+      - export ENABLE_OWASP="$(echo "${ENABLE_OWASP:-false}" | tr '[:upper:]' '[:lower:]')"
+      - echo "OWASP assessment enabled is $ENABLE_OWASP"
       - |
         # Validate required environment variables
         missing_vars=()
@@ -171,7 +178,7 @@ phases:
 
             STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name aiml-security-$accountId --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
             if [[ $STATE_MACHINE_ARN != "" && $STATE_MACHINE_ARN != "None" ]]; then
-              if EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$accountId\",\"enableFinServ\":\"$ENABLE_FINSERV\"}" --query 'executionArn' --output text); then
+              if EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$accountId\",\"enableFinServ\":\"$ENABLE_FINSERV\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
                 echo "Started execution: $EXECUTION_ARN"
                 # Save execution ARN for post-build phase
                 echo "$EXECUTION_ARN" > /tmp/execution_arns/$accountId.txt
@@ -199,7 +206,7 @@ phases:
           else
             STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name aiml-security-mgmt --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
             if [[ $STATE_MACHINE_ARN != "" && $STATE_MACHINE_ARN != "None" ]]; then
-              if MGMT_EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableFinServ\":\"$ENABLE_FINSERV\"}" --query 'executionArn' --output text); then
+              if MGMT_EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableFinServ\":\"$ENABLE_FINSERV\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
                 echo "Started management account execution: $MGMT_EXECUTION_ARN"
                 # Save execution ARN for post-build phase
                 echo "$MGMT_EXECUTION_ARN" > /tmp/execution_arns/$AWS_ACCOUNT_ID.txt
@@ -228,7 +235,7 @@ phases:
             exit 1
           fi
           # Capture execution ARN for post-build phase to wait on
-          EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableFinServ\":\"$ENABLE_FINSERV\"}" --query 'executionArn' --output text)
+          EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableFinServ\":\"$ENABLE_FINSERV\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text)
           if [[ -z "$EXECUTION_ARN" || "$EXECUTION_ARN" == "None" ]]; then
             echo "ERROR: Failed to start Step Function execution"
             exit 1
@@ -247,6 +254,18 @@ phases:
         fi
 
         echo "Assessment completed. Results in S3:$BUCKET_REPORT"
+
+        # When FinServ runs only as an OWASP dependency (EnableFinServAssessment=false
+        # but EnableOWASPAssessment=true), its CSV must never reach the customer-facing
+        # report bucket. The report layer already strips FS-* rows from the HTML, but
+        # the raw finserv_security_report_*.csv would otherwise be copied verbatim. Build
+        # an exclude flag (empty when FinServ is enabled) and apply it to every copy/sync
+        # into the report bucket. ENABLE_FINSERV is already normalised to lowercase in the
+        # build phase, so a direct "true" comparison is sufficient here.
+        fs_exclude_args=()
+        if [[ "${ENABLE_FINSERV:-false}" != "true" ]]; then
+          fs_exclude_args=(--exclude "finserv_security_report_*.csv")
+        fi
 
         # Derive how long to wait for Step Function completion from the overall
         # CodeBuild timeout, reserving a buffer for the build/deploy work that runs
@@ -358,7 +377,7 @@ phases:
                 echo "WARNING: Failed to list bucket contents for $accountId"
               fi
 
-              if ! aws s3 cp s3://$ACCOUNT_BUCKET/ /tmp/account-files/$accountId/ --recursive --exclude "*" --include "*.csv" --include "*.html" --exclude "*/"; then
+              if ! aws s3 cp s3://$ACCOUNT_BUCKET/ /tmp/account-files/$accountId/ --recursive --exclude "*" --include "*.csv" --include "*.html" --exclude "*/" "${fs_exclude_args[@]}"; then
                 echo "WARNING: No files to copy or copy failed from $accountId"
               fi
 
@@ -389,7 +408,7 @@ phases:
           for accountId in $account_list; do
             if [[ -d /tmp/account-files/$accountId ]]; then
               echo "Uploading files for account $accountId (overwriting existing)"
-              if ! aws s3 sync /tmp/account-files/$accountId/ s3://$BUCKET_REPORT/$accountId/; then
+              if ! aws s3 sync /tmp/account-files/$accountId/ s3://$BUCKET_REPORT/$accountId/ "${fs_exclude_args[@]}"; then
                 echo "ERROR: Failed to upload files for $accountId"
                 upload_failed=true
               fi
@@ -475,7 +494,7 @@ phases:
             # Sync results to BUCKET_REPORT for consistent access
             if [[ $ACCOUNT_BUCKET != $BUCKET_REPORT ]]; then
               echo "Syncing results to consolidated bucket: $BUCKET_REPORT"
-              if ! aws s3 sync s3://$ACCOUNT_BUCKET/ s3://$BUCKET_REPORT/$AWS_ACCOUNT_ID/ --exclude "*" --include "*.csv" --include "*.html"; then
+              if ! aws s3 sync s3://$ACCOUNT_BUCKET/ s3://$BUCKET_REPORT/$AWS_ACCOUNT_ID/ --exclude "*" --include "*.csv" --include "*.html" "${fs_exclude_args[@]}"; then
                 echo "WARNING: Failed to sync results to $BUCKET_REPORT"
               else
                 echo "Results synced successfully to s3://$BUCKET_REPORT/$AWS_ACCOUNT_ID/"

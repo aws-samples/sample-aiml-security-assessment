@@ -254,4 +254,4 @@ def lambda_handler(event, context):
 
     except Exception as e:
         logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
-        return {"statusCode": 500, "body": f"Error during security checks: {str(e)}"}
+        raise
