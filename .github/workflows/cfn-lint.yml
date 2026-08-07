@@ -16,7 +16,8 @@ jobs:
 
       - name: Get changed CloudFormation files
         id: changed-files
-        uses: tj-actions/changed-files@v46
+        # Pinned to the v47.0.6 commit SHA; see CVE-2025-30066.
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
         with:
           files: |
             **/*.yaml
@@ -31,7 +32,9 @@ jobs:
 
       - name: Install cfn-lint
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: pip install cfn-lint
+        # Pinned: an unpinned linter turns an upstream release into an
+        # unrelated red build on the next PR.
+        run: pip install 'cfn-lint==1.54.0'
 
       - name: Lint CloudFormation templates
         if: steps.changed-files.outputs.any_changed == 'true'

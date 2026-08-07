@@ -18,7 +18,8 @@ jobs:
 
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@v46
+        # Pinned to the v47.0.6 commit SHA; see CVE-2025-30066.
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
         with:
           files: |
             **/*.py
@@ -59,7 +60,10 @@ jobs:
 
       - name: Run ASH scan on changed files
         if: steps.changed-files.outputs.any_changed == 'true'
+        # pipefail is required: without it this step reports tee's exit status,
+        # so a failing scan would pass the gate.
         run: |
+          set -o pipefail
           cd /tmp/ash-scan
           ash --mode container 2>&1 | tee /tmp/ash-output.log
 

@@ -16,7 +16,8 @@ jobs:
 
       - name: Get changed SAM files
         id: changed-files
-        uses: tj-actions/changed-files@v46
+        # Pinned to the v47.0.6 commit SHA; see CVE-2025-30066.
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
         with:
           files: |
             aiml-security-assessment/**
@@ -51,6 +52,13 @@ jobs:
         run: |
           cd aiml-security-assessment
           sam build --template template.yaml
+      - name: SAM Build (multi-account)
+        # Both templates were validated but only one was built, so a
+        # multi-account-only build break shipped undetected.
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          cd aiml-security-assessment
+          sam build --template template-multi-account.yaml --build-dir .aws-sam/build-multi
 
       - name: Skip message
         if: steps.changed-files.outputs.any_changed == 'false'

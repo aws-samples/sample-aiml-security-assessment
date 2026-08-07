@@ -1,22 +1,34 @@
 name: AI/ML Security Assessment Tests
 
+# Least privilege. This workflow only reads the repository and uploads an
+# artifact, so it needs no write scopes. Five of the seven workflows already
+# declared this; python-tests.yml did not, which checkov CKV2_GHA_1 flags as an
+# implicit write-all token.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main, develop]
-    paths:
+    paths: &test-paths
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
       - "consolidate_html_reports.py"
-      - "tests/test_consolidate_finserv.py"
+      - "generate_provenance.py"
+      # Tests assert against these, so a change here must run the suite:
+      # test_legacy_contracts.py parses both templates and the state machine,
+      # and the docs are the source for provenance.json.
+      - "aiml-security-assessment/template.yaml"
+      - "aiml-security-assessment/template-multi-account.yaml"
+      - "aiml-security-assessment/statemachine/**"
+      - "deployment/**"
+      - "buildspec.yml"
+      - "docs/**"
+      - "ruff.toml"
       - ".github/workflows/python-tests.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "aiml-security-assessment/functions/security/**"
-      - "tests/**"
-      - "consolidate_html_reports.py"
-      - "tests/test_consolidate_finserv.py"
-      - ".github/workflows/python-tests.yml"
+    paths: *test-paths
 
 jobs:
   test:
@@ -37,8 +49,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r tests/requirements.txt
-          # Install pydantic for schema validation used by Lambda functions
-          pip install pydantic>=2.0.0
+          # Install pydantic for schema validation used by Lambda functions.
+          # Quoting is required: unquoted, `>=` is a shell redirect, so this
+          # wrote a file named "=2.0.0" and installed pydantic UNCONSTRAINED.
+          # The upper bound must match the Lambda requirement, or CI can pass
+          # against a pydantic major the runtime forbids.
+          pip install 'pydantic>=2.0.0,<3.0.0'
 
       - name: Run upstream tests with coverage
         env:

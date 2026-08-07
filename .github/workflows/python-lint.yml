@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Pinned so the gate is reproducible. Ruff's default rule set widens between
+  # releases; ruff.toml pins the rules, and this pins the binary that reads it.
+  RUFF_VERSION: "0.16.2"
+
 jobs:
   python-lint:
     runs-on: ubuntu-latest
@@ -16,7 +21,10 @@ jobs:
 
       - name: Get changed Python files
         id: changed-files
-        uses: tj-actions/changed-files@v46
+        # Pinned to the v47.0.6 commit SHA. A mutable tag on this action was
+        # compromised in March 2025 (CVE-2025-30066), so the version must be
+        # immutable rather than a moving tag.
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
         with:
           files: |
             **/*.py
@@ -33,20 +41,31 @@ jobs:
 
       - name: Install ruff
         if: steps.changed-files.outputs.any_changed == 'true'
-        run: uv tool install ruff
+        run: uv tool install "ruff==${RUFF_VERSION}"
 
       - name: Run ruff check on changed files
         if: steps.changed-files.outputs.any_changed == 'true'
+        # Filenames arrive through the environment, never interpolated into the
+        # shell. A crafted filename in a fork PR would otherwise be a command
+        # injection sink.
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
+          set -o pipefail
           echo "Checking changed Python files:"
-          echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n'
-          uv tool run ruff check --output-format=github ${{ steps.changed-files.outputs.all_changed_files }}
+          printf '%s\n' "${CHANGED_FILES}" | tr ' ' '\n'
+          # shellcheck disable=SC2086
+          uv tool run ruff check --output-format=github ${CHANGED_FILES}
 
       - name: Run ruff format check on changed files
         if: steps.changed-files.outputs.any_changed == 'true'
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
+          set -o pipefail
           echo "Checking format of changed Python files:"
-          uv tool run ruff format --check ${{ steps.changed-files.outputs.all_changed_files }}
+          # shellcheck disable=SC2086
+          uv tool run ruff format --check ${CHANGED_FILES}
 
       - name: Skip message
         if: steps.changed-files.outputs.any_changed == 'false'
