@@ -17,27 +17,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Get changed Python files
         id: changed-files
         # Pinned to the v47.0.6 commit SHA. A mutable tag on this action was
         # compromised in March 2025 (CVE-2025-30066), so the version must be
         # immutable rather than a moving tag.
-        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
         with:
           files: |
             **/*.py
 
       - name: Set up Python
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
 
       - name: Install uv
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
 
       - name: Install ruff
         if: steps.changed-files.outputs.any_changed == 'true'
