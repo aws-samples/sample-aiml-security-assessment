@@ -59,6 +59,7 @@ Resources:
         FinServSecurityAssessmentFunction: !GetAtt FinServSecurityAssessmentFunction.Arn
         OWASPSecurityAssessmentFunction: !GetAtt OWASPSecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
+        HIPAASecurityAssessmentFunction: !GetAtt HIPAASecurityAssessmentFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
         MaxRegionConcurrency: !Ref MaxRegionConcurrency
       Policies:
@@ -78,6 +79,8 @@ Resources:
             FunctionName: !Ref FinServSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref OWASPSecurityAssessmentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref HIPAASecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref GenerateConsolidatedReportFunction
         - S3CrudPolicy:
@@ -527,31 +530,87 @@ Resources:
                 - iam:GetUser
                 - sts:GetCallerIdentity
               Resource: '*'
-            - Sid: WAFShieldPermissions
+
+  HIPAASecurityAssessmentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-HIPAAAssessment'
+      CodeUri: functions/security/hipaa_assessments/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      Timeout: 900
+      MemorySize: 1024
+      Environment:
+        Variables:
+          AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+          TARGET_REGIONS: !Ref TargetRegions
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref AIMLAssessmentBucket
+        - Statement:
+            - Sid: HIPAABedrockPermissions
+              Effect: Allow
+              Action:
+                - bedrock:ListCustomModels
+                - bedrock:GetCustomModel
+                - bedrock:ListGuardrails
+                - bedrock:GetGuardrail
+              Resource: '*'
+            - Sid: HIPAASageMakerPermissions
+              Effect: Allow
+              Action:
+                - sagemaker:ListEndpoints
+                - sagemaker:DescribeEndpoint
+                - sagemaker:DescribeEndpointConfig
+                - sagemaker:ListTrainingJobs
+                - sagemaker:DescribeTrainingJob
+              Resource: '*'
+            - Sid: HIPAAEC2Permissions
+              Effect: Allow
+              Action:
+                - ec2:DescribeVpcEndpoints
+              Resource: '*'
+            - Sid: HIPAALogsPermissions
+              Effect: Allow
+              Action:
+                - logs:DescribeLogGroups
+                - logs:GetDataProtectionPolicy
+              Resource: '*'
+            - Sid: HIPAAS3Permissions
+              Effect: Allow
+              Action:
+                - s3:ListAllMyBuckets
+                - s3:GetBucketEncryption
+                - s3:GetBucketVersioning
+              Resource: '*'
+
+            - Sid: HIPAAWAFShieldPermissions
               Effect: Allow
               Action:
                 - wafv2:ListWebACLs
                 - wafv2:GetWebACL
                 - shield:DescribeSubscription
               Resource: '*'
-            - Sid: APIGatewayPermissions
+            - Sid: HIPAAAPIGatewayPermissions
               Effect: Allow
               Action:
                 - apigateway:GET
               Resource: '*'
-            - Sid: ServiceQuotasPermissions
+            - Sid: HIPAAServiceQuotasPermissions
               Effect: Allow
               Action:
                 - servicequotas:ListServiceQuotas
                 - servicequotas:ListAWSDefaultServiceQuotas
               Resource: '*'
-            - Sid: CostBudgetPermissions
+            - Sid: HIPAACostBudgetPermissions
               Effect: Allow
               Action:
                 - ce:GetAnomalyMonitors
                 - budgets:ViewBudget
               Resource: '*'
-            - Sid: CloudWatchPermissions
+            - Sid: HIPAACloudWatchPermissions
               Effect: Allow
               Action:
                 - cloudwatch:DescribeAlarms

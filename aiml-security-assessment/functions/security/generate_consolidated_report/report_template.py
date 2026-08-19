@@ -6,9 +6,8 @@ This module provides a unified report generation function used by both:
 - Multi-account CodeBuild consolidation (consolidate_html_reports.py)
 """
 
-from datetime import datetime, timezone
 import html
-from typing import Dict, List, Optional
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 # FinServ service icon (no official AWS icon exists for "Financial Services").
@@ -63,6 +62,20 @@ OWASP_ICON_SMALL = (
 )
 OWASP_LLM_TOP10_URL = "https://genai.owasp.org/llm-top-10/"
 
+# HIPAA icon (medical shield).
+HIPAA_ICON = (
+    '<span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
+    '<rect fill="#2563EB" width="80" height="80"/>'
+    '<path fill="#FFF" d="M40 15 L60 25 L60 45 C60 55 52 65 40 70 C28 65 20 55 20 45 L20 25 Z M40 30 v25 M28 42 h24"/></svg></span>'
+)
+HIPAA_ICON_SMALL = (
+    '<span class="service-icon" style="width: 18px; height: 18px;">'
+    '<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
+    '<rect fill="#2563EB" width="80" height="80"/>'
+    '<path fill="#FFF" d="M40 15 L60 25 L60 45 C60 55 52 65 40 70 C28 65 20 55 20 45 L20 25 Z M40 30 v25 M28 42 h24"/></svg></span>'
+)
+HIPAA_COMPLIANCE_URL = "https://aws.amazon.com/compliance/hipaa-compliance/"
+
 # COMPLIANCE_STANDARDS — registry of compliance-standard sections.
 # Each entry produces a sidebar nav item + service card + section + filter
 # option + scope chip in the report. Callers (generate_consolidated_report
@@ -70,7 +83,7 @@ OWASP_LLM_TOP10_URL = "https://genai.owasp.org/llm-top-10/"
 # service_stats/service_findings and route Check_ID prefixes, so appending a
 # new entry here (with a unique slug + Check_ID prefix) is sufficient — no
 # loop-body edits required in the report layer or its callers.
-COMPLIANCE_STANDARDS: List[Dict[str, str]] = [
+COMPLIANCE_STANDARDS: list[dict[str, str]] = [
     {
         "slug": "owasp",
         "name": "OWASP Top 10 LLM",
@@ -85,6 +98,20 @@ COMPLIANCE_STANDARDS: List[Dict[str, str]] = [
             "Each finding's OWASP category (LLM01–LLM10) is encoded in the "
             "Finding_Details text. Preliminary and illustrative — validate "
             "mappings with your Security/Compliance team before using as evidence."
+        ),
+    },
+    {
+        "slug": "hipaa",
+        "name": "HIPAA Compliance",
+        "prefix": "HP-",
+        "icon": HIPAA_ICON,
+        "icon_small": HIPAA_ICON_SMALL,
+        "reference_url": HIPAA_COMPLIANCE_URL,
+        "section_title": "HIPAA Compliance Lens Findings",
+        "scope_text": (
+            "Scope: Automated security checks for Bedrock and SageMaker environments "
+            "aligned with HIPAA/HITECH security and privacy controls. Focuses on "
+            "encryption (CMK), network isolation, and data protection policies."
         ),
     },
     # Future: {"slug": "nist", "name": "NIST AI RMF", "prefix": "NR-", ...}
@@ -102,7 +129,7 @@ def _escape_attr(value) -> str:
     return html.escape("" if value is None else str(value), quote=True)
 
 
-def _safe_https_url(value) -> Optional[str]:
+def _safe_https_url(value) -> str | None:
     """Return an escaped HTTPS URL, or None when the value is not link-safe."""
     raw = "" if value is None else str(value).strip()
     if not raw or raw == "-":
@@ -113,7 +140,7 @@ def _safe_https_url(value) -> Optional[str]:
     return _escape_attr(raw)
 
 
-def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -> str:
+def generate_table_rows(findings: list[dict], include_data_attrs: bool = True) -> str:
     """
     Generate HTML table rows from findings list.
 
@@ -698,14 +725,14 @@ def get_html_template() -> str:
 
 
 def generate_html_report(
-    all_findings: List[Dict],
-    service_findings: Dict[str, List[Dict]],
-    service_stats: Dict[str, Dict[str, int]],
+    all_findings: list[dict],
+    service_findings: dict[str, list[dict]],
+    service_stats: dict[str, dict[str, int]],
     mode: str = "single",
-    account_id: Optional[str] = None,
-    account_ids: Optional[List[str]] = None,
-    timestamp: Optional[str] = None,
-    regions: list = None,
+    account_id: str | None = None,
+    account_ids: list[str] | None = None,
+    timestamp: str | None = None,
+    regions: list | None = None,
 ) -> str:
     """
     Generate HTML report from findings data.
@@ -724,29 +751,29 @@ def generate_html_report(
         Complete HTML report string
     """
 
-    def finding_severity(finding: Dict) -> str:
+    def finding_severity(finding: dict) -> str:
         return finding.get("severity", finding.get("Severity", "")).lower()
 
-    def finding_status(finding: Dict) -> str:
+    def finding_status(finding: dict) -> str:
         return finding.get("status", finding.get("Status", "")).lower()
 
-    def finding_service(finding: Dict) -> str:
+    def finding_service(finding: dict) -> str:
         return finding.get("_service", "").lower()
 
     scored_severities = {"high", "medium", "low"}
     compliance_slugs = {std["slug"] for std in COMPLIANCE_STANDARDS}
     contextual_services = {"agentic", *compliance_slugs}
 
-    def is_scored_row(finding: Dict) -> bool:
+    def is_scored_row(finding: dict) -> bool:
         return finding_severity(finding) in scored_severities
 
-    def is_failed_scored_row(finding: Dict) -> bool:
+    def is_failed_scored_row(finding: dict) -> bool:
         return is_scored_row(finding) and finding_status(finding) == "failed"
 
-    def is_contextual_row(finding: Dict) -> bool:
+    def is_contextual_row(finding: dict) -> bool:
         return finding_service(finding) in contextual_services
 
-    def is_direct_risk_row(finding: Dict) -> bool:
+    def is_direct_risk_row(finding: dict) -> bool:
         return not is_contextual_row(finding)
 
     # Calculate metrics. "Total findings" is intentionally the visible row
@@ -909,7 +936,7 @@ def generate_html_report(
     else:
         region_filter = ""
 
-    def failed_severity_counts(findings: List[Dict]) -> tuple[int, int, int]:
+    def failed_severity_counts(findings: list[dict]) -> tuple[int, int, int]:
         high = sum(
             1
             for finding in findings
@@ -1159,12 +1186,12 @@ def generate_html_report(
     # HERE — but callers must also initialise service_stats/service_findings
     # from COMPLIANCE_STANDARDS. See generate_consolidated_report/app.py and
     # consolidate_html_reports.py for the reference wiring.
-    compliance_nav_items: List[str] = []
-    compliance_filter_options_list: List[str] = []
-    compliance_service_cards_list: List[str] = []
-    compliance_sections_list: List[str] = []
-    compliance_scope_chips_list: List[str] = []
-    compliance_scope_sources_list: List[str] = []
+    compliance_nav_items: list[str] = []
+    compliance_filter_options_list: list[str] = []
+    compliance_service_cards_list: list[str] = []
+    compliance_sections_list: list[str] = []
+    compliance_scope_chips_list: list[str] = []
+    compliance_scope_sources_list: list[str] = []
     for _std in COMPLIANCE_STANDARDS:
         _slug = _std["slug"]
         _slug_attr = _escape_attr(_slug)

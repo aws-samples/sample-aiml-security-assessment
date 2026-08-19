@@ -11,12 +11,14 @@ to ensure consistent report generation between single-account and multi-account
 reports.
 """
 
+import csv
+import glob
 import os
 import sys
-import glob
-import csv
+import traceback
+from datetime import datetime, timezone
+
 import boto3
-from datetime import datetime
 from botocore.exceptions import ClientError
 
 # Add the Lambda function directory to path to import shared template
@@ -66,13 +68,13 @@ def consolidate_html_reports():
     a consolidated multi-account report using the same template as single-account reports.
     """
 
+    bucket = os.environ.get("BUCKET_REPORT")
     try:
         s3 = boto3.client("s3")
-    except Exception as e:
-        print(f"Error creating S3 client: {str(e)}")
+    except Exception:
+        print(f"Error initializing S3 client for bucket {bucket}")
+        traceback.print_exc()
         raise
-
-    bucket = os.environ.get("BUCKET_REPORT")
     if not bucket:
         print("Error: BUCKET_REPORT environment variable is not set")
         raise ValueError("BUCKET_REPORT environment variable is required")
@@ -95,6 +97,7 @@ def consolidate_html_reports():
         "agentcore",
         "agentic",
         "finserv",
+        "hipaa",
     ] + compliance_slugs
     service_stats = {
         slug: {"passed": 0, "failed": 0, "na": 0} for slug in all_report_slugs
@@ -167,6 +170,8 @@ def consolidate_html_reports():
                                 service = "agentic"
                             elif check_id.startswith("FS-"):
                                 service = "finserv"
+                            elif check_id.startswith("HP-"):
+                                service = "hipaa"
                             elif check_id_prefix in compliance_prefix_to_slug:
                                 service = compliance_prefix_to_slug[check_id_prefix]
                             else:
@@ -214,15 +219,18 @@ def consolidate_html_reports():
                             elif status == "n/a":
                                 service_stats[service]["na"] += 1
 
-                except IOError as e:
-                    print(f"Error reading CSV file {csv_file}: {str(e)}")
+                except OSError as e:
+                    print(f"Error reading CSV file {csv_file}: {e!s}")
                     continue
-                except Exception as e:
-                    print(f"Error parsing CSV file {csv_file}: {str(e)}")
+                except Exception:  # noqa: BLE001
+                    print(f"Error parsing CSV file {csv_file}")
+                    traceback.print_exc()
                     continue
 
     if all_findings:
-        timestamp_display = datetime.now().strftime("%B %d, %Y %H:%M:%S UTC")
+        timestamp_display = datetime.now(timezone.utc).strftime(
+            "%B %d, %Y %H:%M:%S UTC"
+        )
 
         # Use shared template to generate report
         consolidated_html = generate_html_report(
@@ -235,7 +243,7 @@ def consolidate_html_reports():
             regions=sorted(regions) if regions else None,
         )
 
-        timestamp_file = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp_file = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         s3_key = build_multi_account_report_key(timestamp_file)
 
         try:
@@ -253,10 +261,11 @@ def consolidate_html_reports():
             elif error_code == "AccessDenied":
                 print(f"Error: Access denied to bucket '{bucket}'")
             else:
-                print(f"Error uploading to S3: {str(e)}")
+                print(f"Error uploading to S3: {e!s}")
             raise
         except Exception as e:
-            print(f"Unexpected error uploading consolidated report: {str(e)}")
+            print(f"Unexpected error uploading consolidated report: {e!s}")
+            traceback.print_exc()
             raise
     else:
         print("No findings found for consolidation")

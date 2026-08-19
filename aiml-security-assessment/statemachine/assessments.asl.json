@@ -291,14 +291,6 @@
                                             {
                                                 "And": [
                                                     {
-                                                        "Variable": "$.OriginalInput.enableOWASP",
-                                                        "IsPresent": true
-                                                    },
-                                                    {
-                                                        "Variable": "$.OriginalInput.enableOWASP",
-                                                        "StringEquals": "true"
-                                                    },
-                                                    {
                                                         "Variable": "$.RegionIndex",
                                                         "NumericEquals": 0
                                                     }
@@ -362,6 +354,59 @@
                                         "Result": {
                                             "statusCode": 200,
                                             "skipped": true,
+                                            "body": {
+                                                "findings": []
+                                            }
+                                        },
+                                        "End": true
+                                    }
+                                }
+                            },
+                            {
+                                "StartAt": "HIPAA Security Assessment",
+                                "States": {
+                                    "HIPAA Security Assessment": {
+                                        "Type": "Task",
+                                        "Resource": "arn:aws:states:::lambda:invoke",
+                                        "Parameters": {
+                                            "FunctionName": "${HIPAASecurityAssessmentFunction}",
+                                            "Payload": {
+                                                "Execution.$": "$.Execution",
+                                                "StateMachine.$": "$.StateMachine",
+                                                "Region.$": "$.Region",
+                                                "RegionIndex.$": "$.RegionIndex"
+                                            }
+                                        },
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "Lambda.ServiceException",
+                                                    "Lambda.AWSLambdaException",
+                                                    "Lambda.SdkClientException",
+                                                    "Lambda.TooManyRequestsException"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 3,
+                                                "BackoffRate": 2,
+                                                "JitterStrategy": "FULL"
+                                            }
+                                        ],
+                                        "Catch": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "ResultPath": "$.hipaaError",
+                                                "Next": "HIPAA Assessment Incomplete"
+                                            }
+                                        ],
+                                        "End": true
+                                    },
+                                    "HIPAA Assessment Incomplete": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 207,
+                                            "incomplete": true,
                                             "body": {
                                                 "findings": []
                                             }

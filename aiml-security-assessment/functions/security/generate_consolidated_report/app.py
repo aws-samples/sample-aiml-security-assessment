@@ -1,15 +1,17 @@
-import boto3
 import csv
-import os
 import logging
+import os
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
 from io import StringIO
+from typing import Any
+
+import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-
 from report_template import (
     COMPLIANCE_STANDARDS,
+)
+from report_template import (
     generate_html_report as generate_report_from_template,
 )
 
@@ -21,10 +23,10 @@ from report_template import (
 GLOBAL_REGION_LABEL = "Global"
 
 boto3_config = Config(
-    retries=dict(
-        max_attempts=10,  # Maximum number of retries
-        mode="adaptive",  # Exponential backoff with adaptive mode
-    )
+    retries={
+        "max_attempts": 10,  # Maximum number of retries
+        "mode": "adaptive",  # Exponential backoff with adaptive mode
+    }
 )
 
 # Configure logging
@@ -32,7 +34,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.WARNING)
 
 
-def parse_csv_content(csv_content: str) -> List[Dict[str, str]]:
+def parse_csv_content(csv_content: str) -> list[dict[str, str]]:
     """
     Parse CSV content into a list of dictionaries
 
@@ -65,7 +67,9 @@ def _flag_is_true(value: Any) -> bool:
     return False
 
 
-def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[str, Any]:
+def get_assessment_results(
+    execution_id: str, account_id: str | None = None
+) -> dict[str, Any]:
     """
     Download and parse Bedrock, SageMaker, AgentCore, and FinServ assessment CSV files for a given execution
 
@@ -90,7 +94,7 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         # first four are hard-coded per-service Lambdas; compliance-standard
         # entries (owasp, and future NIST/EU AI Act) come from the shared
         # COMPLIANCE_STANDARDS registry so adding a standard is data-only.
-        category_slugs = ["bedrock", "sagemaker", "agentcore", "finserv"] + [
+        category_slugs = ["bedrock", "sagemaker", "agentcore", "finserv", "hipaa"] + [
             std["slug"] for std in COMPLIANCE_STANDARDS
         ]
         prefixes = [f"{slug}_security_report_{execution_id}" for slug in category_slugs]
@@ -113,11 +117,12 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
             "agentcore",
             "agentic",
             "finserv",
+            "hipaa",
         ] + [std["slug"] for std in COMPLIANCE_STANDARDS]
         assessment_results = {
             "execution_id": execution_id,
             "account_id": account_id,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         for cat in report_categories:
             assessment_results[cat] = {}
@@ -157,8 +162,8 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
                     f"Successfully processed {file_name} for {category} assessment"
                 )
 
-            except Exception as e:
-                logger.error(f"Error processing file {s3_key}: {str(e)}", exc_info=True)
+            except Exception:
+                logger.exception(f"Error processing file {s3_key}")
                 continue
 
         assessment_results["summary"] = {
@@ -180,19 +185,15 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         if e.response["Error"]["Code"] == "NoSuchBucket":
             logger.error(f"Bucket not found: {s3_bucket}")
         else:
-            logger.error(
-                f"AWS error retrieving assessment results: {str(e)}", exc_info=True
-            )
+            logger.exception("AWS error retrieving assessment results")
         raise
-    except Exception as e:
-        logger.error(
-            f"Unexpected error retrieving assessment results: {str(e)}", exc_info=True
-        )
+    except Exception:
+        logger.exception("Unexpected error retrieving assessment results")
         raise
 
 
 def generate_html_report(
-    assessment_results: Dict[str, Any], show_finserv: bool = True
+    assessment_results: dict[str, Any], show_finserv: bool = True
 ) -> str:
     """
     Generate HTML report from assessment results.
@@ -221,6 +222,7 @@ def generate_html_report(
         "agentcore",
         "agentic",
         "finserv",
+        "hipaa",
     ] + compliance_slugs
     all_findings = []
     service_stats = {
@@ -251,11 +253,13 @@ def generate_html_report(
     ] + compliance_slugs
     for service in csv_source_slugs:
         if service in assessment_results:
-            for report_type, findings in assessment_results[service].items():
+            for findings in assessment_results[service].values():
                 for finding in findings:
                     check_id_upper = finding.get("Check_ID", "").upper()
                     if check_id_upper.startswith("AG-"):
                         output_service = "agentic"
+                    elif check_id_upper.startswith("HP-"):
+                        output_service = "hipaa"
                     elif (
                         "-" in check_id_upper
                         and check_id_upper.split("-", 1)[0] in compliance_prefix_to_slug
@@ -314,8 +318,8 @@ def generate_html_report(
             regions=sorted(regions) if regions else None,
         )
     except Exception as e:
-        logger.error(f"Error generating HTML report: {str(e)}", exc_info=True)
-        return f"""<!DOCTYPE html><html><body><h1>Error Generating Report</h1><p>An error occurred: {str(e)}</p></body></html>"""
+        logger.exception("Error generating HTML report")
+        return f"""<!DOCTYPE html><html><body><h1>Error Generating Report</h1><p>An error occurred: {e!s}</p></body></html>"""
 
 
 def get_current_utc_date():
@@ -328,8 +332,11 @@ def build_single_account_report_key(timestamp: str) -> str:
 
 
 def write_html_to_s3(
-    html_content: str, s3_bucket: str, execution_id: str, account_id: str = None
-) -> Optional[str]:
+    html_content: str,
+    s3_bucket: str,
+    execution_id: str,
+    account_id: str | None = None,
+) -> str | None:
     """
     Write HTML report to S3
 
@@ -360,8 +367,8 @@ def write_html_to_s3(
         logger.info(f"Successfully wrote HTML report to s3://{s3_bucket}/{s3_key}")
         return s3_key
 
-    except Exception as e:
-        logger.error(f"Error writing HTML report to S3: {str(e)}", exc_info=True)
+    except Exception:
+        logger.exception("Error writing HTML report to S3")
         return None
 
 
@@ -407,7 +414,8 @@ def lambda_handler(event, context):
         s3_key = write_html_to_s3(html_content, s3_bucket, execution_id, account_id)
 
         if not s3_key:
-            raise Exception("Failed to write HTML report to S3")
+            msg = "Failed to write HTML report to S3"
+            raise RuntimeError(msg)
 
         # Note: Multi-account consolidation is handled by consolidate_html_reports.py
         # in the CodeBuild post-build phase, not here. This Lambda only generates
@@ -420,8 +428,8 @@ def lambda_handler(event, context):
             s3_client = boto3.client("s3", config=boto3_config)
             s3_client.delete_object(Bucket=s3_bucket, Key=cache_key)
             logger.info(f"Deleted permissions cache: {cache_key}")
-        except Exception as cache_err:
-            logger.warning(f"Failed to delete permissions cache: {cache_err}")
+        except Exception:
+            logger.warning("Failed to delete permissions cache", exc_info=True)
 
         return {
             "statusCode": 200,
@@ -432,6 +440,6 @@ def lambda_handler(event, context):
             },
         }
 
-    except Exception as e:
-        logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
+    except Exception:
+        logger.exception("Error in lambda_handler")
         raise
