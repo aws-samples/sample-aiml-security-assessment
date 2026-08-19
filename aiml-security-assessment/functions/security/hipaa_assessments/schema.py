@@ -1,7 +1,8 @@
-from enum import Enum
-from typing import Any, Dict
-from pydantic import BaseModel, Field, field_validator
 import re
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class SeverityEnum(str, Enum):
@@ -84,7 +85,7 @@ def create_finding(
     severity: SeverityEnum,
     status: StatusEnum,
     region: str = "",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create a validated finding object
 

@@ -228,7 +228,9 @@ def consolidate_html_reports():
                     continue
 
     if all_findings:
-        timestamp_display = datetime.now(timezone.utc).strftime("%B %d, %Y %H:%M:%S UTC")
+        timestamp_display = datetime.now(timezone.utc).strftime(
+            "%B %d, %Y %H:%M:%S UTC"
+        )
 
         # Use shared template to generate report
         consolidated_html = generate_html_report(
