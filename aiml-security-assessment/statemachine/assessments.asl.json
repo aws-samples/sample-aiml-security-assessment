@@ -272,73 +272,20 @@
                                         "Type": "Choice",
                                         "Choices": [
                                             {
-                                                "And": [
+                                                "Or": [
                                                     {
                                                         "Variable": "$.OriginalInput.enableFinServ",
-                                                        "IsPresent": true
-                                                    },
-                                                    {
-                                                        "Variable": "$.OriginalInput.enableFinServ",
-                                                        "StringEquals": "true"
-                                                    },
-                                                    {
-                                                        "Variable": "$.RegionIndex",
-                                                        "NumericEquals": 0
-                                                    }
-                                                ],
-                                                "Next": "FinServ Security Assessment"
-                                                                                                {
-                                                    "StartAt": "HIPAA Security Assessment",
-                                                    "States": {
-                                                        "HIPAA Security Assessment": {
-                                                            "Type": "Task",
-                                                            "Resource": "arn:aws:states:::lambda:invoke",
-                                                            "Parameters": {
-                                                                "FunctionName": "${HIPAASecurityAssessmentFunction}",
-                                                                "Payload": {
-                                                                    "Execution.$": "$.Execution",
-                                                                    "StateMachine.$": "$.StateMachine",
-                                                                    "Region.$": "$.Region",
-                                                                    "RegionIndex.$": "$.RegionIndex"
-                                                                }
-                                                            },
-                                                            "Catch": [
-                                                                {
-                                                                    "ErrorEquals": ["States.ALL"],
-                                                                    "ResultPath": "$.hipaaError",
-                                                                    "Next": "HIPAA Assessment Incomplete"
-                                                                }
-                                                            ],
-                                                            "End": true
-                                                        },
-                                                        "HIPAA Assessment Incomplete": {
-                                                            "Type": "Pass",
-                                                            "Result": {"statusCode": 207, "incomplete": true, "body": {"findings": []}},
-                                                            "End": true
-                                                        }
-                                                    }
-                                                }
-
-                                            },
-                                            {
-                                                "And": [
-                                                    {
-                                                        "Variable": "$.OriginalInput.enableOWASP",
-                                                        "IsPresent": true
+                                                        "BooleanEquals": true
                                                     },
                                                     {
                                                         "Variable": "$.OriginalInput.enableOWASP",
-                                                        "StringEquals": "true"
-                                                    },
-                                                    {
-                                                        "Variable": "$.RegionIndex",
-                                                        "NumericEquals": 0
+                                                        "BooleanEquals": true
                                                     }
                                                 ],
                                                 "Next": "FinServ Security Assessment"
                                             }
                                         ],
-                                        "Default": "FinServ Assessment Skipped"
+                                        "Default": "FinServ Not Enabled"
                                     },
                                     "FinServ Security Assessment": {
                                         "Type": "Task",
@@ -349,8 +296,7 @@
                                                 "Execution.$": "$.Execution",
                                                 "StateMachine.$": "$.StateMachine",
                                                 "Region.$": "$.Region",
-                                                "RegionIndex.$": "$.RegionIndex",
-                                                "TargetRegions.$": "$.OriginalInput.ResolvedRegions.regions"
+                                                "RegionIndex.$": "$.RegionIndex"
                                             }
                                         },
                                         "Retry": [
@@ -372,7 +318,7 @@
                                                 "ErrorEquals": [
                                                     "States.ALL"
                                                 ],
-                                                "ResultPath": "$.finservError",
+                                                "ResultPath": "$.assessmentError",
                                                 "Next": "FinServ Assessment Incomplete"
                                             }
                                         ],
@@ -389,11 +335,84 @@
                                         },
                                         "End": true
                                     },
-                                    "FinServ Assessment Skipped": {
+                                    "FinServ Not Enabled": {
                                         "Type": "Pass",
                                         "Result": {
                                             "statusCode": 200,
-                                            "skipped": true,
+                                            "body": {
+                                                "findings": []
+                                            }
+                                        },
+                                        "End": true
+                                    }
+                                }
+                            },
+                            {
+                                "StartAt": "HIPAA Enabled?",
+                                "States": {
+                                    "HIPAA Enabled?": {
+                                        "Type": "Choice",
+                                        "Choices": [
+                                            {
+                                                "Variable": "$.OriginalInput.enableHIPAA",
+                                                "BooleanEquals": true,
+                                                "Next": "HIPAA Security Assessment"
+                                            }
+                                        ],
+                                        "Default": "HIPAA Not Enabled"
+                                    },
+                                    "HIPAA Security Assessment": {
+                                        "Type": "Task",
+                                        "Resource": "arn:aws:states:::lambda:invoke",
+                                        "Parameters": {
+                                            "FunctionName": "${HIPAASecurityAssessmentFunction}",
+                                            "Payload": {
+                                                "Execution.$": "$.Execution",
+                                                "StateMachine.$": "$.StateMachine",
+                                                "Region.$": "$.Region",
+                                                "RegionIndex.$": "$.RegionIndex"
+                                            }
+                                        },
+                                        "Retry": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "Lambda.ServiceException",
+                                                    "Lambda.AWSLambdaException",
+                                                    "Lambda.SdkClientException",
+                                                    "Lambda.TooManyRequestsException"
+                                                ],
+                                                "IntervalSeconds": 1,
+                                                "MaxAttempts": 3,
+                                                "BackoffRate": 2,
+                                                "JitterStrategy": "FULL"
+                                            }
+                                        ],
+                                        "Catch": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "ResultPath": "$.assessmentError",
+                                                "Next": "HIPAA Assessment Incomplete"
+                                            }
+                                        ],
+                                        "End": true
+                                    },
+                                    "HIPAA Assessment Incomplete": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 207,
+                                            "incomplete": true,
+                                            "body": {
+                                                "findings": []
+                                            }
+                                        },
+                                        "End": true
+                                    },
+                                    "HIPAA Not Enabled": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 200,
                                             "body": {
                                                 "findings": []
                                             }
@@ -403,27 +422,18 @@
                                 }
                             }
                         ],
-                        "ResultPath": null,
-                        "Next": "OWASP Enabled?"
+                        "Next": "Run OWASP Assessment"
                     },
-                    "OWASP Enabled?": {
+                    "Run OWASP Assessment": {
                         "Type": "Choice",
                         "Choices": [
                             {
-                                "And": [
-                                    {
-                                        "Variable": "$.OriginalInput.enableOWASP",
-                                        "IsPresent": true
-                                    },
-                                    {
-                                        "Variable": "$.OriginalInput.enableOWASP",
-                                        "StringEquals": "true"
-                                    }
-                                ],
+                                "Variable": "$.[0].OriginalInput.enableOWASP",
+                                "BooleanEquals": true,
                                 "Next": "OWASP Security Assessment"
                             }
                         ],
-                        "Default": "OWASP Assessment Skipped"
+                        "Default": "Regional Scan Complete"
                     },
                     "OWASP Security Assessment": {
                         "Type": "Task",
@@ -431,10 +441,10 @@
                         "Parameters": {
                             "FunctionName": "${OWASPSecurityAssessmentFunction}",
                             "Payload": {
-                                "Execution.$": "$.Execution",
-                                "StateMachine.$": "$.StateMachine",
-                                "Region.$": "$.Region",
-                                "RegionIndex.$": "$.RegionIndex"
+                                "Execution.$": "$.[0].Execution",
+                                "StateMachine.$": "$.[0].StateMachine",
+                                "Region.$": "$.[0].Region",
+                                "RegionIndex.$": "$.[0].RegionIndex"
                             }
                         },
                         "Retry": [
@@ -451,42 +461,15 @@
                                 "JitterStrategy": "FULL"
                             }
                         ],
-                        "Catch": [
-                            {
-                                "ErrorEquals": [
-                                    "States.ALL"
-                                ],
-                                "ResultPath": "$.owaspError",
-                                "Next": "OWASP Assessment Incomplete"
-                            }
-                        ],
                         "End": true
                     },
-                    "OWASP Assessment Incomplete": {
+                    "Regional Scan Complete": {
                         "Type": "Pass",
-                        "Result": {
-                            "statusCode": 207,
-                            "incomplete": true,
-                            "body": {
-                                "findings": []
-                            }
-                        },
-                        "End": true
-                    },
-                    "OWASP Assessment Skipped": {
-                        "Type": "Pass",
-                        "Result": {
-                            "statusCode": 200,
-                            "skipped": true,
-                            "body": {
-                                "findings": []
-                            }
-                        },
                         "End": true
                     }
                 }
             },
-            "ResultPath": null,
+            "ResultPath": "$.RegionalResults",
             "Next": "Generate Consolidated Report"
         },
         "Generate Consolidated Report": {
@@ -496,7 +479,7 @@
                 "FunctionName": "${GenerateConsolidatedReportFunction}",
                 "Payload": {
                     "Execution.$": "$$.Execution",
-                    "OriginalInput.$": "$"
+                    "StateMachine.$": "$$.StateMachine"
                 }
             },
             "Retry": [
