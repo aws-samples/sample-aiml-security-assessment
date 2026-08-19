@@ -62,6 +62,19 @@ OWASP_ICON_SMALL = (
     '<path fill="#FFF" d="M40 12 20 20v18c0 14 8 26 20 30 12-4 20-16 20-30V20L40 12zm0 8 12 4.8V38c0 10-5.2 18.6-12 22-6.8-3.4-12-12-12-22V24.8L40 20zm-3 12h6l-3 8-3-8z"/></svg></span>'
 )
 OWASP_LLM_TOP10_URL = "https://genai.owasp.org/llm-top-10/"
+# HIPAA icon (medical shield).
+HIPAA_ICON = (
+    '<span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
+    '<rect fill="#2563EB" width="80" height="80"/>'
+    '<path fill="#FFF" d="M40 15 L60 25 L60 45 C60 55 52 65 40 70 C28 65 20 55 20 45 L20 25 Z M40 30 v25 M28 42 h24"/></svg></span>'
+ )
+HIPAA_ICON_SMALL = (
+    '<span class="service-icon" style="width: 18px; height: 18px;">'
+    '<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
+    '<rect fill="#2563EB" width="80" height="80"/>'
+    '<path fill="#FFF" d="M40 15 L60 25 L60 45 C60 55 52 65 40 70 C28 65 20 55 20 45 L20 25 Z M40 30 v25 M28 42 h24"/></svg></span>'
+ )
+HIPAA_COMPLIANCE_URL = "https://aws.amazon.com/compliance/hipaa-compliance/"
 
 # COMPLIANCE_STANDARDS — registry of compliance-standard sections.
 # Each entry produces a sidebar nav item + service card + section + filter
@@ -70,6 +83,27 @@ OWASP_LLM_TOP10_URL = "https://genai.owasp.org/llm-top-10/"
 # service_stats/service_findings and route Check_ID prefixes, so appending a
 # new entry here (with a unique slug + Check_ID prefix) is sufficient — no
 # loop-body edits required in the report layer or its callers.
+COMPLIANCE_STANDARDS: List[Dict[str, str]] = [
+    {
+        "slug": "owasp",
+        # ... (deja lo de owasp como está )
+    },
+    {
+        "slug": "hipaa",
+        "name": "HIPAA Compliance",
+        "prefix": "HP-",
+        "icon": HIPAA_ICON,
+        "icon_small": HIPAA_ICON_SMALL,
+        "reference_url": HIPAA_COMPLIANCE_URL,
+        "section_title": "HIPAA Compliance Lens Findings",
+        "scope_text": (
+            "Scope: Automated security checks for Bedrock and SageMaker environments "
+            "aligned with HIPAA/HITECH security and privacy controls. Focuses on "
+            "encryption (CMK), network isolation, and data protection policies."
+        ),
+    },
+]
+
 COMPLIANCE_STANDARDS: List[Dict[str, str]] = [
     {
         "slug": "owasp",

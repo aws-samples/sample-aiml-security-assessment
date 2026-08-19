@@ -57,31 +57,69 @@ Resources:
         SagemakerSecurityAssessmentFunction: !GetAtt SagemakerSecurityAssessmentFunction.Arn
         AgentCoreSecurityAssessmentFunction: !GetAtt AgentCoreSecurityAssessmentFunction.Arn
         FinServSecurityAssessmentFunction: !GetAtt FinServSecurityAssessmentFunction.Arn
-        OWASPSecurityAssessmentFunction: !GetAtt OWASPSecurityAssessmentFunction.Arn
-        GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
-        AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
-        MaxRegionConcurrency: !Ref MaxRegionConcurrency
-      Policies:
-        - LambdaInvokePolicy:
-            FunctionName: !Ref CleanupBucketFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref IAMPermissionCachingFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref ResolveRegionsFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref BedrockSecurityAssessmentFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref SagemakerSecurityAssessmentFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref AgentCoreSecurityAssessmentFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref FinServSecurityAssessmentFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref OWASPSecurityAssessmentFunction
-        - LambdaInvokePolicy:
-            FunctionName: !Ref GenerateConsolidatedReportFunction
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
+          HIPAASecurityAssessmentFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        FunctionName: !Sub 'aiml-security-${AWS::StackName}-HIPAAAssessment'
+        CodeUri: functions/security/hipaa_assessments/
+        Handler: app.lambda_handler
+        Runtime: python3.12
+        Architectures: [x86_64]
+        Timeout: 900
+        MemorySize: 1024
+        Environment:
+          Variables:
+            AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+            TARGET_REGIONS: !Ref TargetRegions
+        Policies:
+          - S3CrudPolicy:
+              BucketName: !Ref AIMLAssessmentBucket
+          - Statement:
+              - Sid: BedrockPermissions
+                Effect: Allow
+                Action: [bedrock:ListCustomModels, bedrock:GetCustomModel, bedrock:ListGuardrails, bedrock:GetGuardrail]
+                Resource: '*'
+              - Sid: SageMakerPermissions
+                Effect: Allow
+                Action: [sagemaker:ListEndpoints, sagemaker:DescribeEndpoint, sagemaker:DescribeEndpointConfig, sagemaker:ListTrainingJobs, sagemaker:DescribeTrainingJob]
+                Resource: '*'
+              - Sid: EC2Permissions
+                Effect: Allow
+                Action: [ec2:DescribeVpcEndpoints]
+                Resource: '*'
+              - Sid: LogsPermissions
+                Effect: Allow
+                Action: [logs:DescribeLogGroups, logs:GetDataProtectionPolicy]
+                Resource: '*'
+              - Sid: S3Permissions
+                Effect: Allow
+                Action: [s3:ListAllMyBuckets, s3:GetBucketEncryption, s3:GetBucketVersioning]
+                Resource: '*'
+          OWASPSecurityAssessmentFunction: !GetAtt OWASPSecurityAssessmentFunction.Arn
+          GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
+          AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
+          MaxRegionConcurrency: !Ref MaxRegionConcurrency
+        Policies:
+          - LambdaInvokePolicy:
+              FunctionName: !Ref CleanupBucketFunction
+          - LambdaInvokePolicy:
+              FunctionName: !Ref IAMPermissionCachingFunction
+          - LambdaInvokePolicy:
+              FunctionName: !Ref ResolveRegionsFunction
+          - LambdaInvokePolicy:
+              FunctionName: !Ref BedrockSecurityAssessmentFunction
+          - LambdaInvokePolicy:
+              FunctionName: !Ref SagemakerSecurityAssessmentFunction
+          - LambdaInvokePolicy:
+              FunctionName: !Ref AgentCoreSecurityAssessmentFunction
+          - LambdaInvokePolicy:
+              FunctionName: !Ref FinServSecurityAssessmentFunction
+          - LambdaInvokePolicy:
+              FunctionName: !Ref OWASPSecurityAssessmentFunction
+          - LambdaInvokePolicy:
+              FunctionName: !Ref GenerateConsolidatedReportFunction
+          - S3CrudPolicy:
+              BucketName: !Ref AIMLAssessmentBucket
 
   ResolveRegionsFunction:
     Type: AWS::Serverless::Function

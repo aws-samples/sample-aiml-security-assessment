@@ -95,6 +95,7 @@ def consolidate_html_reports():
         "agentcore",
         "agentic",
         "finserv",
+        "hipaa",
     ] + compliance_slugs
     service_stats = {
         slug: {"passed": 0, "failed": 0, "na": 0} for slug in all_report_slugs
@@ -167,6 +168,8 @@ def consolidate_html_reports():
                                 service = "agentic"
                             elif check_id.startswith("FS-"):
                                 service = "finserv"
+                            elif check_id.startswith("HP-"):
+                                service = "hipaa"
                             elif check_id_prefix in compliance_prefix_to_slug:
                                 service = compliance_prefix_to_slug[check_id_prefix]
                             else:

@@ -90,7 +90,7 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         # first four are hard-coded per-service Lambdas; compliance-standard
         # entries (owasp, and future NIST/EU AI Act) come from the shared
         # COMPLIANCE_STANDARDS registry so adding a standard is data-only.
-        category_slugs = ["bedrock", "sagemaker", "agentcore", "finserv"] + [
+        category_slugs = ["bedrock", "sagemaker", "agentcore", "finserv", "hipaa"] + [
             std["slug"] for std in COMPLIANCE_STANDARDS
         ]
         prefixes = [f"{slug}_security_report_{execution_id}" for slug in category_slugs]
@@ -113,6 +113,7 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
             "agentcore",
             "agentic",
             "finserv",
+            "hipaa",
         ] + [std["slug"] for std in COMPLIANCE_STANDARDS]
         assessment_results = {
             "execution_id": execution_id,
@@ -256,6 +257,8 @@ def generate_html_report(
                     check_id_upper = finding.get("Check_ID", "").upper()
                     if check_id_upper.startswith("AG-"):
                         output_service = "agentic"
+                    elif check_id_upper.startswith("HP-"):
+                        output_service = "hipaa"
                     elif (
                         "-" in check_id_upper
                         and check_id_upper.split("-", 1)[0] in compliance_prefix_to_slug

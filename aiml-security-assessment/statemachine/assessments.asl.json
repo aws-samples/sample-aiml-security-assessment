@@ -287,6 +287,38 @@
                                                     }
                                                 ],
                                                 "Next": "FinServ Security Assessment"
+                                                                                                {
+                                                    "StartAt": "HIPAA Security Assessment",
+                                                    "States": {
+                                                        "HIPAA Security Assessment": {
+                                                            "Type": "Task",
+                                                            "Resource": "arn:aws:states:::lambda:invoke",
+                                                            "Parameters": {
+                                                                "FunctionName": "${HIPAASecurityAssessmentFunction}",
+                                                                "Payload": {
+                                                                    "Execution.$": "$.Execution",
+                                                                    "StateMachine.$": "$.StateMachine",
+                                                                    "Region.$": "$.Region",
+                                                                    "RegionIndex.$": "$.RegionIndex"
+                                                                }
+                                                            },
+                                                            "Catch": [
+                                                                {
+                                                                    "ErrorEquals": ["States.ALL"],
+                                                                    "ResultPath": "$.hipaaError",
+                                                                    "Next": "HIPAA Assessment Incomplete"
+                                                                }
+                                                            ],
+                                                            "End": true
+                                                        },
+                                                        "HIPAA Assessment Incomplete": {
+                                                            "Type": "Pass",
+                                                            "Result": {"statusCode": 207, "incomplete": true, "body": {"findings": []}},
+                                                            "End": true
+                                                        }
+                                                    }
+                                                }
+
                                             },
                                             {
                                                 "And": [
