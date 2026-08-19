@@ -11,12 +11,13 @@ to ensure consistent report generation between single-account and multi-account
 reports.
 """
 
+import csv
+import glob
 import os
 import sys
-import glob
-import csv
-import boto3
 from datetime import datetime
+
+import boto3
 from botocore.exceptions import ClientError
 
 # Add the Lambda function directory to path to import shared template
@@ -69,7 +70,7 @@ def consolidate_html_reports():
     try:
         s3 = boto3.client("s3")
     except Exception as e:
-        print(f"Error creating S3 client: {str(e)}")
+        print(f"Error creating S3 client: {e!s}")
         raise
 
     bucket = os.environ.get("BUCKET_REPORT")
@@ -217,11 +218,11 @@ def consolidate_html_reports():
                             elif status == "n/a":
                                 service_stats[service]["na"] += 1
 
-                except IOError as e:
-                    print(f"Error reading CSV file {csv_file}: {str(e)}")
+                except OSError as e:
+                    print(f"Error reading CSV file {csv_file}: {e!s}")
                     continue
                 except Exception as e:
-                    print(f"Error parsing CSV file {csv_file}: {str(e)}")
+                    print(f"Error parsing CSV file {csv_file}: {e!s}")
                     continue
 
     if all_findings:
@@ -256,10 +257,10 @@ def consolidate_html_reports():
             elif error_code == "AccessDenied":
                 print(f"Error: Access denied to bucket '{bucket}'")
             else:
-                print(f"Error uploading to S3: {str(e)}")
+                print(f"Error uploading to S3: {e!s}")
             raise
         except Exception as e:
-            print(f"Unexpected error uploading consolidated report: {str(e)}")
+            print(f"Unexpected error uploading consolidated report: {e!s}")
             raise
     else:
         print("No findings found for consolidation")

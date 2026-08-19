@@ -1,15 +1,17 @@
-import boto3
 import csv
-import os
 import logging
+import os
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
 from io import StringIO
+from typing import Any
+
+import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-
 from report_template import (
     COMPLIANCE_STANDARDS,
+)
+from report_template import (
     generate_html_report as generate_report_from_template,
 )
 
@@ -32,7 +34,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.WARNING)
 
 
-def parse_csv_content(csv_content: str) -> List[Dict[str, str]]:
+def parse_csv_content(csv_content: str) -> list[dict[str, str]]:
     """
     Parse CSV content into a list of dictionaries
 
@@ -65,16 +67,13 @@ def _flag_is_true(value: Any) -> bool:
     return False
 
 
-def get_assessment_results(
-    execution_id: str, account_id: str = None
-) -> Dict[str, Any]:
+def get_assessment_results(execution_id: str, account_id: str = None) -> dict[str, Any]:
     """
-    Download and parse Bedrock, SageMaker, AgentCore, and FinServ assessment
-    CSV files for a given execution
+    Download and parse Bedrock, SageMaker, AgentCore, and FinServ assessment CSV files for a given execution
 
     Args:
+        s3_bucket (str): Source S3 bucket name
         execution_id (str): Step Functions execution ID
-        account_id (str): Optional AWS Account ID
 
     Returns:
         Dict[str, Any]: Nested object containing all assessment results
@@ -83,10 +82,16 @@ def get_assessment_results(
         s3_client = boto3.client("s3", config=boto3_config)
 
         # List all CSV files with execution ID in filename (bucket root).
+        # Use a paginator: a multi-region scan produces one file per service per
+        # region, so a single list_objects_v2 call (capped at 1000 keys) could
+        # silently truncate and drop regions for large scans.
         s3_bucket = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
         paginator = s3_client.get_paginator("list_objects_v2")
 
-        # Category slug → CSV filename fragment. Added 'hipaa' to the list.
+        # Category slug → CSV filename fragment (also matched in S3 key). The
+        # first four are hard-coded per-service Lambdas; compliance-standard
+        # entries (owasp, and future NIST/EU AI Act) come from the shared
+        # COMPLIANCE_STANDARDS registry so adding a standard is data-only.
         category_slugs = ["bedrock", "sagemaker", "agentcore", "finserv", "hipaa"] + [
             std["slug"] for std in COMPLIANCE_STANDARDS
         ]
@@ -101,7 +106,9 @@ def get_assessment_results(
             logger.warning(f"No assessment files found for execution {execution_id}")
             return {}
 
-        # Categories the report understands. Added 'hipaa' to the list.
+        # Categories the report understands: per-service (bedrock/sagemaker/
+        # agentcore/finserv), the reconstructed agentic lens, and every
+        # registered compliance standard.
         report_categories = [
             "bedrock",
             "sagemaker",
@@ -118,7 +125,9 @@ def get_assessment_results(
         for cat in report_categories:
             assessment_results[cat] = {}
 
-        # Process each CSV file.
+        # Process each CSV file. Match category by filename prefix (e.g.
+        # `owasp_security_report_...`); no substring collisions exist among
+        # the registered slugs so first-match wins is safe.
         for obj in all_objects:
             s3_key = obj["Key"]
 
@@ -152,7 +161,7 @@ def get_assessment_results(
                 )
 
             except Exception as e:
-                logger.error(f"Error processing file {s3_key}: {str(e)}", exc_info=True)
+                logger.error(f"Error processing file {s3_key}: {e!s}", exc_info=True)
                 continue
 
         assessment_results["summary"] = {
@@ -175,22 +184,39 @@ def get_assessment_results(
             logger.error(f"Bucket not found: {s3_bucket}")
         else:
             logger.error(
-                f"AWS error retrieving assessment results: {str(e)}", exc_info=True
+                f"AWS error retrieving assessment results: {e!s}", exc_info=True
             )
         raise
     except Exception as e:
         logger.error(
-            f"Unexpected error retrieving assessment results: {str(e)}", exc_info=True
+            f"Unexpected error retrieving assessment results: {e!s}", exc_info=True
         )
         raise
 
 
 def generate_html_report(
-    assessment_results: Dict[str, Any], show_finserv: bool = True
+    assessment_results: dict[str, Any], show_finserv: bool = True
 ) -> str:
     """
     Generate HTML report from assessment results.
+
+    This function transforms the assessment_results structure into the format
+    expected by the shared report_template module.
+
+    Args:
+        assessment_results: Dict containing bedrock, sagemaker, agentcore, finserv findings
+        show_finserv: When False, FinServ (FS-*) rows are excluded from the
+            report entirely. Used when FinServ was executed only as an OWASP
+            dependency (enableFinServ=false, enableOWASP=true) so its rows
+            still power OW-* mappings but are not surfaced in the UI.
+
+    Returns:
+        HTML report string
     """
+    # Transform assessment_results into flat findings lists. Bedrock/SageMaker/
+    # AgentCore/Agentic/FinServ are fixed report categories; compliance
+    # standards (OWASP + future NIST/EU AI Act) are appended from the shared
+    # COMPLIANCE_STANDARDS registry so adding a standard is data-only.
     compliance_slugs = [std["slug"] for std in COMPLIANCE_STANDARDS]
     all_report_slugs = [
         "bedrock",
@@ -205,10 +231,20 @@ def generate_html_report(
         slug: {"passed": 0, "failed": 0, "na": 0} for slug in all_report_slugs
     }
     service_findings = {slug: [] for slug in all_report_slugs}
+    # Check_ID prefix (uppercase, without trailing dash) → report-service slug
+    # for the compliance standards; used to route rows by Check_ID prefix.
     compliance_prefix_to_slug = {
         std["prefix"].upper().rstrip("-"): std["slug"] for std in COMPLIANCE_STANDARDS
     }
     regions = set()
+
+    # Global/IAM findings (Region == "Global", e.g. BR-01, SM-02, AC-09) are
+    # produced once per run by the primary-region Lambda and should land in a
+    # single CSV. Dedup defensively here so the totals and per-region tiles stay
+    # correct even if the same finding ever appears in more than one region's
+    # file (e.g. RegionIndex missing from the event, or a future per-region
+    # write of a global check). The key uniquely identifies a finding within an
+    # account; account is included so a future multi-account merge is unaffected.
     seen_findings = set()
 
     csv_source_slugs = [
@@ -216,7 +252,6 @@ def generate_html_report(
         "sagemaker",
         "agentcore",
         "finserv",
-        "hipaa",
     ] + compliance_slugs
     for service in csv_source_slugs:
         if service in assessment_results:
@@ -236,7 +271,10 @@ def generate_html_report(
                         ]
                     else:
                         output_service = service
-
+                    # When FinServ ran only as an OWASP dependency (customer
+                    # did not enable it explicitly), drop FS-* rows so the
+                    # UI shows a clean OWASP-only view. FS rows still fed
+                    # the OW-* mappings inside the OWASP Lambda upstream.
                     if not show_finserv and output_service == "finserv":
                         continue
                     dedup_key = (
@@ -261,6 +299,8 @@ def generate_html_report(
                     elif status == "n/a":
                         service_stats[output_service]["na"] += 1
                     region = finding.get("Region", "")
+                    # "Global" tags IAM-only findings; it is not a scanned region
+                    # and must not inflate the region count / multi-region UI.
                     if region and region != GLOBAL_REGION_LABEL and "," not in region:
                         regions.add(region)
 
@@ -280,11 +320,8 @@ def generate_html_report(
             regions=sorted(regions) if regions else None,
         )
     except Exception as e:
-        logger.error(f"Error generating HTML report: {str(e)}", exc_info=True)
-        return (
-            "<!DOCTYPE html><html><body><h1>Error Generating Report</h1>"
-            f"<p>An error occurred: {str(e)}</p></body></html>"
-        )
+        logger.error(f"Error generating HTML report: {e!s}", exc_info=True)
+        return f"""<!DOCTYPE html><html><body><h1>Error Generating Report</h1><p>An error occurred: {e!s}</p></body></html>"""
 
 
 def get_current_utc_date():
@@ -298,15 +335,26 @@ def build_single_account_report_key(timestamp: str) -> str:
 
 def write_html_to_s3(
     html_content: str, s3_bucket: str, execution_id: str, account_id: str = None
-) -> Optional[str]:
+) -> str | None:
     """
     Write HTML report to S3
+
+    Args:
+        html_content (str): HTML content to write
+        s3_bucket (str): Destination S3 bucket name
+        execution_id (str): Step Functions execution ID
+
+    Returns:
+        Optional[str]: S3 key if successful, None if error
     """
     try:
         s3_client = boto3.client("s3", config=boto3_config)
+
+        # Generate the S3 key for local bucket (no account folder needed)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         s3_key = build_single_account_report_key(timestamp)
 
+        # Upload the HTML file
         s3_client.put_object(
             Bucket=s3_bucket,
             Key=s3_key,
@@ -319,7 +367,7 @@ def write_html_to_s3(
         return s3_key
 
     except Exception as e:
-        logger.error(f"Error writing HTML report to S3: {str(e)}", exc_info=True)
+        logger.error(f"Error writing HTML report to S3: {e!s}", exc_info=True)
         return None
 
 
@@ -331,32 +379,48 @@ def lambda_handler(event, context):
     logger.info(f"Event: {event}")
 
     try:
+        # Get execution ID from event
         execution_id = event["Execution"]["Name"]
+        # Get account ID using STS GetCallerIdentity
         sts_client = boto3.client("sts", config=boto3_config)
         account_id = sts_client.get_caller_identity()["Account"]
+        # Get S3 bucket name from environment variable
         s3_bucket = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
-
         if not s3_bucket:
             raise ValueError(
                 "AIML_ASSESSMENT_BUCKET_NAME environment variable is required"
             )
 
+        # The state machine now forces FinServ to run whenever OWASP is
+        # enabled (OWASP's FS→OW mappings need the FinServ CSV). Show the
+        # FinServ UI only when the customer asked for it explicitly. When
+        # OWASP is on but FinServ is off, FS-* rows are consumed silently
+        # by OWASP and hidden from the report.
         original_input = event.get("OriginalInput") or {}
         show_finserv = _flag_is_true(original_input.get("enableFinServ"))
 
+        # Get assessment results
         assessment_results = get_assessment_results(execution_id, account_id)
         if not assessment_results:
             raise ValueError(f"No assessment results found: {execution_id}")
 
+        # Generate HTML report
         html_content = generate_html_report(
             assessment_results, show_finserv=show_finserv
         )
 
+        # Write HTML report to S3
         s3_key = write_html_to_s3(html_content, s3_bucket, execution_id, account_id)
 
         if not s3_key:
             raise Exception("Failed to write HTML report to S3")
 
+        # Note: Multi-account consolidation is handled by consolidate_html_reports.py
+        # in the CodeBuild post-build phase, not here. This Lambda only generates
+        # the per-account security_assessment_*.html report.
+
+        # Delete the IAM permissions cache file — it contains full policy documents
+        # and should not persist in S3 after the assessment completes
         try:
             cache_key = f"permissions_cache_{execution_id}.json"
             s3_client = boto3.client("s3", config=boto3_config)
@@ -375,5 +439,5 @@ def lambda_handler(event, context):
         }
 
     except Exception as e:
-        logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
+        logger.error(f"Error in lambda_handler: {e!s}", exc_info=True)
         raise
