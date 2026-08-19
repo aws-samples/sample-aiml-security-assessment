@@ -15,7 +15,8 @@ import csv
 import glob
 import os
 import sys
-from datetime import datetime
+import traceback
+from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError
@@ -67,13 +68,13 @@ def consolidate_html_reports():
     a consolidated multi-account report using the same template as single-account reports.
     """
 
+    bucket = os.environ.get("BUCKET_REPORT")
     try:
         s3 = boto3.client("s3")
-    except Exception as e:
-        print(f"Error creating S3 client: {e!s}")
+    except Exception:
+        print(f"Error initializing S3 client for bucket {bucket}")
+        traceback.print_exc()
         raise
-
-    bucket = os.environ.get("BUCKET_REPORT")
     if not bucket:
         print("Error: BUCKET_REPORT environment variable is not set")
         raise ValueError("BUCKET_REPORT environment variable is required")
@@ -221,12 +222,13 @@ def consolidate_html_reports():
                 except OSError as e:
                     print(f"Error reading CSV file {csv_file}: {e!s}")
                     continue
-                except Exception as e:
-                    print(f"Error parsing CSV file {csv_file}: {e!s}")
+                except Exception:  # noqa: BLE001
+                    print(f"Error parsing CSV file {csv_file}")
+                    traceback.print_exc()
                     continue
 
     if all_findings:
-        timestamp_display = datetime.now().strftime("%B %d, %Y %H:%M:%S UTC")
+        timestamp_display = datetime.now(timezone.utc).strftime("%B %d, %Y %H:%M:%S UTC")
 
         # Use shared template to generate report
         consolidated_html = generate_html_report(
@@ -239,7 +241,7 @@ def consolidate_html_reports():
             regions=sorted(regions) if regions else None,
         )
 
-        timestamp_file = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp_file = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         s3_key = build_multi_account_report_key(timestamp_file)
 
         try:
@@ -261,6 +263,7 @@ def consolidate_html_reports():
             raise
         except Exception as e:
             print(f"Unexpected error uploading consolidated report: {e!s}")
+            traceback.print_exc()
             raise
     else:
         print("No findings found for consolidation")

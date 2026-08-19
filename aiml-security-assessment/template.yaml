@@ -59,6 +59,7 @@ Resources:
         FinServSecurityAssessmentFunction: !GetAtt FinServSecurityAssessmentFunction.Arn
         OWASPSecurityAssessmentFunction: !GetAtt OWASPSecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
+        HIPAASecurityAssessmentFunction: !GetAtt HIPAASecurityAssessmentFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
         MaxRegionConcurrency: !Ref MaxRegionConcurrency
       Policies:
@@ -78,6 +79,8 @@ Resources:
             FunctionName: !Ref FinServSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref OWASPSecurityAssessmentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref HIPAASecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref GenerateConsolidatedReportFunction
         - S3CrudPolicy:
@@ -547,7 +550,7 @@ Resources:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
         - Statement:
-            - Sid: BedrockPermissions
+            - Sid: HIPAABedrockPermissions
               Effect: Allow
               Action:
                 - bedrock:ListCustomModels
@@ -555,7 +558,7 @@ Resources:
                 - bedrock:ListGuardrails
                 - bedrock:GetGuardrail
               Resource: '*'
-            - Sid: SageMakerPermissions
+            - Sid: HIPAASageMakerPermissions
               Effect: Allow
               Action:
                 - sagemaker:ListEndpoints
@@ -564,18 +567,18 @@ Resources:
                 - sagemaker:ListTrainingJobs
                 - sagemaker:DescribeTrainingJob
               Resource: '*'
-            - Sid: EC2Permissions
+            - Sid: HIPAAEC2Permissions
               Effect: Allow
               Action:
                 - ec2:DescribeVpcEndpoints
               Resource: '*'
-            - Sid: LogsPermissions
+            - Sid: HIPAALogsPermissions
               Effect: Allow
               Action:
                 - logs:DescribeLogGroups
                 - logs:GetDataProtectionPolicy
               Resource: '*'
-            - Sid: S3Permissions
+            - Sid: HIPAAS3Permissions
               Effect: Allow
               Action:
                 - s3:ListAllMyBuckets
@@ -583,31 +586,31 @@ Resources:
                 - s3:GetBucketVersioning
               Resource: '*'
 
-            - Sid: WAFShieldPermissions
+            - Sid: HIPAAWAFShieldPermissions
               Effect: Allow
               Action:
                 - wafv2:ListWebACLs
                 - wafv2:GetWebACL
                 - shield:DescribeSubscription
               Resource: '*'
-            - Sid: APIGatewayPermissions
+            - Sid: HIPAAAPIGatewayPermissions
               Effect: Allow
               Action:
                 - apigateway:GET
               Resource: '*'
-            - Sid: ServiceQuotasPermissions
+            - Sid: HIPAAServiceQuotasPermissions
               Effect: Allow
               Action:
                 - servicequotas:ListServiceQuotas
                 - servicequotas:ListAWSDefaultServiceQuotas
               Resource: '*'
-            - Sid: CostBudgetPermissions
+            - Sid: HIPAACostBudgetPermissions
               Effect: Allow
               Action:
                 - ce:GetAnomalyMonitors
                 - budgets:ViewBudget
               Resource: '*'
-            - Sid: CloudWatchPermissions
+            - Sid: HIPAACloudWatchPermissions
               Effect: Allow
               Action:
                 - cloudwatch:DescribeAlarms

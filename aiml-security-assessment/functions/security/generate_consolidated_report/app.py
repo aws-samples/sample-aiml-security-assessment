@@ -23,10 +23,10 @@ from report_template import (
 GLOBAL_REGION_LABEL = "Global"
 
 boto3_config = Config(
-    retries=dict(
-        max_attempts=10,  # Maximum number of retries
-        mode="adaptive",  # Exponential backoff with adaptive mode
-    )
+    retries={
+        "max_attempts": 10,  # Maximum number of retries
+        "mode": "adaptive",  # Exponential backoff with adaptive mode
+    }
 )
 
 # Configure logging
@@ -67,7 +67,9 @@ def _flag_is_true(value: Any) -> bool:
     return False
 
 
-def get_assessment_results(execution_id: str, account_id: str = None) -> dict[str, Any]:
+def get_assessment_results(
+    execution_id: str, account_id: str | None = None
+) -> dict[str, Any]:
     """
     Download and parse Bedrock, SageMaker, AgentCore, and FinServ assessment CSV files for a given execution
 
@@ -120,7 +122,7 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> dict[st
         assessment_results = {
             "execution_id": execution_id,
             "account_id": account_id,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         for cat in report_categories:
             assessment_results[cat] = {}
@@ -160,8 +162,8 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> dict[st
                     f"Successfully processed {file_name} for {category} assessment"
                 )
 
-            except Exception as e:
-                logger.error(f"Error processing file {s3_key}: {e!s}", exc_info=True)
+            except Exception:
+                logger.exception(f"Error processing file {s3_key}")
                 continue
 
         assessment_results["summary"] = {
@@ -183,14 +185,10 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> dict[st
         if e.response["Error"]["Code"] == "NoSuchBucket":
             logger.error(f"Bucket not found: {s3_bucket}")
         else:
-            logger.error(
-                f"AWS error retrieving assessment results: {e!s}", exc_info=True
-            )
+            logger.exception("AWS error retrieving assessment results")
         raise
-    except Exception as e:
-        logger.error(
-            f"Unexpected error retrieving assessment results: {e!s}", exc_info=True
-        )
+    except Exception:
+        logger.exception("Unexpected error retrieving assessment results")
         raise
 
 
@@ -255,7 +253,7 @@ def generate_html_report(
     ] + compliance_slugs
     for service in csv_source_slugs:
         if service in assessment_results:
-            for report_type, findings in assessment_results[service].items():
+            for findings in assessment_results[service].values():
                 for finding in findings:
                     check_id_upper = finding.get("Check_ID", "").upper()
                     if check_id_upper.startswith("AG-"):
@@ -320,7 +318,7 @@ def generate_html_report(
             regions=sorted(regions) if regions else None,
         )
     except Exception as e:
-        logger.error(f"Error generating HTML report: {e!s}", exc_info=True)
+        logger.exception("Error generating HTML report")
         return f"""<!DOCTYPE html><html><body><h1>Error Generating Report</h1><p>An error occurred: {e!s}</p></body></html>"""
 
 
@@ -334,7 +332,10 @@ def build_single_account_report_key(timestamp: str) -> str:
 
 
 def write_html_to_s3(
-    html_content: str, s3_bucket: str, execution_id: str, account_id: str = None
+    html_content: str,
+    s3_bucket: str,
+    execution_id: str,
+    account_id: str | None = None,
 ) -> str | None:
     """
     Write HTML report to S3
@@ -366,8 +367,8 @@ def write_html_to_s3(
         logger.info(f"Successfully wrote HTML report to s3://{s3_bucket}/{s3_key}")
         return s3_key
 
-    except Exception as e:
-        logger.error(f"Error writing HTML report to S3: {e!s}", exc_info=True)
+    except Exception:
+        logger.exception("Error writing HTML report to S3")
         return None
 
 
@@ -413,7 +414,8 @@ def lambda_handler(event, context):
         s3_key = write_html_to_s3(html_content, s3_bucket, execution_id, account_id)
 
         if not s3_key:
-            raise Exception("Failed to write HTML report to S3")
+            msg = "Failed to write HTML report to S3"
+            raise RuntimeError(msg)
 
         # Note: Multi-account consolidation is handled by consolidate_html_reports.py
         # in the CodeBuild post-build phase, not here. This Lambda only generates
@@ -426,8 +428,8 @@ def lambda_handler(event, context):
             s3_client = boto3.client("s3", config=boto3_config)
             s3_client.delete_object(Bucket=s3_bucket, Key=cache_key)
             logger.info(f"Deleted permissions cache: {cache_key}")
-        except Exception as cache_err:
-            logger.warning(f"Failed to delete permissions cache: {cache_err}")
+        except Exception:
+            logger.warning("Failed to delete permissions cache", exc_info=True)
 
         return {
             "statusCode": 200,
@@ -438,6 +440,6 @@ def lambda_handler(event, context):
             },
         }
 
-    except Exception as e:
-        logger.error(f"Error in lambda_handler: {e!s}", exc_info=True)
+    except Exception:
+        logger.exception("Error in lambda_handler")
         raise

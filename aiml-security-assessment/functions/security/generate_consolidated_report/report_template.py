@@ -732,7 +732,7 @@ def generate_html_report(
     account_id: str | None = None,
     account_ids: list[str] | None = None,
     timestamp: str | None = None,
-    regions: list = None,
+    regions: list | None = None,
 ) -> str:
     """
     Generate HTML report from findings data.
