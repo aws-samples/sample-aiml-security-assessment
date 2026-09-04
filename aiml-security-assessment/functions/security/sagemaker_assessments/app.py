@@ -567,6 +567,8 @@ def check_sagemaker_iam_permissions(
         # region-scoped (region is used only for finding tags).
         stale_users = []
         iam_client = boto3.client("iam", config=boto3_config)
+        account_id = None
+        partition = None
         two_months_ago = datetime.now(timezone.utc) - timedelta(days=60)
 
         # Check users' last access to SageMaker
@@ -581,8 +583,16 @@ def check_sagemaker_iam_permissions(
 
             if has_sagemaker_access:
                 try:
+                    if account_id is None or partition is None:
+                        caller_identity = boto3.client(
+                            "sts", config=boto3_config
+                        ).get_caller_identity()
+                        account_id = caller_identity["Account"]
+                        partition = caller_identity.get("Arn", "arn:aws:sts::").split(
+                            ":", 2
+                        )[1]
                     response = iam_client.generate_service_last_accessed_details(
-                        Arn=f"arn:aws:iam::{get_account_id()}:user/{user_name}"
+                        Arn=f"arn:{partition}:iam::{account_id}:user/{user_name}"
                     )
                     job_id = response["JobId"]
 
@@ -802,18 +812,6 @@ def has_sagemaker_permissions(policy_doc: Dict) -> bool:
     except Exception as e:
         logger.error(f"Error parsing policy document: {str(e)}")
         return False
-
-
-def get_account_id() -> str:
-    """
-    Get current AWS account ID
-    """
-    try:
-        sts_client = boto3.client("sts")
-        return sts_client.get_caller_identity()["Account"]
-    except Exception as e:
-        logger.error(f"Error getting account ID: {str(e)}")
-        raise
 
 
 def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
@@ -4567,54 +4565,6 @@ def check_model_package_group_policy_exposure(
             )
         )
     return findings
-
-
-def get_role_usage(role_name: str) -> str:
-    """
-    Check where a specific IAM role is being used
-    """
-    logger.debug(f"Checking usage for role: {role_name}")
-    usage_list = []
-
-    try:
-        # Check Lambda functions
-        lambda_client = boto3.client("lambda", config=boto3_config)
-        for page in lambda_client.get_paginator("list_functions").paginate():
-            for function in page.get("Functions", []):
-                if role_name in function["Role"]:
-                    usage_list.append(f"Lambda: {function['FunctionName']}")
-                    logger.debug(
-                        f"Found role usage in Lambda: {function['FunctionName']}"
-                    )
-    except Exception as e:
-        logger.error(f"Error checking Lambda usage: {str(e)}")
-
-    try:
-        # Check ECS tasks
-        ecs_client = boto3.client("ecs", config=boto3_config)
-        cluster_paginator = ecs_client.get_paginator("list_clusters")
-        task_paginator = ecs_client.get_paginator("list_tasks")
-        for cluster_page in cluster_paginator.paginate():
-            for cluster in cluster_page.get("clusterArns", []):
-                for task_page in task_paginator.paginate(cluster=cluster):
-                    tasks = task_page.get("taskArns", [])
-                    if not tasks:
-                        continue
-                    task_details = ecs_client.describe_tasks(
-                        cluster=cluster, tasks=tasks
-                    )
-                    for task in task_details["tasks"]:
-                        if role_name in task.get("taskRoleArn", ""):
-                            usage_list.append(f"ECS Task: {task['taskArn']}")
-                            logger.debug(
-                                f"Found role usage in ECS task: {task['taskArn']}"
-                            )
-    except Exception as e:
-        logger.error(f"Error checking ECS usage: {str(e)}")
-
-    result = "; ".join(usage_list) if usage_list else "No active usage found"
-    logger.debug(f"Role usage result: {result}")
-    return result
 
 
 def handle_aws_throttling(func, *args, **kwargs):

@@ -19,9 +19,7 @@ REQUIRED_SAGEMAKER_ACTIONS = [
     "sagemaker:ListAutoMLJobs",
     "sagemaker:DescribeAutoMLJob",
     "sagemaker:ListExperiments",
-    "sagemaker:DescribeExperiment",
     "sagemaker:ListTrials",
-    "sagemaker:DescribeTrial",
     "sagemaker:ListAssociations",
 ]
 

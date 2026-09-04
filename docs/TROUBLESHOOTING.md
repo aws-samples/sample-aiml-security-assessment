@@ -406,9 +406,11 @@ them before deploying assessment code:
    account, updates the existing `aiml-security-{account_id}` AWS SAM stacks
    (and `aiml-security-mgmt` when applicable), and completes the assessments.
 
-This order is important. If CodeBuild deploys new checks before the member-role
-StackSet is updated, required API calls can be denied and the affected checks
-can appear as `N/A` or could-not-assess results.
+This order is important. Update the member-role StackSet first when it changes,
+then run CodeBuild so cross-account deployment, execution polling, and report
+retrieval use the same release's role policy. Missing assessment API
+permissions instead affect the SAM-created Lambda execution roles and can
+appear as `N/A` or could-not-assess results.
 
 ### Direct AWS SAM deployment
 
@@ -649,9 +651,12 @@ A: This usually indicates:
 
 1. **Multi-account**: The member role (`AIMLSecurityMemberRole`) is not deployed in target accounts through AWS CloudFormation StackSets
 2. **Trust relationship**: The role trust policy doesn't allow the central AWS CodeBuild role to assume it
-3. **Permissions**: The role lacks necessary read permissions for AI/ML services
+3. **Permissions**: The role lacks the deployment, execution-polling, or
+   report-retrieval permission that CodeBuild needs
 
-Solution: Verify AWS CloudFormation StackSet deployment in Step 1 completed successfully across all target accounts.
+Solution: Verify AWS CloudFormation StackSet deployment in Step 1 completed
+successfully across all target accounts. For Lambda `AccessDenied` errors,
+review the relevant function's policy in both SAM templates instead.
 
 **Q: The assessment is taking longer than expected.**
 
@@ -682,7 +687,7 @@ A: All assessment data remains **entirely within your AWS account**:
 A: The framework uses multiple roles, and only the Lambda runtime roles are close to read-only:
 
 - **CodeBuild orchestration roles** (`CodeBuildRole`, `MultiAccountCodeBuildRole`) need deployment permissions to build SAM, create or update stacks, and start Step Functions executions.
-- **`AIMLSecurityMemberRole`** in the target account is also not read-only in the multi-account flow, because it must allow the central CodeBuild project to deploy or update the per-account SAM stack before the assessment runs.
+- **`AIMLSecurityMemberRole`** in the target account is not an assessment runtime role. In multi-account mode it is limited to deployment, Step Functions execution polling, and report retrieval; the SAM-created Lambda roles hold the assessment API permissions.
 - **Assessment Lambda execution roles** are primarily read-oriented. They use AI/ML service `List*`, `Describe*`, and `Get*` APIs plus supporting read APIs, and S3 access to read the IAM cache and write reports.
 
 See [README - Permissions Required](../README.md#permissions-required) for the role breakdown and the template files that define each policy.

@@ -330,9 +330,9 @@ def check_agent_registry_stale_access(
         ]
 
     try:
-        account_id = boto3.client("sts", config=boto3_config).get_caller_identity()[
-            "Account"
-        ]
+        caller_identity = boto3.client("sts", config=boto3_config).get_caller_identity()
+        account_id = caller_identity["Account"]
+        partition = caller_identity.get("Arn", "arn:aws:sts::").split(":", 2)[1]
     except Exception as error:
         return [
             _na(
@@ -355,7 +355,9 @@ def check_agent_registry_stale_access(
                     {
                         "type": principal_type,
                         "name": name,
-                        "arn": f"arn:aws:iam::{account_id}:{arn_prefix}/{name}",
+                        "arn": (
+                            f"arn:{partition}:iam::{account_id}:{arn_prefix}/{name}"
+                        ),
                     }
                 )
     if not principals:

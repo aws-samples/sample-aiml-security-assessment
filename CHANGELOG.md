@@ -61,11 +61,28 @@ section.
 
 ### Changed
 
+- Hardened assessment deployment roles. `AIMLSecurityMemberRole` now contains
+  only cross-account deployment, Step Functions polling, and report-retrieval
+  permissions; assessment APIs remain exclusively on the SAM-created Lambda
+  execution roles. CodeBuild roles now scope Lambda, IAM, S3, and `PassRole`
+  access to assessment resources, restrict `PassRole` to Lambda and Step
+  Functions, remove stale Lambda/S3 administration actions, and no longer
+  define unused local member roles. SAM runtime roles now use exact,
+  prefix-scoped S3 artifact permissions instead of bucket-wide
+  `S3CrudPolicy`, and remove stale IAM, SageMaker, GuardDuty, AgentCore, ECR,
+  Logs, EC2, Lambda, ECS, CloudTrail, and S3 actions. The IAM permission-cache
+  Lambda retains only the identity and policy reads it actually performs.
+  Per-resource reads are ARN-scoped wherever the AWS service supports it;
+  account-level enumeration APIs that do not support resource-level
+  authorization (`bedrock:ListGuardrails`, `bedrock:ListPrompts`,
+  `bedrock:ListAutomatedReasoningPolicies`, `sagemaker:ListPipelineExecutions`)
+  remain on `Resource: "*"` so their checks are not silently denied.
+  IAM service-last-access job creation is limited to roles and users in the
+  assessed account using partition-aware principal ARNs, and AgentCore metric
+  publication is constrained to the `AIMLSecurity/AgentCore` CloudWatch
+  namespace.
 - Standardized all AWS SDK dependencies on exact `boto3==1.43.85` and
   `botocore==1.43.85` pins.
-- Split the multi-account member role's assessment grants into
-  customer-managed policies and added a rendered-policy size guard, preventing
-  StackSet deployment failures as IAM permissions grow.
 - Narrowed `AC-02` wildcard findings and `AC-03` stale-access discovery to the
   `bedrock-agentcore` IAM namespace. Overly permissive `agent-registry` grants
   are now reported by `AR-01` and `AR-02`.
@@ -79,6 +96,14 @@ section.
 
 ### Fixed
 
+- Restore CodeBuild and cross-account member-role access to start and poll the
+  SAM-generated `AIMLAssessmentStateMachine-*` state machines. The
+  least-privilege policies now explicitly include the generated state-machine
+  and execution ARN patterns without widening access to unrelated workflows.
+- Prevented `FS-22` from flagging assessment-created roles solely for Bedrock
+  inventory APIs that AWS requires to use `Resource: "*"`. It still flags
+  wildcard Bedrock actions and exact Knowledge Base actions that support ARN
+  scoping but remain unscoped.
 - Calculate report pass rates from unique direct-service controls instead of
   resource-row counts: any failed assessable row fails its `Check_ID`, controls
   pass only when all assessable rows pass, and N/A rows are excluded.
@@ -114,15 +139,20 @@ section.
 Apply these updates in order.
 
 1. **Multi-account member-role StackSet update required first** because
-   `deployment/1-aiml-security-member-roles.yaml` changed. It adds the AWS
-   Agent Registry permissions the new checks require and now creates the
-   member-role customer-managed policies.
+   `deployment/1-aiml-security-member-roles.yaml` changed. It creates the
+   member-role customer-managed deployment policy and narrows
+   `AIMLSecurityMemberRole` to deployment, execution-polling, and
+   report-retrieval operations; assessment service API permissions remain on
+   SAM Lambda execution roles.
 2. **Multi-account central infrastructure update required next** because
    `deployment/2-aiml-security-codebuild.yaml` changed with the AWS Agent
-   Registry grants and the new optional policy baselines.
+   Registry baselines and least-privilege CodeBuild deployment policy. This
+   update also removes the obsolete conditional local member-role resource if
+   an older stack still tracks it.
 3. **Single-account infrastructure update required** because
-   `deployment/aiml-security-single-account.yaml` changed with the same grants
-   and baselines.
+   `deployment/aiml-security-single-account.yaml` changed with the same
+   baselines and CodeBuild policy hardening. This update also removes the
+   obsolete local member-role resource if an older stack still tracks it.
 4. **CodeBuild run required last** to deploy the updated assessment code,
    dependencies, `buildspec.yml`, and AWS SAM templates
    (`aiml-security-assessment/template.yaml` and

@@ -1329,6 +1329,38 @@ class TestFS22KnowledgeBaseIamLeastPrivilege:
         assert result["status"] == "WARN"
         assert any(r["Status"] == "Failed" for r in result["csv_data"])
 
+    def test_global_inventory_actions_on_star_are_not_flagged(self):
+        """AWS-required wildcard resources for account inventory are compliant."""
+        cache = {
+            "role_permissions": {
+                "AssessmentInventoryRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "BedrockInventory",
+                            "document": {
+                                "Statement": [
+                                    {
+                                        "Effect": "Allow",
+                                        "Action": [
+                                            "bedrock:ListKnowledgeBases",
+                                            "bedrock:ListAgents",
+                                            "bedrock:GetModelInvocationLoggingConfiguration",
+                                        ],
+                                        "Resource": "*",
+                                    }
+                                ]
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+        result = app.check_knowledge_base_iam_least_privilege(cache)
+        _assert_finding_structure(result)
+        assert result["status"] == "PASS"
+        assert all(row["Status"] != "Failed" for row in result["csv_data"])
+
     def test_not_action_allow_flagged(self):
         """REQ-14/D: a NotAction Allow grants everything except listed actions and
         is inherently over-broad → flagged."""

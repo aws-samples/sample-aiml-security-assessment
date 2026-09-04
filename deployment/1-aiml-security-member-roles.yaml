@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: This template deploys the roles needed for the AIML Security Assessment to run in each member account.
+Description: Deploys the narrowly scoped role used by central CodeBuild to deploy and collect AIML Security Assessment reports in member accounts.
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -24,9 +24,9 @@ Parameters:
 
 Resources:
   MemberRole:
-    Type: "AWS::IAM::Role"
+    Type: AWS::IAM::Role
     Properties:
-      Path: "/service-role/"
+      Path: /service-role/
       RoleName: AIMLSecurityMemberRole
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -34,328 +34,47 @@ Resources:
           - Effect: Allow
             Principal:
               AWS: !Sub "arn:${AWS::Partition}:iam::${ManagementAccountID}:root"
-            Action:
-              - "sts:AssumeRole"
+            Action: sts:AssumeRole
             Condition:
               ArnEquals:
                 aws:PrincipalArn: !Sub arn:${AWS::Partition}:iam::${ManagementAccountID}:role/service-role/MultiAccountCodeBuildRole
 
-  # IAM enforces the 10,240-character inline-policy quota cumulatively per role.
-  # Keep assessment grants in managed policies, whose documents are independently
-  # capped at 6,144 non-whitespace characters (see tests/test_member_role_policy_size.py).
-  MemberRoleCoreAssessmentPermissions:
+  # Assessment API calls run under SAM-created Lambda execution roles. This role
+  # is assumed only by the central CodeBuild project for deployment, execution
+  # polling, and report retrieval.
+  MemberRoleDeploymentAndReportPermissions:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      Description: Core Bedrock, SageMaker, AgentCore, and shared assessment permissions.
-      ManagedPolicyName: AIMLSecurityAssessmentCorePermissions
+      Description: Deploy assessment resources, poll executions, and retrieve assessment reports.
+      ManagedPolicyName: AIMLSecurityAssessmentDeploymentPermissions
       PolicyDocument:
         Version: "2012-10-17"
         Statement:
-          - Effect: Allow
+          - Sid: CloudFormationAssessmentStacks
+            Effect: Allow
             Action:
-              - iam:ListRoles
-              - iam:ListUsers
-              - iam:ListAttachedRolePolicies
-              - iam:ListAttachedUserPolicies
-              - iam:ListRolePolicies
-              - iam:ListUserPolicies
-              - iam:GetRolePolicy
-              - iam:GetUserPolicy
-              - iam:GetPolicy
-              - iam:GetPolicyVersion
-              - iam:GenerateServiceLastAccessedDetails
-              - iam:GetServiceLastAccessedDetails
-              - iam:GetRole
-              - sts:GetCallerIdentity
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - bedrock:ListGuardrails
-              - bedrock:GetGuardrail
-              - bedrock:GetModelInvocationLoggingConfiguration
-              - bedrock:ListCustomModels
-              - bedrock:GetCustomModel
-              - bedrock:GetModelCustomizationJob
-              - bedrock:ListFlows
-              - bedrock:GetFlow
-              - bedrock:ListEvaluationJobs
-              - bedrock:ListImportedModels
-              - bedrock:GetImportedModel
-              - bedrock:ListModelInvocationJobs
-              - bedrock:ListInferenceProfiles
-              - bedrock:GetAccountDataRetention
-              - bedrock:GetAutomatedReasoningPolicy
-              - bedrock:ListMarketplaceModelEndpoints
-              - bedrock:GetMarketplaceModelEndpoint
-              - bedrock:ListEnforcedGuardrailsConfiguration
-            Resource: "*"
-          - Effect: Allow
-            # Bedrock Agent Permissions (Agents for Amazon Bedrock)
-            Action:
-              - bedrock:ListPrompts
-              - bedrock:GetPrompt
-              - bedrock:ListAgents
-              - bedrock:GetAgent
-              - bedrock:ListKnowledgeBases
-              - bedrock:GetKnowledgeBase
-              - bedrock:ListAgentActionGroups
-              - bedrock:GetAgentActionGroup
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - organizations:DescribeOrganization
-              - organizations:ListRoots
-              - organizations:ListPolicies
-              - organizations:ListTargetsForPolicy
-              - servicequotas:ListServiceQuotas
-              - servicequotas:GetServiceQuota
-              - servicequotas:GetAWSDefaultServiceQuota
-              - cloudwatch:DescribeAlarms
-              - cloudwatch:PutMetricData
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - bedrock-agentcore:ListAgentRuntimes
-              - bedrock-agentcore:GetAgentRuntime
-              - bedrock-agentcore:ListMemories
-              - bedrock-agentcore:GetMemory
-              - bedrock-agentcore:ListGateways
-              - bedrock-agentcore:GetGateway
-              - bedrock-agentcore:ListPolicyEngines
-              - bedrock-agentcore:GetPolicyEngine
-              - bedrock-agentcore:GetResourcePolicy
-              - bedrock-agentcore:GetTokenVault
-              - bedrock-agentcore:ListCodeInterpreters
-              - bedrock-agentcore:GetCodeInterpreter
-              - bedrock-agentcore:ListBrowsers
-              - bedrock-agentcore:GetBrowser
-              - bedrock-agentcore:ListOnlineEvaluationConfigs
-              - bedrock-agentcore:GetOnlineEvaluationConfig
-              - bedrock-agentcore:ListPolicies
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - agent-registry:ListRegistries
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - agent-registry:GetRegistry
-              - agent-registry:ListRegistryRecords
-            Resource: !Sub "arn:${AWS::Partition}:agent-registry:*:${AWS::AccountId}:registry/*"
-          - Effect: Allow
-            Action:
-              - sagemaker:ListNotebookInstances
-              - sagemaker:DescribeNotebookInstance
-              - sagemaker:ListDomains
-              - sagemaker:DescribeDomain
-              - sagemaker:ListTrainingJobs
-              - sagemaker:DescribeTrainingJob
-              - sagemaker:ListModelPackageGroups
-              - sagemaker:ListModelPackages
-              - sagemaker:DescribeModelPackage
-              - sagemaker:GetModelPackageGroupPolicy
-              - sagemaker:ListClusters
-              - sagemaker:DescribeCluster
-              - sagemaker:ListFeatureGroups
-              - sagemaker:DescribeFeatureGroup
-              - sagemaker:ListPipelines
-              - sagemaker:ListPipelineExecutions
-              - sagemaker:ListProcessingJobs
-              - sagemaker:DescribeProcessingJob
-              - sagemaker:ListMonitoringSchedules
-              - sagemaker:DescribeMonitoringSchedule
-              - sagemaker:ListModels
-              - sagemaker:DescribeModel
-              - sagemaker:ListEndpoints
-              - sagemaker:DescribeEndpoint
-              - sagemaker:ListDataQualityJobDefinitions
-              - sagemaker:DescribeDataQualityJobDefinition
-              - sagemaker:ListTransformJobs
-              - sagemaker:DescribeTransformJob
-              - sagemaker:ListHyperParameterTuningJobs
-              - sagemaker:DescribeHyperParameterTuningJob
-              - sagemaker:ListCompilationJobs
-              - sagemaker:DescribeCompilationJob
-              - sagemaker:ListAutoMLJobs
-              - sagemaker:DescribeAutoMLJob
-              - sagemaker:ListExperiments
-              - sagemaker:DescribeExperiment
-              - sagemaker:ListTrials
-              - sagemaker:DescribeTrial
-              - sagemaker:ListArtifacts
-              - sagemaker:ListAssociations
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - cloudtrail:ListTrails
-              - cloudtrail:GetTrail
-              - cloudtrail:GetEventSelectors
-              - cloudtrail:GetTrailStatus
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - lambda:ListFunctions
-              - lambda:GetFunction
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - ecs:ListClusters
-              - ecs:ListTasks
-              - ecs:DescribeTasks
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - ec2:DescribeVpcEndpoints
-              - ec2:DescribeVpcs
-              - ec2:DescribeSubnets
-              - ec2:DescribeRouteTables
-              - ec2:DescribeNatGateways
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - ecr:DescribeRepositories
-              - ecr:GetRepositoryPolicy
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - inspector2:BatchGetAccountStatus
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - logs:DescribeLogGroups
-              - logs:DescribeLogStreams
-            Resource: "*"
-          - Effect: Allow
-            # S3 Bucket Permissions for encryption checks
-            Action:
-              - s3:GetBucketEncryption
-              - s3:GetEncryptionConfiguration
-              - s3:GetBucketVersioning
-              - s3:GetBucketTagging
-              - s3:HeadBucket
-            Resource: "arn:aws:s3:::*"
-          - Effect: Allow
-            Action:
-              - kms:DescribeKey
-              - kms:ListAliases
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - guardduty:ListDetectors
-              - guardduty:GetDetector
-              - guardduty:GetFindings
-              - guardduty:ListFindings
-              - guardduty:GetFindingsStatistics
-              - guardduty:ListPublishingDestinations
-              - guardduty:ListTagsForResource
-              - guardduty:GetMemberDetectors
-              - guardduty:DescribeMalwareScans
-              - guardduty:GetRemainingFreeTrialDays
-              - guardduty:GetUsageStatistics
-            Resource: "*"
-      Roles:
-        - !Ref MemberRole
-
-  MemberRoleAdditionalAssessmentAndDeploymentPermissions:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      Description: Responsible AI GRC assessment and per-account SAM deployment permissions.
-      ManagedPolicyName: AIMLSecurityAssessmentAdditionalPermissions
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Sid: ResponsibleAIGRCAssessmentPermissions
-            Action:
-              - wafv2:ListWebACLs
-              - wafv2:GetWebACL
-              - shield:DescribeSubscription
-              - apigateway:GET
-              - servicequotas:ListServiceQuotas
-              - servicequotas:ListAWSDefaultServiceQuotas
-              - ce:GetAnomalyMonitors
-              - budgets:ViewBudget
-              - cloudwatch:DescribeAlarms
-              - logs:DescribeAccountPolicies
-              - logs:GetDataProtectionPolicy
-              - bedrock:ListGuardrails
-              - bedrock:GetGuardrail
-              - bedrock:ListFoundationModels
-              - bedrock:ListCustomModels
-              - bedrock:ListEvaluationJobs
-              - bedrock:ListAgents
-              - bedrock:GetAgent
-              - bedrock:ListKnowledgeBases
-              - bedrock:GetKnowledgeBase
-              - bedrock:ListDataSources
-              - bedrock:GetDataSource
-              - bedrock:ListIngestionJobs
-              - bedrock-agentcore:ListAgentRuntimes
-              - bedrock-agentcore:GetAgentRuntime
-              - bedrock-agentcore:ListGateways
-              - bedrock-agentcore:GetGateway
-              - lambda:ListFunctions
-              - lambda:GetFunctionConcurrency
-              - states:ListStateMachines
-              - states:DescribeStateMachine
-              - organizations:ListPolicies
-              - organizations:DescribePolicy
-              - sagemaker:ListMonitoringSchedules
-              - sagemaker:ListFeatureGroups
-              - sagemaker:ListModels
-              - sagemaker:ListModelCards
-              - sagemaker:ListTags
-              - s3:ListAllMyBuckets
-              - s3:GetBucketVersioning
-              - s3:GetBucketTagging
-              - s3:GetBucketNotification
-              - ecr:DescribeRepositories
-              - aoss:ListSecurityPolicies
-              - aoss:ListCollections
-              - macie2:GetMacieSession
-              - macie2:GetAutomatedDiscoveryConfiguration
-              - events:ListRules
-              - scheduler:ListSchedules
-              - bedrock:ListAutomatedReasoningPolicies
-              - bedrock:ListTagsForResource
-              - config:DescribeConfigRules
-            Resource: "*"
-          - Effect: Allow
-            Action:
-              - s3:GetObject
-              - s3:PutObject
-              - s3:DeleteObject
-              - s3:ListBucket
-            Resource:
-              - "arn:aws:s3:::*aiml*security*assessment*"
-              - "arn:aws:s3:::*aiml*security*assessment*/*"
-          - Effect: Allow
-            Action:
-              - sts:AssumeRole
-            Resource: "arn:aws:iam::*:role/aiml-security-*"
-          - Effect: Allow
-            Action:
+              # CreateStack is required when the SAM change set creates a new
+              # assessment or aws-sam-cli-managed-default stack.
               - cloudformation:CreateStack
-              - cloudformation:UpdateStack
-              - cloudformation:DeleteStack
               - cloudformation:DescribeStacks
               - cloudformation:DescribeStackEvents
-              - cloudformation:GetTemplate
+              - cloudformation:GetTemplateSummary
               - cloudformation:CreateChangeSet
               - cloudformation:DescribeChangeSet
               - cloudformation:ExecuteChangeSet
-              - cloudformation:DeleteChangeSet
-              - cloudformation:GetTemplateSummary
-              - cloudformation:ListStackResources
             Resource:
               - !Sub "arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/aiml-security-*/*"
+              - !Sub "arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/aiml-sec-*/*"
               - !Sub "arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/aws-sam-cli-managed-default/*"
-          - Effect: Allow
+              - !Sub "arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:changeSet/samcli-deploy*/*"
+              - !Sub "arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:changeSet/InitialCreation/*"
+          - Sid: CloudFormationServerlessTransform
+            Effect: Allow
             Action:
-              - cloudformation:GetTemplateSummary
               - cloudformation:CreateChangeSet
             Resource: !Sub "arn:${AWS::Partition}:cloudformation:*:aws:transform/Serverless-2016-10-31"
-          - Effect: Allow
+          - Sid: AssessmentLambdaFunctions
+            Effect: Allow
             Action:
               - lambda:CreateFunction
               - lambda:DeleteFunction
@@ -363,28 +82,51 @@ Resources:
               - lambda:GetFunctionConfiguration
               - lambda:UpdateFunctionCode
               - lambda:UpdateFunctionConfiguration
-              - lambda:AddPermission
-              - lambda:RemovePermission
               - lambda:TagResource
               - lambda:UntagResource
               - lambda:ListTags
-              - lambda:InvokeFunction
             Resource: !Sub "arn:${AWS::Partition}:lambda:*:${AWS::AccountId}:function:aiml-security-*"
-          - Effect: Allow
+          - Sid: AssessmentRoleLifecycle
+            Effect: Allow
             Action:
               - iam:CreateRole
               - iam:DeleteRole
               - iam:GetRole
-              - iam:PassRole
-              - iam:AttachRolePolicy
-              - iam:DetachRolePolicy
+              - iam:UpdateAssumeRolePolicy
               - iam:PutRolePolicy
               - iam:DeleteRolePolicy
               - iam:GetRolePolicy
               - iam:TagRole
               - iam:UntagRole
-            Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-security-*"
-          - Effect: Allow
+              - iam:ListRolePolicies
+              - iam:ListAttachedRolePolicies
+            Resource:
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-security-*"
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-sec-*"
+          - Sid: AssessmentRoleBasicLoggingPolicy
+            Effect: Allow
+            Action:
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+            Resource:
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-security-*"
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-sec-*"
+            Condition:
+              ArnEquals:
+                iam:PolicyARN: !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+          - Sid: PassAssessmentRolesOnlyToRuntimeServices
+            Effect: Allow
+            Action: iam:PassRole
+            Resource:
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-security-*"
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-sec-*"
+            Condition:
+              StringEquals:
+                iam:PassedToService:
+                  - lambda.amazonaws.com
+                  - states.amazonaws.com
+          - Sid: AssessmentStateMachines
+            Effect: Allow
             Action:
               - states:CreateStateMachine
               - states:DeleteStateMachine
@@ -394,11 +136,15 @@ Resources:
               - states:UntagResource
               - states:StartExecution
               - states:DescribeExecution
-              - states:ListExecutions
             Resource:
-              - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:stateMachine:AIMLAssessment*"
-              - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:execution:AIMLAssessment*:*"
-          - Effect: Allow
+              - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:stateMachine:aiml-security-*"
+              - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:stateMachine:aiml-sec-*"
+              - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:stateMachine:AIMLAssessmentStateMachine-*"
+              - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:execution:aiml-security-*:*"
+              - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:execution:aiml-sec-*:*"
+              - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:execution:AIMLAssessmentStateMachine-*:*"
+          - Sid: AssessmentAndSamBucketConfiguration
+            Effect: Allow
             Action:
               - s3:CreateBucket
               - s3:DeleteBucket
@@ -414,16 +160,37 @@ Resources:
               - s3:PutEncryptionConfiguration
               - s3:GetEncryptionConfiguration
               - s3:GetBucketLocation
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::aiml-security-*"
+              - !Sub "arn:${AWS::Partition}:s3:::aiml-sec-*"
+              - !Sub "arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default-*"
+          - Sid: SamArtifactBucketInventory
+            Effect: Allow
+            Action:
               - s3:ListBucket
+            Resource: !Sub "arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default-*"
+          - Sid: SamArtifactObjects
+            Effect: Allow
+            Action:
               - s3:PutObject
               - s3:GetObject
               - s3:DeleteObject
-              - s3:DeleteObjectVersion
             Resource:
-              - "arn:aws:s3:::aiml-security-*"
-              - "arn:aws:s3:::aiml-security-*/*"
-              - "arn:aws:s3:::aws-sam-cli-managed-default-*"
-              - "arn:aws:s3:::aws-sam-cli-managed-default-*/*"
+              - !Sub "arn:${AWS::Partition}:s3:::aws-sam-cli-managed-default-*/*"
+          - Sid: AssessmentReportInventory
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::aiml-security-*"
+              - !Sub "arn:${AWS::Partition}:s3:::aiml-sec-*"
+          - Sid: AssessmentReportRead
+            Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Sub "arn:${AWS::Partition}:s3:::aiml-security-*/*"
+              - !Sub "arn:${AWS::Partition}:s3:::aiml-sec-*/*"
       Roles:
         - !Ref MemberRole
 

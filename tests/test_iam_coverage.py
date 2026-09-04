@@ -1,31 +1,25 @@
 """IAM coverage guard (REQ-12 / Wave 5.5 T5h.6).
 
-Asserts that every IAM action the FinServ checks require is granted in all runtime
-grant sources:
+Asserts that every IAM action the FinServ checks require is granted to the
+runtime Lambda roles that make those API calls:
   - aiml-security-assessment/template.yaml          (SAM single-account roles)
   - aiml-security-assessment/template-multi-account.yaml
-  - deployment/1-aiml-security-member-roles.yaml    (multi-account member role)
-  - deployment/aiml-security-single-account.yaml    (single-account CFN wrapper)
 
 This is what would otherwise surface in customer accounts as AccessDenied /
 "COULD NOT ASSESS". The map is derived from the per-check boto3 API inventory.
 Parsing uses a token regex (not a YAML load) so CloudFormation intrinsics
 (!Ref/!GetAtt/!Sub) do not interfere.
 
-Two grant-source architectures, two matching test strategies:
-  - The SAM templates (template.yaml / template-multi-account.yaml) give each
-    assessment Lambda its OWN Policies block under its own resource. An action
-    granted under one function's block does not help a different function at
-    runtime.
-  - The deployment-layer wrapper templates (1-aiml-security-member-roles.yaml,
-    aiml-security-single-account.yaml, 2-aiml-security-codebuild.yaml) run the
-    whole assessment as one process under a single shared IAM role, so there
-    is no per-function separation to preserve there.
+Each SAM template gives every assessment Lambda its OWN Policies block under
+its own resource. An action granted under one function's block does not help a
+different function at runtime. The deployment-layer roles only deploy the SAM
+stack, poll executions, and retrieve report artifacts; they intentionally do
+not receive assessment-service read permissions.
 
-The file-wide `_granted_actions()` scan below is correct for the deployment
-templates, but is NOT resource-aware, so used alone against the SAM templates
-it cannot tell "granted to the function that needs it" apart from "granted to
-some other function's policy in the same file". That gap shipped a real bug:
+The file-wide `_granted_actions()` scan below is NOT resource-aware, so used
+alone against the SAM templates it cannot tell "granted to the function that
+needs it" apart from "granted to some other function's policy in the same
+file". That gap shipped a real bug:
 inspector2:BatchGetAccountStatus (FS-16) and sagemaker:DescribeFeatureGroup
 (FS-20) were required by ResponsibleAIGRCAssessmentFunction but
 BatchGetAccountStatus was granted only to the unrelated
@@ -49,14 +43,9 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _TEMPLATES = [
     os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
     os.path.join(_REPO_ROOT, "aiml-security-assessment", "template-multi-account.yaml"),
-    os.path.join(_REPO_ROOT, "deployment", "1-aiml-security-member-roles.yaml"),
-    os.path.join(_REPO_ROOT, "deployment", "aiml-security-single-account.yaml"),
 ]
 
-_AGENTCORE_PERMISSION_TEMPLATES = [
-    *_TEMPLATES,
-    os.path.join(_REPO_ROOT, "deployment", "2-aiml-security-codebuild.yaml"),
-]
+_AGENTCORE_PERMISSION_TEMPLATES = _TEMPLATES
 
 # IAM actions the FinServ checks (FS-01..FS-69) require, by the check(s) that call
 # them. apigateway:GET covers get_rest_apis/get_request_validators/get_usage_plans/
@@ -94,7 +83,6 @@ REQUIRED_FINSERV_ACTIONS = {
     "sagemaker:ListModelCards",
     "sagemaker:ListTags",  # FS-39/41/42/13
     "bedrock:ListKnowledgeBases",
-    "bedrock:GetKnowledgeBase",  # FS-24/31/33/48/61/65
     "bedrock:ListDataSources",
     "bedrock:GetDataSource",  # FS-31/33/65
     "bedrock:ListIngestionJobs",  # FS-31
@@ -185,6 +173,22 @@ _SAM_TEMPLATES = [
     os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
     os.path.join(_REPO_ROOT, "aiml-security-assessment", "template-multi-account.yaml"),
 ]
+_STALE_ACCESS_APP_PATHS = [
+    os.path.join(
+        _REPO_ROOT,
+        "aiml-security-assessment",
+        "functions",
+        "security",
+        package,
+        "app.py",
+    )
+    for package in (
+        "bedrock_assessments",
+        "sagemaker_assessments",
+        "agentcore_assessments",
+        "agent_registry_assessments",
+    )
+]
 
 
 def _granted_actions(path):
@@ -217,21 +221,22 @@ def _granted_actions_for_resource(path, logical_id):
     return set(_ACTION_RE.findall(_resource_block(path, logical_id)))
 
 
+def test_service_last_access_principal_arns_are_partition_aware():
+    """Scoped IAM grants must also work outside the commercial partition."""
+    for path in _STALE_ACCESS_APP_PATHS:
+        with open(path, encoding="utf-8") as app_file:
+            source = app_file.read()
+        assert "arn:aws:iam::" not in source
+        assert "arn:{partition}:iam::" in source
+
+
 @pytest.mark.parametrize(
     "template",
     _AGENTCORE_PERMISSION_TEMPLATES,
     ids=lambda p: os.path.basename(p),
 )
 def test_required_finserv_actions_are_granted(template):
-    """Covers all 5 grant sources, including deployment/2-aiml-security-codebuild.yaml.
-
-    That 5th template grants FinServ actions too (see its "FinServ GenAI Risk
-    Assessment Permissions" block) but was excluded from this test's parametrize list
-    until a 4-action gap there (aoss:ListCollections, bedrock:ListIngestionJobs,
-    logs:GetDataProtectionPolicy, macie2:GetAutomatedDiscoveryConfiguration) shipped
-    undetected. Scoping this test to only 4 of the 5 templates was the root cause,
-    not just the missing grants — fixed here rather than only in the template.
-    """
+    """Every runtime template must grant the complete FinServ API inventory."""
     assert os.path.exists(template), f"template not found: {template}"
     granted = _granted_actions(template)
     missing = sorted(a for a in REQUIRED_FINSERV_ACTIONS if a not in granted)

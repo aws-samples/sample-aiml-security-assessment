@@ -44,7 +44,7 @@ def assert_could_not_assess_finding(finding):
     assert "Error during check" not in finding["Finding_Details"]
 
 
-class TestRoleUsagePagination:
+class TestPaginationHelper:
     def test_list_all_items_stops_on_repeated_token(self):
         client = MagicMock()
         client.list_items.return_value = {
@@ -58,63 +58,6 @@ class TestRoleUsagePagination:
 
         assert items == [{"id": "item-1"}, {"id": "item-1"}]
         assert client.list_items.call_count == 2
-
-    @patch("bedrock_app.boto3.client")
-    def test_role_usage_reads_all_lambda_ecs_cluster_and_task_pages(self, mock_client):
-        role_name = "BedrockExecutionRole"
-        lambda_client = MagicMock()
-        lambda_client.list_functions.side_effect = [
-            {"Functions": [], "NextMarker": "lambda-page-2"},
-            {
-                "Functions": [
-                    {
-                        "FunctionName": "second-page-function",
-                        "Role": f"arn:aws:iam::123456789012:role/{role_name}",
-                    }
-                ]
-            },
-        ]
-
-        ecs_client = MagicMock()
-        ecs_client.list_clusters.side_effect = [
-            {"clusterArns": ["cluster-1"], "nextToken": "cluster-page-2"},
-            {"clusterArns": ["cluster-2"]},
-        ]
-        ecs_client.list_tasks.side_effect = [
-            {"taskArns": []},
-            {"taskArns": [], "nextToken": "task-page-2"},
-            {"taskArns": ["task-2"]},
-        ]
-        ecs_client.describe_tasks.return_value = {
-            "tasks": [
-                {
-                    "taskArn": "task-2",
-                    "taskRoleArn": f"arn:aws:iam::123456789012:role/{role_name}",
-                }
-            ]
-        }
-
-        mock_client.side_effect = lambda service, **kwargs: {
-            "lambda": lambda_client,
-            "ecs": ecs_client,
-        }[service]
-
-        usage = bedrock_app.get_role_usage(role_name)
-
-        assert "Lambda: second-page-function" in usage
-        assert "ECS Task: task-2" in usage
-        assert lambda_client.list_functions.call_count == 2
-        lambda_client.list_functions.assert_any_call(
-            MaxItems=50, Marker="lambda-page-2"
-        )
-        assert ecs_client.list_clusters.call_count == 2
-        ecs_client.list_clusters.assert_any_call(
-            maxResults=100, nextToken="cluster-page-2"
-        )
-        assert ecs_client.list_tasks.call_count == 3
-        ecs_client.list_tasks.assert_any_call(
-            maxResults=100, cluster="cluster-2", nextToken="task-page-2"
-        )
 
 
 # ===================================================================

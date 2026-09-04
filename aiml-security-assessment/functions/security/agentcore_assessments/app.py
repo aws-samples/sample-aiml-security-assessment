@@ -35,7 +35,6 @@ iam_client = None
 ec2_client = None
 ecr_client = None
 logs_client = None
-xray_client = None
 cloudwatch_client = None
 agentcore_client = None
 
@@ -1217,7 +1216,9 @@ def check_stale_agentcore_access(
 
         # Get current account ID from STS
         sts_client = boto3.client("sts", config=boto3_config)
-        account_id = sts_client.get_caller_identity()["Account"]
+        caller_identity = sts_client.get_caller_identity()
+        account_id = caller_identity["Account"]
+        partition = caller_identity.get("Arn", "arn:aws:sts::").split(":", 2)[1]
 
         role_permissions = permission_cache.get("role_permissions", {})
         user_permissions = permission_cache.get("user_permissions", {})
@@ -1243,7 +1244,7 @@ def check_stale_agentcore_access(
         # Check roles - iterate over dict
         for role_name, permissions in role_permissions.items():
             # Build role ARN from role name
-            role_arn = f"arn:aws:iam::{account_id}:role/{role_name}"
+            role_arn = f"arn:{partition}:iam::{account_id}:role/{role_name}"
             has_agentcore_permission = _permissions_include_agent_platform_access(
                 permissions, f"role {role_name}"
             )
@@ -1256,7 +1257,7 @@ def check_stale_agentcore_access(
         # Check users - iterate over dict
         for user_name, permissions in user_permissions.items():
             # Build user ARN from user name
-            user_arn = f"arn:aws:iam::{account_id}:user/{user_name}"
+            user_arn = f"arn:{partition}:iam::{account_id}:user/{user_name}"
             has_agentcore_permission = _permissions_include_agent_platform_access(
                 permissions, f"user {user_name}"
             )
@@ -3754,7 +3755,7 @@ def lambda_handler(event, context):
         Response with status and S3 URL
     """
     global start_time, iam_client, ec2_client, ecr_client, logs_client
-    global xray_client, cloudwatch_client, agentcore_client
+    global cloudwatch_client, agentcore_client
     start_time = time.time()
 
     try:
@@ -3771,7 +3772,6 @@ def lambda_handler(event, context):
         ec2_client = boto3.client("ec2", config=boto3_config, region_name=region)
         ecr_client = boto3.client("ecr", config=boto3_config, region_name=region)
         logs_client = boto3.client("logs", config=boto3_config, region_name=region)
-        xray_client = boto3.client("xray", config=boto3_config, region_name=region)
         cloudwatch_client = boto3.client(
             "cloudwatch", config=boto3_config, region_name=region
         )

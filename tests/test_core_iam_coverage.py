@@ -14,7 +14,7 @@ _KMS_ACTIONS = {"kms:DescribeKey"}  # BR-40
 _SECTION_CHECKS = [
     {
         "path": os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
-        "start": "- Sid: BedrockAssessmentPermissions",
+        "start": "- Sid: BedrockAccountInventoryPermissions",
         "end": "- Sid: S3BucketEncryptionPermissions",
         "required": {
             "bedrock:GetModelInvocationLoggingConfiguration",
@@ -43,7 +43,7 @@ _SECTION_CHECKS = [
         "path": os.path.join(
             _REPO_ROOT, "aiml-security-assessment", "template-multi-account.yaml"
         ),
-        "start": "- Sid: BedrockAssessmentPermissions",
+        "start": "- Sid: BedrockAccountInventoryPermissions",
         "end": "- Sid: S3BucketEncryptionPermissions",
         "required": {
             "bedrock:GetModelInvocationLoggingConfiguration",
@@ -68,62 +68,6 @@ _SECTION_CHECKS = [
         ),
         "start": "- Sid: S3BucketEncryptionPermissions",
         "end": "- Sid: CloudTrailPermissions",
-        "required": {"s3:GetEncryptionConfiguration"},
-    },
-    {
-        "path": os.path.join(
-            _REPO_ROOT, "deployment", "aiml-security-single-account.yaml"
-        ),
-        "start": "# Bedrock Permissions",
-        "end": "# SageMaker Permissions",
-        "required": {
-            "bedrock:GetModelInvocationLoggingConfiguration",
-            "bedrock:ListKnowledgeBases",
-            "bedrock:GetKnowledgeBase",
-        },
-    },
-    {
-        "path": os.path.join(
-            _REPO_ROOT, "deployment", "aiml-security-single-account.yaml"
-        ),
-        "start": "# S3 Permissions for encryption checks",
-        "end": 'Resource: "*"',
-        "required": {"s3:GetEncryptionConfiguration"},
-    },
-    {
-        "path": os.path.join(
-            _REPO_ROOT, "deployment", "2-aiml-security-codebuild.yaml"
-        ),
-        "start": "# Bedrock Permissions",
-        "end": "# SageMaker Permissions",
-        "required": {
-            "bedrock:GetModelInvocationLoggingConfiguration",
-            "bedrock:ListKnowledgeBases",
-            "bedrock:GetKnowledgeBase",
-        },
-    },
-    {
-        "path": os.path.join(
-            _REPO_ROOT, "deployment", "2-aiml-security-codebuild.yaml"
-        ),
-        "start": "# S3 Permissions for encryption checks",
-        "end": 'Resource: "*"',
-        "required": {"s3:GetEncryptionConfiguration"},
-    },
-    {
-        "path": os.path.join(
-            _REPO_ROOT, "deployment", "1-aiml-security-member-roles.yaml"
-        ),
-        "start": "# Bedrock Agent Permissions (Agents for Amazon Bedrock)",
-        "end": 'Resource: "*"',
-        "required": {"bedrock:ListKnowledgeBases", "bedrock:GetKnowledgeBase"},
-    },
-    {
-        "path": os.path.join(
-            _REPO_ROOT, "deployment", "1-aiml-security-member-roles.yaml"
-        ),
-        "start": "# S3 Bucket Permissions for encryption checks",
-        "end": 'Resource: "arn:aws:s3:::*"',
         "required": {"s3:GetEncryptionConfiguration"},
     },
     # OWASP native checks (OW-11 / OW-12) run on the dedicated
@@ -133,10 +77,10 @@ _SECTION_CHECKS = [
     # to AccessDenied -> N/A). Scope these assertions to the OWASP policy block.
     {
         "path": os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
-        "start": "- Sid: OWASPBedrockPermissions",
+        "start": "- Sid: OWASPBedrockGuardrailList",
         "end": "AIMLAssessmentBucket",
         "required": {
-            "bedrock:ListGuardrails",  # OW-12
+            "bedrock:ListGuardrails",  # OW-12 (account-level list on Resource '*')
             "bedrock:GetGuardrail",  # OW-12
             "lambda:ListFunctions",  # OW-11
         },
@@ -145,10 +89,10 @@ _SECTION_CHECKS = [
         "path": os.path.join(
             _REPO_ROOT, "aiml-security-assessment", "template-multi-account.yaml"
         ),
-        "start": "- Sid: OWASPBedrockPermissions",
+        "start": "- Sid: OWASPBedrockGuardrailList",
         "end": "AIMLAssessmentBucket",
         "required": {
-            "bedrock:ListGuardrails",  # OW-12
+            "bedrock:ListGuardrails",  # OW-12 (account-level list on Resource '*')
             "bedrock:GetGuardrail",  # OW-12
             "lambda:ListFunctions",  # OW-11
         },
@@ -182,9 +126,6 @@ def test_required_core_bedrock_actions_are_granted(check):
 _ALL_POLICY_TEMPLATES = [
     os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
     os.path.join(_REPO_ROOT, "aiml-security-assessment", "template-multi-account.yaml"),
-    os.path.join(_REPO_ROOT, "deployment", "1-aiml-security-member-roles.yaml"),
-    os.path.join(_REPO_ROOT, "deployment", "2-aiml-security-codebuild.yaml"),
-    os.path.join(_REPO_ROOT, "deployment", "aiml-security-single-account.yaml"),
 ]
 
 

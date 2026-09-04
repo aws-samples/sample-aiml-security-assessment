@@ -278,8 +278,10 @@ Perform only the applicable steps, in this order:
 5. If deployable assessment code changed, manually start CodeBuild and confirm
    that it updates the existing per-account AWS SAM stacks.
 
-When the member-role template changed, it must be updated before CodeBuild runs
-so new assessment APIs have the required cross-account permissions.
+When the member-role template changed, update it before CodeBuild runs so the
+central build uses the release's intended cross-account deployment, execution
+polling, and report-retrieval permissions. Assessment API permissions are
+deployed on the SAM-created Lambda execution roles.
 
 The custom resource in the infrastructure templates starts CodeBuild only when
 the infrastructure stack is initially created. It does not start a new build
@@ -449,7 +451,7 @@ The "By Compliance Standard" section is **extensible**: adding NIST AI RMF (`Ena
 
 - **Responsible AI GRC Region scope.** Core Bedrock, SageMaker, AgentCore, and AWS Agent Registry checks run per target region. Responsible AI GRC runs once per account; evidence without explicit regional provenance is labeled `Global` rather than copied into every target region. Regions confirmed to have no relevant GenAI resources receive an explicit regional `FS-00`/`N/A` row.
 - **Heuristic and advisory checks.** Some controls cannot be verified through an API (application-layer controls, dataset contents, resource associations); these are reported as `ADVISORY`/`N/A` and require manual review. See [How finding severities are determined](#how-finding-severities-are-determined).
-- **Permissions.** A check that lacks an IAM permission is reported as `COULD NOT ASSESS` (not a failure). Re-deploy the member role after any IAM template change so newer actions take effect.
+- **Permissions.** A check that lacks an IAM permission is reported as `COULD NOT ASSESS` (not a failure). Re-run CodeBuild after updating either SAM template so the revised per-Lambda execution roles are deployed. Update the member-role StackSet only when `deployment/1-aiml-security-member-roles.yaml` itself changes.
 
 For detailed architecture, execution flow, and extension guidance, see the [Developer Guide](docs/DEVELOPER_GUIDE.md).
 
@@ -592,7 +594,8 @@ For the full methodology (matrix, factor definitions, disposition rules) and the
 | Task | How |
 | --- | --- |
 | Add new accounts | Add to StackSet deployment targets |
-| Modify permissions scope | Edit `1-aiml-security-member-roles.yaml` |
+| Modify assessment runtime permissions | Edit the specific Lambda policy in both SAM templates |
+| Modify deployment or cross-account permissions | Edit the applicable `deployment/*.yaml` template |
 | Adjust concurrency | Change `ConcurrentAccountScans` parameter |
 | Add new service checks | See [Developer Guide](docs/DEVELOPER_GUIDE.md#adding-new-aiml-service-assessments) |
 
@@ -603,7 +606,7 @@ For the full methodology (matrix, factor definitions, disposition rules) and the
 The deployment uses multiple IAM roles with different trust and permission boundaries. They are not all read-only.
 
 - **`CodeBuildRole` / `MultiAccountCodeBuildRole`**: orchestration roles used by the infrastructure stack to clone the repo, build SAM, deploy/update the assessment stack, and start Step Functions executions. These roles require infrastructure-management permissions such as CloudFormation, Lambda, IAM, Step Functions, and S3 actions.
-- **`AIMLSecurityMemberRole`**: role assumed in the target account during single-account and multi-account runs. In the multi-account flow this role is also **not read-only**. It needs both service-read permissions for the checks and deployment permissions so CodeBuild can create or update the per-account SAM assessment stack.
+- **`AIMLSecurityMemberRole`**: role assumed only in target accounts during multi-account runs. It is limited to deploying or updating the assessment stack, polling its Step Functions execution, and retrieving its report artifacts. It does **not** receive Bedrock, SageMaker, AgentCore, or other assessment-service read permissions.
 - **SAM-created Lambda execution roles**: runtime roles for the assessment functions. These are the closest thing to read-only assessment roles. They primarily use `List*`, `Describe*`, and `Get*` access against Bedrock, SageMaker, AgentCore, AWS Agent Registry (`agent-registry:ListRegistries`, `agent-registry:GetRegistry`, `agent-registry:ListRegistryRecords`), IAM analysis APIs, and supporting read APIs, plus S3 access to write reports and read the cached IAM permissions file.
 
 If you need to reduce scope, review the role policies in:

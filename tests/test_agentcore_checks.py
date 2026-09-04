@@ -1061,10 +1061,9 @@ class TestAC04Observability:
         assert findings[0]["Check_ID"] == "AC-04"
 
     @patch("agentcore_app.cloudwatch_client")
-    @patch("agentcore_app.xray_client")
     @patch("agentcore_app.logs_client")
     @patch("agentcore_app.agentcore_client")
-    def test_ac04_no_runtimes_returns_na(self, mock_ac, mock_logs, mock_xray, mock_cw):
+    def test_ac04_no_runtimes_returns_na(self, mock_ac, mock_logs, mock_cw):
         mock_ac.list_agent_runtimes.return_value = {"agentRuntimes": []}
         result = agentcore_app.check_agentcore_observability()
         findings = extract_csv_data(result)

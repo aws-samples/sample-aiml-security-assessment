@@ -8,10 +8,7 @@ import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _TEMPLATE_PATH = _REPO_ROOT / "deployment" / "1-aiml-security-member-roles.yaml"
-_MEMBER_ROLE_POLICY_IDS = (
-    "MemberRoleCoreAssessmentPermissions",
-    "MemberRoleAdditionalAssessmentAndDeploymentPermissions",
-)
+_MEMBER_ROLE_POLICY_IDS = ("MemberRoleDeploymentAndReportPermissions",)
 _LARGEST_PARTITION = "aws-us-gov"
 _MANAGED_POLICY_SIZE_LIMIT = 6_144
 _POLICY_SIZE_BUDGET = 5_500

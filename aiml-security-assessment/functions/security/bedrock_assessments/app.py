@@ -661,96 +661,6 @@ def check_marketplace_subscription_access(
         }
 
 
-def has_bedrock_access(iam_client, principal_name: str, principal_type: str) -> bool:
-    """
-    Check if a user or role has Bedrock access through policies
-    """
-    logger.debug(f"Checking Bedrock access for {principal_type}: {principal_name}")
-    try:
-        if principal_type == "role":
-            policies = _list_all_items(
-                iam_client,
-                "list_attached_role_policies",
-                "AttachedPolicies",
-                max_results_param="MaxItems",
-                token_param="Marker",
-                token_response_keys=("Marker",),
-                RoleName=principal_name,
-            )
-        else:
-            policies = _list_all_items(
-                iam_client,
-                "list_attached_user_policies",
-                "AttachedPolicies",
-                max_results_param="MaxItems",
-                token_param="Marker",
-                token_response_keys=("Marker",),
-                UserName=principal_name,
-            )
-
-        # Check attached policies
-        for policy in policies:
-            policy_arn = policy["PolicyArn"]
-            logger.debug(f"Checking policy: {policy_arn}")
-            policy_version = iam_client.get_policy(PolicyArn=policy_arn)["Policy"][
-                "DefaultVersionId"
-            ]
-            policy_doc = iam_client.get_policy_version(
-                PolicyArn=policy_arn, VersionId=policy_version
-            )["PolicyVersion"]["Document"]
-
-            if has_bedrock_permissions(policy_doc):
-                logger.info(f"Found Bedrock permissions in policy: {policy_arn}")
-                return True
-
-        # Check inline policies
-        if principal_type == "role":
-            inline_policies = _list_all_items(
-                iam_client,
-                "list_role_policies",
-                "PolicyNames",
-                max_results_param="MaxItems",
-                token_param="Marker",
-                token_response_keys=("Marker",),
-                RoleName=principal_name,
-            )
-        else:
-            inline_policies = _list_all_items(
-                iam_client,
-                "list_user_policies",
-                "PolicyNames",
-                max_results_param="MaxItems",
-                token_param="Marker",
-                token_response_keys=("Marker",),
-                UserName=principal_name,
-            )
-
-        for policy_name in inline_policies:
-            logger.debug(f"Checking inline policy: {policy_name}")
-            if principal_type == "role":
-                policy_doc = iam_client.get_role_policy(
-                    RoleName=principal_name, PolicyName=policy_name
-                )["PolicyDocument"]
-            else:
-                policy_doc = iam_client.get_user_policy(
-                    UserName=principal_name, PolicyName=policy_name
-                )["PolicyDocument"]
-
-            if has_bedrock_permissions(policy_doc):
-                logger.info(
-                    f"Found Bedrock permissions in inline policy: {policy_name}"
-                )
-                return True
-
-        return False
-
-    except Exception as e:
-        logger.error(
-            f"Error checking permissions for {principal_type} {principal_name}: {str(e)}"
-        )
-        return False
-
-
 def check_stale_bedrock_access(permission_cache, region: str = "") -> Dict[str, Any]:
     """
     Check for stale Bedrock access using IAM service-last-accessed data.
@@ -773,7 +683,9 @@ def check_stale_bedrock_access(permission_cache, region: str = "") -> Dict[str, 
         two_months_ago = datetime.now(timezone.utc) - timedelta(days=60)
 
         sts_client = boto3.client("sts", config=boto3_config)
-        account_id = sts_client.get_caller_identity()["Account"]
+        caller_identity = sts_client.get_caller_identity()
+        account_id = caller_identity["Account"]
+        partition = caller_identity.get("Arn", "arn:aws:sts::").split(":", 2)[1]
 
         identities_to_check = []
 
@@ -807,7 +719,9 @@ def check_stale_bedrock_access(permission_cache, region: str = "") -> Dict[str, 
         iam_client = boto3.client("iam", config=boto3_config)
         for identity_type, identity_name in identities_to_check:
             try:
-                arn = f"arn:aws:iam::{account_id}:{identity_type}/{identity_name}"
+                arn = (
+                    f"arn:{partition}:iam::{account_id}:{identity_type}/{identity_name}"
+                )
                 response = iam_client.generate_service_last_accessed_details(Arn=arn)
                 job_id = response["JobId"]
 
@@ -996,63 +910,6 @@ def check_bedrock_full_access_roles(
         )
 
     return findings
-
-
-def get_role_usage(role_name: str) -> str:
-    """
-    Check where a specific IAM role is being used
-    """
-    logger.debug(f"Checking usage for role: {role_name}")
-    usage_list = []
-
-    try:
-        # Check Lambda functions
-        lambda_client = boto3.client("lambda", config=boto3_config)
-        lambda_functions = _list_all_items(
-            lambda_client,
-            "list_functions",
-            "Functions",
-            max_results_param="MaxItems",
-            token_param="Marker",
-            token_response_keys=("NextMarker",),
-            max_results=50,
-        )
-        for function in lambda_functions:
-            if role_name in function["Role"]:
-                usage_list.append(f"Lambda: {function['FunctionName']}")
-                logger.debug(f"Found role usage in Lambda: {function['FunctionName']}")
-    except Exception as e:
-        logger.error(f"Error checking Lambda usage: {str(e)}")
-
-    try:
-        # Check ECS tasks
-        ecs_client = boto3.client("ecs", config=boto3_config)
-        clusters = _list_all_items(
-            ecs_client, "list_clusters", "clusterArns", max_results=100
-        )
-        for cluster in clusters:
-            tasks = _list_all_items(
-                ecs_client,
-                "list_tasks",
-                "taskArns",
-                max_results=100,
-                cluster=cluster,
-            )
-            for batch_start in range(0, len(tasks), 100):
-                task_batch = tasks[batch_start : batch_start + 100]
-                task_details = ecs_client.describe_tasks(
-                    cluster=cluster, tasks=task_batch
-                )
-                for task in task_details["tasks"]:
-                    if role_name in task.get("taskRoleArn", ""):
-                        usage_list.append(f"ECS Task: {task['taskArn']}")
-                        logger.debug(f"Found role usage in ECS task: {task['taskArn']}")
-    except Exception as e:
-        logger.error(f"Error checking ECS usage: {str(e)}")
-
-    result = "; ".join(usage_list) if usage_list else "No active usage found"
-    logger.debug(f"Role usage result: {result}")
-    return result
 
 
 def check_bedrock_vpc_endpoints(region: str = "") -> Dict[str, bool]:

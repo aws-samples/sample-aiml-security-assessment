@@ -50,8 +50,8 @@ This repository includes instructions for developers using AI coding agents:
 - [AGENTS.md](../AGENTS.md) is the canonical repository guidance. It defines
   the required `.venv/` toolchain, separate pytest sessions, architecture and
   schema contracts, status semantics, pagination requirements, IAM coverage
-  across all five policy locations, mapping checks, identifier hygiene, and
-  the pre-commit review gates.
+  in both SAM runtime templates, deployment-role separation, mapping checks,
+  identifier hygiene, and the pre-commit review gates.
 - [CLAUDE.md](../CLAUDE.md) is a compatibility entry point for tools that look
   specifically for that filename. It delegates to `AGENTS.md` so the
   instructions have a single source of truth.
@@ -522,15 +522,18 @@ Add your new function to both SAM templates:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
           TARGET_REGIONS: !Ref TargetRegions
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
         - Statement:
+            - Sid: ComprehendReportWrite
+              Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/comprehend_security_report_*.csv'
             - Sid: ComprehendReadPermissions
               Effect: Allow
               Action:
-                - comprehend:List*
-                - comprehend:Describe*
-                - comprehend:Get*
+                # Example only: grant the exact operations used by app.py.
+                - comprehend:ListEndpoints
+                - comprehend:DescribeEndpoint
               Resource: '*'
 ```
 
@@ -570,42 +573,22 @@ Add the new service to the `Run Security Assessments` parallel branch inside the
 
 ### Step 4: Update AWS IAM Permissions
 
-Add required permissions to every role that may deploy or run the new service assessment:
-
-**In `deployment/1-aiml-security-member-roles.yaml`**:
-
-```yaml
-- Effect: Allow
-  Action:
-    - comprehend:List*
-    - comprehend:Describe*
-    - comprehend:Get*
-  Resource: '*'
-```
-
-**In `deployment/aiml-security-single-account.yaml`** (for single account mode):
-
-```yaml
-- comprehend:List*
-- comprehend:Describe*
-- comprehend:Get*
-```
-
-**In `deployment/2-aiml-security-codebuild.yaml`** (for management-account multi-account mode):
-
-```yaml
-- comprehend:List*
-- comprehend:Describe*
-- comprehend:Get*
-```
-
-Also add runtime permissions to the new Lambda role statements in both SAM templates if the new service function needs service-specific access at execution time.
+Add every exact assessment-service action used by the new function to that
+function's `Policies` block in both SAM templates. Do not use service-wide
+wildcards such as `comprehend:List*`, and do not add assessment-service actions
+to
+`deployment/1-aiml-security-member-roles.yaml`,
+`deployment/2-aiml-security-codebuild.yaml`, or
+`deployment/aiml-security-single-account.yaml`. Those templates contain
+deployment/orchestration roles, not assessment runtime roles. Add the exact
+runtime actions and prefix-scoped report-object access only to the new Lambda's
+policy statements in both SAM templates.
 
 Before merging a new check, validate every new boto3 operation and its exact
 IAM action against the AWS Knowledge MCP documentation tools. Confirm the
 client (control-plane versus data-plane), IAM prefix, and any resource or
-condition-key constraints; add grants in all five policy locations in the
-same change.
+condition-key constraints; add grants to both SAM templates in the same
+change.
 
 ### Step 5: Test Locally
 
@@ -830,7 +813,7 @@ The Agentic AI Security lens (AG-01 through AG-38) is **synthesized at runtime**
 - Native checks (currently AG-24 through AG-27) are implemented directly inside the AgentCore assessment package because they require the `bedrock-agentcore-control` client.
 - When adding new AG checks, manually allocate numbers to avoid collisions across all three mapping dictionaries and the native checks. The current high-water mark for the catalog is AG-38.
 - The HTML report routes the lens through the `AG-` prefix as its dedicated Agentic AI assessment area. `COMPLIANCE_STANDARDS` is the separate registry for OWASP and future compliance standards.
-- Follow the same seven-site wiring checklist as a new compliance standard (CloudFormation parameters are not required for the always-on Agentic lens, but any new native checks still need IAM grants in all five policy locations).
+- Follow the same seven-site wiring checklist as a new compliance standard (CloudFormation parameters are not required for the always-on Agentic lens, but any new native checks still need IAM grants in both SAM runtime templates).
 - Update `docs/SECURITY_CHECKS.md` and run the full mapping-drift, test-coverage, and gate checklist before merging.
 - **Generate and verify the HTML report** (mandatory before opening a PR): Follow the Report Verification steps in the [Testing Your Extensions](#4-report-verification-required-before-opening-a-pr) section. Confirm AG-* findings appear under the correct lens section, with proper severity and routing.
 
@@ -864,25 +847,22 @@ end-to-end. Concrete steps:
      `LambdaInvokePolicy`, definition-substitution entry)
    - `aiml-security-assessment/template-multi-account.yaml` (same)
 
-4. **Add IAM grants** for any AWS APIs the new Lambda calls in all five
-   policy locations per [AGENTS.md](../AGENTS.md). Scope each grant correctly:
+4. **Add IAM grants** for any AWS APIs the new Lambda calls in the two SAM
+   runtime templates per [AGENTS.md](../AGENTS.md). Scope each grant correctly:
    - In `aiml-security-assessment/template.yaml` and
      `aiml-security-assessment/template-multi-account.yaml`, add the grant
      to the **specific function's `Policies` block** that actually makes
      the call — not to another function's policy.
-   - In `deployment/1-aiml-security-member-roles.yaml` (cross-account
-     member role), `deployment/2-aiml-security-codebuild.yaml` (local
-     `MemberRole` mirror), and `deployment/aiml-security-single-account.yaml`
-     (single-account role), append the actions to the assessment
-     permissions policy. Diff `2-aiml-security-codebuild.yaml`'s local
-     `MemberRole` against `1-aiml-security-member-roles.yaml` to confirm
-     parity — this pair drifts easily.
-   - The multi-account canonical member role has two customer-managed policy
-     documents because IAM's inline-policy quota is cumulative per role.
-     Keep each document within the 5,500-character rendered budget enforced
-     by `tests/test_member_role_policy_size.py`; do not split grants into
-     multiple inline policies, which would still share the 10,240-character
-     quota.
+   - Do **not** add assessment-service read actions to
+     `deployment/1-aiml-security-member-roles.yaml`,
+     `deployment/2-aiml-security-codebuild.yaml`, or
+     `deployment/aiml-security-single-account.yaml`. Those deployment roles
+     only create/update the SAM stack, poll executions, and retrieve reports.
+     New deployment-time AWS operations require a separate least-privilege
+     review of the affected orchestration role.
+   - The canonical multi-account member role uses one customer-managed policy
+     document. Keep it within the 5,500-character rendered budget enforced by
+     `tests/test_member_role_policy_size.py`.
 
 5. **Add the Step Functions Choice state** in
    `aiml-security-assessment/statemachine/assessments.asl.json`:

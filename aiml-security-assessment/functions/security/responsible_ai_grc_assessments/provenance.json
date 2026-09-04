@@ -690,7 +690,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Apply the principle of least privilege to control access to your vector and embedding database. Only grant users and services the minimum permissions they need to perform their tasks.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Inspects the permissions cache for all IAM roles. Flags any role with an Allow statement granting `bedrock:*` without resource-level restrictions, or broad `bedrock:` actions covering KB operations without a specific knowledge-base ARN. Note: Bedrock agent and KB operations use the single IAM service prefix `bedrock:` (not `bedrock-agent:`) — the `bedrock-agent` token refers to the boto3 SDK client name, not the IAM action prefix.",
+      "inspected_aws_evidence": "Inspects the permissions cache for all IAM roles. Flags wildcard or partial-wildcard Bedrock Allow statements, plus exact Knowledge Base actions that support resource-level authorization but are granted on `Resource: \"*\"`. Account-level inventory APIs that AWS requires to use a wildcard resource, such as `ListKnowledgeBases`, are not treated as overbroad. Note: Bedrock agent and KB operations use the single IAM service prefix `bedrock:` (not `bedrock-agent:`) — the `bedrock-agent` token refers to the boto3 SDK client name, not the IAM action prefix.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [

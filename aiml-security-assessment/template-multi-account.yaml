@@ -133,8 +133,6 @@ Resources:
             FunctionName: !Ref OWASPSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref GenerateConsolidatedReportFunction
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
 
   ResolveRegionsFunction:
     Type: AWS::Serverless::Function
@@ -166,8 +164,17 @@ Resources:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
+        - Statement:
+            - Sid: AssessmentBucketList
+              Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource: !GetAtt AIMLAssessmentBucket.Arn
+            - Sid: AssessmentObjectCleanup
+              Effect: Allow
+              Action:
+                - s3:DeleteObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/*'
 
   IAMPermissionCachingFunction:
     Type: AWS::Serverless::Function
@@ -184,26 +191,40 @@ Resources:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
         - Statement:
-            - Sid: IAMPermissions
+            - Sid: PermissionCacheWrite
+              Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/permissions_cache_*.json'
+            - Sid: IAMIdentityInventory
               Effect: Allow
               Action:
                 - iam:ListRoles
                 - iam:ListUsers
+              Resource: '*'
+            - Sid: IAMRolePolicyRead
+              Effect: Allow
+              Action:
                 - iam:ListAttachedRolePolicies
-                - iam:ListAttachedUserPolicies
                 - iam:ListRolePolicies
-                - iam:ListUserPolicies
                 - iam:GetRolePolicy
+              Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*'
+            - Sid: IAMUserPolicyRead
+              Effect: Allow
+              Action:
+                - iam:ListAttachedUserPolicies
+                - iam:ListUserPolicies
                 - iam:GetUserPolicy
+              Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:user/*'
+            - Sid: IAMManagedPolicyRead
+              Effect: Allow
+              Action:
                 - iam:GetPolicy
                 - iam:GetPolicyVersion
-                - iam:GenerateServiceLastAccessedDetails
-                - iam:GetServiceLastAccessedDetails
-                - sts:GetCallerIdentity
-              Resource: '*'
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/*'
+                - !Sub 'arn:${AWS::Partition}:iam::aws:policy/*'
 
   GenerateConsolidatedReportFunction:
     Type: AWS::Serverless::Function
@@ -220,8 +241,42 @@ Resources:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
+        - Statement:
+            - Sid: AssessmentReportInventory
+              Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource: !GetAtt AIMLAssessmentBucket.Arn
+              Condition:
+                StringLike:
+                  s3:prefix:
+                    - bedrock_security_report_*
+                    - sagemaker_security_report_*
+                    - agentcore_security_report_*
+                    - agent_registry_security_report_*
+                    - responsible_ai_grc_security_report_*
+                    - owasp_security_report_*
+            - Sid: AssessmentCsvRead
+              Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource:
+                - !Sub '${AIMLAssessmentBucket.Arn}/bedrock_security_report_*.csv'
+                - !Sub '${AIMLAssessmentBucket.Arn}/sagemaker_security_report_*.csv'
+                - !Sub '${AIMLAssessmentBucket.Arn}/agentcore_security_report_*.csv'
+                - !Sub '${AIMLAssessmentBucket.Arn}/agent_registry_security_report_*.csv'
+                - !Sub '${AIMLAssessmentBucket.Arn}/responsible_ai_grc_security_report_*.csv'
+                - !Sub '${AIMLAssessmentBucket.Arn}/owasp_security_report_*.csv'
+            - Sid: AssessmentHtmlWrite
+              Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/security_assessment_single_account_*.html'
+            - Sid: PermissionCacheCleanup
+              Effect: Allow
+              Action:
+                - s3:DeleteObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/permissions_cache_*.json'
 
   BedrockSecurityAssessmentFunction:
     Type: AWS::Serverless::Function
@@ -241,89 +296,153 @@ Resources:
           REQUIRE_BEDROCK_ZERO_DATA_RETENTION: !Ref RequireBedrockZeroDataRetention
           REQUIRE_MARKETPLACE_ENDPOINT_CMK: !Ref RequireMarketplaceEndpointCMK
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
         - Statement:
-            - Sid: IAMPermissions
+            - Sid: PermissionCacheRead
               Effect: Allow
               Action:
-                - iam:ListRoles
-                - iam:ListUsers
-                - iam:ListAttachedRolePolicies
-                - iam:ListAttachedUserPolicies
-                - iam:ListRolePolicies
-                - iam:ListUserPolicies
-                - iam:GetRolePolicy
-                - iam:GetUserPolicy
-                - iam:GetPolicy
-                - iam:GetPolicyVersion
+                - s3:GetObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/permissions_cache_*.json'
+            - Sid: BedrockReportWrite
+              Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/bedrock_security_report_*.csv'
+            - Sid: IAMServiceLastAccessGeneration
+              Effect: Allow
+              Action:
                 - iam:GenerateServiceLastAccessedDetails
-                - iam:GetServiceLastAccessedDetails
-                - sts:GetCallerIdentity
-              Resource: '*'
-            - Sid: BedrockAssessmentPermissions
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*'
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:user/*'
+            - Sid: IAMServiceLastAccessResults
               Effect: Allow
               Action:
-                - bedrock:ListGuardrails
-                - bedrock:GetGuardrail
+                - iam:GetServiceLastAccessedDetails
+              Resource: '*'
+            # These account-level inventory/configuration APIs do not support
+            # resource-level authorization in IAM.
+            - Sid: BedrockAccountInventoryPermissions
+              Effect: Allow
+              Action:
                 - bedrock:ListModelInvocationJobs
                 - bedrock:GetModelInvocationLoggingConfiguration
-                - bedrock:ListPrompts
-                - bedrock:GetPrompt
                 - bedrock:ListAgents
-                - bedrock:GetAgent
                 - bedrock:ListCustomModels
-                - bedrock:GetCustomModel
-                - bedrock:GetModelCustomizationJob
                 - bedrock:ListFlows
-                - bedrock:GetFlow
                 - bedrock:ListKnowledgeBases
-                - bedrock:GetKnowledgeBase
                 - bedrock:ListEvaluationJobs # BR-18
                 - bedrock:ListImportedModels # BR-30
-                - bedrock:GetImportedModel # BR-30
+                - bedrock:ListInferenceProfiles
+                - bedrock:GetAccountDataRetention
+                - bedrock:ListMarketplaceModelEndpoints
+                - bedrock:ListEnforcedGuardrailsConfiguration
+                # These account-level enumerations do not support
+                # resource-level authorization in IAM.
+                - bedrock:ListGuardrails
+                - bedrock:ListPrompts
+                - bedrock:ListAutomatedReasoningPolicies
+              Resource: '*'
+            - Sid: BedrockGuardrailRead
+              Effect: Allow
+              Action:
+                - bedrock:GetGuardrail
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:guardrail/*'
+            - Sid: BedrockPromptRead
+              Effect: Allow
+              Action:
+                - bedrock:GetPrompt
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:prompt/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:prompt/*:*'
+            - Sid: BedrockAgentRead
+              Effect: Allow
+              Action:
+                - bedrock:GetAgent
                 - bedrock:ListAgentActionGroups
                 - bedrock:GetAgentActionGroup
-                - bedrock:ListInferenceProfiles
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:agent/*'
+            - Sid: BedrockCustomModelRead
+              Effect: Allow
+              Action:
+                - bedrock:GetCustomModel
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:custom-model/*'
+            - Sid: BedrockCustomizationJobRead
+              Effect: Allow
+              Action:
+                - bedrock:GetModelCustomizationJob
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:model-customization-job/*'
+            - Sid: BedrockFlowRead
+              Effect: Allow
+              Action:
+                - bedrock:GetFlow
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:flow/*'
+            - Sid: BedrockKnowledgeBaseRead
+              Effect: Allow
+              Action:
+                - bedrock:GetKnowledgeBase
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:knowledge-base/*'
+            - Sid: BedrockImportedModelRead
+              Effect: Allow
+              Action:
+                - bedrock:GetImportedModel # BR-30
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:imported-model/*'
+            - Sid: BedrockInferenceProfileTagRead
+              Effect: Allow
+              Action:
                 - bedrock:ListTagsForResource
-                - bedrock:GetAccountDataRetention
-                - bedrock:ListAutomatedReasoningPolicies
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*'
+            - Sid: BedrockAutomatedReasoningRead
+              Effect: Allow
+              Action:
                 - bedrock:GetAutomatedReasoningPolicy
-                - bedrock:ListMarketplaceModelEndpoints
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:automated-reasoning-policy/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:automated-reasoning-policy/*:*'
+            - Sid: BedrockMarketplaceEndpointRead
+              Effect: Allow
+              Action:
                 - bedrock:GetMarketplaceModelEndpoint
-                - bedrock:ListEnforcedGuardrailsConfiguration
-              Resource: '*'
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:marketplace/model-endpoint/all-access'
             - Sid: KMSPermissions
               Effect: Allow
               Action:
                 - kms:DescribeKey # BR-40
-              Resource: '*'
-            - Sid: ServiceQuotasPermissions
+              Resource: !Sub 'arn:${AWS::Partition}:kms:*:${AWS::AccountId}:key/*'
+            - Sid: ServiceQuotasInventoryPermissions
               Effect: Allow
               Action:
                 - servicequotas:ListServiceQuotas # BR-22
-                - servicequotas:GetServiceQuota # BR-22
                 - servicequotas:GetAWSDefaultServiceQuota # BR-22
               Resource: '*'
+            - Sid: BedrockServiceQuotaRead
+              Effect: Allow
+              Action:
+                - servicequotas:GetServiceQuota # BR-22
+              Resource: !Sub 'arn:${AWS::Partition}:servicequotas:*:${AWS::AccountId}:bedrock/*'
             - Sid: CloudWatchPermissions
               Effect: Allow
               Action:
                 - cloudwatch:DescribeAlarms
-              Resource: '*'
-            - Sid: OrganizationsPermissions
+              Resource: !Sub 'arn:${AWS::Partition}:cloudwatch:*:${AWS::AccountId}:alarm:*'
+            - Sid: OrganizationsInventoryPermissions
               Effect: Allow
               Action:
                 - organizations:DescribeOrganization # BR-15
                 - organizations:ListRoots # BR-15
                 - organizations:ListPolicies # BR-15
-                - organizations:ListTargetsForPolicy # BR-15
               Resource: '*'
+            - Sid: OrganizationsPolicyTargetRead
+              Effect: Allow
+              Action:
+                - organizations:ListTargetsForPolicy # BR-15
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:organizations::*:policy/*/*/*'
+                - !Sub 'arn:${AWS::Partition}:organizations::aws:policy/*/*'
             - Sid: S3BucketEncryptionPermissions
               Effect: Allow
               Action:
-                - s3:GetBucketEncryption
                 - s3:GetEncryptionConfiguration
-              Resource: 'arn:aws:s3:::*'
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::*'
             - Sid: CloudTrailPermissions
               Effect: Allow
               Action:
@@ -335,16 +454,8 @@ Resources:
             - Sid: LambdaPermissions
               Effect: Allow
               Action:
-                - lambda:ListFunctions
                 - lambda:GetFunction
-              Resource: '*'
-            - Sid: ECSPermissions
-              Effect: Allow
-              Action:
-                - ecs:ListClusters
-                - ecs:ListTasks
-                - ecs:DescribeTasks
-              Resource: '*'
+              Resource: !Sub 'arn:${AWS::Partition}:lambda:*:${AWS::AccountId}:function:*'
             - Sid: EC2Permissions
               Effect: Allow
               Action:
@@ -375,101 +486,105 @@ Resources:
           AIML_APPROVED_EXTERNAL_ACCOUNT_IDS: !Ref ApprovedExternalAccountIds
           AIML_APPROVED_ORG_IDS: !Ref ApprovedOrganizationIds
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
         - Statement:
-            - Sid: IAMPermissions
+            - Sid: PermissionCacheRead
               Effect: Allow
               Action:
-                - iam:ListRoles
-                - iam:ListUsers
-                - iam:ListAttachedRolePolicies
-                - iam:ListAttachedUserPolicies
-                - iam:ListRolePolicies
-                - iam:ListUserPolicies
-                - iam:GetRolePolicy
-                - iam:GetUserPolicy
-                - iam:GetPolicy
-                - iam:GetPolicyVersion
+                - s3:GetObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/permissions_cache_*.json'
+            - Sid: SageMakerReportWrite
+              Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/sagemaker_security_report_*.csv'
+            - Sid: IAMServiceLastAccessGeneration
+              Effect: Allow
+              Action:
                 - iam:GenerateServiceLastAccessedDetails
-                - iam:GetServiceLastAccessedDetails
-                - sts:GetCallerIdentity
-              Resource: '*'
-            - Sid: LambdaPermissions
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*'
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:user/*'
+            - Sid: IAMServiceLastAccessResults
               Effect: Allow
               Action:
-                - lambda:ListFunctions
+                - iam:GetServiceLastAccessedDetails
               Resource: '*'
         - Statement:
-            - Sid: SageMakerPermissions
+            - Sid: SageMakerAccountInventoryPermissions
               Effect: Allow
               Action:
                 - sagemaker:ListNotebookInstances
-                - sagemaker:DescribeNotebookInstance
                 - sagemaker:ListDomains
-                - sagemaker:DescribeDomain
                 - sagemaker:ListTrainingJobs
-                - sagemaker:DescribeTrainingJob
-                - kms:DescribeKey
-                - kms:ListAliases
                 - sagemaker:ListModelPackageGroups
-                - sagemaker:ListModelPackages
-                - sagemaker:DescribeModelPackage
                 - sagemaker:ListFeatureGroups
-                - sagemaker:DescribeFeatureGroup
                 - sagemaker:ListPipelines
-                - sagemaker:ListPipelineExecutions
                 - sagemaker:ListProcessingJobs
-                - sagemaker:DescribeProcessingJob
                 - sagemaker:ListMonitoringSchedules
-                - sagemaker:DescribeMonitoringSchedule
                 - sagemaker:ListModels
-                - sagemaker:DescribeModel
                 - sagemaker:ListEndpoints
-                - sagemaker:DescribeEndpoint
                 - sagemaker:ListDataQualityJobDefinitions
-                - sagemaker:DescribeDataQualityJobDefinition
                 - sagemaker:ListTransformJobs
-                - sagemaker:DescribeTransformJob
                 - sagemaker:ListHyperParameterTuningJobs
-                - sagemaker:DescribeHyperParameterTuningJob
                 - sagemaker:ListCompilationJobs
-                - sagemaker:DescribeCompilationJob
                 - sagemaker:ListAutoMLJobs
-                - sagemaker:DescribeAutoMLJob
                 - sagemaker:ListExperiments
-                - sagemaker:DescribeExperiment
                 - sagemaker:ListTrials
-                - sagemaker:DescribeTrial
                 - sagemaker:ListArtifacts
                 - sagemaker:ListAssociations
                 - sagemaker:ListClusters
+                # ListPipelineExecutions is an account-level enumeration that
+                # does not support resource-level authorization in IAM.
+                - sagemaker:ListPipelineExecutions
+              Resource: '*'
+            - Sid: SageMakerResourceReadPermissions
+              Effect: Allow
+              Action:
+                - sagemaker:DescribeNotebookInstance
+                - sagemaker:DescribeDomain
+                - sagemaker:DescribeTrainingJob
+                - sagemaker:ListModelPackages
+                - sagemaker:DescribeFeatureGroup
+                - sagemaker:DescribeProcessingJob
+                - sagemaker:DescribeMonitoringSchedule
+                - sagemaker:DescribeModel
+                - sagemaker:DescribeEndpoint
+                - sagemaker:DescribeDataQualityJobDefinition
+                - sagemaker:DescribeTransformJob
+                - sagemaker:DescribeHyperParameterTuningJob
+                - sagemaker:DescribeCompilationJob
+                - sagemaker:DescribeAutoMLJob
                 - sagemaker:DescribeCluster
                 - sagemaker:GetModelPackageGroupPolicy
-              Resource: '*'
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:notebook-instance/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:domain/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:training-job/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:model-package/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:model-package-group/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:feature-group/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:pipeline/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:processing-job/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:monitoring-schedule/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:model/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:endpoint/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:data-quality-job-definition/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:transform-job/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:hyper-parameter-tuning-job/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:compilation-job/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:automl-job/*'
+                - !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:cluster/*'
         - Statement:
-            - Sid: GuardDutyPermissions
+            - Sid: GuardDutyInventoryPermissions
               Effect: Allow
               Action:
-                - guardduty:GetFindings
-                - guardduty:ListFindings
                 - guardduty:ListDetectors
-                - guardduty:GetDetector
-                - guardduty:GetFindingsStatistics
-                - guardduty:ListPublishingDestinations
-                - guardduty:ListTagsForResource
-                - guardduty:GetMemberDetectors
-                - guardduty:DescribeMalwareScans
-                - guardduty:GetRemainingFreeTrialDays
-                - guardduty:GetUsageStatistics
               Resource: '*'
-        - Statement:
-            - Sid: EC2Permissions
+            - Sid: GuardDutyDetectorRead
               Effect: Allow
               Action:
-                - ec2:DescribeVpcEndpoints
-                - ec2:DescribeVpcs
-              Resource: '*'
+                - guardduty:GetDetector
+              Resource: !Sub 'arn:${AWS::Partition}:guardduty:*:${AWS::AccountId}:detector/*'
 
   AgentCoreSecurityAssessmentFunction:
     Type: AWS::Serverless::Function
@@ -489,88 +604,94 @@ Resources:
           AGENTCORE_TOKEN_VAULT_ID: !Ref AgentCoreTokenVaultId
           REQUIRE_AGENTCORE_ONLINE_EVALUATION: !Ref RequireAgentCoreOnlineEvaluation
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
         - Statement:
-            - Sid: IAMPermissions
+            - Sid: PermissionCacheRead
               Effect: Allow
               Action:
-                - iam:ListRoles
-                - iam:ListUsers
-                - iam:ListAttachedRolePolicies
-                - iam:ListAttachedUserPolicies
-                - iam:ListRolePolicies
-                - iam:ListUserPolicies
-                - iam:GetRolePolicy
-                - iam:GetUserPolicy
-                - iam:GetPolicy
-                - iam:GetPolicyVersion
+                - s3:GetObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/permissions_cache_*.json'
+            - Sid: AgentCoreReportWrite
+              Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/agentcore_security_report_*.csv'
+            - Sid: IAMServiceLastAccessGeneration
+              Effect: Allow
+              Action:
                 - iam:GenerateServiceLastAccessedDetails
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*'
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:user/*'
+            - Sid: IAMServiceLastAccessResults
+              Effect: Allow
+              Action:
                 - iam:GetServiceLastAccessedDetails
-                - sts:GetCallerIdentity
               Resource: '*'
-            - Sid: AgentCorePermissions
+            - Sid: AgentCoreAccountInventoryPermissions
               Effect: Allow
               Action:
                 - bedrock-agentcore:ListAgentRuntimes
-                - bedrock-agentcore:GetAgentRuntime
                 - bedrock-agentcore:ListMemories
-                - bedrock-agentcore:GetMemory
                 - bedrock-agentcore:ListGateways
-                - bedrock-agentcore:GetGateway
                 - bedrock-agentcore:ListPolicyEngines
+                - bedrock-agentcore:ListCodeInterpreters
+                - bedrock-agentcore:ListBrowsers
+                - bedrock-agentcore:ListOnlineEvaluationConfigs
+              Resource: '*'
+            - Sid: AgentCoreResourceReadPermissions
+              Effect: Allow
+              Action:
+                - bedrock-agentcore:GetAgentRuntime
+                - bedrock-agentcore:GetMemory
+                - bedrock-agentcore:GetGateway
                 - bedrock-agentcore:GetPolicyEngine
                 - bedrock-agentcore:GetResourcePolicy
                 - bedrock-agentcore:GetTokenVault
-                - bedrock-agentcore:ListCodeInterpreters
                 - bedrock-agentcore:GetCodeInterpreter
-                - bedrock-agentcore:ListBrowsers
                 - bedrock-agentcore:GetBrowser
-                - bedrock-agentcore:ListOnlineEvaluationConfigs
                 - bedrock-agentcore:GetOnlineEvaluationConfig
                 - bedrock-agentcore:ListPolicies
-              Resource: '*'
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:runtime/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:runtime/*/runtime-endpoint/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:memory/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:gateway/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:policy-engine/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:token-vault/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:code-interpreter-custom/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:browser-custom/*'
+                - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:online-evaluation-config/*'
             - Sid: IAMRolePermissions
               Effect: Allow
               Action:
                 - iam:GetRole
-              Resource: 'arn:aws:iam::*:role/AWSServiceRoleForBedrockAgentCoreNetwork'
-            - Sid: S3BucketPermissions
-              Effect: Allow
-              Action:
-                - s3:ListBucket
-                - s3:GetBucketEncryption
-                - s3:GetBucketVersioning
-                - s3:GetBucketTagging
-                - s3:HeadBucket
-              Resource: 'arn:aws:s3:::*'
+              Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/network.bedrock-agentcore.amazonaws.com/AWSServiceRoleForBedrockAgentCoreNetwork'
             - Sid: EC2Permissions
               Effect: Allow
               Action:
                 - ec2:DescribeSubnets
                 - ec2:DescribeRouteTables
                 - ec2:DescribeVpcEndpoints
-                - ec2:DescribeNatGateways
                 - ec2:DescribeVpcs
               Resource: '*'
             - Sid: ECRPermissions
               Effect: Allow
               Action:
                 - ecr:DescribeRepositories
-                - ecr:GetRepositoryPolicy
-              Resource: '*'
+              Resource: !Sub 'arn:${AWS::Partition}:ecr:*:${AWS::AccountId}:repository/*'
             - Sid: LogsPermissions
               Effect: Allow
               Action:
                 - logs:DescribeLogGroups
-                - logs:DescribeLogStreams
               Resource: '*'
             - Sid: CloudWatchPermissions
               Effect: Allow
               Action:
-                - cloudwatch:ListMetrics
                 - cloudwatch:PutMetricData
               Resource: '*'
+              Condition:
+                StringEquals:
+                  cloudwatch:namespace: AIMLSecurity/AgentCore
 
 
   AgentRegistrySecurityAssessmentFunction:
@@ -591,25 +712,28 @@ Resources:
           REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL: !Ref RequireAgentRegistryManualApproval
           REQUIRE_AGENT_REGISTRY_CMK: !Ref RequireAgentRegistryCMK
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
         - Statement:
-            - Sid: IAMPermissions
+            - Sid: PermissionCacheRead
               Effect: Allow
               Action:
-                - iam:ListRoles
-                - iam:ListUsers
-                - iam:ListAttachedRolePolicies
-                - iam:ListAttachedUserPolicies
-                - iam:ListRolePolicies
-                - iam:ListUserPolicies
-                - iam:GetRolePolicy
-                - iam:GetUserPolicy
-                - iam:GetPolicy
-                - iam:GetPolicyVersion
+                - s3:GetObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/permissions_cache_*.json'
+            - Sid: AgentRegistryReportWrite
+              Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/agent_registry_security_report_*.csv'
+            - Sid: IAMServiceLastAccessGeneration
+              Effect: Allow
+              Action:
                 - iam:GenerateServiceLastAccessedDetails
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*'
+                - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:user/*'
+            - Sid: IAMServiceLastAccessResults
+              Effect: Allow
+              Action:
                 - iam:GetServiceLastAccessedDetails
-                - sts:GetCallerIdentity
               Resource: '*'
             - Sid: AgentRegistryListPermissions
               Effect: Allow
@@ -649,137 +773,174 @@ Resources:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
         - Statement:
-            - Sid: IAMPermissions
+            - Sid: PermissionCacheRead
               Effect: Allow
               Action:
-                - iam:ListRoles
-                - iam:ListUsers
-                - iam:ListAttachedRolePolicies
-                - iam:ListAttachedUserPolicies
-                - iam:ListRolePolicies
-                - iam:ListUserPolicies
-                - iam:GetRolePolicy
-                - iam:GetUserPolicy
-                - iam:GetPolicy
-                - iam:GetPolicyVersion
-                - iam:GetRole
-                - iam:GetUser
-                - sts:GetCallerIdentity
-              Resource: '*'
-            - Sid: WAFShieldPermissions
+                - s3:GetObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/permissions_cache_*.json'
+            - Sid: ResponsibleAIGRCReportWrite
+              Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/responsible_ai_grc_security_report_*.csv'
+            - Sid: WAFInventoryPermissions
               Effect: Allow
               Action:
                 - wafv2:ListWebACLs
+              Resource: '*'
+            - Sid: WAFWebACLRead
+              Effect: Allow
+              Action:
                 - wafv2:GetWebACL
+              Resource: !Sub 'arn:${AWS::Partition}:wafv2:*:${AWS::AccountId}:regional/webacl/*/*'
+            - Sid: ShieldSubscriptionRead
+              Effect: Allow
+              Action:
                 - shield:DescribeSubscription
               Resource: '*'
             - Sid: APIGatewayPermissions
               Effect: Allow
               Action:
                 - apigateway:GET
-              Resource: '*'
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:apigateway:*::/usageplans'
+                - !Sub 'arn:${AWS::Partition}:apigateway:*::/restapis'
+                - !Sub 'arn:${AWS::Partition}:apigateway:*::/restapis/*/requestvalidators'
+                - !Sub 'arn:${AWS::Partition}:apigateway:*::/restapis/*/models'
             - Sid: ServiceQuotasPermissions
               Effect: Allow
               Action:
                 - servicequotas:ListServiceQuotas
                 - servicequotas:ListAWSDefaultServiceQuotas
               Resource: '*'
-            - Sid: CostBudgetPermissions
+            - Sid: CostExplorerPermissions
               Effect: Allow
               Action:
                 - ce:GetAnomalyMonitors
-                - budgets:ViewBudget
               Resource: '*'
+            - Sid: BudgetRead
+              Effect: Allow
+              Action:
+                - budgets:ViewBudget
+              Resource: !Sub 'arn:${AWS::Partition}:budgets::${AWS::AccountId}:budget/*'
             - Sid: CloudWatchPermissions
               Effect: Allow
               Action:
                 - cloudwatch:DescribeAlarms
-                - cloudwatch:ListMetrics
-              Resource: '*'
-            - Sid: LogsPermissions
+              Resource: !Sub 'arn:${AWS::Partition}:cloudwatch:*:${AWS::AccountId}:alarm:*'
+            - Sid: LogsAccountPolicyInventory
               Effect: Allow
               Action:
                 - logs:DescribeAccountPolicies
-                - logs:GetDataProtectionPolicy # FS-43
-                - logs:DescribeLogGroups
               Resource: '*'
-            - Sid: BedrockPermissions
+            - Sid: LogsDataProtectionPolicyRead
               Effect: Allow
               Action:
-                - bedrock:ListGuardrails
-                - bedrock:GetGuardrail
+                - logs:GetDataProtectionPolicy # FS-43
+              Resource: !Sub 'arn:${AWS::Partition}:logs:*:${AWS::AccountId}:log-group:*'
+            # These account-level inventory/configuration APIs do not support
+            # resource-level authorization in IAM.
+            - Sid: BedrockAccountInventoryPermissions
+              Effect: Allow
+              Action:
                 - bedrock:ListFoundationModels
                 - bedrock:ListCustomModels
                 - bedrock:ListEvaluationJobs
                 - bedrock:GetModelInvocationLoggingConfiguration
-                - bedrock:ListTagsForResource
+                - bedrock:ListAgents
+                - bedrock:ListKnowledgeBases
+                - bedrock:ListGuardrails
                 - bedrock:ListAutomatedReasoningPolicies
               Resource: '*'
-            - Sid: BedrockAgentPermissions
+            - Sid: BedrockGuardrailRead
               Effect: Allow
               Action:
-                - bedrock:ListAgents
+                - bedrock:GetGuardrail
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:guardrail/*'
+            - Sid: BedrockCustomModelTagRead
+              Effect: Allow
+              Action:
+                - bedrock:ListTagsForResource
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:custom-model/*'
+            - Sid: BedrockAgentRead
+              Effect: Allow
+              Action:
                 - bedrock:GetAgent
-                - bedrock:ListKnowledgeBases
-                - bedrock:GetKnowledgeBase
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:agent/*'
+            - Sid: BedrockKnowledgeBaseDataSourceRead
+              Effect: Allow
+              Action:
                 - bedrock:ListDataSources
                 - bedrock:GetDataSource
                 - bedrock:ListIngestionJobs # FS-31
-              Resource: '*'
-            - Sid: BedrockAgentCorePermissions
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:knowledge-base/*'
+            - Sid: BedrockAgentCoreInventoryPermissions
               Effect: Allow
               Action:
                 - bedrock-agentcore:ListAgentRuntimes
-                - bedrock-agentcore:GetAgentRuntime
               Resource: '*'
-            - Sid: SageMakerPermissions
+            - Sid: BedrockAgentCoreRuntimeRead
+              Effect: Allow
+              Action:
+                - bedrock-agentcore:GetAgentRuntime
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:runtime/*'
+            - Sid: SageMakerInventoryPermissions
               Effect: Allow
               Action:
                 - sagemaker:ListMonitoringSchedules
-                - sagemaker:ListModelPackageGroups
-                - sagemaker:ListModelPackages
                 - sagemaker:ListFeatureGroups
-                - sagemaker:DescribeFeatureGroup # FS-20
                 - sagemaker:ListModels
                 - sagemaker:ListEndpoints
                 - sagemaker:ListModelCards
-                - sagemaker:ListTags
               Resource: '*'
-            - Sid: LambdaStatesPermissions
+            - Sid: SageMakerFeatureGroupRead
+              Effect: Allow
+              Action:
+                - sagemaker:DescribeFeatureGroup # FS-20
+              Resource: !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:feature-group/*'
+            - Sid: SageMakerModelTagRead
+              Effect: Allow
+              Action:
+                - sagemaker:ListTags
+              Resource: !Sub 'arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:model/*'
+            - Sid: LambdaStatesInventoryPermissions
               Effect: Allow
               Action:
                 - lambda:ListFunctions
-                - lambda:GetFunctionConcurrency
                 - states:ListStateMachines
-                - states:DescribeStateMachine
               Resource: '*'
-            - Sid: OrganizationsPermissions
+            - Sid: LambdaConcurrencyRead
+              Effect: Allow
+              Action:
+                - lambda:GetFunctionConcurrency
+              Resource: !Sub 'arn:${AWS::Partition}:lambda:*:${AWS::AccountId}:function:*'
+            - Sid: StepFunctionsDefinitionRead
+              Effect: Allow
+              Action:
+                - states:DescribeStateMachine
+              Resource: !Sub 'arn:${AWS::Partition}:states:*:${AWS::AccountId}:stateMachine:*'
+            - Sid: OrganizationsInventoryPermissions
               Effect: Allow
               Action:
                 - organizations:ListPolicies
-                - organizations:DescribePolicy
               Resource: '*'
+            - Sid: OrganizationsPolicyRead
+              Effect: Allow
+              Action:
+                - organizations:DescribePolicy
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:organizations::*:policy/*/*/*'
+                - !Sub 'arn:${AWS::Partition}:organizations::aws:policy/*/*'
             - Sid: ECRPermissions
               Effect: Allow
               Action:
                 - ecr:DescribeRepositories
-                - ecr:DescribeImageScanFindings
-              Resource: '*'
+              Resource: !Sub 'arn:${AWS::Partition}:ecr:*:${AWS::AccountId}:repository/*'
             - Sid: InspectorPermissions
               Effect: Allow
               Action:
                 - inspector2:BatchGetAccountStatus # FS-16
-              Resource: '*'
-            - Sid: CloudTrailPermissions
-              Effect: Allow
-              Action:
-                - cloudtrail:ListTrails
-                - cloudtrail:GetTrail
-                - cloudtrail:GetTrailStatus
-                - cloudtrail:GetEventSelectors
               Resource: '*'
             - Sid: OpenSearchServerlessPermissions
               Effect: Allow
@@ -804,12 +965,14 @@ Resources:
               Effect: Allow
               Action:
                 - s3:ListAllMyBuckets
-                - s3:ListBucket
+              Resource: '*'
+            - Sid: S3BucketConfigurationPermissions
+              Effect: Allow
+              Action:
                 - s3:GetBucketVersioning
                 - s3:GetBucketTagging
-                - s3:GetBucketEncryption
                 - s3:GetBucketNotification
-              Resource: 'arn:aws:s3:::*'
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::*'
 
   OWASPSecurityAssessmentFunction:
     Type: AWS::Serverless::Function
@@ -826,15 +989,33 @@ Resources:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
       Policies:
-        - S3CrudPolicy:
-            BucketName: !Ref AIMLAssessmentBucket
         - Statement:
+            - Sid: AssessmentCsvRead
+              Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource:
+                - !Sub '${AIMLAssessmentBucket.Arn}/bedrock_security_report_*.csv'
+                - !Sub '${AIMLAssessmentBucket.Arn}/sagemaker_security_report_*.csv'
+                - !Sub '${AIMLAssessmentBucket.Arn}/agentcore_security_report_*.csv'
+                - !Sub '${AIMLAssessmentBucket.Arn}/responsible_ai_grc_security_report_*.csv'
+            - Sid: OWASPReportWrite
+              Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/owasp_security_report_*.csv'
+            - Sid: OWASPBedrockGuardrailList
+              Effect: Allow
+              Action:
+                # ListGuardrails is an account-level enumeration that does not
+                # support resource-level authorization in IAM.
+                - bedrock:ListGuardrails
+              Resource: '*'
             - Sid: OWASPBedrockPermissions
               Effect: Allow
               Action:
-                - bedrock:ListGuardrails
                 - bedrock:GetGuardrail
-              Resource: '*'
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:guardrail/*'
             - Sid: OWASPLambdaPermissions
               Effect: Allow
               Action:

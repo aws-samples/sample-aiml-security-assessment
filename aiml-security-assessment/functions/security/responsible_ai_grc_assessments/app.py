@@ -2665,10 +2665,45 @@ def _is_overbroad_kb_action(action: Any) -> bool:
     return False
 
 
+_KB_ACTIONS_WITH_RESOURCE_SCOPE = frozenset(
+    {
+        "bedrock:deleteknowledgebase",
+        "bedrock:deleteknowledgebasedocuments",
+        "bedrock:deletedatasource",
+        "bedrock:generatequery",
+        "bedrock:getdatasource",
+        "bedrock:getingestionjob",
+        "bedrock:getknowledgebase",
+        "bedrock:getknowledgebasedocuments",
+        "bedrock:ingestknowledgebasedocuments",
+        "bedrock:listdatasources",
+        "bedrock:listingestionjobs",
+        "bedrock:listknowledgebasedocuments",
+        "bedrock:retrieve",
+        "bedrock:retrieveandgenerate",
+        "bedrock:retrieveandgeneratestream",
+        "bedrock:startingestionjob",
+        "bedrock:stopingestionjob",
+        "bedrock:updatedatasource",
+        "bedrock:updateknowledgebase",
+    }
+)
+
+
+def _kb_action_requires_resource_scope(action: Any) -> bool:
+    """Return whether an exact KB action supports a knowledge-base ARN."""
+    return isinstance(action, str) and action.lower() in _KB_ACTIONS_WITH_RESOURCE_SCOPE
+
+
 def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]:
     """
     FS-22 — Verify IAM roles accessing Bedrock Knowledge Bases follow
-    least privilege (no wildcard bedrock:* permissions).
+    least privilege.
+
+    Wildcard Bedrock actions are always broad. Exact KB actions are flagged on
+    ``Resource: "*"`` only when IAM supports knowledge-base resource ARNs;
+    account-level discovery APIs such as ``ListKnowledgeBases`` legitimately
+    require a wildcard resource and must not create self-findings.
     COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, PCI-DSS 12.3.2]
     """
     findings = _empty_findings("Knowledge Base IAM Least Privilege Check")
@@ -2720,10 +2755,8 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                     for action in actions:
                         if _is_overbroad_kb_action(action):
                             issues.append(f"Role '{role_name}' allows '{action}'")
-                        elif (
-                            unscoped_resource
-                            and isinstance(action, str)
-                            and action.lower().startswith("bedrock:")
+                        elif unscoped_resource and _kb_action_requires_resource_scope(
+                            action
                         ):
                             issues.append(
                                 f"Role '{role_name}' allows '{action}' on Resource '*' "
@@ -2737,13 +2770,15 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                     check_id="FS-22",
                     finding_name="Overly Permissive Knowledge Base IAM Roles",
                     finding_details=(
-                        f"{len(issues)} role(s) with wildcard KB permissions:\n"
+                        f"{len(issues)} broad Knowledge Base permission issue(s):\n"
                         + "\n".join(f"- {i}" for i in issues[:10])
                     ),
                     resolution=(
-                        "Replace wildcard bedrock:* with specific actions such as "
-                        "bedrock:Retrieve, bedrock:RetrieveAndGenerate. "
-                        "Scope resources to specific Knowledge Base ARNs."
+                        "Replace wildcard Bedrock actions (e.g. bedrock:*) with "
+                        "specific actions such as bedrock:Retrieve, "
+                        "bedrock:RetrieveAndGenerate, and scope Knowledge Base "
+                        "actions to specific Knowledge Base ARNs instead of "
+                        "Resource '*'."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity="High",
@@ -2756,7 +2791,11 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                 create_finding(
                     check_id="FS-22",
                     finding_name="Knowledge Base IAM Permissions Look Appropriate",
-                    finding_details="No wildcard KB permissions found in reviewed roles.",
+                    finding_details=(
+                        "No wildcard Bedrock permissions and no unscoped "
+                        "(Resource '*') Knowledge Base actions found in reviewed "
+                        "roles."
+                    ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity="High",
