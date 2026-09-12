@@ -4016,6 +4016,13 @@ class TestGenerateCsvReport:
             "region-b",
         ]
 
+    @pytest.mark.parametrize("target_regions", ["all", "ALL", " All "])
+    def test_region_scopes_reject_all_target_regions(self, monkeypatch, target_regions):
+        monkeypatch.setenv("TARGET_REGIONS", target_regions)
+
+        with pytest.raises(ValueError, match="no longer accepts 'all'"):
+            app._get_region_scopes({"Region": "fallback-region"})
+
     def test_stamp_regions_labels_missing_csv_regions_global_once(self):
         findings = [
             {

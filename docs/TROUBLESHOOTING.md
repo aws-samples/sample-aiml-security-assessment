@@ -51,7 +51,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 - Verify the S3 bucket for SAM artifacts exists and is accessible. If the `aws-sam-cli-managed-default` stack is stuck in `ROLLBACK_COMPLETE` or `DELETE_FAILED`, delete it and re-run CodeBuild
 - Look for IAM permission errors in the logs
 - Check if a previous deployment left orphaned resources
-- Check whether `TARGET_REGIONS` failed validation. It must be empty, `all`, or a comma- or space-separated list such as `us-east-1,us-west-2` or `us-east-1 us-west-2`
+- Check whether `TARGET_REGIONS` failed validation. It must be empty or a comma- or space-separated list such as `us-east-1,us-west-2` or `us-east-1 us-west-2`
 
 ### 4. AWS Step Functions Execution Failures
 
@@ -189,7 +189,6 @@ it does not enable or validate deployment in AWS GovCloud (US) or AWS China.
 **Solutions:**
 
 - Leave `TargetRegions` empty to scan only the deployment region
-- Use `all` to scan the union of commercial regions returned by boto3 for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry. Because current endpoint metadata does not enumerate AgentCore or Agent Registry regions, the resolver conservatively includes the commercial partition's region catalog; unsupported service/region combinations appear as informational `N/A`
 - Use a comma- or space-separated list, such as `us-east-1,us-west-2,eu-west-1` or `us-east-1 us-west-2 eu-west-1`. The deployment normalizes the value before passing it to SAM
 - Confirm the services being assessed are available in each target region. If a service is unavailable or has no resources in a region, the report can show `N/A` or no resource-specific findings for that service and region
 - Confirm the account is opted in to any opt-in regions you include
@@ -271,7 +270,7 @@ for customer-facing results.
 1. Navigate to **AWS CloudFormation** > **Stacks**
 2. Select your infrastructure stack (for example, `aiml-security-single-account` or `aiml-security-multi-account`)
 3. Click **Update** > **Use current template**
-4. Set the `TargetRegions` parameter (for example, `us-east-1,us-west-2,eu-west-1`, `us-east-1 us-west-2 eu-west-1`, or `all`)
+4. Set the `TargetRegions` parameter to an explicit comma- or space-separated region list (for example, `us-east-1,us-west-2,eu-west-1` or `us-east-1 us-west-2 eu-west-1`)
 5. Click through to **Submit**
 6. The next assessment run will scan the specified regions in parallel
 
@@ -573,9 +572,8 @@ You can automate regular assessments using Amazon EventBridge scheduled rules.
 **Q: What AWS regions are supported?**
 
 A: The framework is validated and supported only in the standard AWS commercial
-partition (`aws`). Leave `TargetRegions` empty for the deployment region, set
-it to `all` to resolve assessed-service regions in the commercial partition,
-or provide an explicit comma- or space-separated list of commercial regions.
+partition (`aws`). Leave `TargetRegions` empty for the deployment region, or
+provide an explicit comma- or space-separated list of commercial regions.
 AWS GovCloud (US) (`aws-us-gov`) and AWS China (`aws-cn`) deployments are not
 currently validated or supported. Supporting them requires code changes,
 partition-specific service availability review, and end-to-end deployment

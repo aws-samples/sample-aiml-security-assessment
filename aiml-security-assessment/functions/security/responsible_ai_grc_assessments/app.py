@@ -7555,8 +7555,13 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
 def _normalized_target_regions(value: str) -> List[str]:
     """Parse the CloudFormation TargetRegions parameter value."""
     value = (value or "").strip()
-    if not value or value.lower() == "all":
+    if not value:
         return []
+    if value.lower() == "all":
+        raise ValueError(
+            "TARGET_REGIONS no longer accepts 'all'; leave it empty to scan the "
+            "deployment region or provide an explicit region list"
+        )
     return [region.strip() for region in re.split(r"[,\s]+", value) if region.strip()]
 
 
