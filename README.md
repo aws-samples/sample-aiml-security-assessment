@@ -8,8 +8,8 @@
 
 Run **[208 checks](docs/SECURITY_CHECKS.md)** across AWS accounts and regions:
 
-- **94 always-on core checks** for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry
-- **38 always-on Agentic AI Security checks**, synthesized from service findings and native AgentCore gateway checks
+- **94 core checks, enabled by default,** for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry
+- **Up to 38 Agentic AI Security checks**, synthesized from service findings and native AgentCore gateway checks
 - **64 optional Responsible AI GRC checks** for selected technical controls informed by AWS governance, risk, and compliance guidance
 - **12 optional OWASP Top 10 for LLM checks**, including mapping-based coverage and native system-prompt-leakage checks
 
@@ -406,6 +406,42 @@ The HTML report includes a Region column, filter dropdown, and "Risk by Region /
 3. **Step Functions execute** — orchestrates: S3 cleanup → IAM permission caching → resolve regions → Map state fans out across regions. Within each region, Bedrock, SageMaker, AgentCore, and AWS Agent Registry run in parallel; Responsible AI GRC runs once from the first region when either Responsible AI GRC or OWASP requires its source rows; OWASP then runs per region when enabled → generate consolidated report
 4. **Results** — HTML and CSV reports are stored in your S3 bucket
 
+### Selecting Service Assessments
+
+Choose which direct service assessments run with these deployment parameters:
+
+| Parameter | Assessment | Default |
+| --- | --- | --- |
+| `EnableBedrockAssessment` | Amazon Bedrock | `true` |
+| `EnableSageMakerAssessment` | Amazon SageMaker AI | `true` |
+| `EnableAgentCoreAssessment` | Amazon Bedrock AgentCore | `true` |
+| `EnableAgentRegistryAssessment` | AWS Agent Registry | `true` |
+
+For a Bedrock-only run, leave `EnableBedrockAssessment=true` and set the other
+three parameters to `false`. The switches are available in both top-level
+CloudFormation deployment paths and both SAM templates. Existing deployments
+keep all four services enabled unless their parameters are changed.
+
+Disabled service Lambdas are not invoked and do not produce CSV files. The HTML
+report labels their areas **Not selected**, rather than showing an assessed
+service with zero findings or N/A results. Selecting no direct services is
+supported and produces an explicit scope report even when there are no findings.
+
+The Agentic AI lens contains only rows produced by the selected Bedrock,
+AgentCore, and Agent Registry assessments; disabling a source reduces its
+coverage. Responsible AI GRC and OWASP retain their separate opt-in switches.
+When enabled, Responsible AI GRC still scans independently, and OWASP still runs
+its native checks and its Responsible AI GRC dependency. OWASP maps only the
+selected direct-service CSVs. These optional areas can therefore access services
+that are disabled in the direct-service selection.
+
+Selection controls execution, not provisioning: the Lambda functions and their
+existing IAM roles remain deployed. Switches are resolved from the SAM stack's
+parameters at the start of each execution; passing a different `ServiceSelection`
+in `StartExecution` does not override the deployment configuration. Update the
+stack and start a new assessment to change selection. In the top-level deployment
+paths, update the infrastructure parameters and then run CodeBuild.
+
 ### Optional: Responsible AI GRC Checks (`EnableResponsibleAIGRCAssessment`)
 
 The 64 Responsible AI GRC (FS-XX) checks are **opt-in** and default
@@ -450,7 +486,7 @@ Lambda is always deployed but is invoked only when the flag is `true`.
 > **OWASP → Responsible AI GRC dependency (transparent to users).** Roughly
 > two-thirds of the OWASP mapping rows — including all of LLM05 (Improper
 > Output Handling) — derive from the Responsible AI GRC (FS-XX) checks. To
-> guarantee **full** OWASP coverage, the state machine automatically runs the
+> provide the Responsible AI GRC evidence used by OWASP, the state machine automatically runs the
 > Responsible AI GRC Lambda whenever `EnableOWASPAssessment=true`, even when
 > `EnableResponsibleAIGRCAssessment=false`. When the customer did not enable
 > Responsible AI GRC explicitly, its findings are used only to power the

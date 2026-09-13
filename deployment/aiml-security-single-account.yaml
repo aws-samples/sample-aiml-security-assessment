@@ -9,6 +9,10 @@ Metadata:
         Parameters:
           - EmailAddress
           - TargetRegions
+          - EnableBedrockAssessment
+          - EnableSageMakerAssessment
+          - EnableAgentCoreAssessment
+          - EnableAgentRegistryAssessment
           - EnableResponsibleAIGRCAssessment
           - EnableFinServAssessment
           - EnableOWASPAssessment
@@ -30,6 +34,14 @@ Metadata:
           - ApprovedExternalAccountIds
           - ApprovedOrganizationIds
     ParameterLabels:
+      EnableBedrockAssessment:
+        default: Amazon Bedrock assessment
+      EnableSageMakerAssessment:
+        default: Amazon SageMaker AI assessment
+      EnableAgentCoreAssessment:
+        default: Amazon Bedrock AgentCore assessment
+      EnableAgentRegistryAssessment:
+        default: AWS Agent Registry assessment
       EmailAddress:
         default: Notification email address
       TargetRegions:
@@ -64,6 +76,26 @@ Metadata:
         default: Approved Model Registry organization IDs
 
 Parameters:
+  EnableBedrockAssessment:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Run the direct Amazon Bedrock assessment. Optional lenses are configured separately.
+  EnableSageMakerAssessment:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Run the direct Amazon SageMaker AI assessment. Optional lenses are configured separately.
+  EnableAgentCoreAssessment:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Run the direct Amazon Bedrock AgentCore assessment. Optional lenses are configured separately.
+  EnableAgentRegistryAssessment:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Run the direct AWS Agent Registry assessment. Optional lenses are configured separately.
   GitHubRepoUrl:
     Type: String
     Description: GitHub repository URL
@@ -469,6 +501,18 @@ Resources:
             Type: PLAINTEXT
           - Name: ENABLE_RESPONSIBLE_AI_GRC
             Value: !Ref EnableResponsibleAIGRCAssessment
+            Type: PLAINTEXT
+          - Name: ENABLE_BEDROCK
+            Value: !Ref EnableBedrockAssessment
+            Type: PLAINTEXT
+          - Name: ENABLE_SAGEMAKER
+            Value: !Ref EnableSageMakerAssessment
+            Type: PLAINTEXT
+          - Name: ENABLE_AGENTCORE
+            Value: !Ref EnableAgentCoreAssessment
+            Type: PLAINTEXT
+          - Name: ENABLE_AGENT_REGISTRY
+            Value: !Ref EnableAgentRegistryAssessment
             Type: PLAINTEXT
           - Name: ENABLE_OWASP
             Value: !Ref EnableOWASPAssessment

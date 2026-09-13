@@ -31,7 +31,11 @@ sys.path.insert(
     ),
 )
 
-from report_template import COMPLIANCE_STANDARDS, generate_html_report
+from report_template import (
+    COMPLIANCE_STANDARDS,
+    core_service_selection,
+    generate_html_report,
+)
 
 # Sentinel region label used by the per-service assessments to tag IAM-only
 # findings that run once per execution rather than per region. It is not a real
@@ -87,6 +91,14 @@ def consolidate_html_reports():
         os.environ.get("ENABLE_RESPONSIBLE_AI_GRC", "false").strip().lower() == "true"
     )
 
+    selected_services = core_service_selection(
+        {
+            "bedrock": os.environ.get("ENABLE_BEDROCK", "true"),
+            "sagemaker": os.environ.get("ENABLE_SAGEMAKER", "true"),
+            "agentcore": os.environ.get("ENABLE_AGENTCORE", "true"),
+            "agent-registry": os.environ.get("ENABLE_AGENT_REGISTRY", "true"),
+        }
+    )
     all_findings = []
     account_ids = set()
     regions = set()
@@ -125,11 +137,25 @@ def consolidate_html_reports():
             os.path.join(account_dir, "**/*_security_report_*.csv"), recursive=True
         )
 
+        # A run with every direct service disabled can legitimately have only
+        # its per-account HTML report and no CSV artifacts.
+        if glob.glob(
+            os.path.join(account_dir, "security_assessment_single_account_*.html")
+        ):
+            account_ids.add(account_id)
         if csv_files:
             print(f"Processing CSV files for account {account_id}")
             account_ids.add(account_id)
 
             for csv_file in csv_files:
+                if any(
+                    not enabled
+                    and os.path.basename(csv_file).startswith(
+                        service.replace("-", "_") + "_security_report_"
+                    )
+                    for service, enabled in selected_services.items()
+                ):
+                    continue
                 try:
                     with open(csv_file, "r", encoding="utf-8") as f:
                         reader = csv.DictReader(f)
@@ -231,7 +257,7 @@ def consolidate_html_reports():
                     print(f"Error parsing CSV file {csv_file}: {str(e)}")
                     continue
 
-    if all_findings:
+    if all_findings or (account_ids and not any(selected_services.values())):
         timestamp_display = datetime.now().strftime("%B %d, %Y %H:%M:%S UTC")
 
         # Use shared template to generate report
@@ -239,6 +265,7 @@ def consolidate_html_reports():
             all_findings=all_findings,
             service_findings=service_findings,
             service_stats=service_stats,
+            service_selection=selected_services,
             mode="multi",
             account_ids=list(account_ids),
             timestamp=timestamp_display,

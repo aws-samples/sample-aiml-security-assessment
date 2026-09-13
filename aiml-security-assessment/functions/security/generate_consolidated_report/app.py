@@ -10,6 +10,7 @@ from botocore.exceptions import ClientError
 
 from report_template import (
     COMPLIANCE_STANDARDS,
+    core_service_selection,
     generate_html_report as generate_report_from_template,
 )
 
@@ -86,6 +87,12 @@ def validate_assessment_artifacts(
         "sagemaker": "sagemaker",
         "agentcore": "agentcore",
         "agent-registry": "agent_registry",
+    }
+    selected_services = core_service_selection(original_input.get("ServiceSelection"))
+    per_region_categories = {
+        category: fragment
+        for category, fragment in per_region_categories.items()
+        if selected_services[category]
     }
     owasp_enabled = _flag_is_true(original_input.get("enableOWASP"))
     responsible_ai_grc_enabled = _flag_is_true(
@@ -272,7 +279,9 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
 
 
 def generate_html_report(
-    assessment_results: Dict[str, Any], show_finserv: bool = True
+    assessment_results: Dict[str, Any],
+    show_finserv: bool = True,
+    service_selection=None,
 ) -> str:
     """
     Generate HTML report from assessment results.
@@ -296,6 +305,7 @@ def generate_html_report(
     # AgentCore/Agentic/Responsible AI GRC are fixed report categories;
     # compliance standards (OWASP + future NIST/EU AI Act) are appended from
     # the shared COMPLIANCE_STANDARDS registry so adding a standard is data-only.
+    selected_services = core_service_selection(service_selection)
     compliance_slugs = [std["slug"] for std in COMPLIANCE_STANDARDS]
     all_report_slugs = [
         "bedrock",
@@ -334,6 +344,8 @@ def generate_html_report(
         "responsible-ai-grc",
     ] + compliance_slugs
     for service in csv_source_slugs:
+        if not selected_services.get(service, True):
+            continue
         if service in assessment_results:
             for report_type, findings in assessment_results[service].items():
                 for finding in findings:
@@ -393,6 +405,7 @@ def generate_html_report(
         all_findings=all_findings,
         service_findings=service_findings,
         service_stats=service_stats,
+        service_selection=selected_services,
         mode="single",
         account_id=account_id,
         timestamp=timestamp,
@@ -487,8 +500,13 @@ def lambda_handler(event, context):
 
         # Get assessment results
         assessment_results = get_assessment_results(execution_id, account_id)
+        # Even an empty selection produces an explicit scope report. Coverage
+        # validation below still rejects missing artifacts for selected areas.
         if not assessment_results:
-            raise ValueError(f"No assessment results found: {execution_id}")
+            assessment_results = {
+                "execution_id": execution_id,
+                "account_id": account_id,
+            }
         validate_assessment_artifacts(
             assessment_results,
             execution_id,
@@ -497,7 +515,9 @@ def lambda_handler(event, context):
 
         # Generate HTML report
         html_content = generate_html_report(
-            assessment_results, show_finserv=show_finserv
+            assessment_results,
+            show_finserv=show_finserv,
+            service_selection=original_input.get("ServiceSelection"),
         )
 
         # Write HTML report to S3

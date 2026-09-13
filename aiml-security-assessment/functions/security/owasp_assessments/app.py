@@ -969,10 +969,11 @@ def _read_service_csvs_for_region(
     region: str,
     include_finserv: bool = False,
     return_missing: bool = False,
+    service_selection: Dict[str, Any] | None = None,
 ) -> List[Dict[str, str]] | tuple[List[Dict[str, str]], List[str]]:
     """Read every per-service CSV that this OWASP invocation should consume.
 
-    Always reads bedrock/sagemaker/agentcore's per-region CSVs. When
+    Reads selected bedrock/sagemaker/agentcore per-region CSVs. When
     `include_finserv` is True (RegionIndex==0), also reads the Responsible AI
     GRC execution-scoped CSV. Rows already carry either Global or explicit
     regional values, so downstream mapping preserves them without modification.
@@ -987,6 +988,10 @@ def _read_service_csvs_for_region(
     keys: List[str] = [
         f"{prefix}_{execution_id}_{region}.csv"
         for prefix in PER_REGION_SERVICE_CSV_PREFIXES
+        if (service_selection or {}).get(
+            prefix.removesuffix("_security_report"), "true"
+        )
+        in (True, "true")
     ]
     if include_finserv:
         keys.append(f"{RESPONSIBLE_AI_GRC_SERVICE_CSV_PREFIX}_{execution_id}.csv")
@@ -1603,6 +1608,7 @@ def lambda_handler(event, context):
             region=region,
             include_finserv=include_finserv,
             return_missing=True,
+            service_selection=event.get("ServiceSelection"),
         )
         logger.info(f"OWASP: read {len(source_rows)} source rows for {region}")
 

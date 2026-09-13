@@ -7,6 +7,7 @@
   - [Architecture Diagrams](#architecture-diagrams)
   - [Two-Phase Architecture](#two-phase-architecture)
   - [Assessment Execution Workflow](#assessment-execution-workflow)
+  - [Service Selection](#service-selection)
 - [Assessment Structure](#assessment-structure)
   - [AWS Lambda Functions](#aws-lambda-functions)
 - [Adding New AI/ML Service Assessments](#adding-new-aiml-service-assessments)
@@ -276,6 +277,44 @@ sample-aiml-security-assessment/
   }
 }
 ```
+
+### Service Selection
+
+`EnableBedrockAssessment`, `EnableSageMakerAssessment`,
+`EnableAgentCoreAssessment`, and `EnableAgentRegistryAssessment` are string
+parameters accepting `true` or `false`, defaulting to `true`. Both SAM templates
+substitute these values into the initial `Configure Service Assessments` Pass
+state. It writes `$.ServiceSelection` before cleanup and region resolution; the
+regional Choice gates read that map through `$.OriginalInput.ServiceSelection`.
+This keeps direct SAM executions consistent with CodeBuild deployments and
+prevents execution input from overriding a deployment's selected scope.
+
+Both top-level deployment templates expose the switches as `ENABLE_BEDROCK`,
+`ENABLE_SAGEMAKER`, `ENABLE_AGENTCORE`, and `ENABLE_AGENT_REGISTRY` CodeBuild
+variables. The root `buildspec.yml` validates and forwards them to all three SAM
+deployment sites (member, management, and single account). Its artifact checks
+require CSVs only for enabled services. No change to the member-role StackSet
+is needed; this feature adds no API calls or IAM permissions.
+
+The report Lambda validates every selected service's CSV for every resolved
+region, but does not require deselected artifacts. Missing selected artifacts
+still fail report generation. Both report modes label deselected areas
+**Not selected**, exclude their rows, and explain reduced lens coverage.
+An all-disabled selection may produce an HTML report without service CSVs.
+
+Agentic AI rows come only from selected source assessments (Bedrock, AgentCore,
+and Agent Registry). OWASP receives the same selection map and skips reads of
+deselected source CSVs, while preserving missing-artifact notices for selected
+sources. Its native checks and Responsible AI GRC dependency still run when
+OWASP is enabled. Responsible AI GRC remains independently controlled and can
+scan services omitted from the direct-service selection. Neither service
+selection nor a skipped branch removes deployed Lambdas or IAM policies.
+
+Catalog totals describe the available controls, not the number executed by every
+selection. The default sample reports still illustrate all services enabled.
+Regression coverage in `tests/test_service_selection.py` exercises all 16 direct
+service combinations, both deployment paths, artifact requirements, OWASP source
+selection, and single-/multi-account reporting.
 
 ## Assessment Structure
 

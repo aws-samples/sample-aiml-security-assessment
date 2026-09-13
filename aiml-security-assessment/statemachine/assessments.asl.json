@@ -1,7 +1,18 @@
 {
     "Comment": "A state machine that performs AI/ML security assessments across multiple regions.",
-    "StartAt": "Cleanup S3 Bucket",
+    "StartAt": "Configure Service Assessments",
     "States": {
+        "Configure Service Assessments": {
+            "Type": "Pass",
+            "Result": {
+                "bedrock": "${EnableBedrockAssessment}",
+                "sagemaker": "${EnableSageMakerAssessment}",
+                "agentcore": "${EnableAgentCoreAssessment}",
+                "agent-registry": "${EnableAgentRegistryAssessment}"
+            },
+            "ResultPath": "$.ServiceSelection",
+            "Next": "Cleanup S3 Bucket"
+        },
         "Cleanup S3 Bucket": {
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke",
@@ -107,8 +118,19 @@
                         "Type": "Parallel",
                         "Branches": [
                             {
-                                "StartAt": "Bedrock Security Assessment",
+                                "StartAt": "Bedrock Assessment Enabled?",
                                 "States": {
+                                    "Bedrock Assessment Enabled?": {
+                                        "Type": "Choice",
+                                        "Choices": [
+                                            {
+                                                "Variable": "$.OriginalInput.ServiceSelection['bedrock']",
+                                                "StringEquals": "true",
+                                                "Next": "Bedrock Security Assessment"
+                                            }
+                                        ],
+                                        "Default": "Bedrock Assessment Not Selected"
+                                    },
                                     "Bedrock Security Assessment": {
                                         "Type": "Task",
                                         "Resource": "arn:aws:states:::lambda:invoke",
@@ -156,12 +178,33 @@
                                             }
                                         },
                                         "End": true
+                                    },
+                                    "Bedrock Assessment Not Selected": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 200,
+                                            "skipped": true,
+                                            "reason": "not-selected",
+                                            "service": "bedrock"
+                                        },
+                                        "End": true
                                     }
                                 }
                             },
                             {
-                                "StartAt": "Sagemaker Security Assessment",
+                                "StartAt": "Sagemaker Assessment Enabled?",
                                 "States": {
+                                    "Sagemaker Assessment Enabled?": {
+                                        "Type": "Choice",
+                                        "Choices": [
+                                            {
+                                                "Variable": "$.OriginalInput.ServiceSelection['sagemaker']",
+                                                "StringEquals": "true",
+                                                "Next": "Sagemaker Security Assessment"
+                                            }
+                                        ],
+                                        "Default": "Sagemaker Assessment Not Selected"
+                                    },
                                     "Sagemaker Security Assessment": {
                                         "Type": "Task",
                                         "Resource": "arn:aws:states:::lambda:invoke",
@@ -209,12 +252,33 @@
                                             }
                                         },
                                         "End": true
+                                    },
+                                    "Sagemaker Assessment Not Selected": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 200,
+                                            "skipped": true,
+                                            "reason": "not-selected",
+                                            "service": "sagemaker"
+                                        },
+                                        "End": true
                                     }
                                 }
                             },
                             {
-                                "StartAt": "AgentCore Security Assessment",
+                                "StartAt": "AgentCore Assessment Enabled?",
                                 "States": {
+                                    "AgentCore Assessment Enabled?": {
+                                        "Type": "Choice",
+                                        "Choices": [
+                                            {
+                                                "Variable": "$.OriginalInput.ServiceSelection['agentcore']",
+                                                "StringEquals": "true",
+                                                "Next": "AgentCore Security Assessment"
+                                            }
+                                        ],
+                                        "Default": "AgentCore Assessment Not Selected"
+                                    },
                                     "AgentCore Security Assessment": {
                                         "Type": "Task",
                                         "Resource": "arn:aws:states:::lambda:invoke",
@@ -262,12 +326,33 @@
                                             }
                                         },
                                         "End": true
+                                    },
+                                    "AgentCore Assessment Not Selected": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 200,
+                                            "skipped": true,
+                                            "reason": "not-selected",
+                                            "service": "agentcore"
+                                        },
+                                        "End": true
                                     }
                                 }
                             },
                             {
-                                "StartAt": "AWS Agent Registry Security Assessment",
+                                "StartAt": "AWS Agent Registry Assessment Enabled?",
                                 "States": {
+                                    "AWS Agent Registry Assessment Enabled?": {
+                                        "Type": "Choice",
+                                        "Choices": [
+                                            {
+                                                "Variable": "$.OriginalInput.ServiceSelection['agent-registry']",
+                                                "StringEquals": "true",
+                                                "Next": "AWS Agent Registry Security Assessment"
+                                            }
+                                        ],
+                                        "Default": "AWS Agent Registry Assessment Not Selected"
+                                    },
                                     "AWS Agent Registry Security Assessment": {
                                         "Type": "Task",
                                         "Resource": "arn:aws:states:::lambda:invoke",
@@ -313,6 +398,16 @@
                                             "body": {
                                                 "findings": []
                                             }
+                                        },
+                                        "End": true
+                                    },
+                                    "AWS Agent Registry Assessment Not Selected": {
+                                        "Type": "Pass",
+                                        "Result": {
+                                            "statusCode": 200,
+                                            "skipped": true,
+                                            "reason": "not-selected",
+                                            "service": "agent-registry"
                                         },
                                         "End": true
                                     }
@@ -477,7 +572,8 @@
                                 "Execution.$": "$.Execution",
                                 "StateMachine.$": "$.StateMachine",
                                 "Region.$": "$.Region",
-                                "RegionIndex.$": "$.RegionIndex"
+                                "RegionIndex.$": "$.RegionIndex",
+                                "ServiceSelection.$": "$.OriginalInput.ServiceSelection"
                             }
                         },
                         "Retry": [

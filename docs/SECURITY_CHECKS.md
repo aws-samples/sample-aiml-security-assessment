@@ -6,6 +6,13 @@ Sources differ by bucket and are not interchangeable: the core Bedrock, SageMake
 
 The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. The framework also emits `BR-00`, `SM-00`, `AC-00`, `AR-00`, `FS-00`, and `OW-00` operational marker rows at runtime; these are not controls and are excluded from the 208-check total. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
 
+The counts above describe the full catalog. Core service assessments are enabled
+by default and can be selected independently with the four
+[`Enable*Assessment` switches](../README.md#selecting-service-assessments).
+Deselected services produce no findings and appear as **Not selected** in the
+report; this is not an N/A finding or a compliant result. Agentic AI and OWASP
+mapping coverage decreases when their direct-service sources are deselected.
+
 ## Table of Contents
 
 - [Overview](#overview)

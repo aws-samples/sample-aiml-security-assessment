@@ -4,7 +4,7 @@ This file provides guidance to coding agents when working with code in this repo
 
 ## What this is
 
-A serverless framework that scans AWS accounts for AI/ML security misconfigurations and produces interactive HTML reports. The full catalog contains 208 checks across seven assessment areas: 94 core checks (40 Amazon Bedrock, 29 Amazon SageMaker AI with `SM-29` reserved, 17 Amazon Bedrock AgentCore, and 8 AWS Agent Registry), 38 always-on Agentic AI Security checks, 64 optional Responsible AI GRC checks, and 12 optional OWASP Top 10 for LLM checks. Checks are derived from the AWS Well-Architected Generative AI Lens, the Agentic AI Lens, AWS Responsible AI GRC guidance, and the OWASP Top 10 for LLM 2025.
+A serverless framework that scans AWS accounts for AI/ML security misconfigurations and produces interactive HTML reports. The full catalog contains 208 checks across seven assessment areas: 94 core checks (40 Amazon Bedrock, 29 Amazon SageMaker AI with `SM-29` reserved, 17 Amazon Bedrock AgentCore, and 8 AWS Agent Registry), up to 38 Agentic AI Security checks, 64 optional Responsible AI GRC checks, and 12 optional OWASP Top 10 for LLM checks. Checks are derived from the AWS Well-Architected Generative AI Lens, the Agentic AI Lens, AWS Responsible AI GRC guidance, and the OWASP Top 10 for LLM 2025.
 
 ## Commands
 
@@ -78,6 +78,8 @@ Prefix every command with `.venv/bin/` explicitly (rather than relying on `sourc
 ## Architecture
 
 **Two-phase, two-mode.** Phase 1 is CloudFormation deployment of roles + central infra; phase 2 is CodeBuild (`buildspec.yml`) orchestrating per-account SAM deploys and Step Functions executions. The same code runs in **single-account** mode (one account, deployed via `template.yaml`) and **multi-account** mode (Organizations-wide, `template-multi-account.yaml` + `deployment/2-aiml-security-codebuild.yaml` assuming `AIMLSecurityMemberRole` cross-account).
+
+**Service selection:** Four `Enable*Assessment` parameters (Bedrock, SageMaker, AgentCore, AgentRegistry; default `true`) are substituted into the initial `Configure Service Assessments` Pass state. Its `ServiceSelection` map gates direct service branches, OWASP source reads, and report artifact requirements. Both CodeBuild deployment paths forward these switches and use the same selection during collection and consolidation. Deselected services are shown as Not selected, never N/A or clean. Optional GRC/OWASP scans remain independent; see `docs/DEVELOPER_GUIDE.md` → Service Selection.
 
 **Step Functions workflow** (`aiml-security-assessment/statemachine/assessments.asl.json`): Cleanup S3 → IAM Permission Caching (global, once) → Resolve Regions → **Map over regions** (`MaxRegionConcurrency`) → Bedrock / SageMaker / AgentCore / AWS Agent Registry plus conditional Responsible AI GRC → conditional OWASP → Generate Consolidated Report. Responsible AI GRC runs only at `RegionIndex == 0` when `enableResponsibleAIGRC == "true"` or `enableOWASP == "true"`. Direct execution input using legacy `"enableFinServ": "true"` is rejected; the legacy CloudFormation parameter remains supported through CodeBuild alias resolution.
 

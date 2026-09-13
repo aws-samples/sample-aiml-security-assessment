@@ -12,6 +12,12 @@ section.
 
 ### Added
 
+- Added independent, default-enabled switches for Bedrock, SageMaker AI,
+  AgentCore, and AWS Agent Registry assessments in both deployment modes.
+  Disabled services skip their assessment Lambda and CSV requirements; reports
+  label them Not selected and explain reduced Agentic AI / OWASP source coverage.
+  Optional Responsible AI GRC and OWASP assessments remain independently enabled.
+
 - Added AWS Agent Registry as an independent assessment area with its own
   regional Lambda, Step Functions branch, CSV artifact, and HTML report area
   (including a dashboard summary tile and assessment-scope chip), plus an
@@ -215,6 +221,14 @@ section.
   terminate the capture tool with a non-zero exit status.
 
 ### Deployment impact
+
+- **Service selection:** Update `deployment/aiml-security-single-account.yaml`
+  for single-account deployments or `deployment/2-aiml-security-codebuild.yaml`
+  for multi-account central infrastructure, set the desired service switches,
+  then start CodeBuild using this revision. No member-role StackSet update is
+  required for this feature. Direct SAM users must redeploy `template.yaml` or
+  `template-multi-account.yaml` with the desired `Enable*Assessment` parameters
+  and start a new execution. All switches default to true on upgrade.
 
 Apply these updates in order.
 
