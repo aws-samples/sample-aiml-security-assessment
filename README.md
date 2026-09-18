@@ -173,7 +173,6 @@ codebase do not constitute end-to-end support for those partitions.
 
    - Leave empty to scan only the deployment region (default)
    - Comma- or space-separated list (for example, `us-east-1,us-west-2,eu-west-1` or `us-east-1 us-west-2 eu-west-1`)
-   - `all` to scan assessed-service regions in the standard AWS commercial partition
 
 6. Review the optional [security policy baselines](#optional-security-policy-baselines), especially the Marketplace endpoint CMK requirement, which defaults to enabled.
 7. Acknowledge IAM capabilities and click **Submit**.
@@ -378,7 +377,6 @@ Both deployment modes support scanning multiple AWS regions in parallel via the 
 | --- | --- |
 | Empty (default) | Scans deployment region only — fully backward compatible |
 | Comma- or space-separated (for example, `us-east-1,us-west-2` or `us-east-1 us-west-2`) | Scans those regions in parallel |
-| `all` | Discovers assessed-service regions in the standard AWS commercial partition. For newer services such as AgentCore and AWS Agent Registry that do not publish endpoint-region metadata, scans the commercial partition region catalog and reports unsupported regions as informational `N/A` |
 
 Scanning uses a Step Functions Map state and runs up to `MaxRegionConcurrency`
 regions concurrently. This reduces elapsed time compared with sequential

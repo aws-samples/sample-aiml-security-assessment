@@ -10,6 +10,25 @@ section.
 
 ## Unreleased
 
+## 2.0.0 - 2026-09-18
+
+This release grows the catalog from 161 checks across five areas to 208 checks
+across seven, adding OWASP Top 10 for LLM and AWS Agent Registry as assessment
+areas and renaming the Financial Services GenAI risk capability to Responsible
+AI GRC. It also hardens the assessment IAM roles and makes incomplete
+multi-account coverage fail a run rather than publish a partial report.
+
+Upgrading is not a single step and is not fully backward compatible:
+
+- Apply the updates in the order given under **Deployment impact** below. The
+  multi-account member-role StackSet must be updated first.
+- `TargetRegions=all` is no longer accepted. Any stored parameter value, saved
+  stack input, or automation using it must change to an empty value or an
+  explicit region list before upgrading.
+- `EnableFinServAssessment` still works as a deprecated alias for
+  `EnableResponsibleAIGRCAssessment`, but direct Step Functions input using
+  `"enableFinServ": "true"` is rejected.
+
 ### Added
 
 - Added independent, default-enabled switches for Bedrock, SageMaker AI,
@@ -104,6 +123,13 @@ section.
   install its optional Python dependencies when missing, and verify a
   venv-local Playwright Chromium browser before capturing screenshots. Capture
   height now expands dynamically so every left-navigation section is visible.
+- Removed the `all` value from the `TargetRegions` parameter. Scans now target
+  either the deployment region (default, empty value) or an explicit comma- or
+  space-separated region list; the `all` fan-out is no longer accepted because
+  it could produce very long assessment runs and oversized HTML reports. The
+  runtime region parsers, the `AllowedPattern` in all four SAM and deployment
+  templates, the `buildspec.yml` validation gate, and the README and
+  troubleshooting guidance are updated to match.
 
 ### Fixed
 
@@ -158,9 +184,6 @@ section.
   report-generation attempts.
 - Stop OWASP inventory pagination when an AWS API repeats a continuation token,
   preventing OW-11 or OW-12 from looping until the Lambda timeout.
-- Include AWS Agent Registry in `TargetRegions=all` discovery and use the
-  deployment partition's region catalog when AgentCore or Agent Registry
-  endpoint metadata does not enumerate regions.
 - Restore `bedrock-agentcore:GetTokenVault` on `Resource: "*"` for AC-14.
   Although the service reference documents a token-vault resource type, the
   runtime authorization request is evaluated against `"*"`. The scoped policy
@@ -258,6 +281,12 @@ Apply these updates in order.
    rendering or upload failures now fail the Step Functions execution. The SAM
    templates create the standalone AWS Agent Registry assessment Lambda and
    update the state machine.
+
+The template and CodeBuild updates above also tighten the `TargetRegions`
+`AllowedPattern` to reject `all`. Any stored parameter value, saved stack
+input, or automation that passes `TargetRegions=all` must be changed to an
+empty value or an explicit region list before the next deployment or CodeBuild
+run, or CloudFormation/buildspec validation will fail.
 
 Deployments pinned to a tag or commit must update the `GitHubBranch`
 CloudFormation parameter to the revision containing these changes before
