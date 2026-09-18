@@ -10,6 +10,25 @@ section.
 
 ## Unreleased
 
+## 2.0.0 - 2026-09-18
+
+This release grows the catalog from 161 checks across five areas to 208 checks
+across seven, adding OWASP Top 10 for LLM and AWS Agent Registry as assessment
+areas and renaming the Financial Services GenAI risk capability to Responsible
+AI GRC. It also hardens the assessment IAM roles and makes incomplete
+multi-account coverage fail a run rather than publish a partial report.
+
+Upgrading is not a single step and is not fully backward compatible:
+
+- Apply the updates in the order given under **Deployment impact** below. The
+  multi-account member-role StackSet must be updated first.
+- `TargetRegions=all` is no longer accepted. Any stored parameter value, saved
+  stack input, or automation using it must change to an empty value or an
+  explicit region list before upgrading.
+- `EnableFinServAssessment` still works as a deprecated alias for
+  `EnableResponsibleAIGRCAssessment`, but direct Step Functions input using
+  `"enableFinServ": "true"` is rejected.
+
 ### Added
 
 - Added AWS Agent Registry as an independent assessment area with its own
