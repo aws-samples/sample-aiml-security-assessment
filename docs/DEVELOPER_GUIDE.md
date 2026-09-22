@@ -7,6 +7,7 @@
   - [Architecture Diagrams](#architecture-diagrams)
   - [Two-Phase Architecture](#two-phase-architecture)
   - [Assessment Execution Workflow](#assessment-execution-workflow)
+  - [Service Selection](#service-selection)
 - [Assessment Structure](#assessment-structure)
   - [AWS Lambda Functions](#aws-lambda-functions)
 - [Adding New AI/ML Service Assessments](#adding-new-aiml-service-assessments)
@@ -276,6 +277,65 @@ sample-aiml-security-assessment/
   }
 }
 ```
+
+### Service Selection
+
+`EnableBedrockAssessment`, `EnableSageMakerAssessment`,
+`EnableAgentCoreAssessment`, and `EnableAgentRegistryAssessment` are string
+parameters accepting `true` or `false`, defaulting to `true`. Both SAM templates
+substitute these values into the initial `Configure Service Assessments` Pass
+state. It writes `$.ServiceSelection` before cleanup and region resolution; the
+regional Choice gates read that map through `$.OriginalInput.ServiceSelection`.
+This keeps direct SAM executions consistent with CodeBuild deployments and
+prevents execution input from overriding a deployment's selected scope.
+
+Both top-level deployment templates expose the switches as `ENABLE_BEDROCK`,
+`ENABLE_SAGEMAKER`, `ENABLE_AGENTCORE`, and `ENABLE_AGENT_REGISTRY` CodeBuild
+variables. The root `buildspec.yml` validates and forwards them to all three SAM
+deployment sites (member, management, and single account). Its artifact checks
+require CSVs only for enabled services. No change to the member-role StackSet
+is needed; this feature adds no API calls or IAM permissions.
+
+The report Lambda validates every selected service's CSV for every resolved
+region, but does not require deselected artifacts. Missing selected artifacts
+still fail report generation. Both report modes label deselected areas
+**Not selected**, exclude their rows, and explain reduced lens coverage.
+An all-disabled selection may produce an HTML report without service CSVs.
+
+Agentic AI rows come only from selected source assessments (Bedrock, AgentCore,
+and Agent Registry). OWASP receives the same selection map and skips reads of
+deselected source CSVs, while preserving missing-artifact notices for selected
+sources. Its native checks and Responsible AI GRC dependency still run when
+OWASP is enabled. Responsible AI GRC remains independently controlled and can
+scan services omitted from the direct-service selection. Neither service
+selection nor a skipped branch removes deployed Lambdas or IAM policies.
+
+The post-build phase independently reapplies default-enabled flags for older
+CodeBuild projects with no service-selection environment variables. Artifact
+validation must still reject missing selected-service CSVs in that upgrade path.
+
+OWASP reads only BR/SM/AC direct evidence, never Agent Registry CSVs. For each
+OW ID whose mapped sources include a deselected service, it emits one
+N/A/Informational selection-coverage row per regional invocation. Existing rows
+from remaining sources are preserved; a sole-source control such as OW-07 stays
+visible as unassessed when Bedrock is off. Missing selected artifacts still use
+OW-00 and are not conflated with intentional deselection.
+
+GRC intentionally remains independent and can call deselected services' APIs.
+It also runs when OWASP alone is enabled. Disable both optional areas to run
+only the selected direct assessments. GRC remediation must be self-contained
+rather than refer to a direct-service check that might have been omitted.
+
+Direct-service scores exclude GRC, Agentic AI, and compliance rows. Changing
+selection changes the score denominator and can raise or lower the pass rate;
+compare reports with the same scope. Central buckets retain historical CSVs;
+downstream readers must filter by execution ID, as the consolidation path does.
+
+Catalog totals describe the available controls, not the number executed by every
+selection. The default sample reports still illustrate all services enabled.
+Regression coverage in `tests/test_service_selection.py` exercises all 16 direct
+service combinations, both deployment paths, artifact requirements, OWASP source
+selection, and single-/multi-account reporting.
 
 ## Assessment Structure
 

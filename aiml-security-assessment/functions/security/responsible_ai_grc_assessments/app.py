@@ -3223,7 +3223,7 @@ def check_guardrail_contextual_grounding(inventory) -> Dict[str, Any]:
                 create_finding(
                     check_id="FS-27",
                     finding_name="No Guardrails — Contextual Grounding Not Applicable",
-                    finding_details="No Bedrock Guardrails configured. Configure guardrails first (see BR-05).",
+                    finding_details="No Bedrock Guardrails configured. Configure a Bedrock guardrail before evaluating its financial-services policy coverage.",
                     resolution=(
                         "Configure Bedrock Guardrails with contextual grounding checks "
                         "(grounding threshold ≥0.7 and relevance threshold ≥0.7 for regulated GenAI use cases)."

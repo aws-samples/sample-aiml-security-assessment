@@ -675,7 +675,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertNotIn('<option value="agentic">Agentic AI Security</option>', html)
         self.assertNotIn("<h3>By Lens</h3>", html)
         self.assertNotIn('class="nav-section lens-nav"', html)
-        self.assertIn(
+        self.assertNotIn(
             "wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html", html
         )
 

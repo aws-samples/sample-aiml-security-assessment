@@ -622,7 +622,7 @@ A: Minimal ongoing costs:
 
 **Q: Can I customize which security checks are included?**
 
-A: Currently, all 94 core checks (40 Bedrock, 29 SageMaker AI, 17 AgentCore,
+A: All 94 core checks (40 Bedrock, 29 SageMaker AI, 17 AgentCore,
 and 8 AWS Agent Registry) and 38 Agentic AI Security checks run by default to
 provide comprehensive coverage. If `EnableResponsibleAIGRCAssessment` is
 enabled, the 64 optional Responsible AI GRC checks also run. If
@@ -632,7 +632,29 @@ needs `FS-*` mappings, but its UI rows and raw CSV are omitted from the
 customer-facing report bucket unless Responsible AI GRC is explicitly enabled.
 You can filter results in the generated HTML reports by severity, status,
 assessment area, governance framework, compliance standard, or region. Future
-versions may support selective check execution.
+versions may support selection of individual checks within a service.
+
+To select entire services now, use `EnableBedrockAssessment`,
+`EnableSageMakerAssessment`, `EnableAgentCoreAssessment`, and
+`EnableAgentRegistryAssessment` (all default to `true`). A **Not selected** area
+means its direct assessment was disabled, not that it passed or found no
+resources. Agentic AI uses selected Bedrock/AgentCore/Agent Registry sources.
+OWASP uses selected Bedrock/SageMaker/AgentCore sources, GRC evidence, and native
+checks; it shows per-control N/A notices for omitted direct evidence. GRC can
+still assess deselected services, including when run as an OWASP dependency.
+Disable both optional assessments to limit execution to selected direct services.
+See [Selecting Service Assessments](../README.md#selecting-service-assessments).
+
+A lower pass rate after deselecting a service is not necessarily a regression:
+the set of scored controls changed. Compare equivalent scopes. GRC is not part
+of the direct-service score. Likewise, an older CSV in the central bucket is
+historical evidence, not proof that a deselected service ran again; match CSVs
+to the current execution ID.
+
+If CodeBuild reports a missing CSV for a service you disabled, update the
+top-level deployment stack and run CodeBuild from the same updated revision;
+both SAM deployment and artifact collection must receive the switches. Direct
+`StartExecution` input cannot override the SAM deployment selection.
 
 **Q: Can I add custom security checks?**
 

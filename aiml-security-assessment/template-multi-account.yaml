@@ -12,6 +12,10 @@ Metadata:
           default: Assessment Options
         Parameters:
           - TargetRegions
+          - EnableBedrockAssessment
+          - EnableSageMakerAssessment
+          - EnableAgentCoreAssessment
+          - EnableAgentRegistryAssessment
           - MaxRegionConcurrency
       - Label:
           default: Optional Security Policy Baselines
@@ -25,12 +29,40 @@ Metadata:
           - ApprovedExternalAccountIds
           - ApprovedOrganizationIds
     ParameterLabels:
+      EnableBedrockAssessment:
+        default: Amazon Bedrock assessment
+      EnableSageMakerAssessment:
+        default: Amazon SageMaker AI assessment
+      EnableAgentCoreAssessment:
+        default: Amazon Bedrock AgentCore assessment
+      EnableAgentRegistryAssessment:
+        default: AWS Agent Registry assessment
       TargetRegions:
         default: AWS regions to scan
       MaxRegionConcurrency:
         default: Regional scan concurrency
 
 Parameters:
+  EnableBedrockAssessment:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Run the direct Amazon Bedrock assessment. Optional lenses are configured separately.
+  EnableSageMakerAssessment:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Run the direct Amazon SageMaker AI assessment. Optional lenses are configured separately.
+  EnableAgentCoreAssessment:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Run the direct Amazon Bedrock AgentCore assessment. Optional lenses are configured separately.
+  EnableAgentRegistryAssessment:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Run the direct AWS Agent Registry assessment. Optional lenses are configured separately.
   TargetRegions:
     Type: String
     Default: ""
@@ -101,6 +133,10 @@ Resources:
     Properties:
       DefinitionUri: statemachine/assessments.asl.json
       DefinitionSubstitutions:
+        EnableBedrockAssessment: !Ref EnableBedrockAssessment
+        EnableSageMakerAssessment: !Ref EnableSageMakerAssessment
+        EnableAgentCoreAssessment: !Ref EnableAgentCoreAssessment
+        EnableAgentRegistryAssessment: !Ref EnableAgentRegistryAssessment
         CleanupBucketFunction: !GetAtt CleanupBucketFunction.Arn
         IAMPermissionCachingFunction: !GetAtt IAMPermissionCachingFunction.Arn
         ResolveRegionsFunction: !GetAtt ResolveRegionsFunction.Arn

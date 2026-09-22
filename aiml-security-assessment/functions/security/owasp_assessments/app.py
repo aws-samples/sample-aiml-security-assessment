@@ -969,10 +969,11 @@ def _read_service_csvs_for_region(
     region: str,
     include_finserv: bool = False,
     return_missing: bool = False,
+    service_selection: Dict[str, Any] | None = None,
 ) -> List[Dict[str, str]] | tuple[List[Dict[str, str]], List[str]]:
     """Read every per-service CSV that this OWASP invocation should consume.
 
-    Always reads bedrock/sagemaker/agentcore's per-region CSVs. When
+    Reads selected bedrock/sagemaker/agentcore per-region CSVs. When
     `include_finserv` is True (RegionIndex==0), also reads the Responsible AI
     GRC execution-scoped CSV. Rows already carry either Global or explicit
     regional values, so downstream mapping preserves them without modification.
@@ -987,6 +988,10 @@ def _read_service_csvs_for_region(
     keys: List[str] = [
         f"{prefix}_{execution_id}_{region}.csv"
         for prefix in PER_REGION_SERVICE_CSV_PREFIXES
+        if (service_selection or {}).get(
+            prefix.removesuffix("_security_report"), "true"
+        )
+        in (True, "true")
     ]
     if include_finserv:
         keys.append(f"{RESPONSIBLE_AI_GRC_SERVICE_CSV_PREFIX}_{execution_id}.csv")
@@ -1033,6 +1038,55 @@ def build_missing_source_findings(
                     "and indicates incomplete OWASP coverage rather than a control failure."
                 ),
                 reference=OWASP_LLM_TOP10_URL,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
+
+
+def build_selection_coverage_findings(
+    service_selection: Dict[str, Any] | None, region: str
+) -> List[Dict[str, Any]]:
+    """Disclose reduced evidence on each affected OW ID, including sole-source loss."""
+    families = {"BR": "bedrock", "SM": "sagemaker", "AC": "agentcore"}
+    labels = {"bedrock": "Bedrock", "sagemaker": "SageMaker", "agentcore": "AgentCore"}
+    selection = service_selection or {}
+    omitted = {
+        family
+        for family, service in families.items()
+        if selection.get(service, "true") not in (True, "true")
+    }
+    controls: Dict[str, set[str]] = {}
+    categories: Dict[str, str] = {}
+    for source_id, mappings in OWASP_CHECK_MAPPINGS.items():
+        for mapping in mappings:
+            controls.setdefault(mapping["check_id"], set()).add(source_id.split("-")[0])
+            categories[mapping["check_id"]] = mapping["owasp_category"]
+    findings = []
+    for check_id, sources in sorted(controls.items()):
+        excluded = sources & omitted
+        if not excluded:
+            continue
+        names = ", ".join(labels[families[family]] for family in sorted(excluded))
+        remaining = sources - omitted
+        detail = (
+            "Other mapped sources may still contribute findings; their results "
+            "do not establish coverage of the omitted sources."
+            if remaining
+            else "No mapped evidence source remains selected; this control was not assessed."
+        )
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name="OWASP Assessment Selection Coverage",
+                finding_details=f"{categories[check_id]}. Evidence from deselected direct assessments was omitted: {names}. {detail}",
+                resolution=(
+                    f"Enable the {names} direct assessment(s) and rerun if that evidence "
+                    "is required. This is a scope notice, not a control failure."
+                ),
+                reference=get_owasp_reference_url(check_id),
                 severity="Informational",
                 status="N/A",
                 region=region,
@@ -1603,6 +1657,7 @@ def lambda_handler(event, context):
             region=region,
             include_finserv=include_finserv,
             return_missing=True,
+            service_selection=event.get("ServiceSelection"),
         )
         logger.info(f"OWASP: read {len(source_rows)} source rows for {region}")
 
@@ -1616,10 +1671,16 @@ def lambda_handler(event, context):
         ow11_rows = check_system_prompt_in_lambda_env(region=region)
         ow12_rows = check_system_prompt_disclosure_denied_topic(region=region)
 
-        all_rows = mapping_rows + missing_source_rows + ow11_rows + ow12_rows
+        selection_rows = build_selection_coverage_findings(
+            event.get("ServiceSelection"), region=region
+        )
+        all_rows = (
+            mapping_rows + missing_source_rows + selection_rows + ow11_rows + ow12_rows
+        )
         logger.info(
             f"OWASP: emitting {len(all_rows)} rows "
             f"({len(mapping_rows)} mapping + {len(missing_source_rows)} missing-source + "
+            f"{len(selection_rows)} selection-coverage + "
             f"{len(ow11_rows)} OW-11 + {len(ow12_rows)} OW-12)"
         )
 

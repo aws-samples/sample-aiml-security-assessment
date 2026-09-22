@@ -50,6 +50,14 @@ rather than copied into target regions. OWASP reads those CSVs, applies the
 `OWASP_CHECK_MAPPINGS` dict, runs OW-11 and OW-12, and writes
 `owasp_security_report_<execution>_<region>.csv`.
 
+Service selection affects only the Bedrock, SageMaker, and AgentCore source
+CSVs; Agent Registry is not an OWASP source. For each affected OW check ID, an
+N/A/Informational coverage row identifies the deselected evidence sources.
+Remaining mapped findings retain their status. OW-07 remains visible as
+unassessed when Bedrock, its only source, is deselected. OW-05 (GRC-only) and
+native OW-11/OW-12 are unaffected by direct-service selection. GRC still runs
+as a dependency and can assess deselected services through its own API calls.
+
 If a required source CSV is missing, the Lambda emits an informational `OW-00`
 coverage row instead of silently omitting all derived rows from that source.
 `OW-00` is not an OWASP Top 10 control; it is a report-completeness marker.

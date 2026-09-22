@@ -28,6 +28,18 @@ phases:
   build:
     commands:
       - echo "Starting AIML Security Assessment"
+      - |
+        # Keep deployment, artifact checks, and consolidated report scope aligned.
+        export ENABLE_BEDROCK="${ENABLE_BEDROCK:-true}"
+        export ENABLE_SAGEMAKER="${ENABLE_SAGEMAKER:-true}"
+        export ENABLE_AGENTCORE="${ENABLE_AGENTCORE:-true}"
+        export ENABLE_AGENT_REGISTRY="${ENABLE_AGENT_REGISTRY:-true}"
+        for service_flag in ENABLE_BEDROCK ENABLE_SAGEMAKER ENABLE_AGENTCORE ENABLE_AGENT_REGISTRY; do
+          case "${!service_flag}" in
+            true|false) ;;
+            *) echo "ERROR: $service_flag must be true or false"; exit 1 ;;
+          esac
+        done
       # EnableResponsibleAIGRCAssessment toggle (CodeBuild env var; default false).
       # Threaded into the Step Functions execution input as enableResponsibleAIGRC;
       # the ASL Responsible AI GRC branch runs only when this is "true".
@@ -129,6 +141,14 @@ phases:
         SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER="ParameterKey=AgentCoreTokenVaultId,ParameterValue=${AGENTCORE_TOKEN_VAULT_ID:-default}"
         SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER="ParameterKey=ApprovedExternalAccountIds,ParameterValue=\"${APPROVED_EXTERNAL_ACCOUNT_IDS:-}\""
         SAM_APPROVED_ORGANIZATION_IDS_PARAMETER="ParameterKey=ApprovedOrganizationIds,ParameterValue=\"${APPROVED_ORGANIZATION_IDS:-}\""
+        SAM_ENABLE_BEDROCK_PARAMETER="ParameterKey=EnableBedrockAssessment,ParameterValue=${ENABLE_BEDROCK}"
+        export SAM_ENABLE_BEDROCK_PARAMETER
+        SAM_ENABLE_SAGEMAKER_PARAMETER="ParameterKey=EnableSageMakerAssessment,ParameterValue=${ENABLE_SAGEMAKER}"
+        export SAM_ENABLE_SAGEMAKER_PARAMETER
+        SAM_ENABLE_AGENTCORE_PARAMETER="ParameterKey=EnableAgentCoreAssessment,ParameterValue=${ENABLE_AGENTCORE}"
+        export SAM_ENABLE_AGENTCORE_PARAMETER
+        SAM_ENABLE_AGENT_REGISTRY_PARAMETER="ParameterKey=EnableAgentRegistryAssessment,ParameterValue=${ENABLE_AGENT_REGISTRY}"
+        export SAM_ENABLE_AGENT_REGISTRY_PARAMETER
         export SAM_TARGET_REGIONS_PARAMETER
         export SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER
         export SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER
@@ -252,7 +272,7 @@ phases:
               record_failure "$accountId" "deployment" "Failed to recover a failed CloudFormation stack"
               unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
               continue
-            elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "aiml-security-$accountId" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
+            elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "aiml-security-$accountId" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
               echo "ERROR: Deploy failed for account $accountId"
               record_failure "$accountId" "deployment" "SAM deployment failed"
               unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
@@ -285,7 +305,7 @@ phases:
           if ! recover_failed_stack aws-sam-cli-managed-default || ! recover_failed_stack aiml-security-mgmt; then
             echo "ERROR: Failed to recover deployment stack for management account"
             record_failure "$AWS_ACCOUNT_ID" "deployment" "Failed to recover a failed CloudFormation stack"
-          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-mgmt --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
+          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-mgmt --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
             echo "ERROR: Deploy failed for management account"
             record_failure "$AWS_ACCOUNT_ID" "deployment" "SAM deployment failed"
           else
@@ -319,7 +339,7 @@ phases:
           if ! recover_failed_stack aws-sam-cli-managed-default || ! recover_failed_stack "$STACK_NAME"; then
             echo "ERROR: Failed to recover deployment stack for single account"
             exit 1
-          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "$STACK_NAME" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
+          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "$STACK_NAME" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
             echo "ERROR: SAM deploy failed for single account"
             exit 1
           fi
@@ -340,6 +360,13 @@ phases:
         fi
   post_build:
     commands:
+      - |
+        # Older top-level stacks do not define these project variables.
+        # Reapply defaults in this phase so the artifact gate stays complete.
+        export ENABLE_BEDROCK="${ENABLE_BEDROCK:-true}"
+        export ENABLE_SAGEMAKER="${ENABLE_SAGEMAKER:-true}"
+        export ENABLE_AGENTCORE="${ENABLE_AGENTCORE:-true}"
+        export ENABLE_AGENT_REGISTRY="${ENABLE_AGENT_REGISTRY:-true}"
       - echo "CODEBUILD_BUILD_SUCCEEDING status is $CODEBUILD_BUILD_SUCCEEDING"
       - |
         if [ $CODEBUILD_BUILD_SUCCEEDING -eq 0 ]; then
@@ -506,7 +533,19 @@ phases:
                 record_failure "$accountId" "artifact-copy" "Failed to copy assessment artifacts from the account bucket"
                 rm -rf "/tmp/account-files/$accountId"
               else
-                required_artifact_prefixes=(bedrock sagemaker agentcore agent_registry)
+                required_artifact_prefixes=()
+                if [[ $ENABLE_BEDROCK == "true" ]]; then
+                  required_artifact_prefixes+=(bedrock)
+                fi
+                if [[ $ENABLE_SAGEMAKER == "true" ]]; then
+                  required_artifact_prefixes+=(sagemaker)
+                fi
+                if [[ $ENABLE_AGENTCORE == "true" ]]; then
+                  required_artifact_prefixes+=(agentcore)
+                fi
+                if [[ $ENABLE_AGENT_REGISTRY == "true" ]]; then
+                  required_artifact_prefixes+=(agent_registry)
+                fi
                 if [[ $ENABLE_RESPONSIBLE_AI_GRC == "true" ]]; then
                   required_artifact_prefixes+=(responsible_ai_grc)
                 fi
