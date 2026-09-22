@@ -638,8 +638,18 @@ To select entire services now, use `EnableBedrockAssessment`,
 `EnableSageMakerAssessment`, `EnableAgentCoreAssessment`, and
 `EnableAgentRegistryAssessment` (all default to `true`). A **Not selected** area
 means its direct assessment was disabled, not that it passed or found no
-resources. The Agentic AI lens and OWASP mappings use only selected source
-assessments. See [Selecting Service Assessments](../README.md#selecting-service-assessments).
+resources. Agentic AI uses selected Bedrock/AgentCore/Agent Registry sources.
+OWASP uses selected Bedrock/SageMaker/AgentCore sources, GRC evidence, and native
+checks; it shows per-control N/A notices for omitted direct evidence. GRC can
+still assess deselected services, including when run as an OWASP dependency.
+Disable both optional assessments to limit execution to selected direct services.
+See [Selecting Service Assessments](../README.md#selecting-service-assessments).
+
+A lower pass rate after deselecting a service is not necessarily a regression:
+the set of scored controls changed. Compare equivalent scopes. GRC is not part
+of the direct-service score. Likewise, an older CSV in the central bucket is
+historical evidence, not proof that a deselected service ran again; match CSVs
+to the current execution ID.
 
 If CodeBuild reports a missing CSV for a service you disabled, update the
 top-level deployment stack and run CodeBuild from the same updated revision;

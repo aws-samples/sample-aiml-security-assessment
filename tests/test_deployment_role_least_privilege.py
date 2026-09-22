@@ -229,8 +229,8 @@ def test_multi_account_build_fails_when_any_account_has_incomplete_coverage():
     assert "execution_succeeded=true" in buildspec
     assert '"Timed out waiting for Step Functions completion"' in buildspec
     assert '"No execution ARN was saved during deployment"' in buildspec
-    # Service selection is exercised for all combinations in test_service_selection.
-    assert "required_artifact_prefixes=()" in buildspec
+    # Executable artifact-gate tests, including legacy unset defaults, live in
+    # test_service_selection.py; the checks here cover the failure ledger.
     assert "required_artifact_prefixes+=(responsible_ai_grc)" in buildspec
     assert "required_artifact_prefixes+=(owasp)" in buildspec
     assert (

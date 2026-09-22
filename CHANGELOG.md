@@ -10,6 +10,41 @@ section.
 
 ## Unreleased
 
+### Added
+
+- Added independent, default-enabled switches for Bedrock, SageMaker AI,
+  AgentCore, and AWS Agent Registry assessments in both deployment modes.
+  Disabled services skip their assessment Lambda and CSV requirements; reports
+  label them Not selected and explain reduced Agentic AI / OWASP source coverage.
+  Optional Responsible AI GRC and OWASP assessments remain independently enabled.
+
+### Fixed
+
+- Preserve default-enabled artifact completeness checks when an older CodeBuild
+  project has not yet received service-selection environment variables.
+- Derive selection notices and scope descriptions from the selected assessments.
+  Keep Responsible AI GRC out of direct-service scores and explain that its API
+  calls can still assess deselected services, including as an OWASP dependency.
+- Emit N/A/Informational coverage rows on each OWASP control affected by omitted
+  direct-service evidence, including controls that lose their only source.
+  Make the GRC guardrail prerequisite text self-contained.
+
+### Deployment impact
+
+- **Service selection:** Update `deployment/aiml-security-single-account.yaml`
+  for single-account deployments or `deployment/2-aiml-security-codebuild.yaml`
+  for multi-account central infrastructure, set the desired service switches,
+  then start CodeBuild using this revision. No member-role StackSet update is
+  required for this feature. Direct SAM users must redeploy `template.yaml` or
+  `template-multi-account.yaml` with the desired `Enable*Assessment` parameters
+  and start a new execution. All switches default to true on upgrade.
+
+These instructions assume the 2.0.0 prerequisites below are already applied.
+When upgrading from an earlier release, complete the 2.0.0 member-role and
+central infrastructure updates first. Then apply this feature's parameters
+and rerun CodeBuild to deploy the assessment/report changes. No additional
+IAM permissions are introduced by service selection.
+
 ## 2.0.0 - 2026-09-18
 
 This release grows the catalog from 161 checks across five areas to 208 checks
@@ -30,12 +65,6 @@ Upgrading is not a single step and is not fully backward compatible:
   `"enableFinServ": "true"` is rejected.
 
 ### Added
-
-- Added independent, default-enabled switches for Bedrock, SageMaker AI,
-  AgentCore, and AWS Agent Registry assessments in both deployment modes.
-  Disabled services skip their assessment Lambda and CSV requirements; reports
-  label them Not selected and explain reduced Agentic AI / OWASP source coverage.
-  Optional Responsible AI GRC and OWASP assessments remain independently enabled.
 
 - Added AWS Agent Registry as an independent assessment area with its own
   regional Lambda, Step Functions branch, CSV artifact, and HTML report area
@@ -244,14 +273,6 @@ Upgrading is not a single step and is not fully backward compatible:
   terminate the capture tool with a non-zero exit status.
 
 ### Deployment impact
-
-- **Service selection:** Update `deployment/aiml-security-single-account.yaml`
-  for single-account deployments or `deployment/2-aiml-security-codebuild.yaml`
-  for multi-account central infrastructure, set the desired service switches,
-  then start CodeBuild using this revision. No member-role StackSet update is
-  required for this feature. Direct SAM users must redeploy `template.yaml` or
-  `template-multi-account.yaml` with the desired `Enable*Assessment` parameters
-  and start a new execution. All switches default to true on upgrade.
 
 Apply these updates in order.
 

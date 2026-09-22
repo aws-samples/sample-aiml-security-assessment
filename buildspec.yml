@@ -360,6 +360,13 @@ phases:
         fi
   post_build:
     commands:
+      - |
+        # Older top-level stacks do not define these project variables.
+        # Reapply defaults in this phase so the artifact gate stays complete.
+        export ENABLE_BEDROCK="${ENABLE_BEDROCK:-true}"
+        export ENABLE_SAGEMAKER="${ENABLE_SAGEMAKER:-true}"
+        export ENABLE_AGENTCORE="${ENABLE_AGENTCORE:-true}"
+        export ENABLE_AGENT_REGISTRY="${ENABLE_AGENT_REGISTRY:-true}"
       - echo "CODEBUILD_BUILD_SUCCEEDING status is $CODEBUILD_BUILD_SUCCEEDING"
       - |
         if [ $CODEBUILD_BUILD_SUCCEEDING -eq 0 ]; then

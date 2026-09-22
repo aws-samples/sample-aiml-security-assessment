@@ -178,15 +178,30 @@ def test_all_deployment_paths_expose_default_enabled_switches(template):
             assert env[f"ENABLE_{environment}"] == {"Fn::Ref": name}
 
 
-@pytest.mark.parametrize("values", list(itertools.product(("true", "false"), repeat=4)))
-def test_codebuild_collects_exactly_the_selected_service_artifacts(values):
+@pytest.mark.parametrize("optional", ["false", "true"])
+@pytest.mark.parametrize(
+    "values",
+    list(itertools.product(("true", "false"), repeat=4)) + [(None,) * 4, ("",) * 4],
+)
+def test_codebuild_collects_exactly_the_selected_service_artifacts(values, optional):
     text = (ROOT / "buildspec.yml").read_text()
     start = text.index("                required_artifact_prefixes=()")
     end = text.index("                artifacts_complete=true", start)
-    script = text[start:end] + '\nprintf "%s\\n" "${required_artifact_prefixes[@]}"\n'
-    env = {**os.environ, "ENABLE_RESPONSIBLE_AI_GRC": "false", "ENABLE_OWASP": "false"}
+    defaults = yaml.safe_load(text)["phases"]["post_build"]["commands"][0]
+    script = (
+        defaults
+        + "\n"
+        + text[start:end]
+        + '\nprintf "%s\\n" "${required_artifact_prefixes[@]}"\n'
+    )
+    env = {k: v for k, v in os.environ.items() if not k.startswith("ENABLE_")}
+    env.update(ENABLE_RESPONSIBLE_AI_GRC=optional, ENABLE_OWASP=optional)
     env.update(
-        {f"ENABLE_{meta[1]}": value for meta, value in zip(SERVICES.values(), values)}
+        {
+            f"ENABLE_{meta[1]}": value
+            for meta, value in zip(SERVICES.values(), values)
+            if value is not None
+        }
     )
     result = subprocess.run(
         ["bash", "-c", script], env=env, capture_output=True, text=True, check=True
@@ -194,8 +209,8 @@ def test_codebuild_collects_exactly_the_selected_service_artifacts(values):
     assert result.stdout.split() == [
         service.replace("-", "_")
         for service, value in zip(SERVICES, values)
-        if value == "true"
-    ]
+        if value != "false"
+    ] + (["responsible_ai_grc", "owasp"] if optional == "true" else [])
 
 
 def test_sam_overrides_reach_member_management_and_single_account_deploys():
@@ -280,7 +295,7 @@ def test_report_distinguishes_not_selected_from_assessed_na_and_filters_unselect
         card = next(card for card in cards if label in card.get_text())
         assert "Not selected" in card.get_text()
         assert "0 Passed" not in card.get_text()
-    assert "Agentic AI Security contains only" in html
+    assert "Agentic AI Security is not included" in html
     default_html = consolidated_app.generate_html_report(results)
     assert "assessment-not-selected" not in default_html
     assert 'id="service-selection"' not in default_html
@@ -345,3 +360,149 @@ def test_multi_account_scope_matches_single_account_and_ignores_deselected_csvs(
     assert soup.select_one("#service-selection")
     assert "Not selected" in soup.select_one("#sagemaker").get_text()
     assert '"SM-00"' not in html
+
+
+@pytest.mark.parametrize("mode", ["single", "multi"])
+@pytest.mark.parametrize("values", list(itertools.product((True, False), repeat=4)))
+def test_selection_notice_and_scope_match_actual_agentic_sources(mode, values):
+    from tests.test_report_template_owasp import report_template, _base_kwargs
+
+    kwargs = _base_kwargs()
+    selection = dict(zip(SERVICES, values))
+    sources = [s for s in ("bedrock", "agentcore", "agent-registry") if selection[s]]
+    if sources:
+        row = {**_row("bedrock"), "Check_ID": "AG-01", "_service": "agentic"}
+        kwargs["all_findings"] = [row]
+        kwargs["service_findings"]["agentic"] = [row]
+        kwargs["service_stats"]["agentic"]["na"] = 1
+    soup = BeautifulSoup(
+        report_template.generate_html_report(
+            **{**kwargs, "mode": mode, "service_selection": selection}
+        ),
+        "html.parser",
+    )
+    notice = soup.select_one("#service-selection")
+    if not all(values):
+        text = notice.get_text(" ", strip=True)
+        assert "Responsible AI GRC still assesses deselected services" in text
+        assert "Agent Registry is not an OWASP source" in text
+        if sources:
+            sentence = text.split("selected sources: ")[1].split(". ")[0]
+            assert sentence == ", ".join(
+                report_template.CORE_SERVICE_LABELS[s] for s in sources
+            )
+        else:
+            assert "Agentic AI Security is not included" in text
+    scope = soup.select_one("#methodology").get_text(" ", strip=True)
+    assert ("Agentic AI Security references" in scope) == bool(sources)
+    assert (
+        "checks are based on the AWS Well-Architected Framework Generative AI Lens"
+        in scope
+    ) == any(values)
+    if not any(values):
+        assert "No direct service assessments were selected" in scope
+
+
+@pytest.mark.parametrize("values", list(itertools.product((True, False), repeat=4)))
+def test_owasp_selection_discloses_each_affected_control(values):
+    selection = dict(zip(SERVICES, values))
+    affected_by_service = {
+        "bedrock": {
+            "OW-01",
+            "OW-02",
+            "OW-03",
+            "OW-04",
+            "OW-06",
+            "OW-07",
+            "OW-08",
+            "OW-09",
+            "OW-10",
+        },
+        "sagemaker": {"OW-01", "OW-02", "OW-03", "OW-04", "OW-09", "OW-10"},
+        "agentcore": {"OW-02", "OW-06"},
+        "agent-registry": set(),
+    }
+    expected = set().union(
+        *(affected_by_service[s] for s in SERVICES if not selection[s])
+    )
+    rows = owasp_app.build_selection_coverage_findings(selection, REGIONS[0])
+    assert {r["Check_ID"] for r in rows} == expected
+    assert len(rows) == len(expected)
+    for row in rows:
+        assert row["Status"] == "N/A"
+        assert row["Severity"] == "Informational"
+        assert row["Region"] == REGIONS[0]
+        if row["Check_ID"] == "OW-07":
+            assert "this control was not assessed" in row["Finding_Details"]
+        else:
+            assert "Other mapped sources may still contribute" in row["Finding_Details"]
+    assert owasp_app.build_selection_coverage_findings(None, REGIONS[0]) == []
+
+
+def test_owasp_handler_preserves_remaining_evidence_and_writes_selection_notices(
+    monkeypatch,
+):
+    monkeypatch.setenv("AIML_ASSESSMENT_BUCKET_NAME", "test-assessment-bucket")
+    source = {
+        **_row("bedrock"),
+        "Check_ID": "FS-51",
+        "Status": "Failed",
+        "Severity": "High",
+    }
+    with (
+        patch.object(
+            owasp_app, "_read_service_csvs_for_region", return_value=([source], [])
+        ),
+        patch.object(owasp_app, "check_system_prompt_in_lambda_env", return_value=[]),
+        patch.object(
+            owasp_app, "check_system_prompt_disclosure_denied_topic", return_value=[]
+        ),
+        patch.object(owasp_app, "write_to_s3", return_value="report.csv") as write,
+    ):
+        result = owasp_app.lambda_handler(
+            {
+                "Execution": {"Name": EXECUTION},
+                "Region": REGIONS[0],
+                "ServiceSelection": dict.fromkeys(SERVICES, "false"),
+            },
+            None,
+        )
+    assert result["statusCode"] == 200
+    rows = list(csv.DictReader(write.call_args.kwargs["csv_content"].splitlines()))
+    assert any(r["Check_ID"] == "OW-07" and r["Status"] == "N/A" for r in rows)
+    assert any(
+        r["Status"] == "Failed" and "FS-51" in r["Finding_Details"] for r in rows
+    )
+
+
+def test_legacy_post_build_gate_rejects_missing_bedrock_csv(tmp_path):
+    text = (ROOT / "buildspec.yml").read_text()
+    defaults = yaml.safe_load(text)["phases"]["post_build"]["commands"][0]
+    start = text.index("                required_artifact_prefixes=()")
+    end = text.index("                if [[ $artifacts_complete != true ]]", start)
+    account = tmp_path / "111122223333"
+    account.mkdir()
+    for prefix in (
+        "sagemaker",
+        "agentcore",
+        "agent_registry",
+        "responsible_ai_grc",
+        "owasp",
+    ):
+        (account / f"{prefix}_security_report_test.csv").touch()
+    (account / "security_assessment_single_account_test.html").touch()
+    script = (
+        defaults
+        + '\naccountId=111122223333\nexecution_id=test\nrecord_failure() { printf "LEDGER %s %s %s\\n" "$1" "$2" "$3"; }\n'
+    )
+    script += text[start:end].replace("/tmp/account-files", str(tmp_path))
+    script += "\n[[ $artifacts_complete == true ]]"
+    env = {k: v for k, v in os.environ.items() if not k.startswith("ENABLE_")}
+    env.update(ENABLE_RESPONSIBLE_AI_GRC="true", ENABLE_OWASP="true")
+    result = subprocess.run(
+        ["bash", "-c", script], env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 1
+    assert (
+        "LEDGER 111122223333 artifact-validation Missing bedrock CSV" in result.stdout
+    )

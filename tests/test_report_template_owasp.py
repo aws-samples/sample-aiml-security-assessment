@@ -309,3 +309,27 @@ class TestOWASPSectionRendering:
         html = report_template.generate_html_report(**kwargs)
 
         assert '<div class="alert-category">NIST AI RMF</div>' in html
+
+
+def test_grc_only_report_has_no_direct_service_score():
+    kwargs = _base_kwargs()
+    row = {
+        **_direct_finding("BR-01", "Failed", "High", "Synthetic governance finding"),
+        "Check_ID": "FS-01",
+        "_service": "responsible-ai-grc",
+    }
+    kwargs["all_findings"] = [row]
+    kwargs["service_findings"]["responsible-ai-grc"] = [row]
+    kwargs["service_stats"]["responsible-ai-grc"]["failed"] = 1
+    kwargs["service_selection"] = dict.fromkeys(
+        ("bedrock", "sagemaker", "agentcore", "agent-registry"), False
+    )
+    html = report_template.generate_html_report(**kwargs)
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    risk = soup.select_one("#risk").get_text(" ", strip=True)
+    assert "0 of 0 scored controls passed" in risk
+    assert "0 of 1 scored controls passed" not in risk
+    assert soup.select_one("#responsible-ai-grc") is not None
+    assert "FS-01" in soup.select_one("#findingsTable").get_text()

@@ -153,7 +153,7 @@ COMPLIANCE_STANDARDS: List[Dict[str, str]] = [
         "reference_url": OWASP_LLM_TOP10_URL,
         "section_title": "OWASP Top 10 for LLM Findings",
         "scope_text": (
-            "Scope: mapping-based derivation from existing BR/SM/AC/AG/FS checks "
+            "Scope: mapping-based derivation from existing BR/SM/AC/FS checks "
             "plus two net-new checks for LLM07 (System Prompt Leakage). "
             "Each finding's OWASP category (LLM01–LLM10) is encoded in the "
             "Finding_Details text. Preliminary and illustrative — validate "
@@ -898,6 +898,22 @@ def generate_html_report(
         for service, label in CORE_SERVICE_LABELS.items()
         if not selected_services[service]
     ]
+    agentic_sources = [
+        CORE_SERVICE_LABELS[service]
+        for service in ("bedrock", "agentcore", "agent-registry")
+        if selected_services[service]
+    ]
+    if agentic_sources and any(service_stats.get("agentic", {}).values()):
+        agentic_selection_description = (
+            "Agentic AI Security contains only findings from the selected sources: "
+            + ", ".join(agentic_sources)
+            + ". "
+        )
+    else:
+        agentic_selection_description = (
+            "Agentic AI Security is not included because no Agentic AI findings "
+            "were produced by the selected direct assessments. "
+        )
     service_selection_notice = ""
     if omitted:
         service_selection_notice = (
@@ -906,11 +922,15 @@ def generate_html_report(
             "<p><strong>Not selected:</strong> " + ", ".join(omitted) + ".</p>"
             "<p>These direct service assessments did not run. This is different from "
             "an assessed service with no findings or N/A results. "
-            "Agentic AI Security contains only findings derived from the selected "
-            "Bedrock, AgentCore, and Agent Registry assessments. "
-            "When enabled, OWASP uses selected service evidence and its own checks; "
-            "Responsible AI GRC runs independently. Their coverage may differ from "
-            "the direct service selection.</p></div></div>"
+            + agentic_selection_description
+            + "When enabled, OWASP maps selected Bedrock, SageMaker, and AgentCore "
+            "evidence plus Responsible AI GRC evidence and runs its own checks. "
+            "Agent Registry is not an OWASP source. Affected OWASP controls include "
+            "N/A coverage notices for deselected sources. Responsible AI GRC still "
+            "assesses deselected services and calls their APIs when enabled, "
+            "including when it runs as an OWASP dependency. Disable both optional "
+            "assessments if only selected direct-service assessments should run. "
+            "Service selection does not remove deployed IAM permissions.</p></div></div>"
         )
 
     def finding_severity(finding: Dict) -> str:
@@ -924,7 +944,7 @@ def generate_html_report(
 
     scored_severities = {"high", "medium", "low"}
     compliance_slugs = {std["slug"] for std in COMPLIANCE_STANDARDS}
-    contextual_services = {"agentic", *compliance_slugs}
+    contextual_services = {"agentic", "responsible-ai-grc", *compliance_slugs}
 
     def is_scored_row(finding: Dict) -> bool:
         return finding_severity(finding) in scored_severities
@@ -1606,11 +1626,23 @@ def generate_html_report(
         account_risk_section=account_risk_section,
         region_risk_section=region_risk_section,
     )
+    selected_labels = [
+        label
+        for service, label in CORE_SERVICE_LABELS.items()
+        if selected_services[service]
+    ]
     base_scope_source = (
-        f"Bedrock, SageMaker, AgentCore, and AWS Agent Registry checks are based on the "
-        f'<a href="{GENAI_LENS_URL}" target="_blank">AWS Well-Architected Framework Generative AI Lens</a>. '
-        f'Agentic AI Security references the <a href="{AGENTIC_AI_LENS_URL}" target="_blank">AWS Well-Architected Agentic AI Lens</a>.'
+        ", ".join(selected_labels)
+        + " checks are based on the "
+        + f'<a href="{GENAI_LENS_URL}" target="_blank">AWS Well-Architected Framework Generative AI Lens</a>. '
+        if selected_labels
+        else "No direct service assessments were selected. "
     )
+    if agentic_total > 0:
+        base_scope_source += (
+            f'Agentic AI Security references the <a href="{AGENTIC_AI_LENS_URL}" '
+            'target="_blank">AWS Well-Architected Agentic AI Lens</a>.'
+        )
     rendered_html = rendered_html.replace(
         "Based on AWS Well-Architected Framework (Generative AI Lens) and service-specific security documentation.",
         base_scope_source,

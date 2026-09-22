@@ -6,6 +6,13 @@ This document is the single reference for what Responsible AI GRC is, what it is
 publications it derives from, and which legacy identifiers it preserves. The report footer and
 `README.md` link here by name.
 
+Direct-service selection does not restrict GRC coverage or its IAM permissions.
+GRC can assess Bedrock, SageMaker, and AgentCore even when their direct
+assessments are deselected, and also runs as an OWASP dependency. Disable both
+optional assessments to run only the selected direct assessments. GRC findings
+remain in their own governance area and do not contribute to direct-service
+scores.
+
 ## Contents
 
 1. [Scope statement](#scope-statement)

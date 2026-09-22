@@ -13,6 +13,17 @@ Interactive HTML reports demonstrating the assessment output:
 - **[security_assessment_multi_account_agentic_prototype.html](security_assessment_multi_account_agentic_prototype.html)** - Prototype based on the existing multi-account report with an Agentic AI security overlay added to the same UI
 - **[agentic-ai-lens-prototype.html](agentic-ai-lens-prototype.html)** - Prototype report showing how security-scoped Agentic AI check and control-domain metadata could be added to the HTML experience
 
+- **[selection-bedrock.html](selection-bedrock.html)** - Synthetic Bedrock-only selection with GRC and OWASP enabled; [screenshot](selection-bedrock.jpg).
+- **[selection-governance-only.html](selection-governance-only.html)** - Synthetic all-direct-services-disabled selection showing independent GRC findings and OWASP coverage notices; [screenshot](selection-governance-only.jpg).
+
+Regenerate these two selection examples without AWS access:
+
+```bash
+.venv/bin/python sample-reports/scripts/generate_selection_examples.py
+```
+
+They use fictional findings and a placeholder account ID, and are UI examples rather than live assessment evidence.
+
 **Features:**
 - Executive dashboard with severity breakdown
 - Priority recommendations
@@ -33,8 +44,6 @@ Screenshots used in the main README to showcase report features:
 | `dashboard-overview-dark.png` | Executive dashboard in dark mode |
 | `findings-table.png` | Interactive findings table with filters |
 | `multi-account-summary.png` | Multi-account consolidated view |
-
-**Total size:** ~685 KB (optimized for web)
 
 ### Developer Tools
 

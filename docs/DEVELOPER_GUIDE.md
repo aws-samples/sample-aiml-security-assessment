@@ -310,6 +310,27 @@ OWASP is enabled. Responsible AI GRC remains independently controlled and can
 scan services omitted from the direct-service selection. Neither service
 selection nor a skipped branch removes deployed Lambdas or IAM policies.
 
+The post-build phase independently reapplies default-enabled flags for older
+CodeBuild projects with no service-selection environment variables. Artifact
+validation must still reject missing selected-service CSVs in that upgrade path.
+
+OWASP reads only BR/SM/AC direct evidence, never Agent Registry CSVs. For each
+OW ID whose mapped sources include a deselected service, it emits one
+N/A/Informational selection-coverage row per regional invocation. Existing rows
+from remaining sources are preserved; a sole-source control such as OW-07 stays
+visible as unassessed when Bedrock is off. Missing selected artifacts still use
+OW-00 and are not conflated with intentional deselection.
+
+GRC intentionally remains independent and can call deselected services' APIs.
+It also runs when OWASP alone is enabled. Disable both optional areas to run
+only the selected direct assessments. GRC remediation must be self-contained
+rather than refer to a direct-service check that might have been omitted.
+
+Direct-service scores exclude GRC, Agentic AI, and compliance rows. Changing
+selection changes the score denominator and can raise or lower the pass rate;
+compare reports with the same scope. Central buckets retain historical CSVs;
+downstream readers must filter by execution ID, as the consolidation path does.
+
 Catalog totals describe the available controls, not the number executed by every
 selection. The default sample reports still illustrate all services enabled.
 Regression coverage in `tests/test_service_selection.py` exercises all 16 direct

@@ -428,10 +428,25 @@ supported and produces an explicit scope report even when there are no findings.
 The Agentic AI lens contains only rows produced by the selected Bedrock,
 AgentCore, and Agent Registry assessments; disabling a source reduces its
 coverage. Responsible AI GRC and OWASP retain their separate opt-in switches.
-When enabled, Responsible AI GRC still scans independently, and OWASP still runs
-its native checks and its Responsible AI GRC dependency. OWASP maps only the
-selected direct-service CSVs. These optional areas can therefore access services
-that are disabled in the direct-service selection.
+Responsible AI GRC still assesses deselected services and calls their APIs when
+enabled, including when it runs as an OWASP dependency. OWASP also runs its native
+checks. To limit execution to selected direct-service assessments, disable both
+`EnableResponsibleAIGRCAssessment` and `EnableOWASPAssessment`.
+
+OWASP maps only selected Bedrock, SageMaker, and AgentCore CSVs plus its GRC
+source; Agent Registry does not feed OWASP. Each affected OWASP control includes
+an N/A/Informational coverage notice when direct-service evidence is omitted.
+A control that loses its only source (such as OW-07 when Bedrock is off) remains
+visible as unassessed. Findings from remaining sources retain their own status.
+
+Compare pass rates only across equivalent assessment scopes: deselecting a
+well-configured service can lower the rate by removing passing controls from
+the denominator. Responsible AI GRC and derived lens/compliance rows are excluded
+from direct-service scores and remain visible in their own assessment areas.
+
+The central reporting bucket preserves historical artifacts. An older CSV from
+a now-deselected service may remain there; consumers must select artifacts by
+execution ID, rather than treating every CSV in the bucket as current evidence.
 
 Selection controls execution, not provisioning: the Lambda functions and their
 existing IAM roles remain deployed. Switches are resolved from the SAM stack's
