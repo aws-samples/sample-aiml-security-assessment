@@ -1,0 +1,2 @@
+Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region
+AC-17,AgentCore Runtime Check,No AgentCore runtimes found,No action needed.,https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security.html,Informational,N/A,us-west-2

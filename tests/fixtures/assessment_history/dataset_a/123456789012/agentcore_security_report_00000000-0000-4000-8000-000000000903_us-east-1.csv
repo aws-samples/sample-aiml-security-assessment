@@ -1,0 +1,3 @@
+Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region
+AC-03,AgentCore Stale Access,The following principals have not accessed AgentCore in 60+ days: role 'agent-role' (255 days),Review and remove unused AgentCore permissions following least privilege principle,https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html,Medium,Failed,Global
+AG-17,Agent Identity & Access,Source check AC-03: role 'agent-role' (255 days),Review and remove unused AgentCore permissions following least privilege principle,https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html,Medium,Failed,Global

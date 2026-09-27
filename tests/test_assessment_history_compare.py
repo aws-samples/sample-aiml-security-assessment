@@ -347,6 +347,24 @@ def test_a12_unknown_regions_compare_everything(previous_regions, current_region
     assert len(result.rows) == 1
 
 
+@pytest.mark.parametrize(
+    "region, compared",
+    [
+        ("us-east-1, us-east-2", True),
+        ("us-east-1,us-east-2", True),
+        ("us-east-1, eu-west-1", False),
+        ("", True),
+        ("Global", True),
+    ],
+)
+def test_rows_listing_several_regions_or_no_region(region, compared):
+    scope = {"regions": {"us-east-1", "us-east-2"}}
+    finding = make_finding("SM-26", region=region)
+    result = _compare([finding], [finding], previous=scope, current=scope)
+    assert len(result.rows) == (1 if compared else 0)
+    assert len(result.excluded) == (0 if compared else 2)
+
+
 # --- A13 Agentic AI and OWASP rows repeat a core change ---------------------------
 
 

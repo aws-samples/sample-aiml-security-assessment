@@ -1,0 +1,3 @@
+Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region
+SM-26,Notebook Root Access Check,Notebook 'nb-1' has root access enabled,Disable root access.,https://docs.aws.amazon.com/sagemaker/latest/dg/nbi-root-access.html,High,Failed,us-east-1
+SM-02,Stale SageMaker Access,User 'analyst' hasn't accessed SageMaker since 2026-05-20,Review and remove SageMaker access for inactive users,https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html,Medium,Failed,Global

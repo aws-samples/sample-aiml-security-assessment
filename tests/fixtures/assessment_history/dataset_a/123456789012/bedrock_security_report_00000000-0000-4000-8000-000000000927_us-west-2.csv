@@ -1,0 +1,2 @@
+Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region
+BR-05,Guardrails Check,"No guardrails configured, including for application ""demo""",Create a guardrail.,https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html,Medium,Failed,us-west-2

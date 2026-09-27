@@ -1,0 +1,2 @@
+Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region
+SM-26,Notebook Root Access Check,Notebook 'nb-1' has root access enabled,Disable root access.,https://docs.aws.amazon.com/sagemaker/latest/dg/nbi-root-access.html,High,Failed,us-east-1

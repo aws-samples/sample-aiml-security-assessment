@@ -10,7 +10,8 @@ group, rows are paired in three steps:
 
 A pair is only made when its key is unique on both sides, so rows are never
 guessed into pairs. Only modules enabled, and regions scanned, in both runs
-are compared; the rest is returned as excluded with a reason.
+are compared; the rest is returned as excluded with a reason. Rows marked
+Global, or with no region, are always compared.
 
 No AWS calls: runs arrive as ``models.Run`` values.
 """
@@ -148,15 +149,21 @@ def _in_scope(
     for finding in findings:
         if finding.module not in modules:
             excluded.append(ExcludedFinding(side, MODULE_NOT_IN_BOTH_RUNS, finding))
-        elif (
-            regions is not None
-            and finding.region != GLOBAL_REGION
-            and finding.region not in regions
-        ):
+        elif regions is not None and not _region_in_scope(finding.region, regions):
             excluded.append(ExcludedFinding(side, REGION_NOT_IN_BOTH_RUNS, finding))
         else:
             kept.append(finding)
     return kept
+
+
+def _region_in_scope(region: str, regions: frozenset[str]) -> bool:
+    """Whether a row is compared: Global, blank, or listing only shared regions.
+
+    A Region value can list several regions ("us-east-1, us-west-2"); the
+    main report's readers guard against that form too.
+    """
+    listed = [part.strip() for part in region.split(",") if part.strip()]
+    return all(part == GLOBAL_REGION or part in regions for part in listed)
 
 
 def _group_key(finding: Finding) -> tuple[str, str, str, str]:

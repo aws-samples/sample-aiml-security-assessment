@@ -1,0 +1,2 @@
+Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region
+AR-02,AWS Agent Registry Stale Access,The following principals have not accessed AWS Agent Registry in 60+ days: role 'registry-role' (90 days),Review and remove unused AWS Agent Registry permissions following least privilege.,https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html,Medium,Failed,Global

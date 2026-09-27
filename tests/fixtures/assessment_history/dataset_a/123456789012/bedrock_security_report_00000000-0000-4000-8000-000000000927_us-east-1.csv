@@ -1,0 +1,5 @@
+Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region
+BR-01,AmazonBedrockFullAccess Policy Check,Role 'admin-role' has AmazonBedrockFullAccess attached,Grant least-privilege Bedrock permissions instead.,https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam.html,High,Failed,Global
+BR-03,Marketplace Subscription Access Check,Role 'app-role-a' has overly permissive marketplace subscription access,Remove aws-marketplace:Subscribe from the role.,https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam.html,Medium,Failed,Global
+BR-14,Stale Bedrock Access Check,Role 'batch-role' last accessed Bedrock on 2026-07-10,Remove unused Bedrock permissions.,https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html,Medium,Failed,Global
+BR-05,Guardrails Check,Guardrail 'app-guardrail' is configured,No action needed.,https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html,Medium,Passed,us-east-1

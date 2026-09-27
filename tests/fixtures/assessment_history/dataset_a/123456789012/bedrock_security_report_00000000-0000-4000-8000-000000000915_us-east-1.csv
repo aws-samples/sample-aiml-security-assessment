@@ -1,0 +1,2 @@
+Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region
+BR-01,AmazonBedrockFullAccess Policy Check,No roles found with AmazonBedrockFullAccess attached,Grant least-privilege Bedrock permissions instead.,https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam.html,High,Passed,Global

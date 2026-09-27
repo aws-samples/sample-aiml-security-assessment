@@ -1,0 +1,2 @@
+Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region
+OW-06,Excessive Agency,Source check BR-01: Role 'admin-role' has AmazonBedrockFullAccess attached,Grant least-privilege Bedrock permissions instead.,https://genai.owasp.org/llm-top-10/,High,Failed,Global

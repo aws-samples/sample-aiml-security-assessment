@@ -1,0 +1,4 @@
+Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region
+FS-31,Knowledge Base Data Sources Past Review Threshold,"1 data source(s) not synced in >90 days (a configurable review threshold, NOT an AWS-mandated limit):
+- kb-docs last completed ingestion 120 days ago",Confirm this age is acceptable for each data source.,https://docs.aws.amazon.com/bedrock/latest/userguide/kb-data-source-sync-ingest.html,Low,Failed,us-east-1
+FS-01,Model Inventory Check,Model inventory is documented,No action needed.,https://docs.aws.amazon.com/bedrock/latest/userguide/kb-data-source-sync-ingest.html,Low,Passed,Global
