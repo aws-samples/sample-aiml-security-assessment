@@ -153,13 +153,15 @@ def findings_csv(findings):
 
 
 class FakeS3:
-    """Stand-in for the two S3 client calls discovery makes."""
+    """Stand-in for the S3 client calls the package makes."""
 
     def __init__(self, bucket="central-bucket", page_size=2):
         self.bucket = bucket
         self.page_size = page_size
         self.objects = {}  # key -> (bytes, saved_at)
         self.reads = []
+        self.writes = []  # (key, content type) of each put_object call
+        self.written_at = datetime(2026, 9, 27, 7, 0, tzinfo=UTC)
 
     def put(self, key, body, saved_at):
         data = body.encode("utf-8") if isinstance(body, str) else body
@@ -185,6 +187,11 @@ class FakeS3:
                 ]
             }
         yield {"CommonPrefixes": []}  # S3 can return a page with no Contents
+
+    def put_object(self, *, Bucket, Key, Body, ContentType):
+        assert Bucket == self.bucket
+        self.writes.append((Key, ContentType))
+        self.put(Key, Body, self.written_at)
 
     def get_object(self, *, Bucket, Key):
         assert Bucket == self.bucket

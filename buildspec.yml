@@ -390,6 +390,38 @@ phases:
           fs_exclude_args=(--exclude "responsible_ai_grc_security_report_*.csv")
         fi
 
+        # "Changes since last assessment" report (assessment_history package,
+        # EnableAssessmentHistory setting). Called once in each branch below,
+        # after the existing reports. It can never fail the build: problems are
+        # printed as WARNING lines, the tool handles each account separately and
+        # exits 0, and the step has a time limit. It only reads the failure
+        # ledger and never writes to it.
+        run_changes_report() {
+          local enabled
+          enabled="$(echo "${ENABLE_ASSESSMENT_HISTORY:-true}" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$enabled" == "false" ]]; then
+            echo "Changes report disabled (EnableAssessmentHistory=false)"
+            return 0
+          fi
+          if [[ "$enabled" != "true" ]]; then
+            echo "WARNING: ENABLE_ASSESSMENT_HISTORY is '$ENABLE_ASSESSMENT_HISTORY', not true or false; using true"
+          fi
+          # Skip when little build time is left, so this step can't push the
+          # build past its CodeBuild timeout (CODEBUILD_START_TIME is in ms).
+          if [[ -n "${CODEBUILD_START_TIME:-}" ]]; then
+            local seconds_left=$(( ${BUILD_TIMEOUT_MINUTES:-60} * 60 - ( $(date +%s) - CODEBUILD_START_TIME / 1000 ) ))
+            if (( seconds_left < 360 )); then
+              echo "WARNING: Changes report skipped: only ${seconds_left}s of build time left"
+              return 0
+            fi
+          fi
+          echo "Creating changes-since-last-assessment reports..."
+          if ! (cd .. && ENABLE_ASSESSMENT_HISTORY=true timeout 300 python3 -m assessment_history compare --bucket "$BUCKET_REPORT" --time-budget 300 "$@"); then
+            echo "WARNING: The changes report step did not complete; assessment results are not affected"
+          fi
+          return 0
+        }
+
         # Derive how long to wait for Step Function completion from the overall
         # CodeBuild timeout, reserving a buffer for the build/deploy work that runs
         # before this loop and the report processing that runs after it. An explicit
@@ -615,6 +647,8 @@ phases:
             fi
           fi
 
+          run_changes_report --accounts "$account_list" --execution-arn-dir /tmp/execution_arns --failures-file "$ASSESSMENT_FAILURES_FILE"
+
           if [[ -s "$ASSESSMENT_FAILURES_FILE" ]]; then
             echo "==========================================="
             echo "Multi-account assessment incomplete"
@@ -691,6 +725,12 @@ phases:
             fi
           else
             echo "WARNING: Could not determine assessment bucket from stack outputs"
+          fi
+
+          if [[ $sf_failed == true ]]; then
+            echo "Changes report skipped: the assessment run did not succeed"
+          else
+            run_changes_report --accounts "$AWS_ACCOUNT_ID" --execution-id "${EXECUTION_ARN##*:}"
           fi
 
           if [[ $sf_failed == true ]]; then

@@ -16,6 +16,7 @@ Metadata:
           - EnableResponsibleAIGRCAssessment
           - EnableFinServAssessment
           - EnableOWASPAssessment
+          - EnableAssessmentHistory
       - Label:
           default: Advanced Options
         Parameters:
@@ -52,6 +53,8 @@ Metadata:
         default: Responsible AI GRC checks (legacy parameter name; see option above)
       EnableOWASPAssessment:
         default: OWASP Top 10 for LLM checks
+      EnableAssessmentHistory:
+        default: Changes since last assessment report
       CodeBuildTimeout:
         default: CodeBuild timeout in minutes
       GitHubRepoUrl:
@@ -175,6 +178,17 @@ Parameters:
     Type: String
     AllowedValues: ["true", "false"]
     Default: "false"
+
+  EnableAssessmentHistory:
+    Description: >
+      After each run, compare each account's results with its previous
+      complete run and write a "Changes since last assessment" report next to
+      that run's report in the results bucket. The first run has nothing to
+      compare with and is skipped. The comparison never fails the assessment
+      run.
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
 
   RequireBedrockZeroDataRetention:
     Type: String
@@ -516,6 +530,9 @@ Resources:
             Type: PLAINTEXT
           - Name: ENABLE_OWASP
             Value: !Ref EnableOWASPAssessment
+            Type: PLAINTEXT
+          - Name: ENABLE_ASSESSMENT_HISTORY
+            Value: !Ref EnableAssessmentHistory
             Type: PLAINTEXT
           - Name: ENABLE_FINSERV
             Value: !Ref EnableFinServAssessment
