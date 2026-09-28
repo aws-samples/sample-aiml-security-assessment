@@ -60,6 +60,7 @@ The framework generates professional, interactive security assessment reports wi
 - **Text Search** across all findings with real-time results
 - **Direct AWS Documentation Links** for each finding with remediation guidance
 - **Multi-Account Support** with consolidated reporting across your organization
+- **[Changes Since Last Assessment](docs/ASSESSMENT_HISTORY.md)** after every run: what was resolved, regressed, is new, or no longer appears since the account's previous run
 - **Fully Automated** deployment and execution through AWS CloudFormation and AWS CodeBuild
 
 ---
@@ -517,6 +518,19 @@ The "By Compliance Standard" section is **extensible**: adding NIST AI RMF (`Ena
 - **Heuristic and advisory checks.** Some controls cannot be verified through an API (application-layer controls, dataset contents, resource associations); these are reported as `ADVISORY`/`N/A` and require manual review. See [How finding severities are determined](#how-finding-severities-are-determined).
 - **Permissions.** A check that lacks an IAM permission is reported as `COULD NOT ASSESS` (not a failure). Re-run CodeBuild after updating either SAM template so the revised per-Lambda execution roles are deployed. Update the member-role StackSet only when `deployment/1-aiml-security-member-roles.yaml` itself changes.
 
+### Changes Since Last Assessment (`EnableAssessmentHistory`)
+
+After each run, the framework compares each account's findings with that
+account's previous complete run and writes
+`security_assessment_changes_<timestamp>.html` and `.csv` next to the run's
+main report. Each finding is labeled Resolved, Still open, Regressed, New, No
+longer reported, or No longer assessed. This is **on by default**; set the
+`EnableAssessmentHistory` deployment parameter to `false` to turn it off. The
+first run of an account has nothing to compare with and is skipped. The
+comparison reads only the findings CSVs already in the bucket and can't fail an
+assessment run. See [Changes Since Last Assessment](docs/ASSESSMENT_HISTORY.md)
+for how runs are chosen and matched, and how to read the report.
+
 For detailed architecture, execution flow, and extension guidance, see the [Developer Guide](docs/DEVELOPER_GUIDE.md).
 
 ---
@@ -527,6 +541,7 @@ For detailed architecture, execution flow, and extension guidance, see the [Deve
 2. Navigate to that S3 bucket
 3. For single-account, open `{account_id}/security_assessment_single_account_*.html`
 4. For multi-account, open `consolidated-reports/security_assessment_multi_account_*.html`
+5. To see what changed since an account's previous run, open `{account_id}/security_assessment_changes_*.html` (see [Changes Since Last Assessment](docs/ASSESSMENT_HISTORY.md))
 
 ### Assessment Execution Process
 
@@ -620,6 +635,10 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
     `EnableOWASPAssessment` is enabled)
   - `permissions_cache_{execution_id}.json` - IAM permissions cache
   - `security_assessment_single_account_{timestamp}.html` - Consolidated HTML report (same features as multi-account report)
+  - `security_assessment_changes_{timestamp}.html` and `.csv` - Changes since the
+    account's previous run (from the second run on; present unless
+    `EnableAssessmentHistory` is `false`). See
+    [Changes Since Last Assessment](docs/ASSESSMENT_HISTORY.md).
 
 ### Understanding Results
 
@@ -695,6 +714,7 @@ If you need to reduce scope, review the role policies in:
 | [Responsible AI GRC Severity Methodology](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md) | Likelihood × Impact → ASFF severity model, disposition rules, and research basis for FS check severities |
 | [Responsible AI GRC Severity Register](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md) | Authoritative per-finding severity assignments (the single source of truth enforced by the drift-guard test) |
 | [Responsible AI GRC Compliance Mappings](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md#compliance-framework-mapping) | Preliminary mapping of FS checks to SR 11-7, FFIEC CAT, NYDFS 500, PCI-DSS, DORA, MAS TRM, ISO 27001, ECOA, and OWASP LLM Top 10 |
+| [Changes Since Last Assessment](docs/ASSESSMENT_HISTORY.md) | How each run is compared with the previous run, the change states, the report, and the `EnableAssessmentHistory` setting |
 | [Troubleshooting Guide](docs/TROUBLESHOOTING.md) | Common issues, stack identification, upgrade guide, debugging |
 | [Developer Guide](docs/DEVELOPER_GUIDE.md) | Architecture details, adding custom checks, and contributing |
 | [Cleanup Guide](docs/CLEANUP.md) | Step-by-step resource removal instructions |

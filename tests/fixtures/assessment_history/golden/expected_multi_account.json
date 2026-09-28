@@ -1,0 +1,748 @@
+{
+ "111122223333": {
+  "previous_execution_id": "2f6c1a7e-5b3d-4e8a-9c0f-000000000903",
+  "current_execution_id": "2f6c1a7e-5b3d-4e8a-9c0f-000000000927",
+  "days_apart": 24,
+  "tile_counts": {
+   "Regressed": 1,
+   "New": 2,
+   "Still open": 97,
+   "Resolved": 2,
+   "No longer reported": 1,
+   "No longer assessed": 1,
+   "Not failing": 228
+  },
+  "counts_by_area": {
+   "bedrock": {
+    "New": 1,
+    "Still open": 46,
+    "No longer reported": 1,
+    "Not failing": 100
+   },
+   "sagemaker": {
+    "Regressed": 1,
+    "Still open": 20,
+    "No longer assessed": 1,
+    "Not failing": 79
+   },
+   "agentcore": {
+    "Still open": 31,
+    "Resolved": 2,
+    "Not failing": 30
+   },
+   "agent-registry": {
+    "New": 1,
+    "Not failing": 19
+   },
+   "agentic": {
+    "Still open": 48,
+    "Resolved": 1,
+    "Not failing": 84
+   },
+   "responsible-ai-grc": {
+    "Still open": 29,
+    "Not failing": 39
+   },
+   "owasp": {
+    "Still open": 76,
+    "Resolved": 1,
+    "No longer reported": 1,
+    "No longer assessed": 2,
+    "Not failing": 148
+   }
+  },
+  "not_compared_modules": {},
+  "not_compared_regions": {},
+  "single_run_check_ids": {},
+  "rows": [
+   {
+    "area": "bedrock",
+    "region": "Global",
+    "check_id": "BR-03",
+    "finding": "Marketplace Subscription Access Check",
+    "change": "New",
+    "match_rule": "unmatched",
+    "previous_status": "Not present",
+    "current_status": "Failed",
+    "severity": "High",
+    "previous_details": null,
+    "current_details": "Role 'sample-new-app-role' has overly permissive marketplace subscription access through policy 'AWSMarketplaceFullAccess'"
+   },
+   {
+    "area": "bedrock",
+    "region": "us-west-2",
+    "check_id": "BR-37",
+    "finding": "Bedrock Account Data Retention",
+    "change": "No longer reported",
+    "match_rule": "unmatched",
+    "previous_status": "Failed",
+    "current_status": "Not present",
+    "severity": "High",
+    "previous_details": "Bedrock account data retention is inherit; this does not establish an explicit account-level zero-data-retention setting.",
+    "current_details": null
+   },
+   {
+    "area": "sagemaker",
+    "region": "us-east-1",
+    "check_id": "SM-04",
+    "finding": "GuardDuty Enabled",
+    "change": "Regressed",
+    "match_rule": "single-row",
+    "previous_status": "Passed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "Amazon GuardDuty is properly enabled and monitoring for security threats in SageMaker workloads.",
+    "current_details": "Amazon GuardDuty is not enabled, so threats to SageMaker workloads in this Region are not monitored."
+   },
+   {
+    "area": "sagemaker",
+    "region": "us-east-2",
+    "check_id": "SM-26",
+    "finding": "GuardDuty AI Protection",
+    "change": "No longer assessed",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "N/A",
+    "severity": "High",
+    "previous_details": "GuardDuty is enabled, but the AI Protection detector feature is not enabled.",
+    "current_details": "GuardDuty AI Protection status could not be read: AccessDeniedException."
+   },
+   {
+    "area": "agentcore",
+    "region": "Global",
+    "check_id": "AC-03",
+    "finding": "AgentCore Stale Access",
+    "change": "Still open",
+    "match_rule": "normalized",
+    "previous_status": "Failed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (255 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (255 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (255 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-w773pPsFWNsn' (138 days)",
+    "current_details": "The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (279 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (279 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (279 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-w773pPsFWNsn' (162 days)"
+   },
+   {
+    "area": "agentcore",
+    "region": "Global",
+    "check_id": "AC-09",
+    "finding": "AgentCore Service-Linked Role Missing",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "Medium",
+    "previous_details": "Service-linked role 'AWSServiceRoleForBedrockAgentCoreNetwork' does not exist. VPC configuration for AgentCore Runtimes will fail without this role.",
+    "current_details": "Service-linked role 'AWSServiceRoleForBedrockAgentCoreNetwork' exists."
+   },
+   {
+    "area": "agentcore",
+    "region": "us-east-1",
+    "check_id": "AC-14",
+    "finding": "AgentCore Identity Token Vault CMK Encryption",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "High",
+    "previous_details": "AgentCore token vault 'default' uses a service-managed or AWS-owned key.",
+    "current_details": "AgentCore token vault 'default' uses a customer-managed KMS key."
+   },
+   {
+    "area": "agent-registry",
+    "region": "Global",
+    "check_id": "AR-02",
+    "finding": "AWS Agent Registry Unused Permissions",
+    "change": "New",
+    "match_rule": "single-row",
+    "previous_status": "N/A",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "The following principals have AWS Agent Registry permissions but no service-last-accessed evidence: role 'AIMLSecurityMemberRole'",
+    "current_details": "The following principals have AWS Agent Registry permissions they have not used: role 'sample-registry-role'"
+   },
+   {
+    "area": "agentic",
+    "region": "Global",
+    "check_id": "AG-17",
+    "finding": "Agentic AI Stale AgentCore Access",
+    "change": "Still open",
+    "match_rule": "normalized",
+    "previous_status": "Failed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (255 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (255 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (255 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-w773pPsFWNsn' (138 days)",
+    "current_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (279 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (279 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (279 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-w773pPsFWNsn' (162 days)"
+   },
+   {
+    "area": "agentic",
+    "region": "us-east-1",
+    "check_id": "AG-28",
+    "finding": "Agentic AI Identity Token Vault Protection",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "High",
+    "previous_details": "Agentic AI security domain: Agent Identity & Access. Agent credentials stored in the Identity token vault should use customer-controlled encryption where enhanced key control is required. Source check AC-14: AgentCore token vault 'default' uses a service-managed or AWS-owned key.",
+    "current_details": "Agentic AI security domain: Agent Identity & Access. Agent credentials stored in the Identity token vault should use customer-controlled encryption where enhanced key control is required. Source check AC-14: AgentCore token vault 'default' uses a customer-managed KMS key."
+   },
+   {
+    "area": "responsible-ai-grc",
+    "region": "Global",
+    "check_id": "FS-31",
+    "finding": "Knowledge Base Data Sources Past Review Threshold",
+    "change": "Still open",
+    "match_rule": "normalized",
+    "previous_status": "Failed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-qpvuv-data-source' last completed ingestion 732 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 255 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
+    "current_details": "2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-qpvuv-data-source' last completed ingestion 756 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 279 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
+   },
+   {
+    "area": "owasp",
+    "region": "Global",
+    "check_id": "OW-09",
+    "finding": "OWASP LLM09: Knowledge-Base Ingestion Freshness",
+    "change": "Still open",
+    "match_rule": "normalized",
+    "previous_status": "Failed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-qpvuv-data-source' last completed ingestion 732 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 255 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
+    "current_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-qpvuv-data-source' last completed ingestion 756 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 279 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
+   },
+   {
+    "area": "owasp",
+    "region": "us-east-1",
+    "check_id": "OW-02",
+    "finding": "OWASP LLM02: AgentCore Token Vault CMK Encryption",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM02:2025 Sensitive Information Disclosure. Source check AC-14: AgentCore token vault 'default' uses a service-managed or AWS-owned key.",
+    "current_details": "OWASP category: LLM02:2025 Sensitive Information Disclosure. Source check AC-14: AgentCore token vault 'default' uses a customer-managed KMS key."
+   },
+   {
+    "area": "owasp",
+    "region": "us-east-2",
+    "check_id": "OW-01",
+    "finding": "OWASP LLM01: GuardDuty AI Protection",
+    "change": "No longer assessed",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "N/A",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM01:2025 Prompt Injection. Source check SM-26: GuardDuty is enabled, but the AI Protection detector feature is not enabled.",
+    "current_details": "OWASP category: LLM01:2025 Prompt Injection. Source check SM-26: GuardDuty AI Protection status could not be read: AccessDeniedException."
+   },
+   {
+    "area": "owasp",
+    "region": "us-east-2",
+    "check_id": "OW-10",
+    "finding": "OWASP LLM10: GuardDuty AI Protection",
+    "change": "No longer assessed",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "N/A",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM10:2025 Unbounded Consumption. Source check SM-26: GuardDuty is enabled, but the AI Protection detector feature is not enabled.",
+    "current_details": "OWASP category: LLM10:2025 Unbounded Consumption. Source check SM-26: GuardDuty AI Protection status could not be read: AccessDeniedException."
+   },
+   {
+    "area": "owasp",
+    "region": "us-west-2",
+    "check_id": "OW-02",
+    "finding": "OWASP LLM02: Bedrock Data Retention Boundary",
+    "change": "No longer reported",
+    "match_rule": "unmatched",
+    "previous_status": "Failed",
+    "current_status": "Not present",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM02:2025 Sensitive Information Disclosure. Source check BR-37: Bedrock account data retention is inherit; this does not establish an explicit account-level zero-data-retention setting.",
+    "current_details": null
+   }
+  ]
+ },
+ "444455556666": {
+  "previous_execution_id": "2f6c1a7e-5b3d-4e8a-9c0f-000000000903",
+  "current_execution_id": "2f6c1a7e-5b3d-4e8a-9c0f-000000000927",
+  "days_apart": 24,
+  "tile_counts": {
+   "Regressed": 2,
+   "New": 1,
+   "Still open": 11,
+   "Resolved": 2,
+   "No longer reported": 1,
+   "No longer assessed": 1,
+   "Not failing": 253
+  },
+  "counts_by_area": {
+   "bedrock": {
+    "Regressed": 1,
+    "Still open": 2,
+    "No longer reported": 1,
+    "Not failing": 107
+   },
+   "sagemaker": {
+    "Regressed": 1,
+    "Still open": 5,
+    "No longer assessed": 1,
+    "Not failing": 87
+   },
+   "agentcore": {
+    "Still open": 4,
+    "Resolved": 2,
+    "Not failing": 40
+   },
+   "agent-registry": {
+    "New": 1,
+    "Not failing": 19
+   },
+   "agentic": {
+    "Still open": 4,
+    "Resolved": 1,
+    "Not failing": 104
+   },
+   "responsible-ai-grc": {
+    "Still open": 18,
+    "Not failing": 51
+   },
+   "owasp": {
+    "Still open": 21,
+    "Resolved": 1,
+    "No longer reported": 1,
+    "No longer assessed": 2,
+    "Not failing": 179
+   }
+  },
+  "not_compared_modules": {},
+  "not_compared_regions": {},
+  "single_run_check_ids": {},
+  "rows": [
+   {
+    "area": "bedrock",
+    "region": "Global",
+    "check_id": "BR-03",
+    "finding": "Marketplace Subscription Access Check",
+    "change": "Regressed",
+    "match_rule": "single-row",
+    "previous_status": "Passed",
+    "current_status": "Failed",
+    "severity": "High",
+    "previous_details": "No identities found with overly permissive marketplace subscription access",
+    "current_details": "Role 'sample-new-app-role' has overly permissive marketplace subscription access through policy 'AWSMarketplaceFullAccess'"
+   },
+   {
+    "area": "bedrock",
+    "region": "us-west-2",
+    "check_id": "BR-37",
+    "finding": "Bedrock Account Data Retention",
+    "change": "No longer reported",
+    "match_rule": "unmatched",
+    "previous_status": "Failed",
+    "current_status": "Not present",
+    "severity": "High",
+    "previous_details": "Bedrock account data retention is inherit; this does not establish an explicit account-level zero-data-retention setting.",
+    "current_details": null
+   },
+   {
+    "area": "sagemaker",
+    "region": "us-east-1",
+    "check_id": "SM-04",
+    "finding": "GuardDuty Enabled",
+    "change": "Regressed",
+    "match_rule": "single-row",
+    "previous_status": "Passed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "Amazon GuardDuty is properly enabled and monitoring for security threats in SageMaker workloads.",
+    "current_details": "Amazon GuardDuty is not enabled, so threats to SageMaker workloads in this Region are not monitored."
+   },
+   {
+    "area": "sagemaker",
+    "region": "us-east-2",
+    "check_id": "SM-26",
+    "finding": "GuardDuty AI Protection",
+    "change": "No longer assessed",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "N/A",
+    "severity": "High",
+    "previous_details": "GuardDuty is enabled, but the AI Protection detector feature is not enabled.",
+    "current_details": "GuardDuty AI Protection status could not be read: AccessDeniedException."
+   },
+   {
+    "area": "agentcore",
+    "region": "Global",
+    "check_id": "AC-03",
+    "finding": "AgentCore Stale Access",
+    "change": "Still open",
+    "match_rule": "normalized",
+    "previous_status": "Failed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-2AEt2MTxg4AU' (138 days)",
+    "current_details": "The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-2AEt2MTxg4AU' (162 days)"
+   },
+   {
+    "area": "agentcore",
+    "region": "Global",
+    "check_id": "AC-09",
+    "finding": "AgentCore Service-Linked Role Missing",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "Medium",
+    "previous_details": "Service-linked role 'AWSServiceRoleForBedrockAgentCoreNetwork' does not exist. VPC configuration for AgentCore Runtimes will fail without this role.",
+    "current_details": "Service-linked role 'AWSServiceRoleForBedrockAgentCoreNetwork' exists."
+   },
+   {
+    "area": "agentcore",
+    "region": "us-east-1",
+    "check_id": "AC-14",
+    "finding": "AgentCore Identity Token Vault CMK Encryption",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "High",
+    "previous_details": "AgentCore token vault 'default' uses a service-managed or AWS-owned key.",
+    "current_details": "AgentCore token vault 'default' uses a customer-managed KMS key."
+   },
+   {
+    "area": "agent-registry",
+    "region": "Global",
+    "check_id": "AR-02",
+    "finding": "AWS Agent Registry Unused Permissions",
+    "change": "New",
+    "match_rule": "single-row",
+    "previous_status": "N/A",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "The following principals have AWS Agent Registry permissions but no service-last-accessed evidence: role 'AIMLSecurityMemberRole'",
+    "current_details": "The following principals have AWS Agent Registry permissions they have not used: role 'sample-registry-role'"
+   },
+   {
+    "area": "agentic",
+    "region": "Global",
+    "check_id": "AG-17",
+    "finding": "Agentic AI Stale AgentCore Access",
+    "change": "Still open",
+    "match_rule": "normalized",
+    "previous_status": "Failed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-2AEt2MTxg4AU' (138 days)",
+    "current_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-2AEt2MTxg4AU' (162 days)"
+   },
+   {
+    "area": "agentic",
+    "region": "us-east-1",
+    "check_id": "AG-28",
+    "finding": "Agentic AI Identity Token Vault Protection",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "High",
+    "previous_details": "Agentic AI security domain: Agent Identity & Access. Agent credentials stored in the Identity token vault should use customer-controlled encryption where enhanced key control is required. Source check AC-14: AgentCore token vault 'default' uses a service-managed or AWS-owned key.",
+    "current_details": "Agentic AI security domain: Agent Identity & Access. Agent credentials stored in the Identity token vault should use customer-controlled encryption where enhanced key control is required. Source check AC-14: AgentCore token vault 'default' uses a customer-managed KMS key."
+   },
+   {
+    "area": "owasp",
+    "region": "us-east-1",
+    "check_id": "OW-02",
+    "finding": "OWASP LLM02: AgentCore Token Vault CMK Encryption",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM02:2025 Sensitive Information Disclosure. Source check AC-14: AgentCore token vault 'default' uses a service-managed or AWS-owned key.",
+    "current_details": "OWASP category: LLM02:2025 Sensitive Information Disclosure. Source check AC-14: AgentCore token vault 'default' uses a customer-managed KMS key."
+   },
+   {
+    "area": "owasp",
+    "region": "us-east-2",
+    "check_id": "OW-01",
+    "finding": "OWASP LLM01: GuardDuty AI Protection",
+    "change": "No longer assessed",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "N/A",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM01:2025 Prompt Injection. Source check SM-26: GuardDuty is enabled, but the AI Protection detector feature is not enabled.",
+    "current_details": "OWASP category: LLM01:2025 Prompt Injection. Source check SM-26: GuardDuty AI Protection status could not be read: AccessDeniedException."
+   },
+   {
+    "area": "owasp",
+    "region": "us-east-2",
+    "check_id": "OW-10",
+    "finding": "OWASP LLM10: GuardDuty AI Protection",
+    "change": "No longer assessed",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "N/A",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM10:2025 Unbounded Consumption. Source check SM-26: GuardDuty is enabled, but the AI Protection detector feature is not enabled.",
+    "current_details": "OWASP category: LLM10:2025 Unbounded Consumption. Source check SM-26: GuardDuty AI Protection status could not be read: AccessDeniedException."
+   },
+   {
+    "area": "owasp",
+    "region": "us-west-2",
+    "check_id": "OW-02",
+    "finding": "OWASP LLM02: Bedrock Data Retention Boundary",
+    "change": "No longer reported",
+    "match_rule": "unmatched",
+    "previous_status": "Failed",
+    "current_status": "Not present",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM02:2025 Sensitive Information Disclosure. Source check BR-37: Bedrock account data retention is inherit; this does not establish an explicit account-level zero-data-retention setting.",
+    "current_details": null
+   }
+  ]
+ },
+ "777788889999": {
+  "previous_execution_id": "2f6c1a7e-5b3d-4e8a-9c0f-000000000903",
+  "current_execution_id": "2f6c1a7e-5b3d-4e8a-9c0f-000000000927",
+  "days_apart": 24,
+  "tile_counts": {
+   "Regressed": 1,
+   "New": 2,
+   "Still open": 38,
+   "Resolved": 2,
+   "No longer reported": 1,
+   "No longer assessed": 1,
+   "Not failing": 233
+  },
+  "counts_by_area": {
+   "bedrock": {
+    "New": 1,
+    "Still open": 10,
+    "No longer reported": 1,
+    "Not failing": 98
+   },
+   "sagemaker": {
+    "Regressed": 1,
+    "Still open": 23,
+    "No longer assessed": 1,
+    "Not failing": 78
+   },
+   "agentcore": {
+    "Still open": 5,
+    "Resolved": 2,
+    "Not failing": 38
+   },
+   "agent-registry": {
+    "New": 1,
+    "Not failing": 19
+   },
+   "agentic": {
+    "Still open": 7,
+    "Resolved": 1,
+    "Not failing": 97
+   },
+   "responsible-ai-grc": {
+    "Still open": 22,
+    "Not failing": 46
+   },
+   "owasp": {
+    "Still open": 43,
+    "Resolved": 1,
+    "No longer reported": 1,
+    "No longer assessed": 2,
+    "Not failing": 162
+   }
+  },
+  "not_compared_modules": {},
+  "not_compared_regions": {},
+  "single_run_check_ids": {},
+  "rows": [
+   {
+    "area": "bedrock",
+    "region": "Global",
+    "check_id": "BR-03",
+    "finding": "Marketplace Subscription Access Check",
+    "change": "New",
+    "match_rule": "unmatched",
+    "previous_status": "Not present",
+    "current_status": "Failed",
+    "severity": "High",
+    "previous_details": null,
+    "current_details": "Role 'sample-new-app-role' has overly permissive marketplace subscription access through policy 'AWSMarketplaceFullAccess'"
+   },
+   {
+    "area": "bedrock",
+    "region": "us-west-2",
+    "check_id": "BR-37",
+    "finding": "Bedrock Account Data Retention",
+    "change": "No longer reported",
+    "match_rule": "unmatched",
+    "previous_status": "Failed",
+    "current_status": "Not present",
+    "severity": "High",
+    "previous_details": "Bedrock account data retention is inherit; this does not establish an explicit account-level zero-data-retention setting.",
+    "current_details": null
+   },
+   {
+    "area": "sagemaker",
+    "region": "us-east-1",
+    "check_id": "SM-04",
+    "finding": "GuardDuty Enabled",
+    "change": "Regressed",
+    "match_rule": "single-row",
+    "previous_status": "Passed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "Amazon GuardDuty is properly enabled and monitoring for security threats in SageMaker workloads.",
+    "current_details": "Amazon GuardDuty is not enabled, so threats to SageMaker workloads in this Region are not monitored."
+   },
+   {
+    "area": "sagemaker",
+    "region": "us-east-2",
+    "check_id": "SM-26",
+    "finding": "GuardDuty AI Protection",
+    "change": "No longer assessed",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "N/A",
+    "severity": "High",
+    "previous_details": "GuardDuty is enabled, but the AI Protection detector feature is not enabled.",
+    "current_details": "GuardDuty AI Protection status could not be read: AccessDeniedException."
+   },
+   {
+    "area": "agentcore",
+    "region": "Global",
+    "check_id": "AC-09",
+    "finding": "AgentCore Service-Linked Role Missing",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "Medium",
+    "previous_details": "Service-linked role 'AWSServiceRoleForBedrockAgentCoreNetwork' does not exist. VPC configuration for AgentCore Runtimes will fail without this role.",
+    "current_details": "Service-linked role 'AWSServiceRoleForBedrockAgentCoreNetwork' exists."
+   },
+   {
+    "area": "agentcore",
+    "region": "us-east-1",
+    "check_id": "AC-14",
+    "finding": "AgentCore Identity Token Vault CMK Encryption",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "High",
+    "previous_details": "AgentCore token vault 'default' uses a service-managed or AWS-owned key.",
+    "current_details": "AgentCore token vault 'default' uses a customer-managed KMS key."
+   },
+   {
+    "area": "agent-registry",
+    "region": "Global",
+    "check_id": "AR-02",
+    "finding": "AWS Agent Registry Unused Permissions",
+    "change": "New",
+    "match_rule": "single-row",
+    "previous_status": "N/A",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "The following principals have AWS Agent Registry permissions but no service-last-accessed evidence: role 'AIMLSecurityMemberRole'",
+    "current_details": "The following principals have AWS Agent Registry permissions they have not used: role 'sample-registry-role'"
+   },
+   {
+    "area": "agentic",
+    "region": "us-east-1",
+    "check_id": "AG-28",
+    "finding": "Agentic AI Identity Token Vault Protection",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "High",
+    "previous_details": "Agentic AI security domain: Agent Identity & Access. Agent credentials stored in the Identity token vault should use customer-controlled encryption where enhanced key control is required. Source check AC-14: AgentCore token vault 'default' uses a service-managed or AWS-owned key.",
+    "current_details": "Agentic AI security domain: Agent Identity & Access. Agent credentials stored in the Identity token vault should use customer-controlled encryption where enhanced key control is required. Source check AC-14: AgentCore token vault 'default' uses a customer-managed KMS key."
+   },
+   {
+    "area": "responsible-ai-grc",
+    "region": "Global",
+    "check_id": "FS-31",
+    "finding": "Knowledge Base Data Sources Past Review Threshold",
+    "change": "Still open",
+    "match_rule": "normalized",
+    "previous_status": "Failed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-9lb68-data-source' last completed ingestion 478 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
+    "current_details": "1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-9lb68-data-source' last completed ingestion 502 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
+   },
+   {
+    "area": "owasp",
+    "region": "Global",
+    "check_id": "OW-09",
+    "finding": "OWASP LLM09: Knowledge-Base Ingestion Freshness",
+    "change": "Still open",
+    "match_rule": "normalized",
+    "previous_status": "Failed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-9lb68-data-source' last completed ingestion 478 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
+    "current_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-9lb68-data-source' last completed ingestion 502 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
+   },
+   {
+    "area": "owasp",
+    "region": "us-east-1",
+    "check_id": "OW-02",
+    "finding": "OWASP LLM02: AgentCore Token Vault CMK Encryption",
+    "change": "Resolved",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Passed",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM02:2025 Sensitive Information Disclosure. Source check AC-14: AgentCore token vault 'default' uses a service-managed or AWS-owned key.",
+    "current_details": "OWASP category: LLM02:2025 Sensitive Information Disclosure. Source check AC-14: AgentCore token vault 'default' uses a customer-managed KMS key."
+   },
+   {
+    "area": "owasp",
+    "region": "us-east-2",
+    "check_id": "OW-01",
+    "finding": "OWASP LLM01: GuardDuty AI Protection",
+    "change": "No longer assessed",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "N/A",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM01:2025 Prompt Injection. Source check SM-26: GuardDuty is enabled, but the AI Protection detector feature is not enabled.",
+    "current_details": "OWASP category: LLM01:2025 Prompt Injection. Source check SM-26: GuardDuty AI Protection status could not be read: AccessDeniedException."
+   },
+   {
+    "area": "owasp",
+    "region": "us-east-2",
+    "check_id": "OW-10",
+    "finding": "OWASP LLM10: GuardDuty AI Protection",
+    "change": "No longer assessed",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "N/A",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM10:2025 Unbounded Consumption. Source check SM-26: GuardDuty is enabled, but the AI Protection detector feature is not enabled.",
+    "current_details": "OWASP category: LLM10:2025 Unbounded Consumption. Source check SM-26: GuardDuty AI Protection status could not be read: AccessDeniedException."
+   },
+   {
+    "area": "owasp",
+    "region": "us-west-2",
+    "check_id": "OW-02",
+    "finding": "OWASP LLM02: Bedrock Data Retention Boundary",
+    "change": "No longer reported",
+    "match_rule": "unmatched",
+    "previous_status": "Failed",
+    "current_status": "Not present",
+    "severity": "High",
+    "previous_details": "OWASP category: LLM02:2025 Sensitive Information Disclosure. Source check BR-37: Bedrock account data retention is inherit; this does not establish an explicit account-level zero-data-retention setting.",
+    "current_details": null
+   }
+  ]
+ }
+}

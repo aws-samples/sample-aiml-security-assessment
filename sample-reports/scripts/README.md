@@ -2,6 +2,36 @@
 
 This directory contains utility scripts for development and documentation.
 
+## Changes Sample Builder
+
+`build_changes_sample.py` builds `sample-reports/security_assessment_changes.html`
+and `.csv`, and the golden test data for the changes-since-last-assessment report
+(`tests/fixtures/assessment_history/golden/`) from the two sample reports. It
+needs only the standard library and the repository's `assessment_history`
+package.
+
+```bash
+# Write the sample and the golden data
+.venv/bin/python sample-reports/scripts/build_changes_sample.py
+
+# Verify only; exits 1 if anything is out of date
+.venv/bin/python sample-reports/scripts/build_changes_sample.py --check
+```
+
+## Changes Screenshot
+
+`capture_changes_screenshot.py` captures `sample-reports/changes-overview.png`
+from the sample changes page. It reuses `capture_screenshots.py`'s browser
+setup and image optimization but captures only this page, and it doesn't
+rewrite any report: it stops if the page holds a 12-digit number that isn't
+one of the placeholder account IDs.
+
+```bash
+./sample-reports/scripts/capture_changes_screenshot.py
+```
+
+Rerun it after regenerating a sample report, and review the diff.
+
 ## Screenshot Capture Tool
 
 `capture_screenshots.py` - Automated screenshot capture and optimization for documentation.

@@ -17,6 +17,25 @@ section.
   Disabled services skip their assessment Lambda and CSV requirements; reports
   label them Not selected and explain reduced Agentic AI / OWASP source coverage.
   Optional Responsible AI GRC and OWASP assessments remain independently enabled.
+- Added a "Changes since last assessment" report. After each run, every
+  account whose run completed gets
+  `security_assessment_changes_<YYYYMMDD_HHMMSS>.html` and `.csv` next to its
+  main report, comparing the run with the account's previous complete run and
+  labeling each finding Resolved, Still open, Regressed, New, No longer
+  reported, or No longer assessed. It reads only the existing findings CSVs,
+  runs in the CodeBuild post-build phase in both deployment modes, and can't
+  fail a run: problems are logged as warnings, and the step is skipped when
+  little build time is left. The first run of an account is skipped. See
+  `docs/ASSESSMENT_HISTORY.md`.
+- Added the `EnableAssessmentHistory` deployment parameter (default `true`) to
+  both deployment templates, passed to CodeBuild as
+  `ENABLE_ASSESSMENT_HISTORY`. Set it to `false` to turn the report off. A
+  CodeBuild project without the variable (a stack not yet updated) is treated
+  as `true`.
+- Added a sample changes report (`sample-reports/security_assessment_changes.html`
+  and `.csv`, with `changes-overview.png`), built from the single-account
+  sample by `sample-reports/scripts/build_changes_sample.py`; the screenshot
+  comes from `sample-reports/scripts/capture_changes_screenshot.py`.
 
 ### Fixed
 
@@ -38,6 +57,21 @@ section.
   required for this feature. Direct SAM users must redeploy `template.yaml` or
   `template-multi-account.yaml` with the desired `Enable*Assessment` parameters
   and start a new execution. All switches default to true on upgrade.
+- **Changes since last assessment report:**
+
+1. **Single-account infrastructure update optional** —
+   `deployment/aiml-security-single-account.yaml` adds the
+   `EnableAssessmentHistory` parameter. Update the stack first only if you want
+   to be able to turn the report off.
+2. **Multi-account central infrastructure update optional** —
+   `deployment/2-aiml-security-codebuild.yaml` adds the same parameter.
+3. **CodeBuild run required** because `buildspec.yml` changed and the new
+   `assessment_history/` package runs in the post-build phase. If
+   `GitHubBranch` pins a tag or commit, update it first. The first run after
+   upgrading is compared with the account's latest complete earlier run, if
+   one is in the bucket.
+
+No member-role StackSet update is required.
 
 These instructions assume the 2.0.0 prerequisites below are already applied.
 When upgrading from an earlier release, complete the 2.0.0 member-role and

@@ -116,7 +116,7 @@ def test_first_run_writes_nothing():
     assert (code, s3.writes) == (0, [])
     assert lines == [
         f"Changes report for account {ACCOUNT}",
-        f"  No previous run for account {ACCOUNT}; changes report skipped.",
+        f"  {cli.first_run_note(ACCOUNT)}",
     ]
 
 
@@ -257,7 +257,7 @@ def test_several_accounts_with_failures_missing_arns_and_notes(tmp_path):
         ),
         _cannot(MISSING, "no execution ARN was saved for the current run"),
         f"Changes report for account {MGMT}",
-        f"  No previous run for account {MGMT}; changes report skipped.",
+        f"  {cli.first_run_note(MGMT)}",
         "Skipped 'consolidated-reports': not an AWS account ID",
     ]
     assert ledger.read_text(encoding="utf-8") == ledger_text  # only read
@@ -292,7 +292,7 @@ def test_accounts_past_the_time_budget_get_a_warning(tmp_path):
     assert code == 0
     assert lines == [
         f"Changes report for account {ACCOUNT}",
-        f"  No previous run for account {ACCOUNT}; changes report skipped.",
+        f"  {cli.first_run_note(ACCOUNT)}",
         _cannot(OTHER_ACCOUNT, limit),
         _cannot(MGMT, limit),
     ]
@@ -609,4 +609,12 @@ def test_changes_file_name_takes_an_extension():
     )
     assert cli.changes_file_name(comparison, "html") == (
         "security_assessment_changes_20260927_061500.html"
+    )
+
+
+def test_first_run_note_explains_where_history_went():
+    assert cli.first_run_note(ACCOUNT) == (
+        f"No previous run for account {ACCOUNT}; changes report skipped. If this "
+        "stack was redeployed, or earlier results were moved or deleted, they "
+        "aren't compared. The next run will compare with this one."
     )

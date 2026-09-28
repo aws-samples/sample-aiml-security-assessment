@@ -95,6 +95,15 @@ def history_enabled(environ: Mapping[str, str], out: Output) -> bool:
     return True
 
 
+def first_run_note(account: str) -> str:
+    """The log line for an account with no complete earlier run."""
+    return (
+        f"No previous run for account {account}; changes report skipped. "
+        "If this stack was redeployed, or earlier results were moved or deleted, "
+        "they aren't compared. The next run will compare with this one."
+    )
+
+
 def changes_file_name(comparison: Comparison, extension: str = "csv") -> str:
     """Name of a changes file: the current run's saved time, in UTC."""
     saved = comparison.current_saved_at.astimezone(UTC)
@@ -229,7 +238,7 @@ def _compare_in_s3(client, bucket: str, account: str, execution_id: str, out: Ou
     for note in found.notes:
         out(f"  {note}")
     if found.previous is None:
-        out(f"  No previous run for account {account}; changes report skipped.")
+        out(f"  {first_run_note(account)}")
         return
     comparison = compare_runs(found.previous, found.current)
     page = changes_page(comparison, source.list_files())

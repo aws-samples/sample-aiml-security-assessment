@@ -35,6 +35,7 @@
   - [Shared Template Module](#shared-template-module)
   - [How It Works](#how-it-works)
   - [Modifying the Report Template](#modifying-the-report-template)
+- [Assessment History (Changes Since Last Assessment)](#assessment-history-changes-since-last-assessment)
 - [Extending or Adding Lenses](#extending-or-adding-lenses)
 - [Adding a Compliance Standard (OWASP-style)](#adding-a-compliance-standard-owasp-style)
 - [Documentation and Screenshots](#documentation-and-screenshots)
@@ -157,9 +158,11 @@ sample-aiml-security-assessment/
 │   ├── samconfig.toml                # SAM deployment configuration
 │   ├── envvars.json                  # Environment variables for local testing
 │   └── testfile.json                 # Test event file for local invocation
+├── assessment_history/               # Changes-since-last-assessment report (CodeBuild post-build)
 ├── deployment/                       # AWS CloudFormation templates
 ├── docs/                             # Documentation
 │   ├── DEVELOPER_GUIDE.md            # This guide
+│   ├── ASSESSMENT_HISTORY.md         # Changes since last assessment report
 │   ├── SECURITY_CHECKS.md            # Security checks reference (core + Agentic)
 │   ├── SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md  # Responsible AI GRC checks reference
 │   ├── SECURITY_CHECKS_OWASP.md      # OWASP Top 10 for LLM checks reference
@@ -170,7 +173,7 @@ sample-aiml-security-assessment/
 │   ├── diagrams/                     # Architecture diagrams
 │   └── icons/                        # AWS service icons
 ├── sample-reports/                   # Sample assessment reports
-│   ├── scripts/                      # Screenshot capture scripts
+│   ├── scripts/                      # Screenshot capture and changes-sample scripts
 │   ├── *.html                        # Sample HTML reports
 │   └── *.png                         # Report screenshots
 ├── tests/                            # Unit tests for assessment functions
@@ -868,6 +871,48 @@ To update report styling, layout, or features:
    - `generate_table_rows()` - Finding row generation
    - `generate_html_report()` - Main entry point with `mode` parameter ('single' or 'multi')
 
+## Assessment History (Changes Since Last Assessment)
+
+The `assessment_history/` package at the repository root compares each
+account's current run with its previous complete run and writes the changes
+report. `buildspec.yml` runs it in the post-build phase (`run_changes_report`),
+after the existing reports. It reads the findings CSVs in the central bucket
+and never fails the build. User-facing behavior is in
+[Changes Since Last Assessment](ASSESSMENT_HISTORY.md).
+
+| Module | Role |
+| --- | --- |
+| `models.py` | Record shapes, change states, area routing, CSV columns |
+| `normalize.py` | Day counts and dates blanked out before matching, each tied to the scanner code that writes it |
+| `compare.py` | Pairs two runs' rows and labels each; no AWS calls |
+| `discover.py` | Groups an account folder's CSVs into runs, picks the previous complete run, reads the CSVs |
+| `render_common.py`, `render_changes.py` | The HTML page, reusing `report_template.py`'s CSS, escaping, names, and icons |
+| `__main__.py` | `python3 -m assessment_history compare`: S3 mode for the build, local-folder mode for people |
+
+When you change something it depends on:
+
+- **A check that writes a day count or date into `Finding_Details`:** add a
+  pattern to `VOLATILE_PATTERNS` in `normalize.py`, or an `IGNORED_SOURCES`
+  entry with a reason. `tests/test_assessment_history_normalize.py` fails
+  until you do.
+- **A new findings CSV prefix or assessment area:** update `PREFIX_TO_MODULE`
+  in `discover.py` and the module and area lists in `models.py`. Files with an
+  unknown prefix are logged and not read.
+- **A new compliance standard:** `COMPLIANCE_PREFIX_TO_AREA` in `models.py`
+  must match `COMPLIANCE_STANDARDS` in `report_template.py`; a test checks it.
+- **`report_template.py`:** the changes page reuses its styling and helpers;
+  guard tests fail if something it relies on moves.
+- **A sample report:** rerun `sample-reports/scripts/build_changes_sample.py`
+  and review the diff.
+
+Run the package's tests with its 100% line and branch coverage bar:
+
+```bash
+.venv/bin/python -m pytest tests/test_assessment_history_*.py \
+  --cov=assessment_history --cov-branch --cov-report=term-missing \
+  --cov-fail-under=100
+```
+
 ## Extending or Adding Lenses
 
 The Agentic AI Security lens (AG-01 through AG-38) is **synthesized at runtime**, not produced by a separate scanner. It re-uses findings from the core Bedrock, AgentCore, and AWS Agent Registry assessments plus a small number of native gateway checks.
@@ -1136,6 +1181,21 @@ After generating new screenshots, update the README to reference them:
 ![Findings Table](../sample-reports/findings-table.png)
 *Interactive findings table with filtering capabilities*
 ```
+
+#### 4. Rebuild the Changes Sample
+
+The changes sample and the assessment-history golden test data are built from
+the two sample reports. After regenerating a sample report, run:
+
+```bash
+.venv/bin/python sample-reports/scripts/build_changes_sample.py
+```
+
+Review the diff under `sample-reports/` and
+`tests/fixtures/assessment_history/golden/`. `--check` verifies without writing.
+Then refresh its screenshot with
+`./sample-reports/scripts/capture_changes_screenshot.py`, which captures only
+the changes page and doesn't rewrite any report.
 
 ### Documentation Best Practices
 

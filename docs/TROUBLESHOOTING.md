@@ -282,6 +282,26 @@ for customer-facing results.
 - No data is lost — the S3 bucket retains all previous reports
 - Fully backward compatible — leaving `TargetRegions` empty preserves single-region behavior
 
+### 13. No "Changes Since Last Assessment" Report
+
+**Symptoms:** A run completed, but no `security_assessment_changes_*.html` or
+`.csv` appears in the account's folder.
+
+**Solution:** Search the CodeBuild log for `Changes report`. The line says why:
+
+| Log line | Cause | What to do |
+| --- | --- | --- |
+| `No previous run for account <id>; changes report skipped.` | First run for the account, or no complete earlier run in the bucket. Runs before release 2.0.0 count as incomplete; a redeployed stack starts with a new bucket. | Nothing; the next run is compared with this one |
+| `Skipped run <id> saved <time>: incomplete (...)` | An earlier run is missing files and was passed over | Nothing to fix |
+| `WARNING: Changes report cannot be completed for account <id>. Reason(s): ...` | The account's run failed, or its results couldn't be read | Fix the listed reason; the next successful run is compared with the last complete run |
+| `WARNING: Changes report skipped: only Ns of build time left` | The assessment used most of the CodeBuild timeout | Increase `CodeBuildTimeout` |
+| `Changes report skipped: the assessment run did not succeed` | The single-account run failed | See [AWS Step Functions Execution Failures](#4-aws-step-functions-execution-failures) |
+| `Changes report disabled (EnableAssessmentHistory=false)` | The setting is off | Set `EnableAssessmentHistory` to `true` |
+
+If the report compares with a run you didn't expect, check that no files were
+copied back into the account's folder. See
+[Re-runs, redeployments, and moved files](ASSESSMENT_HISTORY.md#re-runs-redeployments-and-moved-files).
+
 ---
 
 ## Upgrading to a New Release
@@ -689,6 +709,8 @@ aws events put-targets \
 ```
 
 The target role must trust `events.amazonaws.com` and allow `codebuild:StartBuild` on the assessment CodeBuild project. For new schedules, Amazon EventBridge Scheduler is also a good option.
+
+Every scheduled run also gets a [Changes Since Last Assessment](ASSESSMENT_HISTORY.md) report comparing it with the account's previous run.
 
 ---
 

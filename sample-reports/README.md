@@ -10,6 +10,7 @@ Interactive HTML reports demonstrating the assessment output:
 
 - **[security_assessment_single_account.html](security_assessment_single_account.html)** - Example report for a single AWS account showing 7 findings across Bedrock, SageMaker, and AgentCore
 - **[security_assessment_multi_account.html](security_assessment_multi_account.html)** - Example consolidated report for 3 AWS accounts showing 73 findings
+- **[security_assessment_changes.html](security_assessment_changes.html)** and [`.csv`](security_assessment_changes.csv) - Example "Changes since last assessment" report comparing the single-account sample with an edited copy of it (built by `scripts/build_changes_sample.py`; see [Changes Since Last Assessment](../docs/ASSESSMENT_HISTORY.md))
 - **[security_assessment_multi_account_agentic_prototype.html](security_assessment_multi_account_agentic_prototype.html)** - Prototype based on the existing multi-account report with an Agentic AI security overlay added to the same UI
 - **[agentic-ai-lens-prototype.html](agentic-ai-lens-prototype.html)** - Prototype report showing how security-scoped Agentic AI check and control-domain metadata could be added to the HTML experience
 
@@ -44,6 +45,7 @@ Screenshots used in the main README to showcase report features:
 | `dashboard-overview-dark.png` | Executive dashboard in dark mode |
 | `findings-table.png` | Interactive findings table with filters |
 | `multi-account-summary.png` | Multi-account consolidated view |
+| `changes-overview.png` | Changes since last assessment (captured by `scripts/capture_changes_screenshot.py`) |
 
 ### Developer Tools
 
