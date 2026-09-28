@@ -17,8 +17,9 @@ from unittest.mock import patch
 import pytest
 
 from assessment_history import __main__ as cli
-from assessment_history.discover import parse_report_name
+from assessment_history.discover import StoredFile, parse_report_name
 from assessment_history.models import CORE_MODULES, CSV_COLUMNS, Comparison
+from assessment_history.render_common import RenderError
 from tests.assessment_history_helpers import (
     ACCOUNT,
     OTHER_ACCOUNT,
@@ -33,6 +34,7 @@ BUCKET = "central-bucket"
 MGMT = "777788889999"
 MISSING = "444455556666"
 CHANGES_KEY = f"{ACCOUNT}/security_assessment_changes_20260927_000000.csv"
+CHANGES_PAGE_KEY = CHANGES_KEY.replace(".csv", ".html")
 
 
 def _run(argv, *, s3=None, environ=None, clock=None):
@@ -76,8 +78,12 @@ def test_single_account_writes_the_changes_csv():
     code, lines = _run(_single(), s3=s3)
 
     key = f"{ACCOUNT}/security_assessment_changes_20260927_061500.csv"
+    page_key = key.replace(".csv", ".html")
     assert code == 0
-    assert s3.writes == [(key, "text/csv; charset=utf-8")]
+    assert s3.writes == [
+        (key, "text/csv; charset=utf-8"),
+        (page_key, "text/html; charset=utf-8"),
+    ]
     assert lines == [
         f"Changes report for account {ACCOUNT}",
         "  Compared run run-c (saved 2026-09-27T06:15:00Z) with run run-p "
@@ -85,7 +91,12 @@ def test_single_account_writes_the_changes_csv():
         "  Bedrock, SageMaker, AgentCore, Agent Registry: Regressed 1, New 0, "
         "Still open 0, Resolved 0, No longer reported 0, No longer assessed 0",
         f"  Written: s3://{BUCKET}/{key}",
+        f"  Written: s3://{BUCKET}/{page_key}",
     ]
+    page = s3.objects[page_key][0].decode("utf-8")
+    assert "Changes Since Last Assessment" in page
+    assert 'href="security_assessment_changes_20260927_061500.csv"' in page
+    assert "open main report" not in page  # no main report in the folder
     rows = list(csv.DictReader(io.StringIO(s3.objects[key][0].decode("utf-8"))))
     assert tuple(rows[0]) == CSV_COLUMNS
     assert len(rows) == 4
@@ -116,7 +127,7 @@ def test_no_changes_still_writes_the_csv():
     code, lines = _run(_single(), s3=s3)
     assert code == 0
     assert lines[2] == "  No changes since the last assessment"
-    assert [key for key, _ in s3.writes] == [CHANGES_KEY]
+    assert [key for key, _ in s3.writes] == [CHANGES_KEY, CHANGES_PAGE_KEY]
 
 
 def test_modules_regions_and_check_ids_in_only_one_run_are_listed():
@@ -140,6 +151,7 @@ def test_modules_regions_and_check_ids_in_only_one_run_are_listed():
         "  Not compared (scanned in only one run): us-west-2 (current run only)",
         f"  Check IDs found in only one run: {listed}, and 2 more",
         f"  Written: s3://{BUCKET}/{CHANGES_KEY}",
+        f"  Written: s3://{BUCKET}/{CHANGES_PAGE_KEY}",
     ]
 
 
@@ -237,6 +249,7 @@ def test_several_accounts_with_failures_missing_arns_and_notes(tmp_path):
         "(saved 2026-09-03T00:00:00Z), 24 day(s) apart",
         "  No changes since the last assessment",
         f"  Written: s3://{BUCKET}/{CHANGES_KEY}",
+        f"  Written: s3://{BUCKET}/{CHANGES_PAGE_KEY}",
         _cannot(
             OTHER_ACCOUNT,
             "Step Functions completed with status FAILED; "
@@ -248,7 +261,7 @@ def test_several_accounts_with_failures_missing_arns_and_notes(tmp_path):
         "Skipped 'consolidated-reports': not an AWS account ID",
     ]
     assert ledger.read_text(encoding="utf-8") == ledger_text  # only read
-    assert [key for key, _ in s3.writes] == [CHANGES_KEY]
+    assert [key for key, _ in s3.writes] == [CHANGES_KEY, CHANGES_PAGE_KEY]
 
 
 def test_a_missing_failure_ledger_means_no_failures(tmp_path):
@@ -368,13 +381,22 @@ def _local(tmp_path, previous="previous", current="current"):
 
 def test_local_mode_writes_the_csv_and_ignores_the_setting(tmp_path):
     _local_runs(tmp_path)
+    main_report = (
+        tmp_path / "current" / "security_assessment_single_account_20260927_000003.html"
+    )
+    main_report.write_text("<html></html>", encoding="utf-8")
+    os.utime(main_report, (utc(27, 0, 1).timestamp(), utc(27, 0, 1).timestamp()))
     environ = {"ENABLE_ASSESSMENT_HISTORY": "false"}
     code, lines = _run(_local(tmp_path), environ=environ)
     written = (
         tmp_path / "out" / "nested" / "security_assessment_changes_20260927_000000.csv"
     )
+    page = written.with_suffix(".html")
     assert code == 0
     assert written.is_file()
+    assert 'href="security_assessment_single_account_20260927_000003.html"' in (
+        page.read_text(encoding="utf-8")
+    )
     assert lines == [
         f"Changes report for account {ACCOUNT}",
         "  Compared run run-c (saved 2026-09-27T00:00:00Z) with run run-p "
@@ -382,6 +404,7 @@ def test_local_mode_writes_the_csv_and_ignores_the_setting(tmp_path):
         "  Bedrock, SageMaker, AgentCore, Agent Registry: Regressed 0, New 0, "
         "Still open 0, Resolved 1, No longer reported 0, No longer assessed 0",
         f"  Written: {written}",
+        f"  Written: {page}",
     ]
 
 
@@ -518,3 +541,72 @@ def test_changes_file_name_uses_utc_and_is_never_read_as_findings():
     assert name == "security_assessment_changes_20260927_010000.csv"
     assert parse_report_name(name) is None
     assert "_security_report_" not in name
+
+
+# --- the changes page and the main report link --------------------------------------
+
+
+def test_the_page_links_the_main_report_saved_with_the_run():
+    s3 = FakeS3()
+    put_run(s3, "run-p", utc(3))
+    s3.put(
+        f"{ACCOUNT}/security_assessment_single_account_20260903_000001.html",
+        "<html></html>",
+        utc(3, 0, 1),
+    )
+    put_run(s3, "run-c", utc(27))
+    name = "security_assessment_single_account_20260927_000002.html"
+    s3.put(f"{ACCOUNT}/{name}", "<html></html>", utc(27, 0, 2))
+    code, _lines = _run(_single(), s3=s3)
+    page = s3.objects[CHANGES_PAGE_KEY][0].decode("utf-8")
+    assert code == 0
+    assert page.count(f'href="{name}"') == 2  # header and sidebar
+    assert "20260903_000001" not in page
+
+
+def _main_report(day, hour, minute):
+    name = f"security_assessment_single_account_202609{day:02d}_{hour:02d}{minute:02d}00.html"
+    return StoredFile(name, utc(day, hour, minute))
+
+
+@pytest.mark.parametrize(
+    "reports, expected",
+    [
+        ([(27, 0, 5)], "security_assessment_single_account_20260927_000500.html"),
+        ([(27, 0, 10)], "security_assessment_single_account_20260927_001000.html"),
+        ([(26, 23, 55)], "security_assessment_single_account_20260926_235500.html"),
+        ([(27, 0, 11)], None),  # more than 10 minutes from the run's CSVs
+        ([(27, 0, 1), (27, 0, 2)], None),  # two candidates: not certain
+        ([], None),
+    ],
+)
+def test_find_main_report(reports, expected):
+    files = [_main_report(*report) for report in reports] + [
+        StoredFile("security_assessment_changes_20260927_000000.html", utc(27)),
+        StoredFile("security_assessment_single_account_latest.html", utc(27)),
+    ]
+    assert cli.find_main_report(files, utc(27)) == expected
+
+
+def test_a_page_that_cannot_be_rendered_writes_nothing():
+    s3 = FakeS3()
+    put_run(s3, "run-p", utc(3))
+    put_run(s3, "run-c", utc(27))
+    with patch.object(cli, "render_changes_page", side_effect=RenderError("gone")):
+        code, lines = _run(_single(), s3=s3)
+    assert code == 0
+    assert lines[-1] == _cannot(ACCOUNT, "RenderError: gone")
+    assert s3.writes == []
+
+
+def test_changes_file_name_takes_an_extension():
+    comparison = Comparison(
+        account_id=ACCOUNT,
+        previous_execution_id="p",
+        current_execution_id="c",
+        rows=(),
+        current_saved_at=utc(27, 6, 15),
+    )
+    assert cli.changes_file_name(comparison, "html") == (
+        "security_assessment_changes_20260927_061500.html"
+    )

@@ -2,7 +2,7 @@
 
 S3 mode is what buildspec.yml runs after each assessment. For each account it
 compares the current run with the most recent complete run saved before it,
-writes ``security_assessment_changes_<YYYYMMDD_HHMMSS>.csv`` into
+writes ``security_assessment_changes_<YYYYMMDD_HHMMSS>.csv`` and ``.html`` into
 ``<bucket>/<account_id>/`` and prints what it did::
 
     python3 -m assessment_history compare --bucket BUCKET --accounts "ID ID"
@@ -14,7 +14,7 @@ line, the other accounts carry on, and the exit code is 0. Setting
 ENABLE_ASSESSMENT_HISTORY=false turns it off.
 
 Local mode compares two folders, each holding one run's findings CSVs as
-saved in the results bucket, and writes the CSV into a third folder::
+saved in the results bucket, and writes the CSV and HTML into a third folder::
 
     python3 -m assessment_history compare --account ID
         --previous-dir DIR --current-dir DIR --output-dir DIR
@@ -30,7 +30,8 @@ import re
 import sys
 import time
 from collections.abc import Callable, Mapping
-from datetime import UTC
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .compare import compare_runs
@@ -38,6 +39,7 @@ from .discover import (
     DirectorySource,
     DiscoveryError,
     S3Source,
+    StoredFile,
     discover,
     format_utc,
     group_runs,
@@ -51,9 +53,15 @@ from .models import (
     InvalidFindingError,
     Run,
 )
+from .render_changes import render_changes_page
 
 SETTING = "ENABLE_ASSESSMENT_HISTORY"
 CHANGES_FILE_PREFIX = "security_assessment_changes_"
+# The main report the scanners' report Lambda writes for each run. Its name has
+# no execution ID, so it's matched to a run by save time: the build uploads a
+# run's CSVs and its main report together, seconds apart.
+MAIN_REPORT_NAME = re.compile(r"security_assessment_single_account_\d{8}_\d{6}\.html")
+MAIN_REPORT_WINDOW_SECONDS = 600
 # The failure-ledger stage buildspec.yml records when the multi-account report
 # fails. It's written under the management account's ID but says nothing
 # about that account's own run, so it doesn't block its changes report.
@@ -87,10 +95,35 @@ def history_enabled(environ: Mapping[str, str], out: Output) -> bool:
     return True
 
 
-def changes_file_name(comparison: Comparison) -> str:
-    """Name of the changes CSV: the current run's saved time, in UTC."""
+def changes_file_name(comparison: Comparison, extension: str = "csv") -> str:
+    """Name of a changes file: the current run's saved time, in UTC."""
     saved = comparison.current_saved_at.astimezone(UTC)
-    return f"{CHANGES_FILE_PREFIX}{saved:%Y%m%d_%H%M%S}.csv"
+    return f"{CHANGES_FILE_PREFIX}{saved:%Y%m%d_%H%M%S}.{extension}"
+
+
+def find_main_report(files: Iterable[StoredFile], saved_at: datetime) -> str | None:
+    """The current run's main report, or None when it isn't certain.
+
+    That's the one main report saved within 10 minutes of the run's CSVs;
+    none or several means no link.
+    """
+    matches = [
+        stored.name
+        for stored in files
+        if MAIN_REPORT_NAME.fullmatch(stored.name)
+        and abs((stored.saved_at - saved_at).total_seconds())
+        <= MAIN_REPORT_WINDOW_SECONDS
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def changes_page(comparison: Comparison, files: Iterable[StoredFile]) -> bytes:
+    """The changes HTML page, linking the CSV and, when known, the main report."""
+    return render_changes_page(
+        comparison,
+        csv_name=changes_file_name(comparison),
+        main_report_name=find_main_report(files, comparison.current_saved_at),
+    ).encode("utf-8")
 
 
 def changes_csv(comparison: Comparison) -> bytes:
@@ -199,20 +232,24 @@ def _compare_in_s3(client, bucket: str, account: str, execution_id: str, out: Ou
         out(f"  No previous run for account {account}; changes report skipped.")
         return
     comparison = compare_runs(found.previous, found.current)
-    key = f"{account}/{changes_file_name(comparison)}"
-    client.put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=changes_csv(comparison),
-        ContentType="text/csv; charset=utf-8",
-    )
+    page = changes_page(comparison, source.list_files())
+    # The CSV first: if the page can't be written, its absence is the symptom.
+    written = []
+    for extension, body, content_type in (
+        ("csv", changes_csv(comparison), "text/csv; charset=utf-8"),
+        ("html", page, "text/html; charset=utf-8"),
+    ):
+        key = f"{account}/{changes_file_name(comparison, extension)}"
+        client.put_object(Bucket=bucket, Key=key, Body=body, ContentType=content_type)
+        written.append(key)
     for line in describe(comparison):
         out(line)
-    out(f"  Written: s3://{bucket}/{key}")
+    for key in written:
+        out(f"  Written: s3://{bucket}/{key}")
 
 
 def run_s3(args, accounts, client, environ, clock, out: Output) -> int:
-    """Write a changes CSV for each account. Always returns 0."""
+    """Write the changes CSV and page for each account. Always returns 0."""
     if not history_enabled(environ, out):
         out("Changes report disabled (EnableAssessmentHistory=false)")
         return 0
@@ -260,22 +297,25 @@ def _only_run(folder: str, account: str) -> Run:
 
 
 def run_local(account, previous_dir, current_dir, output_dir, out: Output) -> int:
-    """Compare two local folders and write the CSV. Returns 1 on an error."""
+    """Compare two local folders and write the CSV and page. 1 on an error."""
     try:
         previous = _only_run(previous_dir, account)
         current = _only_run(current_dir, account)
         comparison = compare_runs(previous, current)
+        page = changes_page(comparison, DirectorySource(current_dir).list_files())
     except (DiscoveryError, ValueError, OSError) as error:
         out(f"ERROR: {error}")
         return 1
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
-    path = output / changes_file_name(comparison)
-    path.write_bytes(changes_csv(comparison))
+    paths = [output / changes_file_name(comparison, ext) for ext in ("csv", "html")]
+    paths[0].write_bytes(changes_csv(comparison))
+    paths[1].write_bytes(page)
     out(f"Changes report for account {account}")
     for line in describe(comparison):
         out(line)
-    out(f"  Written: {path}")
+    for path in paths:
+        out(f"  Written: {path}")
     return 0
 
 
@@ -289,7 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
     compare = commands.add_parser(
         "compare",
         help="compare each account's current run with its previous run",
-        description="Write a changes-since-last-assessment CSV per account.",
+        description="Write a changes-since-last-assessment CSV and page per account.",
         allow_abbrev=False,
     )
     s3 = compare.add_argument_group("S3 mode (what buildspec.yml runs)")
@@ -313,7 +353,7 @@ def build_parser() -> argparse.ArgumentParser:
     local.add_argument("--account", help="account the two folders belong to")
     local.add_argument("--previous-dir", help="folder with the previous run")
     local.add_argument("--current-dir", help="folder with the current run")
-    local.add_argument("--output-dir", help="folder for the changes CSV")
+    local.add_argument("--output-dir", help="folder for the changes CSV and page")
     return parser
 
 
