@@ -422,6 +422,33 @@ phases:
           return 0
         }
 
+        # Single-account mode: record whether this run's Step Functions
+        # execution succeeded, next to its CSVs in the central bucket, so the
+        # changes report never uses a failed run as its previous run. An
+        # execution only succeeds when the main report's completeness check
+        # passes. Written only while the setting is on; it can never fail the
+        # build.
+        record_assessment_run() {
+          local execution_id="${1##*:}" status="${2:-UNKNOWN}" succeeded=true
+          if [[ "$3" == true ]]; then
+            succeeded=false
+          fi
+          if [[ "$(echo "${ENABLE_ASSESSMENT_HISTORY:-true}" | tr '[:upper:]' '[:lower:]')" == "false" ]]; then
+            return 0
+          fi
+          if [[ -z "$execution_id" || "$execution_id" == "None" ]]; then
+            echo "WARNING: No execution ID was saved, so no assessment run record was written"
+            return 0
+          fi
+          local key="$AWS_ACCOUNT_ID/assessment_history_run_${execution_id}.json"
+          if ! printf '{"execution_id": "%s", "succeeded": %s, "status": "%s", "written_at": "%s"}\n' \
+              "$execution_id" "$succeeded" "$status" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              | aws s3 cp - "s3://$BUCKET_REPORT/$key" --content-type application/json --only-show-errors; then
+            echo "WARNING: Could not write the assessment run record s3://$BUCKET_REPORT/$key"
+          fi
+          return 0
+        }
+
         # Derive how long to wait for Step Function completion from the overall
         # CodeBuild timeout, reserving a buffer for the build/deploy work that runs
         # before this loop and the report processing that runs after it. An explicit
@@ -726,6 +753,8 @@ phases:
           else
             echo "WARNING: Could not determine assessment bucket from stack outputs"
           fi
+
+          record_assessment_run "${EXECUTION_ARN:-}" "${STATUS:-}" "$sf_failed"
 
           if [[ $sf_failed == true ]]; then
             echo "Changes report skipped: the assessment run did not succeed"

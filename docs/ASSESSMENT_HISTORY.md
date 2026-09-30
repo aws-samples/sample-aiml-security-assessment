@@ -35,6 +35,11 @@ The timestamp is when the **current run's** results were saved, in UTC, so
 the name identifies the run it describes. Running the comparison again for the
 same two runs overwrites the file instead of adding another.
 
+In single-account mode the build also writes a small run record,
+`assessment_history_run_<execution_id>.json`, after every run. It says
+whether the run's Step Functions execution succeeded; see
+[Which run is "the previous run"](#which-run-is-the-previous-run).
+
 The first run of an account has nothing to compare with, so no changes report
 is written for it. Every later run gets one, including runs where nothing
 changed ("No changes since the last assessment").
@@ -64,8 +69,9 @@ don't have the variable, and are treated as `true`. A change takes effect on
 the next build.
 
 Findings CSVs are saved every run whatever the setting, so after turning the
-report back on, the next run compares with the most recent complete run,
-including runs made while it was off.
+report back on, the next run compares with the most recent usable run,
+including runs made while it was off. Run records are written only while the
+setting is on, so runs made while it was off are judged by their files alone.
 
 ## When it runs
 
@@ -73,7 +79,8 @@ The comparison runs in the CodeBuild post-build phase (`buildspec.yml`),
 after the run's results are in the central `AssessmentBucket`:
 
 - **Single-account:** after the results are synced to the central bucket,
-  and only if the Step Functions execution succeeded.
+  and only if the Step Functions execution succeeded. The run record is
+  written first, whether the execution succeeded or not.
 - **Multi-account:** once per account, after the multi-account report is
   created and before the build's failure summary. Accounts whose run failed
   get no changes report; the build log names them and gives the reasons from
@@ -88,9 +95,9 @@ It can't fail an assessment run:
   it has a 5-minute limit. In multi-account builds, accounts not started
   before the limit get a `WARNING` line.
 
-It reads only the findings CSVs already in the bucket. No changes were made
-to the scanners, the AWS SAM templates, the Step Functions workflow, or the
-IAM roles.
+It reads only the findings CSVs already in the bucket, and in single-account
+mode the run records. No changes were made to the scanners, the AWS SAM
+templates, the Step Functions workflow, or the IAM roles.
 
 ## Which run is "the previous run"
 
@@ -98,14 +105,29 @@ Runs are told apart by the Step Functions execution ID in each findings CSV's
 name. Execution IDs are random, so runs are ordered by **when S3 saved their
 files**; a run's time is its latest file's time.
 
-The previous run is the most recent **complete** run saved before the current
-run. A run is complete when it would pass the main report's own completeness
-check: every core service (Bedrock, SageMaker, AgentCore, AWS Agent
-Registry), and OWASP if it ran, has a CSV with at least one row for every
-region the run scanned, and the Responsible AI GRC CSV, if present, has at
-least one row.
+The previous run is the most recent **usable** run saved before the current
+run. A run is usable when:
 
-- Incomplete runs are skipped and named in the build log.
+- **Its files are complete.** Every core service (Bedrock, SageMaker,
+  AgentCore, AWS Agent Registry), and OWASP if it ran, has a CSV with at
+  least one row for every region the core CSV names show, and the Responsible
+  AI GRC CSV, if present, has at least one row. This follows the main
+  report's own completeness check, but from the files alone: the main report
+  knows which regions the run was asked to scan and which options were on,
+  and the files don't. So a run that failed partway can still look complete.
+- **Its run record, if it has one, says it succeeded.** In single-account
+  mode the build writes `assessment_history_run_<execution_id>.json` after
+  every run. A Step Functions execution only succeeds when the main report's
+  completeness check passes, so a run recorded as failed is never used. Runs
+  with no record (made before this was added, or while the setting was off)
+  are judged by their files alone. In multi-account mode the build uploads a
+  run's files only after checking them, so no records are written.
+
+- Runs that aren't usable are skipped and named in the build log, with the
+  reason.
+- An older run with a CSV that can't be read is skipped the same way, and the
+  next older run is tried. A current run with a CSV that can't be read gets no
+  report.
 - Runs saved after the current run (for example, from another build running
   at the same time) are ignored and noted in the log.
 - Two runs saved in the same second are ordered by execution ID, so the choice
@@ -265,6 +287,12 @@ can contain resource names chosen by anyone who can create resources.
 | `Written: s3://...` | Where the report was written |
 | `No previous run for account <id>; changes report skipped. If this stack was redeployed, or earlier results were moved or deleted, they aren't compared. ...` | First run for the account, or no complete earlier run in the bucket |
 | `Skipped run <id> saved <time>: incomplete (...)` | An incomplete run passed over |
+| `Skipped run <id> saved <time>: the assessment run did not succeed (...)` | Its run record says the Step Functions execution didn't succeed |
+| `Skipped run <id> saved <time>: its run record <file> can't be read` | The run record isn't valid, so the run isn't used |
+| `Skipped run <id> saved <time>: unreadable (...)` | One of the run's CSVs can't be read; the next older run is tried |
+| `Skipped N more run(s)` | More than five runs were passed over |
+| `WARNING: Could not write the assessment run record s3://...` | Single-account: no record for this run; it will be judged by its files |
+| `WARNING: No execution ID was saved, so no assessment run record was written` | Single-account: the run didn't start |
 | `Ignored N run(s) saved after the current run: ...` | Runs newer than the current run |
 | `Not read: <file> (unknown findings file type)` | A findings CSV from a module this version doesn't know |
 | `WARNING: Changes report cannot be completed for account <id>. Reason(s): ...` | No report for that account; the reasons are listed |

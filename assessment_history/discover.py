@@ -6,12 +6,24 @@ central results bucket (``<bucket>/<account_id>/``), named
 into runs by execution ID. Execution IDs are random, so runs are ordered by
 when S3 saved their files; a run's time is its latest file's time.
 
-The previous run is the most recent complete run saved before the current
-one. A run is complete when it would pass the main report's own check
-(``validate_assessment_artifacts`` in generate_consolidated_report/app.py):
-each core service, and OWASP when present, has a CSV with at least one row
-for every region the run scanned, and the Responsible AI GRC CSV, when
-present, has at least one row.
+The previous run is the most recent usable run saved before the current one.
+A run is usable when:
+
+- its files are complete: each core service, and OWASP when present, has a CSV
+  with at least one row for every region the core CSV names show, and the
+  Responsible AI GRC CSV, when present, has at least one row. This follows the
+  main report's own check (``validate_assessment_artifacts`` in
+  generate_consolidated_report/app.py) but from the files alone: that check
+  knows the regions the run was asked to scan and which options were on, and
+  the files don't. A run that failed partway can still look complete from its
+  files (review item F2);
+- and its run record, if it has one, says it succeeded. In single-account mode
+  buildspec.yml writes ``assessment_history_run_<execution_id>.json`` after
+  every run. A Step Functions execution only succeeds when the main report's
+  check passes, because the report step fails the execution otherwise.
+
+An older run with a CSV that can't be read is skipped too, and the next older
+run is tried (review item L3).
 
 Discovery never compares; it hands ``Run`` values to ``compare``.
 """
@@ -20,6 +32,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import re
 from collections import defaultdict
 from collections.abc import Iterable
@@ -60,8 +73,11 @@ FINDINGS_COLUMNS = (
 )
 # An AWS Region at the end of a file name, e.g. "_us-east-1", "_us-gov-west-1".
 _REGION_SUFFIX = re.compile(r"_([a-z]{2}(?:-[a-z]+)+-\d+)$")
-# Incomplete runs listed one by one in the notes; any more are counted.
+# Skipped runs listed one by one in the notes; any more are counted.
 MAX_SKIPPED_NOTES = 5
+# The run record buildspec.yml writes in single-account mode (review item F2).
+RUN_RECORD_PREFIX = "assessment_history_run_"
+_RUN_RECORD_NAME = re.compile(r"assessment_history_run_(.+)\.json")
 
 
 class DiscoveryError(Exception):
@@ -293,6 +309,48 @@ def _read_rows(
     return findings
 
 
+def run_record_name(execution_id: str) -> str:
+    """The name of a run's record file in its account folder."""
+    return f"{RUN_RECORD_PREFIX}{execution_id}.json"
+
+
+def run_records(files: Iterable[StoredFile]) -> dict[str, str]:
+    """Execution ID -> run record file name, from a folder listing."""
+    records = {}
+    for stored in files:
+        match = _RUN_RECORD_NAME.fullmatch(stored.name)
+        if match:
+            records[match.group(1)] = stored.name
+    return records
+
+
+def run_record_problem(
+    source: S3Source | DirectorySource, name: str, execution_id: str
+) -> str | None:
+    """Why a run's record rules it out as the previous run, or None if it
+    says the run succeeded."""
+    unreadable = f"its run record {name} can't be read"
+    try:
+        record = json.loads(source.read_bytes(name).decode("utf-8"))
+    except ValueError:  # not UTF-8, or not JSON
+        return unreadable
+    if (
+        not isinstance(record, dict)
+        or record.get("execution_id") != execution_id
+        or not isinstance(record.get("succeeded"), bool)
+    ):
+        return unreadable
+    if record["succeeded"]:
+        return None
+    status = record.get("status")
+    detail = (
+        f" (Step Functions status {status})"
+        if isinstance(status, str) and status
+        else ""
+    )
+    return f"the assessment run did not succeed{detail}"
+
+
 def read_complete_run(
     source: S3Source | DirectorySource, account_id: str, run_files: RunFiles
 ) -> tuple[Run | None, str]:
@@ -335,6 +393,30 @@ class Discovery:
     notes: tuple[str, ...]
 
 
+def _usable_run(
+    source: S3Source | DirectorySource,
+    account_id: str,
+    run_files: RunFiles,
+    records: dict[str, str],
+) -> tuple[Run | None, str]:
+    """(run, "") for a run that can be the previous run, else (None, why not).
+
+    The run record is checked first, so a failed run's CSVs aren't read.
+    """
+    record = records.get(run_files.execution_id)
+    if record is not None:
+        problem = run_record_problem(source, record, run_files.execution_id)
+        if problem is not None:
+            return None, problem
+    try:
+        run, reason = read_complete_run(source, account_id, run_files)
+    except InvalidFindingError as error:
+        return None, f"unreadable ({error})"
+    if run is None:
+        return None, f"incomplete ({reason})"
+    return run, ""
+
+
 def _order_key(run_files: RunFiles) -> tuple[datetime, str]:
     # Ties on save time are broken by execution ID, so the order is stable.
     return run_files.saved_at, run_files.execution_id
@@ -343,15 +425,18 @@ def _order_key(run_files: RunFiles) -> tuple[datetime, str]:
 def discover(
     source: S3Source | DirectorySource, account_id: str, current_execution_id: str
 ) -> Discovery:
-    """Read the current run and the most recent complete run saved before it.
+    """Read the current run and the most recent usable run saved before it.
 
     Raises DiscoveryError when the current run can't be used, and
-    InvalidFindingError when a CSV that has to be read can't be read safely.
-    Runs older than the chosen previous run are never read.
+    InvalidFindingError when one of its CSVs can't be read safely. An older
+    run that can't be used or read is skipped with a note. Runs older than the
+    chosen previous run are never read.
     """
     if not current_execution_id:
         raise DiscoveryError("the current run's execution ID is missing")
-    runs, unknown = group_runs(source.list_files())
+    files = source.list_files()
+    runs, unknown = group_runs(files)
+    records = run_records(files)
     notes = [f"Not read: {name} (unknown findings file type)" for name in unknown]
 
     current_files = runs.get(current_execution_id)
@@ -381,16 +466,14 @@ def discover(
     previous = None
     skipped = []
     for candidate in candidates:
-        previous, reason = read_complete_run(source, account_id, candidate)
+        previous, why = _usable_run(source, account_id, candidate, records)
         if previous is not None:
             break
         skipped.append(
             f"Skipped run {candidate.execution_id} saved "
-            f"{format_utc(candidate.saved_at)}: incomplete ({reason})"
+            f"{format_utc(candidate.saved_at)}: {why}"
         )
     notes += skipped[:MAX_SKIPPED_NOTES]
     if len(skipped) > MAX_SKIPPED_NOTES:
-        notes.append(
-            f"Skipped {len(skipped) - MAX_SKIPPED_NOTES} more incomplete run(s)"
-        )
+        notes.append(f"Skipped {len(skipped) - MAX_SKIPPED_NOTES} more run(s)")
     return Discovery(current=current, previous=previous, notes=tuple(notes))

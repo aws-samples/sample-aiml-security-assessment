@@ -6,6 +6,7 @@ test_fs_exclude_args.py). Templates are parsed with a loader that tolerates
 CloudFormation intrinsics (as in test_optional_policy_baseline_wiring.py).
 """
 
+import json
 import os
 import re
 import subprocess
@@ -14,6 +15,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+
+from assessment_history.discover import DirectorySource, run_record_problem
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BUILDSPEC = REPO_ROOT / "buildspec.yml"
@@ -43,12 +46,10 @@ def _post_build():
     return "\n".join(command for command in commands if isinstance(command, str))
 
 
-def _function_script():
+def _function_script(name="run_changes_report"):
     lines = _post_build().splitlines()
     start = next(
-        index
-        for index, line in enumerate(lines)
-        if line.startswith("run_changes_report() {")
+        index for index, line in enumerate(lines) if line.startswith(f"{name}() {{")
     )
     end = next(index for index in range(start + 1, len(lines)) if lines[index] == "}")
     return "\n".join(lines[start : end + 1])
@@ -206,6 +207,151 @@ def test_single_account_step_runs_after_the_sync_and_only_if_the_run_succeeded()
     assert (
         '--execution-id "${EXECUTION_ARN##*:}"' in text[call : text.index("\n", call)]
     )
+
+
+# --- the single-account run record (review item F2) --------------------------------
+
+AWS_STANDIN = """#!/bin/bash
+printf 'arg=%s\\n' "$@" > "$STANDIN_LOG"
+cat > "$STANDIN_LOG.body"
+exit "${STANDIN_EXIT:-0}"
+"""
+EXECUTION_ARN = "arn:aws:states:us-east-1:123456789012:execution:assessment:run-c"
+RECORD_NAME = "assessment_history_run_run-c.json"
+RECORD_URL = f"s3://central-bucket/123456789012/{RECORD_NAME}"
+
+
+def _record(tmp_path, *args, env=None):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    aws = bin_dir / "aws"
+    aws.write_text(AWS_STANDIN, encoding="utf-8")
+    aws.chmod(0o755)
+    log = tmp_path / "aws.log"
+    quoted = " ".join(f"'{arg}'" for arg in args)
+    script = (
+        _function_script("record_assessment_run")
+        + f"\nrecord_assessment_run {quoted}"
+        + '\necho "status=$?"\n'
+    )
+    result = subprocess.run(
+        ["bash", "-c", script],
+        cwd=tmp_path,
+        env={
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "BUCKET_REPORT": "central-bucket",
+            "AWS_ACCOUNT_ID": "123456789012",
+            "STANDIN_LOG": str(log),
+            **(env or {}),
+        },
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else None
+    body = tmp_path / "aws.log.body"
+    return (
+        result.stdout.splitlines(),
+        calls,
+        body.read_text(encoding="utf-8") if body.exists() else None,
+    )
+
+
+@pytest.mark.parametrize(
+    "status, failed, succeeded",
+    [("SUCCEEDED", "false", True), ("FAILED", "true", False), ("", "true", False)],
+)
+def test_the_run_record_says_whether_the_run_succeeded(
+    tmp_path, status, failed, succeeded
+):
+    stdout, calls, body = _record(tmp_path, EXECUTION_ARN, status, failed)
+    assert stdout == ["status=0"]
+    assert calls == [
+        "arg=s3",
+        "arg=cp",
+        "arg=-",
+        f"arg={RECORD_URL}",
+        "arg=--content-type",
+        "arg=application/json",
+        "arg=--only-show-errors",
+    ]
+    record = json.loads(body)
+    assert record["execution_id"] == "run-c"
+    assert record["succeeded"] is succeeded
+    assert record["status"] == (status or "UNKNOWN")
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", record["written_at"])
+
+
+@pytest.mark.parametrize(
+    "status, failed, problem",
+    [
+        ("SUCCEEDED", "false", None),
+        (
+            "FAILED",
+            "true",
+            "the assessment run did not succeed (Step Functions status FAILED)",
+        ),
+    ],
+)
+def test_the_changes_report_reads_the_record_the_build_writes(
+    tmp_path, status, failed, problem
+):
+    _stdout, _calls, body = _record(tmp_path, EXECUTION_ARN, status, failed)
+    (tmp_path / RECORD_NAME).write_text(body, encoding="utf-8")
+    assert run_record_problem(DirectorySource(tmp_path), RECORD_NAME, "run-c") == (
+        problem
+    )
+
+
+@pytest.mark.parametrize("arn", ["", "None"])
+def test_no_run_record_without_an_execution_id(tmp_path, arn):
+    stdout, calls, _body = _record(tmp_path, arn, "", "true")
+    assert stdout == [
+        "WARNING: No execution ID was saved, so no assessment run record was written",
+        "status=0",
+    ]
+    assert calls is None
+
+
+def test_a_failed_record_write_is_a_warning_and_never_fails_the_build(tmp_path):
+    stdout, _calls, _body = _record(
+        tmp_path, EXECUTION_ARN, "SUCCEEDED", "false", env={"STANDIN_EXIT": "1"}
+    )
+    assert stdout == [
+        f"WARNING: Could not write the assessment run record {RECORD_URL}",
+        "status=0",
+    ]
+
+
+@pytest.mark.parametrize("value", ["false", "False"])
+def test_no_run_record_when_the_setting_is_off(tmp_path, value):
+    stdout, calls, _body = _record(
+        tmp_path,
+        EXECUTION_ARN,
+        "SUCCEEDED",
+        "false",
+        env={"ENABLE_ASSESSMENT_HISTORY": value},
+    )
+    assert (stdout, calls) == (["status=0"], None)
+
+
+def test_the_run_record_is_written_once_after_the_single_account_sync():
+    text = _post_build()
+    calls = re.findall(r"^\s*record_assessment_run .*$", text, flags=re.MULTILINE)
+    assert [call.strip() for call in calls] == [
+        'record_assessment_run "${EXECUTION_ARN:-}" "${STATUS:-}" "$sf_failed"'
+    ]
+    call = text.index(calls[0].strip())
+    assert (
+        text.index("record_assessment_run() {")
+        < text.index("Single account post-build processing")
+        < text.index("Syncing results to consolidated bucket")
+        < call
+        < text.index('run_changes_report --accounts "$AWS_ACCOUNT_ID"')
+    )
+    script = _function_script("record_assessment_run")
+    assert "record_failure" not in script
+    assert "ASSESSMENT_FAILURES_FILE" not in script
 
 
 # --- deployment templates -------------------------------------------------------

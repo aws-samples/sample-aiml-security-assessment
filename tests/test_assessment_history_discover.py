@@ -31,6 +31,8 @@ from assessment_history.discover import (
     parse_findings_csv,
     parse_report_name,
     read_complete_run,
+    run_record_name,
+    run_records,
 )
 from assessment_history.models import (
     CORE_MODULES,
@@ -447,7 +449,122 @@ def test_skipped_run_notes_are_capped():
     assert result.previous is None
     assert len(result.notes) == MAX_SKIPPED_NOTES + 1
     assert result.notes[0].startswith("Skipped run run-7 saved 2026-09-07T00:00:00Z")
-    assert result.notes[-1] == "Skipped 2 more incomplete run(s)"
+    assert result.notes[-1] == "Skipped 2 more run(s)"
+
+
+# --- run records: a run whose Step Functions execution failed (review F2) ----------
+
+
+def _put_record(s3, execution_id, body, saved_at=None):
+    s3.put(_key(run_record_name(execution_id)), body, saved_at or utc(10))
+
+
+def _record(execution_id, succeeded, status="FAILED"):
+    return json.dumps(
+        {
+            "execution_id": execution_id,
+            "succeeded": succeeded,
+            "status": status,
+            "written_at": "2026-09-10T00:00:05Z",
+        }
+    )
+
+
+def _three_runs(s3):
+    put_run(s3, "run-a", utc(1))
+    put_run(s3, "run-b", utc(10))
+    put_run(s3, "run-c", utc(27))
+
+
+def test_a_run_recorded_as_failed_is_skipped_without_reading_its_csvs():
+    # Its CSVs look complete: only the record shows the run failed.
+    s3 = FakeS3()
+    _three_runs(s3)
+    _put_record(s3, "run-b", _record("run-b", False))
+    result = _discover(s3)
+    assert result.previous.execution_id == "run-a"
+    assert result.notes == (
+        "Skipped run run-b saved 2026-09-10T00:00:00Z: the assessment run did not "
+        "succeed (Step Functions status FAILED)",
+    )
+    assert not [key for key in s3.reads if "run-b" in key and key.endswith(".csv")]
+
+
+def test_a_run_recorded_as_succeeded_is_used():
+    s3 = FakeS3()
+    _three_runs(s3)
+    _put_record(s3, "run-b", _record("run-b", True, "SUCCEEDED"))
+    result = _discover(s3)
+    assert (result.previous.execution_id, result.notes) == ("run-b", ())
+
+
+def test_a_run_recorded_as_succeeded_must_still_be_complete():
+    # The record says the run succeeded, but one of its CSVs has since gone.
+    s3 = FakeS3()
+    _three_runs(s3)
+    _put_record(s3, "run-b", _record("run-b", True, "SUCCEEDED"))
+    del s3.objects[_key(report_name("agentcore", "run-b", "us-east-1"))]
+    result = _discover(s3)
+    assert result.previous.execution_id == "run-a"
+    assert result.notes == (
+        "Skipped run run-b saved 2026-09-10T00:00:00Z: incomplete "
+        "(missing agentcore CSV for us-east-1)",
+    )
+
+
+@pytest.mark.parametrize(
+    "fields, detail",
+    [
+        ({"status": "TIMED_OUT"}, " (Step Functions status TIMED_OUT)"),
+        ({"status": ""}, ""),
+        ({}, ""),
+    ],
+)
+def test_the_recorded_status_is_named_when_there_is_one(fields, detail):
+    s3 = FakeS3()
+    _three_runs(s3)
+    _put_record(
+        s3, "run-b", json.dumps({"execution_id": "run-b", "succeeded": False, **fields})
+    )
+    (note,) = _discover(s3).notes
+    assert note.endswith(f": the assessment run did not succeed{detail}")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(b"{", id="not JSON"),
+        pytest.param(b"\xff\xfe", id="not UTF-8"),
+        pytest.param(b"[]", id="not an object"),
+        pytest.param(_record("run-x", True).encode(), id="another run's record"),
+        pytest.param(
+            json.dumps({"execution_id": "run-b", "succeeded": "yes"}).encode(),
+            id="succeeded is not true or false",
+        ),
+        pytest.param(json.dumps({"execution_id": "run-b"}).encode(), id="no succeeded"),
+    ],
+)
+def test_a_run_record_that_cant_be_read_rules_the_run_out(body):
+    s3 = FakeS3()
+    _three_runs(s3)
+    _put_record(s3, "run-b", body)
+    result = _discover(s3)
+    assert result.previous.execution_id == "run-a"
+    assert result.notes == (
+        "Skipped run run-b saved 2026-09-10T00:00:00Z: its run record "
+        "assessment_history_run_run-b.json can't be read",
+    )
+
+
+def test_run_records_are_found_by_name():
+    assert run_record_name("run-b") == "assessment_history_run_run-b.json"
+    files = [
+        StoredFile("assessment_history_run_run-b.json", utc(1)),
+        StoredFile("assessment_history_run_.json", utc(1)),
+        StoredFile("notes.json", utc(1)),
+        StoredFile(report_name("bedrock", "run-b", "us-east-1"), utc(1)),
+    ]
+    assert run_records(files) == {"run-b": "assessment_history_run_run-b.json"}
 
 
 def test_unknown_findings_files_are_noted_and_not_read():
@@ -506,11 +623,24 @@ def test_a_current_run_with_an_empty_csv_is_an_error():
         _discover(s3)
 
 
-def test_an_unreadable_csv_in_the_previous_run_stops_discovery():
+def test_an_unreadable_older_run_is_skipped_and_the_next_one_tried():
+    # Review item L3: one unreadable CSV used to stop the whole account.
     s3 = FakeS3()
-    put_run(s3, "run-a", utc(1))
-    s3.put(_key(report_name("bedrock", "run-a", "us-east-1")), "Check_ID\n", utc(1))
-    put_run(s3, "run-c", utc(27))
+    _three_runs(s3)
+    s3.put(_key(report_name("bedrock", "run-b", "us-east-1")), "Check_ID\n", utc(10))
+    result = _discover(s3)
+    assert result.previous.execution_id == "run-a"
+    (note,) = result.notes
+    assert note.startswith(
+        "Skipped run run-b saved 2026-09-10T00:00:00Z: unreadable "
+        "(bedrock_security_report_run-b_us-east-1.csv is missing column(s): "
+    )
+
+
+def test_an_unreadable_csv_in_the_current_run_is_still_an_error():
+    s3 = FakeS3()
+    _three_runs(s3)
+    s3.put(_key(report_name("bedrock", "run-c", "us-east-1")), "Check_ID\n", utc(27))
     with pytest.raises(InvalidFindingError, match="missing column"):
         _discover(s3)
 
