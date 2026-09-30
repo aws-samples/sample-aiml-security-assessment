@@ -390,8 +390,10 @@ def _methodology() -> str:
                 <div class="section-title">{section_icon(METHODOLOGY_ICON)}Methodology</div>
                 <div class="card"><div class="card-header"><h3>Change States</h3></div><div class="card-body" style="padding: 0;"><table style="min-width: 100%;"><thead><tr><th style="width: 24%;">Change</th><th>Meaning</th></tr></thead><tbody>{states}</tbody></table></div></div>
                 <div class="card"><div class="card-header"><h3>How Findings Are Matched</h3></div><div class="card-body"><ol class="note-list finding-details">
-                    <li>Rows are grouped by assessment area, Region, Check ID, and Finding. Within a group, rows with identical details are paired, then rows whose details match once day counts and dates are blanked out.</li>
-                    <li>If a group has exactly one row in each run, those rows are paired.</li>
+                    <li>Rows are grouped by assessment area, Region, and Check ID. The Finding title isn't part of the group, because many checks use one title when they fail and another when they pass.</li>
+                    <li>Within a group, rows with the same title and identical details are paired, then rows whose details match once day counts and dates are blanked out, then rows with matching details under a different title.</li>
+                    <li>Two remaining rows are paired if each is its run's only row, in the group or with its title.</li>
+                    <li>If one run has several Failed rows and the other a single row that isn't Failed, such as a Passed summary, each Failed row is paired with that row.</li>
                     <li>Anything left is unpaired and shows as New or No longer reported.</li>
                 </ol>
                 <p class="finding-details" style="margin-top: 12px;">The previous run is the most recent complete run saved before this one. Only modules enabled and regions scanned in both runs are compared. The changes CSV records which rule paired each row. See docs/ASSESSMENT_HISTORY.md in the repository.</p></div></div>

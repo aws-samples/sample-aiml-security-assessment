@@ -102,7 +102,9 @@ class MatchRule(StrEnum):
 
     EXACT = "exact"
     NORMALIZED = "normalized"
+    DETAILS = "details"
     SINGLE_ROW = "single-row"
+    CHECK_LEVEL = "check-level"
     UNMATCHED = "unmatched"
 
 

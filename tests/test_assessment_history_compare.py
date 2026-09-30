@@ -232,6 +232,297 @@ def test_normalized_collisions_are_not_guessed():
     assert changes(result) == Counter({Change.NO_LONGER_REPORTED: 2, Change.NEW: 1})
 
 
+# --- F1 (review): titles that change with the status -------------------------------
+
+# Titles as the scanners write them (the check's app.py): the title differs
+# between the Failed, Passed and N/A rows of one check.
+TITLE_FLIPS = [
+    pytest.param(
+        ("SM-04", "us-east-1", "Passed", "GuardDuty Enabled"),
+        ("SM-04", "us-east-1", "Failed", "GuardDuty Not Enabled"),
+        Change.REGRESSED,
+        id="SM-04 enabled to not enabled",
+    ),
+    pytest.param(
+        ("SM-04", "us-east-1", "Failed", "GuardDuty Not Enabled"),
+        ("SM-04", "us-east-1", "Passed", "GuardDuty Enabled"),
+        Change.RESOLVED,
+        id="SM-04 not enabled to enabled",
+    ),
+    pytest.param(
+        ("SM-04", "us-east-1", "Failed", "GuardDuty Not Enabled"),
+        ("SM-04", "us-east-1", "N/A", "GuardDuty Check Error"),
+        Change.NO_LONGER_ASSESSED,
+        id="SM-04 not enabled to check error",
+    ),
+    pytest.param(
+        (
+            "BR-02",
+            "us-east-1",
+            "Failed",
+            "Amazon Bedrock private connectivity not used",
+        ),
+        ("BR-02", "us-east-1", "Passed", "Amazon Bedrock private connectivity"),
+        Change.RESOLVED,
+        id="BR-02 fixed",
+    ),
+    pytest.param(
+        ("BR-02", "us-east-1", "Passed", "Amazon Bedrock private connectivity"),
+        (
+            "BR-02",
+            "us-east-1",
+            "Failed",
+            "Amazon Bedrock private connectivity not used",
+        ),
+        Change.REGRESSED,
+        id="BR-02 broken",
+    ),
+    pytest.param(
+        ("SM-01", "us-east-1", "Failed", "Direct Internet Access Enabled"),
+        ("SM-01", "us-east-1", "Passed", "SageMaker Internet Access Check"),
+        Change.RESOLVED,
+        id="SM-01 fixed",
+    ),
+    pytest.param(
+        ("AC-09", "Global", "Failed", "AgentCore Service-Linked Role Missing"),
+        ("AC-09", "Global", "Passed", "AgentCore Service-Linked Role Check"),
+        Change.RESOLVED,
+        id="AC-09 fixed",
+    ),
+    pytest.param(
+        # Seen in the review's live run: two unmatched rows before the fix.
+        ("AR-02", "Global", "Passed", "AWS Agent Registry Stale Access Check"),
+        ("AR-02", "Global", "N/A", "AWS Agent Registry Unused Permissions"),
+        Change.NOT_FAILING,
+        id="AR-02 passed to N/A",
+    ),
+]
+
+
+@pytest.mark.parametrize("before, after, expected", TITLE_FLIPS)
+def test_f1_a_title_that_changes_with_the_status_still_pairs(before, after, expected):
+    def row(check_id, region, status, title):
+        return make_finding(
+            check_id,
+            status,
+            region=region,
+            finding=title,
+            details=f"{title}: details as written for {status}",
+        )
+
+    result = _compare([row(*before)], [row(*after)])
+    assert [(r.change, r.match_rule) for r in result.rows] == [
+        (expected, MatchRule.SINGLE_ROW)
+    ]
+    (compared,) = result.rows
+    assert (compared.previous.finding, compared.current.finding) == (
+        before[3],
+        after[3],
+    )
+    assert compared.finding == after[3]  # the current title is shown
+
+
+def test_f1_per_resource_rows_keep_their_pairs_when_the_title_changes():
+    # A title renamed between releases: the same two roles, still failing.
+    def row(title, role, days):
+        return make_finding(
+            "AC-03", finding=title, details=f"role '{role}' not used ({days} days)"
+        )
+
+    result = _compare(
+        [
+            row("AgentCore Stale Access Check", "a", 90),
+            row("AgentCore Stale Access Check", "b", 70),
+        ],
+        [
+            row("AgentCore Stale Access Findings", "a", 114),
+            row("AgentCore Stale Access Findings", "b", 94),
+        ],
+    )
+    assert _by_rule(result) == Counter({(Change.STILL_OPEN, MatchRule.DETAILS): 2})
+
+
+def test_f1_a_title_rule_pair_in_a_group_of_several_titles():
+    # OWASP rows of one category: one title per source check. The changed row
+    # is the only one with its title in each run, so it pairs by title.
+    def row(title, status, details):
+        return make_finding("OW-01", status, finding=title, details=details)
+
+    result = _compare(
+        [
+            row("GuardDuty", "Failed", "old"),
+            row("Logging", "Failed", "x"),
+            row("Guardrails", "Passed", "y"),
+        ],
+        [
+            row("GuardDuty", "N/A", "new"),
+            row("Logging", "Failed", "x"),
+            row("Guardrails", "Passed", "y"),
+        ],
+    )
+    assert _by_rule(result) == Counter(
+        {
+            (Change.NO_LONGER_ASSESSED, MatchRule.SINGLE_ROW): 1,
+            (Change.STILL_OPEN, MatchRule.EXACT): 1,
+            (NF, MatchRule.EXACT): 1,
+        }
+    )
+
+
+CHECK_LEVEL = [
+    pytest.param(
+        # One Failed row per notebook or domain; one Passed summary row.
+        [
+            (
+                "Failed",
+                "Direct Internet Access Enabled",
+                "Notebook 'nb-a' has direct internet access",
+            ),
+            ("Failed", "Non-VPC Only Network Access", "Domain 'dom-x' is not VPC-only"),
+        ],
+        [
+            (
+                "Passed",
+                "SageMaker Internet Access Check",
+                "All notebooks and domains use VPC-only access",
+            )
+        ],
+        Change.RESOLVED,
+        2,
+        id="several failed to a passed summary",
+    ),
+    pytest.param(
+        [
+            (
+                "Failed",
+                "Model Network Isolation Disabled",
+                f"Model 'm{n}' has no isolation",
+            )
+            for n in range(3)
+        ],
+        [("N/A", "Model Network Isolation Check", "Could not assess: AccessDenied")],
+        Change.NO_LONGER_ASSESSED,
+        3,
+        id="several failed to an N/A error row",
+    ),
+    pytest.param(
+        [
+            (
+                "Passed",
+                "AWS Agent Registry IAM Full Access Check",
+                "No roles with overly permissive access found.",
+            )
+        ],
+        [
+            (
+                "Failed",
+                "AWS Agent Registry IAM Full Access Policy",
+                "Roles with full-access policies: r1",
+            ),
+            (
+                "Failed",
+                "AWS Agent Registry IAM Wildcard Permissions",
+                "Roles with wildcard permissions: r1",
+            ),
+        ],
+        Change.REGRESSED,
+        2,
+        id="a passed summary to several failed",
+    ),
+    pytest.param(
+        [("N/A", "Model Network Isolation Check", "No models found")],
+        [
+            (
+                "Failed",
+                "Model Network Isolation Disabled",
+                f"Model 'm{n}' has no isolation",
+            )
+            for n in range(2)
+        ],
+        Change.NEW,
+        2,
+        id="an N/A summary to several failed",
+    ),
+]
+
+
+@pytest.mark.parametrize("before, after, expected, count", CHECK_LEVEL)
+def test_f1_check_level_pairs(before, after, expected, count):
+    def rows(spec):
+        return [
+            make_finding(
+                "SM-11", status, region="us-east-1", finding=title, details=details
+            )
+            for status, title, details in spec
+        ]
+
+    result = _compare(rows(before), rows(after))
+    assert _by_rule(result) == Counter({(expected, MatchRule.CHECK_LEVEL): count})
+    shared_side = "current" if len(after) == 1 else "previous"
+    assert len({getattr(row, shared_side) for row in result.rows}) == 1
+
+
+def _sm11(status, title, details):
+    return make_finding(
+        "SM-11", status, region="us-east-1", finding=title, details=details
+    )
+
+
+@pytest.mark.parametrize(
+    "before, after, expected",
+    [
+        pytest.param(
+            # The other run's only row is Failed too: no check-level pair.
+            [_sm11("Failed", "Disabled", "m1"), _sm11("Failed", "Disabled", "m2")],
+            [_sm11("Failed", "Disabled", "m3")],
+            {
+                (Change.NO_LONGER_REPORTED, MatchRule.UNMATCHED): 2,
+                (Change.NEW, MatchRule.UNMATCHED): 1,
+            },
+            id="the lone row is failed",
+        ),
+        pytest.param(
+            # Two rows on the other side: which one continues isn't known.
+            [_sm11("Failed", "Disabled", "m1"), _sm11("Failed", "Disabled", "m2")],
+            [
+                _sm11("Passed", "Check", "all fine"),
+                _sm11("Passed", "Check 2", "all fine too"),
+            ],
+            {
+                (Change.NO_LONGER_REPORTED, MatchRule.UNMATCHED): 2,
+                (NF, MatchRule.UNMATCHED): 2,
+            },
+            id="two rows on the other side",
+        ),
+        pytest.param(
+            # Not every remaining row is Failed.
+            [
+                _sm11("Failed", "Disabled", "m1"),
+                _sm11("N/A", "Error", "could not read m2"),
+            ],
+            [_sm11("Passed", "Check", "all fine")],
+            {
+                (Change.NO_LONGER_REPORTED, MatchRule.UNMATCHED): 1,
+                (NF, MatchRule.UNMATCHED): 2,
+            },
+            id="a remaining row is not failed",
+        ),
+        pytest.param(
+            # The other run's only row was already paired, by its details.
+            [_sm11("Failed", "Disabled", "m1"), _sm11("Failed", "Disabled", "m2")],
+            [_sm11("Failed", "Disabled", "m1")],
+            {
+                (Change.STILL_OPEN, MatchRule.EXACT): 1,
+                (Change.NO_LONGER_REPORTED, MatchRule.UNMATCHED): 1,
+            },
+            id="the lone row is already paired",
+        ),
+    ],
+)
+def test_f1_rows_that_would_need_a_guess_stay_unpaired(before, after, expected):
+    assert _by_rule(_compare(before, after)) == Counter(expected)
+
+
 # --- A08 optional module in one run only --------------------------------------------
 
 

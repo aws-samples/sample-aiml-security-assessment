@@ -14,8 +14,10 @@ from assessment_history.discover import FINDINGS_COLUMNS, PREFIX_TO_MODULE
 from assessment_history.models import (
     CORE_MODULES,
     CURRENT_RUN,
+    FAILED,
     PREVIOUS_RUN,
     Finding,
+    MatchRule,
     Run,
     assign_area,
 )
@@ -106,17 +108,25 @@ def changes(comparison):
 
 
 def assert_invariants(previous, current, comparison):
-    """Every row of each run appears exactly once, and no row is paired twice."""
+    """Every row of each run appears in the comparison, and no row is paired
+    twice, except the one row a check-level pair shares: in the other run it's
+    the check's only row, and it isn't Failed."""
     for side, run, attribute in (
         (PREVIOUS_RUN, previous, "previous"),
         (CURRENT_RUN, current, "current"),
     ):
         expected = Counter(dedupe(run.findings))
-        seen = Counter(
+        uses = Counter(
             getattr(row, attribute)
             for row in comparison.rows
             if getattr(row, attribute) is not None
         )
+        for row in comparison.rows:
+            shared = getattr(row, attribute)
+            if shared is not None and uses[shared] > 1:
+                assert row.match_rule is MatchRule.CHECK_LEVEL, f"{side}: used twice"
+                assert shared.status != FAILED, f"{side}: a Failed row shared"
+        seen = Counter(set(uses))
         seen.update(item.finding for item in comparison.excluded if item.side == side)
         assert seen == expected, f"{side}: rows lost or used twice"
 

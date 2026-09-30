@@ -448,28 +448,34 @@ class Edit:
 # Chosen from rows that exist in every account of both sample reports, so the
 # same list applies everywhere. Agentic AI and OWASP rows derived from an
 # edited row change with it (see _derived_rows).
+AR01_REFERENCE = "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html"
 EDITS = (
     Edit(
-        "Regressed (single-row pairing: the details changed)",
+        "Regressed (single-row pairing: the title and details changed, as the "
+        "scanner writes them)",
         "update",
         "SM-04",
         "us-east-1",
         "Passed",
         {
             "status": "Failed",
+            "finding": "GuardDuty Not Enabled",
+            "severity": "High",
             "details": "Amazon GuardDuty is not enabled, so threats to SageMaker "
             "workloads in this Region are not monitored.",
             "resolution": "Enable Amazon GuardDuty in this Region.",
         },
     ),
     Edit(
-        "Resolved",
+        "Resolved (the title changes from 'Missing' to 'Check', as the scanner "
+        "writes it)",
         "update",
         "AC-09",
         "Global",
         "Failed",
         {
             "status": "Passed",
+            "finding": "AgentCore Service-Linked Role Check",
             "details": "Service-linked role 'AWSServiceRoleForBedrockAgentCoreNetwork' "
             "exists.",
             "resolution": "No action required",
@@ -510,13 +516,15 @@ EDITS = (
         },
     ),
     Edit(
-        "New (N/A to Failed)",
+        "New (N/A to Failed; the title changes from 'Unused Permissions' to "
+        "'Stale Access Check', as the scanner writes it)",
         "update",
         "AR-02",
         "Global",
         "N/A",
         {
             "status": "Failed",
+            "finding": "AWS Agent Registry Stale Access Check",
             "severity": "Medium",
             "details": "The following principals have AWS Agent Registry permissions "
             "they have not used: role 'sample-registry-role'",
@@ -539,6 +547,40 @@ EDITS = (
             "help to keep cost in check.",
             "reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/"
             "security-iam-awsmanpol.html#security-iam-awsmanpol-bedrock-marketplace",
+            "severity": "High",
+            "status": "Failed",
+        },
+    ),
+    Edit(
+        "Regressed x2 (check-level pairing): the check's Passed summary row is "
+        "replaced by two Failed rows with their own titles, as the scanner writes "
+        "them",
+        "add",
+        "AR-01",
+        "Global",
+        values={
+            "finding": "AWS Agent Registry IAM Full Access Policy",
+            "details": "The following roles have AWS Agent Registry full-access "
+            "policies: sample-registry-admin-role",
+            "resolution": "Replace full-access policies with least-privilege AWS "
+            "Agent Registry actions and scoped resources.",
+            "reference": AR01_REFERENCE,
+            "severity": "High",
+            "status": "Failed",
+        },
+    ),
+    Edit(
+        "(second AR-01 row; see above)",
+        "add",
+        "AR-01",
+        "Global",
+        values={
+            "finding": "AWS Agent Registry IAM Wildcard Permissions",
+            "details": "The following roles have wildcard or allow-except AWS Agent "
+            "Registry permissions on all resources: sample-registry-admin-role",
+            "resolution": "Replace wildcard permissions with required AWS Agent "
+            "Registry actions and scoped resources.",
+            "reference": AR01_REFERENCE,
             "severity": "High",
             "status": "Failed",
         },

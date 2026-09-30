@@ -1,17 +1,28 @@
 """Compare two assessment runs of one account.
 
-Rows are grouped by assessment area, region, Check_ID, and Finding. Within a
-group, rows are paired in three steps:
+Rows are grouped by assessment area, region, and Check_ID. The Finding title
+is not part of the group: many scanners use one title when a check fails and
+another when it passes or can't be assessed (review item F1). Within a group,
+rows are paired in five steps:
 
-1. identical Finding_Details (step 1a), then identical details once values
-   that change every run are blanked out (step 1b);
-2. if the group has exactly one row in each run, those two rows;
-3. anything left is unpaired.
+1. the same title and identical Finding_Details (exact), then the same title
+   and identical details once values that change every run are blanked out
+   (normalized);
+2. identical details, blanked the same way, under a different title
+   (details), for a title that changed between releases;
+3. two remaining rows that are each their run's only row, in the group or
+   with their title (single-row);
+4. several remaining Failed rows in one run, and in the other run a single
+   row that isn't Failed, such as a Passed summary or an N/A error row: each
+   Failed row is paired with that row (check-level);
+5. anything left is unpaired.
 
-A pair is only made when its key is unique on both sides, so rows are never
-guessed into pairs. Only modules enabled, and regions scanned, in both runs
-are compared; the rest is returned as excluded with a reason. Rows marked
-Global, or with no region, are always compared.
+A pair is only made when it's unambiguous: steps 1 and 2 need a key that is
+unique on both sides, so rows are never guessed into pairs. In step 4 one row
+is shared by several pairs; it's the only way a row appears more than once.
+Only modules enabled, and regions scanned, in both runs are compared; the rest
+is returned as excluded with a reason. Rows marked Global, or with no region,
+are always compared.
 
 No AWS calls: runs arrive as ``models.Run`` values.
 """
@@ -166,8 +177,8 @@ def _region_in_scope(region: str, regions: frozenset[str]) -> bool:
     return all(part == GLOBAL_REGION or part in regions for part in listed)
 
 
-def _group_key(finding: Finding) -> tuple[str, str, str, str]:
-    return (finding.area, finding.region, finding.check_id, finding.finding)
+def _group_key(finding: Finding) -> tuple[str, str, str]:
+    return (finding.area, finding.region, finding.check_id)
 
 
 def _match(
@@ -186,28 +197,88 @@ def _match(
     return sorted(rows, key=_row_sort_key)
 
 
+_KEYED_STEPS: tuple[tuple[MatchRule, Callable[[Finding], object]], ...] = (
+    (MatchRule.EXACT, lambda finding: (finding.finding, finding.details)),
+    (
+        MatchRule.NORMALIZED,
+        lambda finding: (finding.finding, normalize_details(finding.details)),
+    ),
+    (MatchRule.DETAILS, lambda finding: normalize_details(finding.details)),
+)
+
+
 def _match_group(previous: list[Finding], current: list[Finding]) -> list[ComparedRow]:
     rows = []
-    pairs, rest_previous, rest_current = _pair_unique(
-        previous, current, lambda finding: finding.details
-    )
-    rows += [_row(p, c, MatchRule.EXACT) for p, c in pairs]
-    pairs, rest_previous, rest_current = _pair_unique(
-        rest_previous, rest_current, lambda finding: normalize_details(finding.details)
-    )
-    rows += [_row(p, c, MatchRule.NORMALIZED) for p, c in pairs]
-    if len(previous) == 1 and len(current) == 1 and rest_previous and rest_current:
-        rows.append(_row(rest_previous[0], rest_current[0], MatchRule.SINGLE_ROW))
-        rest_previous, rest_current = [], []
+    rest_previous, rest_current = list(previous), list(current)
+    for rule, key in _KEYED_STEPS:
+        pairs, rest_previous, rest_current = _pair_unique(
+            rest_previous, rest_current, key
+        )
+        rows += [_row(p, c, rule) for p, c in pairs]
+    for rule, find_pairs in (
+        (MatchRule.SINGLE_ROW, _single_row_pairs),
+        (MatchRule.CHECK_LEVEL, _check_level_pairs),
+    ):
+        pairs = find_pairs(previous, current, rest_previous, rest_current)
+        rows += [_row(p, c, rule) for p, c in pairs]
+        rest_previous = [p for p in rest_previous if p not in {p for p, _ in pairs}]
+        rest_current = [c for c in rest_current if c not in {c for _, c in pairs}]
     rows += [_row(p, None, MatchRule.UNMATCHED) for p in rest_previous]
     rows += [_row(None, c, MatchRule.UNMATCHED) for c in rest_current]
     return rows
 
 
+def _single_row_pairs(
+    previous: list[Finding],
+    current: list[Finding],
+    rest_previous: list[Finding],
+    rest_current: list[Finding],
+) -> _Pairs:
+    """Remaining rows that are each their run's only row: in the whole group
+    (the title may differ), or with their title (the title must match)."""
+    if len(previous) == 1 and len(current) == 1:
+        return list(zip(rest_previous, rest_current))
+    previous_titles = Counter(finding.finding for finding in previous)
+    current_titles = Counter(finding.finding for finding in current)
+    only_current = {
+        finding.finding: finding
+        for finding in rest_current
+        if current_titles[finding.finding] == 1
+    }
+    return [
+        (finding, only_current[finding.finding])
+        for finding in rest_previous
+        if previous_titles[finding.finding] == 1 and finding.finding in only_current
+    ]
+
+
+def _check_level_pairs(
+    previous: list[Finding],
+    current: list[Finding],
+    rest_previous: list[Finding],
+    rest_current: list[Finding],
+) -> _Pairs:
+    """Remaining Failed rows on one side, all paired with the other side's one
+    row: the group's only row in that run, still unpaired, and not Failed."""
+    if _is_lone_other_row(current, rest_current) and _all_failed(rest_previous):
+        return [(finding, rest_current[0]) for finding in rest_previous]
+    if _is_lone_other_row(previous, rest_previous) and _all_failed(rest_current):
+        return [(rest_previous[0], finding) for finding in rest_current]
+    return []
+
+
+def _is_lone_other_row(side: list[Finding], rest: list[Finding]) -> bool:
+    return len(side) == 1 and len(rest) == 1 and rest[0].status != FAILED
+
+
+def _all_failed(rest: list[Finding]) -> bool:
+    return bool(rest) and all(finding.status == FAILED for finding in rest)
+
+
 def _pair_unique(
     previous: list[Finding],
     current: list[Finding],
-    key: Callable[[Finding], str],
+    key: Callable[[Finding], object],
 ) -> tuple[_Pairs, list[Finding], list[Finding]]:
     """Pair rows whose key appears exactly once on each side."""
     previous_counts = Counter(key(finding) for finding in previous)

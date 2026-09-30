@@ -4,13 +4,13 @@
   "current_execution_id": "2f6c1a7e-5b3d-4e8a-9c0f-000000000927",
   "days_apart": 24,
   "tile_counts": {
-   "Regressed": 1,
+   "Regressed": 3,
    "New": 2,
    "Still open": 97,
    "Resolved": 2,
    "No longer reported": 1,
    "No longer assessed": 1,
-   "Not failing": 228
+   "Not failing": 227
   },
   "counts_by_area": {
    "bedrock": {
@@ -31,8 +31,9 @@
     "Not failing": 30
    },
    "agent-registry": {
+    "Regressed": 2,
     "New": 1,
-    "Not failing": 19
+    "Not failing": 18
    },
    "agentic": {
     "Still open": 48,
@@ -85,12 +86,12 @@
     "area": "sagemaker",
     "region": "us-east-1",
     "check_id": "SM-04",
-    "finding": "GuardDuty Enabled",
+    "finding": "GuardDuty Not Enabled",
     "change": "Regressed",
     "match_rule": "single-row",
     "previous_status": "Passed",
     "current_status": "Failed",
-    "severity": "Medium",
+    "severity": "High",
     "previous_details": "Amazon GuardDuty is properly enabled and monitoring for security threats in SageMaker workloads.",
     "current_details": "Amazon GuardDuty is not enabled, so threats to SageMaker workloads in this Region are not monitored."
    },
@@ -124,7 +125,7 @@
     "area": "agentcore",
     "region": "Global",
     "check_id": "AC-09",
-    "finding": "AgentCore Service-Linked Role Missing",
+    "finding": "AgentCore Service-Linked Role Check",
     "change": "Resolved",
     "match_rule": "single-row",
     "previous_status": "Failed",
@@ -149,8 +150,34 @@
    {
     "area": "agent-registry",
     "region": "Global",
+    "check_id": "AR-01",
+    "finding": "AWS Agent Registry IAM Full Access Policy",
+    "change": "Regressed",
+    "match_rule": "check-level",
+    "previous_status": "Passed",
+    "current_status": "Failed",
+    "severity": "High",
+    "previous_details": "No roles with overly permissive AWS Agent Registry access found.",
+    "current_details": "The following roles have AWS Agent Registry full-access policies: sample-registry-admin-role"
+   },
+   {
+    "area": "agent-registry",
+    "region": "Global",
+    "check_id": "AR-01",
+    "finding": "AWS Agent Registry IAM Wildcard Permissions",
+    "change": "Regressed",
+    "match_rule": "check-level",
+    "previous_status": "Passed",
+    "current_status": "Failed",
+    "severity": "High",
+    "previous_details": "No roles with overly permissive AWS Agent Registry access found.",
+    "current_details": "The following roles have wildcard or allow-except AWS Agent Registry permissions on all resources: sample-registry-admin-role"
+   },
+   {
+    "area": "agent-registry",
+    "region": "Global",
     "check_id": "AR-02",
-    "finding": "AWS Agent Registry Unused Permissions",
+    "finding": "AWS Agent Registry Stale Access Check",
     "change": "New",
     "match_rule": "single-row",
     "previous_status": "N/A",
@@ -270,13 +297,13 @@
   "current_execution_id": "2f6c1a7e-5b3d-4e8a-9c0f-000000000927",
   "days_apart": 24,
   "tile_counts": {
-   "Regressed": 2,
+   "Regressed": 4,
    "New": 1,
    "Still open": 11,
    "Resolved": 2,
    "No longer reported": 1,
    "No longer assessed": 1,
-   "Not failing": 253
+   "Not failing": 252
   },
   "counts_by_area": {
    "bedrock": {
@@ -297,8 +324,9 @@
     "Not failing": 40
    },
    "agent-registry": {
+    "Regressed": 2,
     "New": 1,
-    "Not failing": 19
+    "Not failing": 18
    },
    "agentic": {
     "Still open": 4,
@@ -351,12 +379,12 @@
     "area": "sagemaker",
     "region": "us-east-1",
     "check_id": "SM-04",
-    "finding": "GuardDuty Enabled",
+    "finding": "GuardDuty Not Enabled",
     "change": "Regressed",
     "match_rule": "single-row",
     "previous_status": "Passed",
     "current_status": "Failed",
-    "severity": "Medium",
+    "severity": "High",
     "previous_details": "Amazon GuardDuty is properly enabled and monitoring for security threats in SageMaker workloads.",
     "current_details": "Amazon GuardDuty is not enabled, so threats to SageMaker workloads in this Region are not monitored."
    },
@@ -390,7 +418,7 @@
     "area": "agentcore",
     "region": "Global",
     "check_id": "AC-09",
-    "finding": "AgentCore Service-Linked Role Missing",
+    "finding": "AgentCore Service-Linked Role Check",
     "change": "Resolved",
     "match_rule": "single-row",
     "previous_status": "Failed",
@@ -415,8 +443,34 @@
    {
     "area": "agent-registry",
     "region": "Global",
+    "check_id": "AR-01",
+    "finding": "AWS Agent Registry IAM Full Access Policy",
+    "change": "Regressed",
+    "match_rule": "check-level",
+    "previous_status": "Passed",
+    "current_status": "Failed",
+    "severity": "High",
+    "previous_details": "No roles with overly permissive AWS Agent Registry access found.",
+    "current_details": "The following roles have AWS Agent Registry full-access policies: sample-registry-admin-role"
+   },
+   {
+    "area": "agent-registry",
+    "region": "Global",
+    "check_id": "AR-01",
+    "finding": "AWS Agent Registry IAM Wildcard Permissions",
+    "change": "Regressed",
+    "match_rule": "check-level",
+    "previous_status": "Passed",
+    "current_status": "Failed",
+    "severity": "High",
+    "previous_details": "No roles with overly permissive AWS Agent Registry access found.",
+    "current_details": "The following roles have wildcard or allow-except AWS Agent Registry permissions on all resources: sample-registry-admin-role"
+   },
+   {
+    "area": "agent-registry",
+    "region": "Global",
     "check_id": "AR-02",
-    "finding": "AWS Agent Registry Unused Permissions",
+    "finding": "AWS Agent Registry Stale Access Check",
     "change": "New",
     "match_rule": "single-row",
     "previous_status": "N/A",
@@ -510,13 +564,13 @@
   "current_execution_id": "2f6c1a7e-5b3d-4e8a-9c0f-000000000927",
   "days_apart": 24,
   "tile_counts": {
-   "Regressed": 1,
+   "Regressed": 3,
    "New": 2,
    "Still open": 38,
    "Resolved": 2,
    "No longer reported": 1,
    "No longer assessed": 1,
-   "Not failing": 233
+   "Not failing": 232
   },
   "counts_by_area": {
    "bedrock": {
@@ -537,8 +591,9 @@
     "Not failing": 38
    },
    "agent-registry": {
+    "Regressed": 2,
     "New": 1,
-    "Not failing": 19
+    "Not failing": 18
    },
    "agentic": {
     "Still open": 7,
@@ -591,12 +646,12 @@
     "area": "sagemaker",
     "region": "us-east-1",
     "check_id": "SM-04",
-    "finding": "GuardDuty Enabled",
+    "finding": "GuardDuty Not Enabled",
     "change": "Regressed",
     "match_rule": "single-row",
     "previous_status": "Passed",
     "current_status": "Failed",
-    "severity": "Medium",
+    "severity": "High",
     "previous_details": "Amazon GuardDuty is properly enabled and monitoring for security threats in SageMaker workloads.",
     "current_details": "Amazon GuardDuty is not enabled, so threats to SageMaker workloads in this Region are not monitored."
    },
@@ -617,7 +672,7 @@
     "area": "agentcore",
     "region": "Global",
     "check_id": "AC-09",
-    "finding": "AgentCore Service-Linked Role Missing",
+    "finding": "AgentCore Service-Linked Role Check",
     "change": "Resolved",
     "match_rule": "single-row",
     "previous_status": "Failed",
@@ -642,8 +697,34 @@
    {
     "area": "agent-registry",
     "region": "Global",
+    "check_id": "AR-01",
+    "finding": "AWS Agent Registry IAM Full Access Policy",
+    "change": "Regressed",
+    "match_rule": "check-level",
+    "previous_status": "Passed",
+    "current_status": "Failed",
+    "severity": "High",
+    "previous_details": "No roles with overly permissive AWS Agent Registry access found.",
+    "current_details": "The following roles have AWS Agent Registry full-access policies: sample-registry-admin-role"
+   },
+   {
+    "area": "agent-registry",
+    "region": "Global",
+    "check_id": "AR-01",
+    "finding": "AWS Agent Registry IAM Wildcard Permissions",
+    "change": "Regressed",
+    "match_rule": "check-level",
+    "previous_status": "Passed",
+    "current_status": "Failed",
+    "severity": "High",
+    "previous_details": "No roles with overly permissive AWS Agent Registry access found.",
+    "current_details": "The following roles have wildcard or allow-except AWS Agent Registry permissions on all resources: sample-registry-admin-role"
+   },
+   {
+    "area": "agent-registry",
+    "region": "Global",
     "check_id": "AR-02",
-    "finding": "AWS Agent Registry Unused Permissions",
+    "finding": "AWS Agent Registry Stale Access Check",
     "change": "New",
     "match_rule": "single-row",
     "previous_status": "N/A",

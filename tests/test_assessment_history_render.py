@@ -554,7 +554,15 @@ def test_methodology_explains_every_change_state():
         cell.get_text()[2:] for cell in page.select("#methodology table td:first-child")
     ]
     assert labels == [change.value for change in ROW_ORDER]
-    assert len(page.select("#methodology .note-list li")) == 3
+    # One item per matching step, in order (compare.py; review item F1).
+    steps = [item.get_text() for item in page.select("#methodology .note-list li")]
+    assert len(steps) == 5
+    assert "Region, and Check ID" in steps[0]
+    assert "Finding title isn't part of the group" in steps[0]
+    assert "under a different title" in steps[1]
+    assert "its run's only row" in steps[2]
+    assert "several Failed rows" in steps[3] and "Passed summary" in steps[3]
+    assert "unpaired" in steps[4]
 
 
 def test_every_icon_has_a_size():

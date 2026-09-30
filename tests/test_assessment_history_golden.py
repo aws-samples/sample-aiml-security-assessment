@@ -235,14 +235,29 @@ def test_single_account_sample_results(folders):
     ) == Counter(
         {(Change.STILL_OPEN, MatchRule.EXACT): 3, (Change.NEW, MatchRule.UNMATCHED): 1}
     )
+    # Titles change with the status, as the scanners write them (review F1).
+    (sm04,) = rows[("SM-04", "us-east-1")]
+    assert (sm04.previous.finding, sm04.current.finding) == (
+        "GuardDuty Enabled",
+        "GuardDuty Not Enabled",
+    )
+    # AR-01: one Passed summary row became two Failed rows with their own
+    # titles; both pair with the summary row (check-level) and show Regressed.
+    ar01 = rows[("AR-01", "Global")]
+    assert Counter((row.change, row.match_rule) for row in ar01) == Counter(
+        {(Change.REGRESSED, MatchRule.CHECK_LEVEL): 2}
+    )
+    assert {row.previous.finding for row in ar01} == {
+        "AWS Agent Registry IAM Full Access Check"
+    }
     # The severity shown for a finding no longer assessed is the previous run's.
     (sm26,) = rows[("SM-26", "us-east-2")]
     assert sm26.severity == "High"
     # Previous run: 17 failed By Service rows. AC-09, AC-14, SM-26 and BR-37
-    # changed.
+    # changed. Regressed: SM-04 and the two AR-01 rows.
     tiles = comparison.tile_counts()
     assert {change: tiles[change] for change in script.CHANGES} == {
-        Change.REGRESSED: 1,
+        Change.REGRESSED: 3,
         Change.NEW: 2,
         Change.RESOLVED: 2,
         Change.NO_LONGER_REPORTED: 1,
@@ -258,6 +273,15 @@ def test_multi_account_sample_results(folders):
     _p, _c, comparison = _compared(folders, "multi_account", "444455556666")
     (br03,) = _rows_by_check(comparison)[("BR-03", "Global")]
     assert (br03.change, br03.match_rule) == (Change.REGRESSED, MatchRule.SINGLE_ROW)
+
+    # Every account had AR-01's Passed summary row: two Regressed, check-level.
+    for account_id in ("111122223333", "444455556666", "777788889999"):
+        ar01 = _rows_by_check(_compared(folders, "multi_account", account_id)[2])[
+            ("AR-01", "Global")
+        ]
+        assert Counter((row.change, row.match_rule) for row in ar01) == Counter(
+            {(Change.REGRESSED, MatchRule.CHECK_LEVEL): 2}
+        ), account_id
 
     # Day counts moved on by 24 days; the rows still pair (matching step 1b).
     normalized = {

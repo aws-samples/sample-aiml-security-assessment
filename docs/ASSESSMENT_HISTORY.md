@@ -150,14 +150,18 @@ access-denied and unavailable-region results.
 
 ## How findings are matched between runs
 
-Rows are grouped by assessment area, Region, `Check_ID`, and `Finding`. Some
-checks write one row per resource (for example, one row per IAM role), with
-the resource only in `Finding_Details`. Within a group, rows are paired in
-three steps:
+Rows are grouped by assessment area, Region, and `Check_ID`. The `Finding`
+title isn't part of the group: many checks use one title when they fail and
+another when they pass or can't be assessed (for example, SM-04 writes
+"GuardDuty Not Enabled", "GuardDuty Enabled", or "GuardDuty Check Error").
+Some checks write one row per resource (for example, one row per IAM role),
+with the resource only in `Finding_Details`. Within a group, rows are paired
+in these steps:
 
-1. **Identical details.** Rows with the same `Finding_Details` are paired.
-   Then, rows are paired whose details are the same once values that change
-   on every run are blanked out:
+1. **Same title, identical details.** Rows with the same `Finding` and
+   `Finding_Details` are paired. Then, rows with the same `Finding` are paired
+   whose details are the same once values that change on every run are
+   blanked out:
 
    | Changing value | Written by |
    | --- | --- |
@@ -169,14 +173,25 @@ three steps:
    resource names contain digits. A test fails if a scanner starts writing
    another day count or date into `Finding_Details` without it being added
    to this list.
-2. **One row each.** If the group has exactly one row in each run, those two
-   rows are paired even if their details differ.
-3. **Everything else is unpaired**, and shows as New or No longer reported.
+2. **Same details, new title.** Rows whose details match, blanked the same
+   way, are paired even if the title changed (for example, a title renamed in
+   a new release).
+3. **One row each.** Two remaining rows are paired even if their title and
+   details differ, if each is its run's only row in the group, or its run's
+   only row with that title.
+4. **Several rows and one summary row.** If one run has several Failed rows
+   left and the other run's only row for the check isn't Failed (a Passed
+   summary such as "All 3 models have network isolation enabled", or an N/A
+   error row), each Failed row is paired with that row. Several Failed rows
+   and a Passed summary show as Resolved; a Passed summary and several Failed
+   rows show as Regressed.
+5. **Everything else is unpaired**, and shows as New or No longer reported.
 
 A pair is made only when it's unambiguous: if two rows would pair with the
-same row, none of them are paired. The CSV's `Match_Rule` column records
-which step paired each row (`exact`, `normalized`, `single-row`, or
-`unmatched`), so any result can be traced.
+same row in steps 1 and 2, none of them are paired. The CSV's `Match_Rule`
+column records which step paired each row (`exact`, `normalized`, `details`,
+`single-row`, `check-level`, or `unmatched`), so any result can be traced. A
+`check-level` summary row appears once for each row it's paired with.
 
 Repeated rows within a run are dropped first, with the same rule the main
 report uses.
@@ -228,7 +243,7 @@ One row per compared finding, in these columns:
 | `Previous_Severity`, `Current_Severity` | Each run's severity (blank when not present) |
 | `Previous_Finding_Details`, `Current_Finding_Details` | Each run's details (blank when not present) |
 | `Resolution`, `Reference` | From the current run, or the previous run when the finding is gone |
-| `Match_Rule` | `exact`, `normalized`, `single-row`, or `unmatched` |
+| `Match_Rule` | `exact`, `normalized`, `details`, `single-row`, `check-level`, or `unmatched` |
 | `Previous_Execution_ID`, `Current_Execution_ID` | The two runs compared |
 
 A cell that starts with `=`, `+`, `-`, `@`, a tab, or a carriage return gets
