@@ -406,17 +406,38 @@ phases:
           if [[ "$enabled" != "true" ]]; then
             echo "WARNING: ENABLE_ASSESSMENT_HISTORY is '$ENABLE_ASSESSMENT_HISTORY', not true or false; using true"
           fi
-          # Skip when little build time is left, so this step can't push the
-          # build past its CodeBuild timeout (CODEBUILD_START_TIME is in ms).
+          # Time budget: one minute per account, at least five minutes, so
+          # large organizations aren't cut short (review item F4). The tool
+          # stops starting accounts a minute before the budget ends; `timeout`
+          # stops it 30 seconds after (review item L2).
+          local arg previous_arg="" accounts=""
+          for arg in "$@"; do
+            if [[ "$previous_arg" == "--accounts" ]]; then
+              accounts="$arg"
+            fi
+            previous_arg="$arg"
+          done
+          local account_count
+          account_count=$(echo "$accounts" | tr ',' ' ' | wc -w)
+          local budget=$(( account_count * 60 ))
+          if (( budget < 300 )); then
+            budget=300
+          fi
+          # Skip when little build time is left, and never budget more than is
+          # left, so this step can't push the build past its CodeBuild timeout
+          # (CODEBUILD_START_TIME is in ms).
           if [[ -n "${CODEBUILD_START_TIME:-}" ]]; then
             local seconds_left=$(( ${BUILD_TIMEOUT_MINUTES:-60} * 60 - ( $(date +%s) - CODEBUILD_START_TIME / 1000 ) ))
             if (( seconds_left < 360 )); then
               echo "WARNING: Changes report skipped: only ${seconds_left}s of build time left"
               return 0
             fi
+            if (( budget > seconds_left - 60 )); then
+              budget=$(( seconds_left - 60 ))
+            fi
           fi
           echo "Creating changes-since-last-assessment reports..."
-          if ! (cd .. && ENABLE_ASSESSMENT_HISTORY=true timeout 300 python3 -m assessment_history compare --bucket "$BUCKET_REPORT" --time-budget 300 "$@"); then
+          if ! (cd .. && ENABLE_ASSESSMENT_HISTORY=true timeout $(( budget + 30 )) python3 -m assessment_history compare --bucket "$BUCKET_REPORT" --time-budget "$budget" "$@"); then
             echo "WARNING: The changes report step did not complete; assessment results are not affected"
           fi
           return 0

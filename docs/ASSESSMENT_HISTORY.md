@@ -91,9 +91,15 @@ It can't fail an assessment run:
 - Any problem is printed as a `WARNING` line and the build carries on.
 - Each account is handled on its own, so one account's problem doesn't stop
   the others.
-- The step is skipped when less than 6 minutes of build time are left, and
-  it has a 5-minute limit. In multi-account builds, accounts not started
-  before the limit get a `WARNING` line.
+- The step has a time limit of one minute per account, and at least 5
+  minutes, but never more than the build time left. It's skipped when less
+  than 6 minutes of build time are left. Accounts not started before the
+  limit get a `WARNING` line, and a summary line counts them.
+- In multi-account builds the accounts are started in an order that moves
+  along one account with each CodeBuild build number, so if the limit is
+  reached, it isn't always the same accounts that miss out.
+- The CSV is written before the page, so if the page can't be written, the
+  CSV is still there.
 
 It reads only the findings CSVs already in the bucket, and in single-account
 mode the run records. No changes were made to the scanners, the AWS SAM
@@ -297,6 +303,9 @@ can contain resource names chosen by anyone who can create resources.
 | `Not read: <file> (unknown findings file type)` | A findings CSV from a module this version doesn't know |
 | `WARNING: Changes report cannot be completed for account <id>. Reason(s): ...` | No report for that account; the reasons are listed |
 | `WARNING: Changes report skipped: only Ns of build time left` | Too little build time left |
+| `WARNING: The time limit was reached with N of M account(s) not started: ...` | The accounts that got no report this build; the next build starts with a different account |
+| `Starting with account <id>: the account order moves along one account with each build number` | Multi-account: which account went first this build |
+| `WARNING: The changes page for account <id> could not be written; the CSV was. Reason: ...` | Only the CSV was written for that account |
 | `Changes report skipped: the assessment run did not succeed` | Single-account run failed |
 | `Changes report disabled (EnableAssessmentHistory=false)` | The setting is off |
 

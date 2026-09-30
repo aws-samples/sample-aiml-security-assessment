@@ -295,7 +295,86 @@ def test_accounts_past_the_time_budget_get_a_warning(tmp_path):
         f"  {cli.first_run_note(ACCOUNT)}",
         _cannot(OTHER_ACCOUNT, limit),
         _cannot(MGMT, limit),
+        "WARNING: The time limit was reached with 2 of 3 account(s) not started: "
+        f"{OTHER_ACCOUNT}, {MGMT}",
     ]
+
+
+def test_the_time_limit_summary_lists_at_most_ten_accounts(tmp_path):
+    accounts = [f"{100000000000 + number}" for number in range(13)]
+    ticks = iter([0, 300])
+    code, lines = _run(
+        [
+            "compare",
+            "--bucket",
+            BUCKET,
+            "--accounts",
+            " ".join(accounts),
+            "--execution-arn-dir",
+            str(tmp_path),
+            "--time-budget",
+            "300",
+        ],
+        s3=FakeS3(),
+        clock=lambda: next(ticks),
+    )
+    assert code == 0
+    assert len(lines) == 14
+    assert lines[-1] == (
+        "WARNING: The time limit was reached with 13 of 13 account(s) not started: "
+        + ", ".join(accounts[:10])
+        + ", and 3 more"
+    )
+
+
+# --- the account order moves along with the build number (review item F4) ---------
+
+
+@pytest.mark.parametrize(
+    "build_number, expected",
+    [
+        ("4", (["b", "c", "a"], 1)),
+        (" 6 ", (["a", "b", "c"], 0)),
+        ("", (["a", "b", "c"], 0)),
+        ("12a", (["a", "b", "c"], 0)),
+        ("-1", (["a", "b", "c"], 0)),
+        ("\u00b2", (["a", "b", "c"], 0)),
+    ],
+)
+def test_rotate_accounts(build_number, expected):
+    environ = {cli.BUILD_NUMBER: build_number}
+    assert cli.rotate_accounts(["a", "b", "c"], environ) == expected
+
+
+def test_one_account_or_no_build_number_keeps_the_order():
+    assert cli.rotate_accounts(["a"], {cli.BUILD_NUMBER: "7"}) == (["a"], 0)
+    assert cli.rotate_accounts(["a", "b"], {}) == (["a", "b"], 0)
+
+
+def test_each_build_starts_with_a_different_account(tmp_path):
+    s3 = FakeS3()
+    arns = _arn_dir(tmp_path, {})
+    argv = [
+        "compare",
+        "--bucket",
+        BUCKET,
+        "--accounts",
+        f"{ACCOUNT} {OTHER_ACCOUNT} {MGMT}",
+        "--execution-arn-dir",
+        str(arns),
+    ]
+    missing = "no execution ARN was saved for the current run"
+    code, lines = _run(argv, s3=s3, environ={cli.BUILD_NUMBER: "5"})
+    assert code == 0
+    assert lines == [
+        f"Starting with account {MGMT}: the account order moves along one account "
+        "with each build number",
+        _cannot(MGMT, missing),
+        _cannot(ACCOUNT, missing),
+        _cannot(OTHER_ACCOUNT, missing),
+    ]
+    _code, lines = _run(argv, s3=s3, environ={cli.BUILD_NUMBER: "6"})
+    assert lines[0] == _cannot(ACCOUNT, missing)  # offset 0: no note
 
 
 # --- S3 mode: problems are warnings -------------------------------------------------
@@ -588,15 +667,53 @@ def test_find_main_report(reports, expected):
     assert cli.find_main_report(files, utc(27)) == expected
 
 
-def test_a_page_that_cannot_be_rendered_writes_nothing():
+def test_a_page_that_cannot_be_rendered_still_leaves_the_csv():
+    # Review item L1: the page used to be made first, so its failure cost the CSV.
     s3 = FakeS3()
     put_run(s3, "run-p", utc(3))
     put_run(s3, "run-c", utc(27))
-    with patch.object(cli, "render_changes_page", side_effect=RenderError("gone")):
+    with patch.object(cli, "render_changes_page", side_effect=RenderError("gone.")):
         code, lines = _run(_single(), s3=s3)
     assert code == 0
-    assert lines[-1] == _cannot(ACCOUNT, "RenderError: gone")
-    assert s3.writes == []
+    assert s3.writes == [(CHANGES_KEY, "text/csv; charset=utf-8")]
+    assert lines[-2:] == [
+        f"  Written: s3://{BUCKET}/{CHANGES_KEY}",
+        f"WARNING: The changes page for account {ACCOUNT} could not be written; "
+        "the CSV was. Reason: RenderError: gone.",
+    ]
+
+
+class _PageWriteFails(FakeS3):
+    def put_object(self, *, Bucket, Key, Body, ContentType):
+        if Key.endswith(".html"):
+            raise RuntimeError("AccessDenied")
+        super().put_object(Bucket=Bucket, Key=Key, Body=Body, ContentType=ContentType)
+
+
+def test_a_page_that_cannot_be_written_still_leaves_the_csv():
+    s3 = _PageWriteFails()
+    put_run(s3, "run-p", utc(3))
+    put_run(s3, "run-c", utc(27))
+    code, lines = _run(_single(), s3=s3)
+    assert code == 0
+    assert s3.writes == [(CHANGES_KEY, "text/csv; charset=utf-8")]
+    assert lines[-1] == (
+        f"WARNING: The changes page for account {ACCOUNT} could not be written; "
+        "the CSV was. Reason: RuntimeError: AccessDenied."
+    )
+
+
+def test_a_csv_that_cannot_be_written_writes_no_page():
+    class _CsvWriteFails(FakeS3):
+        def put_object(self, **kwargs):
+            raise RuntimeError("AccessDenied")
+
+    s3 = _CsvWriteFails()
+    put_run(s3, "run-p", utc(3))
+    put_run(s3, "run-c", utc(27))
+    code, lines = _run(_single(), s3=s3)
+    assert (code, s3.writes) == (0, [])
+    assert lines[-1] == _cannot(ACCOUNT, "RuntimeError: AccessDenied")
 
 
 def test_changes_file_name_takes_an_extension():

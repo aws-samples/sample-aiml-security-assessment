@@ -11,7 +11,11 @@ writes ``security_assessment_changes_<YYYYMMDD_HHMMSS>.csv`` and ``.html`` into
 
 It never fails the build: a problem with one account is printed as a WARNING
 line, the other accounts carry on, and the exit code is 0. Setting
-ENABLE_ASSESSMENT_HISTORY=false turns it off.
+ENABLE_ASSESSMENT_HISTORY=false turns it off. The CSV is written before the
+page, so a page that can't be written still leaves the CSV. Accounts are
+started in an order that moves along one account with each CodeBuild build
+number, so when the time budget runs out it isn't always the same accounts
+that miss out.
 
 Local mode compares two folders, each holding one run's findings CSVs as
 saved in the results bucket, and writes the CSV and HTML into a third folder::
@@ -69,6 +73,8 @@ REPORT_ONLY_STAGES = frozenset({"consolidation"})
 # Stop starting new accounts when this little of --time-budget is left, so
 # the step ends on its own before `timeout` stops it.
 ACCOUNT_RESERVE_SECONDS = 60
+# CodeBuild's build number, which moves the account order along (review F4).
+BUILD_NUMBER = "CODEBUILD_BUILD_NUMBER"
 # The retry settings the Lambda functions use (boto3_config in each app.py).
 S3_RETRIES = {"max_attempts": 10, "mode": "adaptive"}
 TILE_ORDER = (
@@ -144,11 +150,15 @@ def changes_csv(comparison: Comparison) -> bytes:
     return buffer.getvalue().encode("utf-8")
 
 
-def _listing(items: Mapping[str, str]) -> str:
-    shown = [f"{name} ({side})" for name, side in list(items.items())[:MAX_LISTED]]
-    if len(items) > MAX_LISTED:
-        shown.append(f"and {len(items) - MAX_LISTED} more")
+def _names(names: list[str]) -> str:
+    shown = names[:MAX_LISTED]
+    if len(names) > MAX_LISTED:
+        shown.append(f"and {len(names) - MAX_LISTED} more")
     return ", ".join(shown)
+
+
+def _listing(items: Mapping[str, str]) -> str:
+    return _names([f"{name} ({side})" for name, side in items.items()])
 
 
 def describe(comparison: Comparison) -> list[str]:
@@ -182,6 +192,20 @@ def describe(comparison: Comparison) -> list[str]:
             + _listing(comparison.single_run_check_ids)
         )
     return lines
+
+
+def rotate_accounts(
+    accounts: list[str], environ: Mapping[str, str]
+) -> tuple[list[str], int]:
+    """The accounts starting at (build number mod count), and that offset.
+
+    Without a whole-number build number the order is unchanged.
+    """
+    raw = environ.get(BUILD_NUMBER, "").strip()
+    if len(accounts) < 2 or not (raw.isascii() and raw.isdigit()):
+        return list(accounts), 0
+    offset = int(raw) % len(accounts)
+    return accounts[offset:] + accounts[:offset], offset
 
 
 def read_failures(path: str) -> dict[str, list[str]]:
@@ -241,20 +265,38 @@ def _compare_in_s3(client, bucket: str, account: str, execution_id: str, out: Ou
         out(f"  {first_run_note(account)}")
         return
     comparison = compare_runs(found.previous, found.current)
-    page = changes_page(comparison, source.list_files())
-    # The CSV first: if the page can't be written, its absence is the symptom.
-    written = []
-    for extension, body, content_type in (
-        ("csv", changes_csv(comparison), "text/csv; charset=utf-8"),
-        ("html", page, "text/html; charset=utf-8"),
-    ):
-        key = f"{account}/{changes_file_name(comparison, extension)}"
-        client.put_object(Bucket=bucket, Key=key, Body=body, ContentType=content_type)
-        written.append(key)
+    # The CSV first, and on its own: a page that can't be made or written
+    # must not cost the CSV (review item L1).
+    csv_key = f"{account}/{changes_file_name(comparison)}"
+    client.put_object(
+        Bucket=bucket,
+        Key=csv_key,
+        Body=changes_csv(comparison),
+        ContentType="text/csv; charset=utf-8",
+    )
+    written = [csv_key]
+    page_problem = None
+    try:
+        page = changes_page(comparison, source.list_files())
+        page_key = f"{account}/{changes_file_name(comparison, 'html')}"
+        client.put_object(
+            Bucket=bucket,
+            Key=page_key,
+            Body=page,
+            ContentType="text/html; charset=utf-8",
+        )
+        written.append(page_key)
+    except Exception as error:  # the CSV is already written
+        page_problem = _reason(error)
     for line in describe(comparison):
         out(line)
     for key in written:
         out(f"  Written: s3://{bucket}/{key}")
+    if page_problem is not None:
+        out(
+            f"WARNING: The changes page for account {account} could not be "
+            f"written; the CSV was. Reason: {page_problem.rstrip('.')}."
+        )
 
 
 def run_s3(args, accounts, client, environ, clock, out: Output) -> int:
@@ -264,18 +306,29 @@ def run_s3(args, accounts, client, environ, clock, out: Output) -> int:
         return 0
     client = client or _s3_client()
     failures = read_failures(args.failures_file) if args.failures_file else {}
+    accounts, offset = rotate_accounts(accounts, environ)
+    if offset:
+        out(
+            f"Starting with account {accounts[0]}: the account order moves "
+            "along one account with each build number"
+        )
     started = clock()
     for index, account in enumerate(accounts):
         if (
             args.time_budget is not None
             and clock() - started > args.time_budget - ACCOUNT_RESERVE_SECONDS
         ):
-            for remaining in accounts[index:]:
+            remaining = accounts[index:]
+            for skipped in remaining:
                 _cannot_complete(
                     out,
-                    remaining,
+                    skipped,
                     ["the time limit for the changes report was reached"],
                 )
+            out(
+                f"WARNING: The time limit was reached with {len(remaining)} of "
+                f"{len(accounts)} account(s) not started: " + _names(remaining)
+            )
             break
         if not ACCOUNT_ID_PATTERN.fullmatch(account):
             out(f"Skipped {account!r}: not an AWS account ID")

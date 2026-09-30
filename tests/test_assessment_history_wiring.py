@@ -55,7 +55,7 @@ def _function_script(name="run_changes_report"):
     return "\n".join(lines[start : end + 1])
 
 
-def _run_function(tmp_path, env=None):
+def _run_function(tmp_path, env=None, accounts="123456789012"):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     for name, body in (("python3", PYTHON_STANDIN), ("timeout", TIMEOUT_STANDIN)):
@@ -67,7 +67,7 @@ def _run_function(tmp_path, env=None):
     log = tmp_path / "python.log"
     script = (
         _function_script()
-        + "\nrun_changes_report --accounts 123456789012 --execution-id run-c"
+        + f"\nrun_changes_report --accounts '{accounts}' --execution-id run-c"
         + '\necho "status=$?"\n'
     )
     result = subprocess.run(
@@ -109,7 +109,41 @@ def test_the_step_runs_the_tool_from_the_repo_root(tmp_path):
         "arg=--execution-id",
         "arg=run-c",
     ]
-    assert limit == "limit=300"
+    assert limit == "limit=330"
+
+
+def _budget(calls):
+    return int(calls[calls.index("arg=--time-budget") + 1].removeprefix("arg="))
+
+
+@pytest.mark.parametrize(
+    "accounts, budget",
+    [
+        ("123456789012", 300),
+        (" ".join(f"{100000000000 + n}" for n in range(5)), 300),
+        (", ".join(f"{100000000000 + n}" for n in range(8)), 480),
+        (" ".join(f"{100000000000 + n}" for n in range(20)), 1200),
+    ],
+)
+def test_the_budget_is_a_minute_per_account_and_at_least_five(
+    tmp_path, accounts, budget
+):
+    # Review items F4 and L2: `timeout` allows 30 seconds past the budget.
+    _stdout, calls, limit = _run_function(tmp_path, accounts=accounts)
+    assert _budget(calls) == budget
+    assert limit == f"limit={budget + 30}"
+
+
+def test_the_budget_never_exceeds_the_build_time_left(tmp_path):
+    started_ms = str(int((time.time() - 3000) * 1000))  # about 600 seconds left
+    _stdout, calls, limit = _run_function(
+        tmp_path,
+        {"CODEBUILD_START_TIME": started_ms, "BUILD_TIMEOUT_MINUTES": "60"},
+        accounts=" ".join(f"{100000000000 + n}" for n in range(20)),
+    )
+    budget = _budget(calls)
+    assert 537 <= budget <= 540  # 600 seconds left, less a minute
+    assert limit == f"limit={budget + 30}"
 
 
 @pytest.mark.parametrize("value", ["false", "False"])
@@ -152,7 +186,7 @@ def test_the_step_runs_when_enough_build_time_is_left(tmp_path):
         tmp_path, {"CODEBUILD_START_TIME": started_ms, "BUILD_TIMEOUT_MINUTES": "60"}
     )
     assert calls is not None
-    assert limit == "limit=300"
+    assert limit == "limit=330"
 
 
 def test_a_failing_tool_is_a_warning_and_never_fails_the_build(tmp_path):
