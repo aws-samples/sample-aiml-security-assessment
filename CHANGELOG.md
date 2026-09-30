@@ -69,7 +69,10 @@ section.
    `assessment_history/` package runs in the post-build phase. If
    `GitHubBranch` pins a tag or commit, update it first. The first run after
    upgrading is compared with the account's latest complete earlier run, if
-   one is in the bucket.
+   one is in the bucket. In single-account mode each run also writes a small
+   `assessment_history_run_<execution_id>.json` next to its findings CSVs,
+   recording whether the run succeeded, so a failed run is never used as the
+   previous run. It isn't written while `EnableAssessmentHistory` is `false`.
 
 No member-role StackSet update is required.
 
