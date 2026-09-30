@@ -135,6 +135,16 @@ def _present(areas: tuple[str, ...], by_area: dict) -> list[str]:
     return [area for area in areas if area in CORE_AREAS or area in by_area]
 
 
+def _page_areas(parts: PageParts, by_area: dict) -> list[str]:
+    """Every area the sidebar lists, in sidebar order. The area filter offers
+    exactly these, so clicking any sidebar area selects it (review item L4)."""
+    return [
+        area
+        for _heading, _css, areas in parts.nav_groups
+        for area in _present(areas, by_area)
+    ]
+
+
 def _listing(items: dict[str, str], name) -> str:
     shown = [
         f"{name(item)} ({side})" for item, side in list(items.items())[:MAX_LISTED]
@@ -368,7 +378,8 @@ def _changes_section(comparison, by_area, parts: PageParts) -> str:
     regions = sorted({row.region for row in comparison.rows})
     region_options = _options((attr(region.lower()), esc(region)) for region in regions)
     area_options = _options(
-        (attr(area), esc(parts.area_labels[area])) for area in by_area
+        (attr(area), esc(parts.area_labels[area]))
+        for area in _page_areas(parts, by_area)
     )
     change_options = _options(
         [(change_slug(change), change.value) for change in TILE_ORDER]

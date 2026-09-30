@@ -541,6 +541,48 @@ def test_no_changes_is_said_plainly_and_empty_areas_still_show():
     assert len(page.select("a.nav-item[data-filter-area]")) == 4
 
 
+def _sidebar_areas(page):
+    return [
+        item["data-filter-area"] for item in page.select("a.nav-item[data-filter-area]")
+    ]
+
+
+def _area_options(page):
+    return [option["value"] for option in page.select("#serviceFilter option")][1:]
+
+
+def test_every_sidebar_area_can_be_selected_in_the_area_filter():
+    # Review item L4: SageMaker, AgentCore and Agent Registry have no rows here.
+    # Their sidebar links used to set a value the filter didn't have, and the
+    # browser then showed every area.
+    same = [make_finding("BR-01", "Failed")]
+    page = _page(_comparison(same, same))
+    assert _sidebar_areas(page) == [
+        "bedrock",
+        "sagemaker",
+        "agentcore",
+        "agent-registry",
+    ]
+    assert _area_options(page) == _sidebar_areas(page)
+    assert [option.get_text() for option in page.select("#serviceFilter option")][
+        1:
+    ] == ["Bedrock", "SageMaker", "AgentCore", "AWS Agent Registry"]
+
+
+@pytest.mark.parametrize("which", ["every state", "optional areas", "empty"])
+def test_the_area_filter_and_the_sidebar_list_the_same_areas(which):
+    comparison = {
+        "every state": _every_state,
+        "optional areas": lambda: _comparison(
+            [make_finding("FS-01"), make_finding("OW-03")],
+            [make_finding("FS-01", "Passed"), make_finding("OW-03")],
+        ),
+        "empty": lambda: _comparison([], []),
+    }[which]()
+    page = _page(comparison)
+    assert _area_options(page) == _sidebar_areas(page)
+
+
 def test_no_notes_card_when_there_is_nothing_to_note():
     comparison = _comparison([make_finding("BR-01", "Passed")], [make_finding("BR-01")])
     assert _page(comparison).select_one("#notes") is None
