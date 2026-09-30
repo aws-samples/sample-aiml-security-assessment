@@ -57,7 +57,7 @@ def test_registered_patterns_are_blanked(text, expected):
     "text",
     [
         # Digits and dates inside resource names are never touched.
-        "Role 'RescoAppStack-Ec2Role2FD9A272-UB7xzDXt03Lg' has access",
+        "Role 'DemoAppStack-Ec2Role4B1C2D3E-Qx4mTr8vLp2K' has access",
         "Role 'AmazonSageMaker-ExecutionRole-20250525T153161' (never accessed)",
         "Training Job 'xgboost-2021-12-19-01-07-17-012' is not encrypted",
         "not accessed in 60+ days",

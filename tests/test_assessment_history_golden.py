@@ -1,10 +1,15 @@
 """Golden tests: both sample reports, each compared with an edited copy.
 
 sample-reports/scripts/build_changes_sample.py turns each sample report back
-into the findings CSVs the scanners write (the previous run, saved under
-tests/fixtures/assessment_history/golden/) and applies its EDITS to make a
-current run. The saved answers are checked here, together with results
-worked out by hand from the edits.
+into the findings CSVs the scanners write (the previous run) and applies its
+EDITS to make a current run. The tests write those CSVs to a temporary folder
+and read them back with the build's own code; only the saved answers
+(golden/expected_*.json) are committed. The saved answers are checked here,
+together with results worked out by hand from the edits.
+
+Values that AWS generated in the sample reports (resource IDs, the random parts
+of resource names) are replaced with made-up values of the same shape first;
+the last tests check that none of them reaches a committed file.
 
 After a sample report or a comparison rule changes, regenerate and review
 the diff:
@@ -13,8 +18,10 @@ the diff:
 """
 
 import dataclasses
+import hashlib
 import importlib.util
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -43,12 +50,25 @@ def _load_script():
 
 
 script = _load_script()
+PREVIOUS_RUNS = script.previous_runs()
 ACCOUNTS = [
-    (sample, folder.name)
-    for sample in script.SAMPLES
-    for folder in sorted((GOLDEN / sample).iterdir())
-    if folder.is_dir()
+    (sample, account_id)
+    for sample, runs in PREVIOUS_RUNS.items()
+    for account_id in runs
 ]
+
+
+@pytest.fixture(scope="module")
+def folders(tmp_path_factory):
+    """Each account's previous-run CSVs, written to a temporary folder."""
+    root = tmp_path_factory.mktemp("golden")
+    for sample, runs in PREVIOUS_RUNS.items():
+        for account_id, files in runs.items():
+            folder = root / sample / account_id
+            folder.mkdir(parents=True)
+            for name, text in files.items():
+                (folder / name).write_bytes(text.encode("utf-8"))
+    return root
 
 
 def _read_folder(folder, account_id, saved_at):
@@ -61,14 +81,14 @@ def _read_folder(folder, account_id, saved_at):
     return dataclasses.replace(run, saved_at=saved_at)
 
 
-def _previous(sample, account_id):
+def _previous(folders, sample, account_id):
     return _read_folder(
-        GOLDEN / sample / account_id, account_id, script.PREVIOUS_SAVED_AT
+        folders / sample / account_id, account_id, script.PREVIOUS_SAVED_AT
     )
 
 
-def _compared(sample, account_id):
-    previous = _previous(sample, account_id)
+def _compared(folders, sample, account_id):
+    previous = _previous(folders, sample, account_id)
     current = script.make_current_run(previous)
     return previous, current, compare_runs(previous, current)
 
@@ -92,6 +112,11 @@ def test_saved_files_are_up_to_date():
     )
 
 
+def test_no_input_csvs_are_committed():
+    # The previous runs' CSVs are built at test time (review item L7).
+    assert sorted(GOLDEN.rglob("*.csv")) == []
+
+
 def test_the_script_is_found_by_the_expected_paths():
     assert script.REPO_ROOT == REPO_ROOT
     assert [sample for sample, _ in ACCOUNTS] == [
@@ -102,14 +127,11 @@ def test_the_script_is_found_by_the_expected_paths():
     ]
 
 
-# --- reading the saved runs back gives the sample reports' rows --------------------
+# --- reading the runs back gives the sample reports' rows -------------------------
 
 
 @pytest.mark.parametrize("sample", list(script.SAMPLES))
-def test_saved_runs_read_back_as_the_sample_reports_rows(sample):
-    report = (REPO_ROOT / "sample-reports" / script.SAMPLES[sample]).read_text(
-        encoding="utf-8"
-    )
+def test_runs_read_back_as_the_sample_reports_rows(folders, sample):
     expected = Counter(
         (
             row.account_id,
@@ -121,13 +143,11 @@ def test_saved_runs_read_back_as_the_sample_reports_rows(sample):
             row.severity,
             row.status,
         )
-        for row in script.parse_report(report)
+        for row in script.sample_rows(sample)
     )
     found = Counter()
-    for account_id in sorted(path.name for path in (GOLDEN / sample).iterdir()):
-        if not (GOLDEN / sample / account_id).is_dir():
-            continue
-        previous = _previous(sample, account_id)
+    for account_id in PREVIOUS_RUNS[sample]:
+        previous = _previous(folders, sample, account_id)
         found.update(
             (
                 finding.account_id,
@@ -148,8 +168,8 @@ def test_saved_runs_read_back_as_the_sample_reports_rows(sample):
 
 
 @pytest.mark.parametrize("sample, account_id", ACCOUNTS)
-def test_comparison_matches_the_saved_answer(sample, account_id):
-    previous, current, comparison = _compared(sample, account_id)
+def test_comparison_matches_the_saved_answer(folders, sample, account_id):
+    previous, current, comparison = _compared(folders, sample, account_id)
     expected = json.loads(
         (GOLDEN / f"expected_{sample}.json").read_text(encoding="utf-8")
     )
@@ -158,8 +178,8 @@ def test_comparison_matches_the_saved_answer(sample, account_id):
 
 
 @pytest.mark.parametrize("sample, account_id", ACCOUNTS)
-def test_a_sample_compared_with_itself_has_no_changes(sample, account_id):
-    previous = _previous(sample, account_id)
+def test_a_sample_compared_with_itself_has_no_changes(folders, sample, account_id):
+    previous = _previous(folders, sample, account_id)
     again = dataclasses.replace(
         previous, execution_id="copy", saved_at=script.CURRENT_SAVED_AT
     )
@@ -170,8 +190,8 @@ def test_a_sample_compared_with_itself_has_no_changes(sample, account_id):
 
 
 @pytest.mark.parametrize("sample, account_id", ACCOUNTS)
-def test_current_run_survives_a_csv_round_trip(sample, account_id, tmp_path):
-    current = script.make_current_run(_previous(sample, account_id))
+def test_current_run_survives_a_csv_round_trip(folders, sample, account_id, tmp_path):
+    current = script.make_current_run(_previous(folders, sample, account_id))
     files = script.write_run(
         current.findings, script.CURRENT_ID, script.agentic_owners()
     )
@@ -185,8 +205,8 @@ def test_current_run_survives_a_csv_round_trip(sample, account_id, tmp_path):
 # --- worked out by hand from the edits --------------------------------------------------
 
 
-def test_single_account_sample_results():
-    _previous_run, _current, comparison = _compared("single_account", SINGLE)
+def test_single_account_sample_results(folders):
+    _previous_run, _current, comparison = _compared(folders, "single_account", SINGLE)
     rows = _rows_by_check(comparison)
 
     def only(check_id, region):
@@ -232,10 +252,10 @@ def test_single_account_sample_results():
     assert comparison.days_apart == 24
 
 
-def test_multi_account_sample_results():
+def test_multi_account_sample_results(folders):
     # This account's only previous BR-03 row was its Passed summary row, so the
     # new failing role is paired with it: Regressed, not New.
-    _p, _c, comparison = _compared("multi_account", "444455556666")
+    _p, _c, comparison = _compared(folders, "multi_account", "444455556666")
     (br03,) = _rows_by_check(comparison)[("BR-03", "Global")]
     assert (br03.change, br03.match_rule) == (Change.REGRESSED, MatchRule.SINGLE_ROW)
 
@@ -243,7 +263,7 @@ def test_multi_account_sample_results():
     normalized = {
         account_id: sorted(
             row.check_id
-            for row in _compared("multi_account", account_id)[2].rows
+            for row in _compared(folders, "multi_account", account_id)[2].rows
             if row.match_rule is MatchRule.NORMALIZED
         )
         for account_id in ("111122223333", "444455556666", "777788889999")
@@ -256,11 +276,11 @@ def test_multi_account_sample_results():
 
 
 @pytest.mark.parametrize("sample, account_id", ACCOUNTS)
-def test_derived_rows_change_with_their_source(sample, account_id):
+def test_derived_rows_change_with_their_source(folders, sample, account_id):
     # AC-14 us-east-1 resolved: its AG-28 and OW-02 rows are resolved too.
     # SM-26 us-east-2 no longer assessed: its OW-01 and OW-10 rows too.
     # BR-37 us-west-2 gone: its OW-02 row too.
-    _p, _c, comparison = _compared(sample, account_id)
+    _p, _c, comparison = _compared(folders, sample, account_id)
     derived = Counter(
         (row.area, row.check_id, row.region, row.change, row.match_rule)
         for row in comparison.rows
@@ -295,8 +315,8 @@ def test_derived_rows_change_with_their_source(sample, account_id):
     )
 
 
-def test_an_edit_that_matches_no_row_is_an_error():
-    previous = _previous("single_account", SINGLE)
+def test_an_edit_that_matches_no_row_is_an_error(folders):
+    previous = _previous(folders, "single_account", SINGLE)
     without = tuple(
         finding for finding in previous.findings if finding.check_id != "SM-04"
     )
@@ -316,3 +336,137 @@ def test_day_counts_move_on_by_the_days_between_runs():
     assert script.shift_days("no day counts here, 2026-09-27") == (
         "no day counts here, 2026-09-27"
     )
+
+
+# --- values AWS generated in the sample reports (review item L8) ------------------
+
+
+def _values_in_samples():
+    """Every generated value in the sample reports, by kind (read, never saved)."""
+    found = {}
+    for name in script.SAMPLES.values():
+        report = (REPO_ROOT / "sample-reports" / name).read_text(encoding="utf-8")
+        for row in script.parse_report(report):
+            for text in (row.finding, row.details, row.resolution):
+                for start, end, kind in script.generated_values(text):
+                    found.setdefault(kind, set()).add(text[start:end])
+    return found
+
+
+SAMPLE_VALUES = _values_in_samples()
+FIXTURES = REPO_ROOT / "tests" / "fixtures" / "assessment_history"
+# Files this PR adds, or whose text it writes.
+COMMITTED_FILES = sorted(
+    {
+        REPO_ROOT / "sample-reports" / script.SAMPLE_CHANGES_PAGE,
+        REPO_ROOT / "sample-reports" / script.SAMPLE_CHANGES_CSV,
+        SCRIPT,
+        SCRIPT.parent / "capture_changes_screenshot.py",
+        REPO_ROOT / "docs" / "ASSESSMENT_HISTORY.md",
+        REPO_ROOT / "tests" / "assessment_history_helpers.py",
+        REPO_ROOT / "tests" / "test_capture_changes_screenshot.py",
+        *(REPO_ROOT / "assessment_history").glob("*.py"),
+        *(REPO_ROOT / "tests").glob("test_assessment_history_*.py"),
+        *(
+            path
+            for path in FIXTURES.rglob("*")
+            if path.is_file() and not path.name.startswith(".")
+        ),
+    }
+)
+
+
+def test_every_kind_of_generated_value_occurs_in_the_samples():
+    # A pattern that matches nothing is a mistake, or no longer needed.
+    kinds = {kind for kind, _pattern in script.GENERATED_VALUE_KINDS}
+    assert set(SAMPLE_VALUES) == kinds | {script.PERSONAL_NAME}
+
+
+@pytest.mark.parametrize(
+    "path", COMMITTED_FILES, ids=lambda path: str(path.relative_to(REPO_ROOT))
+)
+def test_no_generated_value_from_the_samples_is_committed(path):
+    text = path.read_text(encoding="utf-8")
+    # Kinds and counts only, so a failure doesn't print the values in CI logs.
+    leaked = Counter(
+        kind
+        for kind, values in SAMPLE_VALUES.items()
+        for value in values
+        if value in text
+    )
+    assert not leaked, f"values copied from the sample reports: {dict(leaked)}"
+
+
+def _shape(value):
+    return [
+        "9" if c.isdigit() else "a" if c.islower() else "A" if c.isupper() else c
+        for c in value
+    ]
+
+
+def test_replacing_generated_values_keeps_everything_else():
+    text = (
+        "Role 'DemoStack-Ec2Role4B1C2D3E-Qx4mTr8vLp2K' uses vpc-0a1b2c3d4e5f60718 "
+        "and vpc-1a2b3c4d. Knowledge base 'kb-demo' (ID: K7Q2ZP9XWA); role "
+        "'cdk-hnb659fds-lookup-role-123456789012-us-east-1'; bucket "
+        "'demo-bucket-111122223333'; last used 12 days ago, on 2026-09-01."
+    )
+    spans = script.generated_values(text)
+    assert [text[start:end] for start, end, _kind in spans] == [
+        "4B1C2D3E",
+        "Qx4mTr8vLp2K",
+        "0a1b2c3d4e5f60718",
+        "1a2b3c4d",
+        "K7Q2ZP9XWA",
+    ]
+    replaced = script.replace_generated_values(text)
+    assert len(replaced) == len(text)
+    covered = set()
+    for start, end, _kind in spans:
+        assert replaced[start:end] != text[start:end]
+        assert _shape(replaced[start:end]) == _shape(text[start:end])
+        covered.update(range(start, end))
+    kept = [i for i in range(len(text)) if i not in covered]
+    assert [replaced[i] for i in kept] == [text[i] for i in kept]
+    start, end, _kind = spans[2]
+    assert re.fullmatch(r"[0-9a-f]{17}", replaced[start:end])  # hex stays hex
+    assert script.replace_generated_values(text) == replaced  # same every time
+
+
+def test_a_personal_name_is_replaced(monkeypatch):
+    names = frozenset({hashlib.sha256(b"jdoe").hexdigest()})
+    monkeypatch.setattr(script, "PERSONAL_NAME_SHA256", names)
+    text = "Bucket 'kb-agent-jdoe', owner JDoe"
+    spans = script.generated_values(text)
+    assert [(text[start:end], kind) for start, end, kind in spans] == [
+        ("jdoe", script.PERSONAL_NAME),
+        ("JDoe", script.PERSONAL_NAME),
+    ]
+    assert "jdoe" not in script.replace_generated_values(text).lower()
+
+
+@pytest.mark.parametrize("sample", list(script.SAMPLES))
+def test_replacing_generated_values_changes_no_comparison_result(sample):
+    report = (REPO_ROOT / "sample-reports" / script.SAMPLES[sample]).read_text(
+        encoding="utf-8"
+    )
+    rows = script.parse_report(report)
+    owners = script.agentic_owners()
+
+    def results(sample_rows):
+        found = {}
+        for account_id in sorted({row.account_id for row in sample_rows}):
+            files = script.write_run(
+                [row for row in sample_rows if row.account_id == account_id],
+                script.PREVIOUS_ID,
+                owners,
+            )
+            previous = script.read_run(files, account_id, script.PREVIOUS_SAVED_AT)
+            comparison = compare_runs(previous, script.make_current_run(previous))
+            found[account_id] = Counter(
+                (row.area, row.region, row.check_id, row.change, row.match_rule)
+                for row in comparison.rows
+            )
+        return found
+
+    assert results(script.anonymize(rows)) == results(rows)

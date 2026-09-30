@@ -12,13 +12,17 @@ of the same accounts to compare them with. This script:
 
 The output is the same on every run. Files written, from the repository root:
 
-    tests/fixtures/assessment_history/golden/<sample>/<account_id>/*.csv
-        the previous run of each account in the sample report
     tests/fixtures/assessment_history/golden/expected_<sample>.json
         the saved answers: counts per area, and every row that changed or
         wasn't paired by identical details
     sample-reports/security_assessment_changes.csv, .html
         the sample changes CSV and page, from the single-account sample
+
+The previous runs' CSVs are built again every time and not saved: the golden
+tests write them to a temporary folder. Values that AWS generated in the sample
+reports (resource IDs, the random parts of resource names) are first replaced
+with made-up values of the same shape (GENERATED_VALUE_KINDS), so no value from
+a real account is copied into the files above.
 
 Usage, from the repository root:
 
@@ -34,10 +38,12 @@ from __future__ import annotations
 import argparse
 import csv
 import dataclasses
+import hashlib
 import html
 import io
 import json
 import re
+import string
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -169,6 +175,163 @@ def parse_report(text: str) -> list[SampleRow]:
             )
         )
     return rows
+
+
+# --- values AWS generated (review item L8) -------------------------------------------
+
+# Values in the sample reports that AWS or CloudFormation generated: resource
+# IDs and the random parts of resource names. They're replaced with made-up
+# values of the same shape before anything is built from the rows, so none is
+# copied into the sample changes report or the saved answers. In each pattern,
+# group "v" is the value. tests/test_assessment_history_golden.py checks that
+# every kind still occurs in the sample reports and that no value reaches a
+# committed file.
+GENERATED_VALUE_KINDS = (
+    (
+        "UUID",
+        r"(?<![0-9a-f])(?P<v>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-"
+        r"[0-9a-f]{1,12})(?![0-9a-f])",
+    ),
+    (
+        "AWS resource ID",
+        r"\b(?:vpc|subnet|sg|eni|igw|rtb|vpce|nat|acl|i|ami|vol|snap|lt|tgw|pcx"
+        r"|eipalloc)-(?P<v>[0-9a-f]{17}|[0-9a-f]{8})\b",
+    ),
+    ("Bedrock ID", r"(?<=ID: )(?P<v>[A-Z0-9]{10})(?![A-Za-z0-9])"),
+    ("Bedrock ID in parentheses", r"(?<=\()(?P<v>[A-Z0-9]{10})(?=\))"),
+    ("Bedrock ID in a role name", r"(?<=[a-z]_)(?P<v>[A-Z0-9]{10})(?![A-Za-z0-9])"),
+    (
+        "CloudFormation name suffix",
+        r"(?<=[-_])(?P<v>(?=[A-Za-z0-9]*[0-9])(?=[A-Za-z0-9]*[A-Za-z])"
+        r"[A-Za-z0-9]{12,13})(?![A-Za-z0-9])",
+    ),
+    ("CloudFormation logical ID hash", r"(?<=[a-z])(?P<v>[0-9A-F]{8})(?=-)"),
+    (
+        "CloudFormation stack name part",
+        r"(?<=[A-Z0-9]-)(?P<v>(?=[A-Z0-9]*[A-Z])[A-Z0-9]{8,10})(?=-)",
+    ),
+    (
+        "generated lowercase suffix",
+        r"(?<=-)(?P<v>(?=[a-z0-9]*[0-9])(?=[a-z0-9]*[a-z])[a-z0-9]{8,11})"
+        r"(?![A-Za-z0-9])",
+    ),
+    ("SageMaker domain ID", r"\bd-(?P<v>[a-z0-9]{12})\b"),
+    (
+        "generated bucket suffix",
+        r"(?<=bucket-)(?P<v>(?=[a-z0-9]*[a-z])[a-z0-9]{12})(?![a-z0-9])",
+    ),
+    (
+        "console role suffix",
+        r"(?<=-role-)(?P<v>(?=[a-z0-9]*[a-z])[a-z0-9]{8})(?![a-z0-9])",
+    ),
+    (
+        "conformance pack suffix",
+        r"(?<=conformance-pack-)(?P<v>[a-z0-9]{6,12})(?![a-z0-9])",
+    ),
+    ("quick-start suffix", r"(?<=quick-start-)(?P<v>[a-z0-9]{4,8})(?![a-z0-9])"),
+    (
+        "suffix after a Region",
+        r"(?<=-[0-9]-)(?P<v>(?=[a-z0-9]*[0-9])[a-z0-9]{4,12})(?![a-z0-9])",
+    ),
+)
+# Matches of the patterns above that are fixed names, not generated: the CDK
+# bootstrap's default qualifier, a service name, and part of a stack name.
+NOT_GENERATED = frozenset({"hnb659fds", "s3express", "PATTERN1STACK"})
+# SHA-256 of personal names in the sample reports (one is part of a bucket
+# name), kept as hashes so this file doesn't repeat them. A word that matches
+# is replaced like a generated value.
+PERSONAL_NAME = "personal name"
+PERSONAL_NAME_SHA256 = frozenset(
+    {"8044948181460cf23c5fd5ad6a432c2fbd8ce1e06cbd4ea1955d37685c81ce6b"}
+)
+_GENERATED = tuple(
+    (kind, re.compile(pattern)) for kind, pattern in GENERATED_VALUE_KINDS
+)
+_WORD = re.compile(r"[A-Za-z]+")
+_HEX = re.compile(r"[0-9a-f]+|[0-9A-F]+")
+
+
+def generated_values(text: str) -> list[tuple[int, int, str]]:
+    """(start, end, kind) of each generated value in text, left to right.
+
+    Where two matches overlap, the one that starts first (then the longer one)
+    is kept.
+    """
+    found = [
+        (*match.span("v"), kind)
+        for kind, pattern in _GENERATED
+        for match in pattern.finditer(text)
+        if match.group("v") not in NOT_GENERATED
+    ]
+    found += [
+        (*match.span(), PERSONAL_NAME)
+        for match in _WORD.finditer(text)
+        if hashlib.sha256(match.group().lower().encode()).hexdigest()
+        in PERSONAL_NAME_SHA256
+    ]
+    kept: list[tuple[int, int, str]] = []
+    end = 0
+    for start, stop, kind in sorted(
+        found, key=lambda item: (item[0], item[0] - item[1])
+    ):
+        if start >= end:
+            kept.append((start, stop, kind))
+            end = stop
+    return kept
+
+
+def _made_up_character(character: str, byte: int, hex_only: bool) -> str:
+    if character.isdigit():
+        pool = string.digits
+    elif character.islower():
+        pool = "abcdef" if hex_only else string.ascii_lowercase
+    elif character.isupper():
+        pool = "ABCDEF" if hex_only else string.ascii_uppercase
+    else:
+        return character
+    return pool[byte % len(pool)]
+
+
+def placeholder(value: str) -> str:
+    """A made-up value shaped like value.
+
+    Each digit becomes a digit and each letter a letter of the same case (a hex
+    digit if value is hex); other characters are kept. The same value always
+    gets the same placeholder.
+    """
+    hex_only = _HEX.fullmatch(value.replace("-", "")) is not None
+    attempt = 0
+    while True:
+        stream = hashlib.shake_256(f"{attempt}:{value}".encode()).digest(len(value))
+        made_up = "".join(
+            _made_up_character(character, byte, hex_only)
+            for character, byte in zip(value, stream)
+        )
+        if made_up != value:
+            return made_up
+        attempt += 1
+
+
+def replace_generated_values(text: str) -> str:
+    """text with each generated value replaced by its placeholder."""
+    parts, last = [], 0
+    for start, end, _kind in generated_values(text):
+        parts += [text[last:start], placeholder(text[start:end])]
+        last = end
+    return "".join(parts) + text[last:]
+
+
+def anonymize(rows: list[SampleRow]) -> list[SampleRow]:
+    """Rows with generated values replaced in the finding, details and resolution."""
+    return [
+        dataclasses.replace(
+            row,
+            finding=replace_generated_values(row.finding),
+            details=replace_generated_values(row.details),
+            resolution=replace_generated_values(row.resolution),
+        )
+        for row in rows
+    ]
 
 
 # --- writing and reading a run's findings CSVs ---------------------------------------
@@ -534,23 +697,40 @@ def golden_dir(root: Path = REPO_ROOT) -> Path:
     return root.joinpath(*GOLDEN_PARTS)
 
 
-def build(root: Path = REPO_ROOT) -> dict[Path, str]:
-    """Every file this script writes, as {path: text}."""
+def sample_rows(sample: str, root: Path = REPO_ROOT) -> list[SampleRow]:
+    """A sample report's rows, with the values AWS generated replaced."""
+    report = (root / "sample-reports" / SAMPLES[sample]).read_text(encoding="utf-8")
+    return anonymize(parse_report(report))
+
+
+def previous_runs(root: Path = REPO_ROOT) -> dict[str, dict[str, dict[str, str]]]:
+    """Each sample's previous run: {sample: {account_id: {CSV name: text}}}.
+
+    Built from the sample reports every time, not saved (review item L7).
+    """
     owners = agentic_owners(root)
-    golden = golden_dir(root)
-    outputs: dict[Path, str] = {}
-    for sample, report_name in SAMPLES.items():
-        report = (root / "sample-reports" / report_name).read_text(encoding="utf-8")
-        rows = parse_report(report)
-        expected = {}
-        for account_id in sorted({row.account_id for row in rows}):
-            files = write_run(
+    runs: dict[str, dict[str, dict[str, str]]] = {}
+    for sample in SAMPLES:
+        rows = sample_rows(sample, root)
+        runs[sample] = {
+            account_id: write_run(
                 [row for row in rows if row.account_id == account_id],
                 PREVIOUS_ID,
                 owners,
             )
-            for name, text in files.items():
-                outputs[golden / sample / account_id / name] = text
+            for account_id in sorted({row.account_id for row in rows})
+        }
+    return runs
+
+
+def build(root: Path = REPO_ROOT) -> dict[Path, str]:
+    """Every file this script writes, as {path: text}."""
+    golden = golden_dir(root)
+    outputs: dict[Path, str] = {}
+    for sample, runs in previous_runs(root).items():
+        report_name = SAMPLES[sample]
+        expected = {}
+        for account_id, files in runs.items():
             previous = read_run(files, account_id, PREVIOUS_SAVED_AT)
             comparison = compare_runs(previous, make_current_run(previous))
             expected[account_id] = summarize(comparison)
@@ -584,7 +764,8 @@ def _normalized(text: str | None) -> str | None:
 
 
 def out_of_date(outputs: dict[Path, str], root: Path = REPO_ROOT) -> list[Path]:
-    """Output files that differ from what's on disk, plus leftover run files."""
+    """Output files that differ from what's on disk, plus leftover files (such as
+    the input CSVs this script used to save)."""
     stale = [
         path
         for path, text in outputs.items()

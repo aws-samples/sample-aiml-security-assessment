@@ -1185,7 +1185,7 @@ After generating new screenshots, update the README to reference them:
 
 #### 4. Rebuild the Changes Sample
 
-The changes sample and the assessment-history golden test data are built from
+The changes sample and the assessment-history golden saved answers are built from
 the two sample reports. After regenerating a sample report, run:
 
 ```bash

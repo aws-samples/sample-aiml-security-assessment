@@ -41,7 +41,9 @@ changed ("No changes since the last assessment").
 
 A sample page and CSV are in [`sample-reports/`](../sample-reports/)
 (`security_assessment_changes.html` and `.csv`), built from the
-single-account sample report.
+single-account sample report. Resource IDs and the random parts of resource
+names in them are made-up values of the same shape, so they don't match the
+sample main report.
 
 ![Changes since last assessment: summary counts and counts by area](../sample-reports/changes-overview.png)
 
@@ -308,8 +310,8 @@ Each folder must hold one complete run. The setting is ignored in this mode.
 | `assessment_history/render_common.py`, `render_changes.py` | The HTML page, using the main report's styling |
 | `assessment_history/__main__.py` | The command line the build runs |
 | `tests/test_assessment_history_*.py` | Tests; `tests/assessment_history_helpers.py` builds test data |
-| `tests/fixtures/assessment_history/` | A hand-written example account folder, and the golden data |
-| `sample-reports/scripts/build_changes_sample.py` | Builds the sample page and CSV and the golden data |
+| `tests/fixtures/assessment_history/` | A hand-written example account folder, and the golden saved answers (`golden/expected_*.json`) |
+| `sample-reports/scripts/build_changes_sample.py` | Builds the sample page and CSV and the golden saved answers |
 | `sample-reports/scripts/capture_changes_screenshot.py` | Captures `sample-reports/changes-overview.png` from the sample page |
 
 Run the tests with the package's 100% line and branch coverage bar (CI runs
@@ -322,9 +324,12 @@ the same check):
 ```
 
 The golden tests use both sample reports: each is turned back into the
-findings CSVs the scanners write, and a current run is made by applying a
-short list of edits (`EDITS` in the script) that covers every change state
-and each matching step. After changing a sample report or a comparison rule,
+findings CSVs the scanners write (in a temporary folder; only the saved answers
+are committed), and a current run is made by applying a short list of edits
+(`EDITS` in the script) that covers every change state and each matching step.
+Values that AWS generated in the sample reports (resource IDs, the random parts
+of resource names) are replaced with made-up values of the same shape first,
+and a test fails if any of them reaches a committed file. After changing a sample report or a comparison rule,
 regenerate and review the diff:
 
 ```bash

@@ -117,8 +117,8 @@
     "previous_status": "Failed",
     "current_status": "Failed",
     "severity": "Medium",
-    "previous_details": "The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (255 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (255 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (255 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-w773pPsFWNsn' (138 days)",
-    "current_details": "The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (279 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (279 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (279 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-w773pPsFWNsn' (162 days)"
+    "previous_details": "The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (255 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (255 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (255 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-z143jFbPOSlh' (138 days)",
+    "current_details": "The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (279 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (279 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (279 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-z143jFbPOSlh' (162 days)"
    },
    {
     "area": "agentcore",
@@ -169,8 +169,8 @@
     "previous_status": "Failed",
     "current_status": "Failed",
     "severity": "Medium",
-    "previous_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (255 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (255 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (255 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-w773pPsFWNsn' (138 days)",
-    "current_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (279 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (279 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (279 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-w773pPsFWNsn' (162 days)"
+    "previous_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (255 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (255 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (255 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-z143jFbPOSlh' (138 days)",
+    "current_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'AmazonSageMaker-ExecutionRole-20250525T153161' (279 days), role 'AWSServiceRoleForBedrockAgentCoreRuntimeIdentity' (279 days), role 'CustomerSupportAssistantBedrockAgentCoreRole-us-east-1' (279 days), role 'resco-aiml-security-19304-AgentCoreSecurityAssessme-z143jFbPOSlh' (162 days)"
    },
    {
     "area": "agentic",
@@ -195,8 +195,8 @@
     "previous_status": "Failed",
     "current_status": "Failed",
     "severity": "Medium",
-    "previous_details": "2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-qpvuv-data-source' last completed ingestion 732 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 255 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
-    "current_details": "2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-qpvuv-data-source' last completed ingestion 756 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 279 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
+    "previous_details": "2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-lyufz-data-source' last completed ingestion 732 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 255 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
+    "current_details": "2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-lyufz-data-source' last completed ingestion 756 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 279 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
    },
    {
     "area": "owasp",
@@ -208,8 +208,8 @@
     "previous_status": "Failed",
     "current_status": "Failed",
     "severity": "Medium",
-    "previous_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-qpvuv-data-source' last completed ingestion 732 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 255 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
-    "current_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-qpvuv-data-source' last completed ingestion 756 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 279 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
+    "previous_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-lyufz-data-source' last completed ingestion 732 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 255 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
+    "current_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 2 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-semiconductors' source 'knowledge-base-quick-start-lyufz-data-source' last completed ingestion 756 days ago\n- KB '111122223333-us-east-1-kb' source '111122223333-us-east-1-kb-datasource' last completed ingestion 279 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
    },
    {
     "area": "owasp",
@@ -383,8 +383,8 @@
     "previous_status": "Failed",
     "current_status": "Failed",
     "severity": "Medium",
-    "previous_details": "The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-2AEt2MTxg4AU' (138 days)",
-    "current_details": "The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-2AEt2MTxg4AU' (162 days)"
+    "previous_details": "The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-6JAr4XBsu1GP' (138 days)",
+    "current_details": "The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-6JAr4XBsu1GP' (162 days)"
    },
    {
     "area": "agentcore",
@@ -435,8 +435,8 @@
     "previous_status": "Failed",
     "current_status": "Failed",
     "severity": "Medium",
-    "previous_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-2AEt2MTxg4AU' (138 days)",
-    "current_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-2AEt2MTxg4AU' (162 days)"
+    "previous_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-6JAr4XBsu1GP' (138 days)",
+    "current_details": "Agentic AI security domain: Agent Identity & Access. Unused AgentCore permissions increase the blast radius of compromised principals. Source check AC-03: The following principals have not accessed AgentCore in 60+ days: role 'resco-aiml-security-23026-AgentCoreSecurityAssessme-6JAr4XBsu1GP' (162 days)"
    },
    {
     "area": "agentic",
@@ -675,8 +675,8 @@
     "previous_status": "Failed",
     "current_status": "Failed",
     "severity": "Medium",
-    "previous_details": "1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-9lb68-data-source' last completed ingestion 478 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
-    "current_details": "1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-9lb68-data-source' last completed ingestion 502 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
+    "previous_details": "1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 478 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
+    "current_details": "1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 502 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
    },
    {
     "area": "owasp",
@@ -688,8 +688,8 @@
     "previous_status": "Failed",
     "current_status": "Failed",
     "severity": "Medium",
-    "previous_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-9lb68-data-source' last completed ingestion 478 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
-    "current_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-9lb68-data-source' last completed ingestion 502 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
+    "previous_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 478 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
+    "current_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 502 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
    },
    {
     "area": "owasp",

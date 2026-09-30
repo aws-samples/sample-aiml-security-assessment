@@ -5,10 +5,13 @@ This directory contains utility scripts for development and documentation.
 ## Changes Sample Builder
 
 `build_changes_sample.py` builds `sample-reports/security_assessment_changes.html`
-and `.csv`, and the golden test data for the changes-since-last-assessment report
-(`tests/fixtures/assessment_history/golden/`) from the two sample reports. It
-needs only the standard library and the repository's `assessment_history`
-package.
+and `.csv`, and the golden saved answers for the changes-since-last-assessment
+report (`tests/fixtures/assessment_history/golden/expected_*.json`), from the two
+sample reports. The previous runs' CSVs are built again every time rather than
+saved; the golden tests write them to a temporary folder. Values that AWS
+generated in the sample reports, such as resource IDs and the random parts of
+resource names, are replaced with made-up values of the same shape. It needs
+only the standard library and the repository's `assessment_history` package.
 
 ```bash
 # Write the sample and the golden data
