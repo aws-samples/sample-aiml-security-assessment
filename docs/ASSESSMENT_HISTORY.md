@@ -178,7 +178,9 @@ in these steps:
    a new release).
 3. **One row each.** Two remaining rows are paired even if their title and
    details differ, if each is its run's only row in the group, or its run's
-   only row with that title.
+   only row with that title. If both are Failed and their details differ, the
+   row shows as Still open and is marked "details changed" (see
+   [Known limits](#known-limits)).
 4. **Several rows and one summary row.** If one run has several Failed rows
    left and the other run's only row for the check isn't Failed (a Passed
    summary such as "All 3 models have network isolation enabled", or an N/A
@@ -216,6 +218,9 @@ choice carries over between the two reports).
   `Passed → Failed`). Filters for search, Region, Assessment Area, Severity,
   and Change. By default the table shows every change state and hides Not
   failing rows; choose **All Findings** in the Change filter to show them.
+  A Still open row whose two Failed rows were paired only because each run had
+  one, with different details, reads `Failed → Failed · details changed` and
+  has a note under its details.
   Clicking an area in the sidebar filters the table to it.
 - **Severity:** the current run's, except for No longer reported and No
   longer assessed rows, which show the previous run's (the current one is
@@ -306,6 +311,15 @@ Each folder must hold one complete run. The setting is ignored in this mode.
 
 ## Known limits
 
+- When a check writes one row per resource and each run has exactly one
+  Failed row, those rows are paired even if they name different resources.
+  For example, fixing notebook A while notebook B starts failing shows as one
+  Still open row, not Resolved plus New. The row is marked "details changed"
+  so it can be checked; both runs' details are shown. Some checks write one
+  summary row for many resources (for example a count of roles); a change
+  inside that row shows the same way. Telling the two kinds of check apart
+  would need a list of every check's row format, which is planned as a
+  follow-up.
 - A check that lists several resources in one row (for example, AC-03 lists
   every stale role) shows as No longer reported plus New when the list
   changes, because the rows can't be paired with certainty.

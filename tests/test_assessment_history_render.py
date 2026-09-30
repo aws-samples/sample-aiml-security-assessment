@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 from assessment_history.compare import compare_runs
 from assessment_history.models import AREAS
 from assessment_history.render_changes import (
+    DETAILS_CHANGED_NOTE,
     ROW_ORDER,
     SCRIPT,
     change_slug,
@@ -375,6 +376,35 @@ def test_details_show_both_runs_only_when_they_differ():
     ]
 
 
+def test_a_single_row_pair_with_changed_details_is_marked():
+    # Review item F3: say when two Failed rows may be about different resources.
+    comparison = _comparison(
+        [
+            make_finding("AC-17", details="No configurations found."),
+            make_finding("BR-02", severity="Medium"),
+        ],
+        [
+            make_finding("AC-17", details="Configuration 'eval-1' is incomplete."),
+            make_finding("BR-02", severity="Medium"),
+        ],
+    )
+    page = _page(comparison)
+    subs = {
+        row.select("code")[2].get_text(): row.select_one(".change-sub").get_text()
+        for row in page.select("#findingsTable tbody tr")
+    }
+    assert subs == {
+        "AC-17": "Failed → Failed · details changed",
+        "BR-02": "Failed → Failed",
+    }
+    assert _details(page, "AC-17")[2] == ("Note", DETAILS_CHANGED_NOTE)
+    assert [label for label, _ in _details(page, "BR-02")] == [
+        "Details",
+        "Resolution",
+        "Reference",
+    ]
+
+
 def test_a_finding_only_in_the_current_run_shows_its_details():
     comparison = _comparison([], [make_finding("BR-05", details="only now")])
     assert _details(_page(comparison), "BR-05")[0] == ("Details", "only now")
@@ -560,7 +590,7 @@ def test_methodology_explains_every_change_state():
     assert "Region, and Check ID" in steps[0]
     assert "Finding title isn't part of the group" in steps[0]
     assert "under a different title" in steps[1]
-    assert "its run's only row" in steps[2]
+    assert "its run's only row" in steps[2] and "details changed" in steps[2]
     assert "several Failed rows" in steps[3] and "Passed summary" in steps[3]
     assert "unpaired" in steps[4]
 

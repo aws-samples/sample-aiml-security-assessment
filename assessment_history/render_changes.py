@@ -289,16 +289,35 @@ def _area_table(comparison, by_area, parts: PageParts) -> str:
     )
 
 
+DETAILS_CHANGED = "details changed"
+DETAILS_CHANGED_NOTE = (
+    "Each run reported one Failed row for this check, so the two rows were paired, but their "
+    "details differ. Check whether one resource was fixed and another started failing."
+)
+
+
 def _details(row: ComparedRow, esc) -> str:
     previous = row.previous.details if row.previous else None
     current = row.current.details if row.current else None
     if previous is None or current is None or previous == current:
         text = previous if current is None else current
         return f"<div><strong>Details</strong><p>{esc(text)}</p></div>"
+    note = (
+        f"<div><strong>Note</strong><p>{esc(DETAILS_CHANGED_NOTE)}</p></div>"
+        if row.details_changed
+        else ""
+    )
     return (
         f"<div><strong>Details (previous run)</strong><p>{esc(previous)}</p></div>"
-        f"<div><strong>Details (current run)</strong><p>{esc(current)}</p></div>"
+        f"<div><strong>Details (current run)</strong><p>{esc(current)}</p></div>" + note
     )
+
+
+def _statuses(row: ComparedRow, esc) -> str:
+    text = f"{row.previous_status} → {row.current_status}"
+    if row.details_changed:
+        text += f" · {DETAILS_CHANGED}"
+    return esc(text)
 
 
 def table_row(row: ComparedRow, parts: PageParts) -> str:
@@ -329,7 +348,7 @@ def table_row(row: ComparedRow, parts: PageParts) -> str:
                 </details>
             </td>
             <td><span class="severity {severity_class}">{esc(row.severity)}</span></td>
-            <td>{change_label(row.change)}<div class="change-sub">{esc(row.previous_status)} → {esc(row.current_status)}</div></td>
+            <td>{change_label(row.change)}<div class="change-sub">{_statuses(row, esc)}</div></td>
         </tr>"""
 
 
@@ -392,7 +411,7 @@ def _methodology() -> str:
                 <div class="card"><div class="card-header"><h3>How Findings Are Matched</h3></div><div class="card-body"><ol class="note-list finding-details">
                     <li>Rows are grouped by assessment area, Region, and Check ID. The Finding title isn't part of the group, because many checks use one title when they fail and another when they pass.</li>
                     <li>Within a group, rows with the same title and identical details are paired, then rows whose details match once day counts and dates are blanked out, then rows with matching details under a different title.</li>
-                    <li>Two remaining rows are paired if each is its run's only row, in the group or with its title.</li>
+                    <li>Two remaining rows are paired if each is its run's only row, in the group or with its title. If both are Failed and their details differ, the row is marked "details changed": one resource may have been fixed and another started failing.</li>
                     <li>If one run has several Failed rows and the other a single row that isn't Failed, such as a Passed summary, each Failed row is paired with that row.</li>
                     <li>Anything left is unpaired and shows as New or No longer reported.</li>
                 </ol>

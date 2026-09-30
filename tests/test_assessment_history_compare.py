@@ -523,6 +523,37 @@ def test_f1_rows_that_would_need_a_guess_stay_unpaired(before, after, expected):
     assert _by_rule(_compare(before, after)) == Counter(expected)
 
 
+# --- F3 (review): one Failed row each, about different resources -------------------
+
+
+def test_f3_a_single_row_pair_whose_details_differ_is_marked():
+    # AC-17 writes one row either way: no configuration at all, then a
+    # configuration that exists but isn't complete. Both are Failed.
+    def ac17(details):
+        return make_finding(
+            "AC-17",
+            region="us-east-1",
+            finding="AgentCore Online Evaluation Coverage",
+            details=details,
+        )
+
+    result = _compare(
+        [ac17("No AgentCore online evaluation configurations found.")],
+        [
+            ac17(
+                "Online evaluation 'agent-eval' (agent-eval-0001) is missing one or "
+                "more operational coverage settings."
+            )
+        ],
+    )
+    (row,) = result.rows
+    assert (row.change, row.match_rule, row.details_changed) == (
+        Change.STILL_OPEN,
+        MatchRule.SINGLE_ROW,
+        True,
+    )
+
+
 # --- A08 optional module in one run only --------------------------------------------
 
 

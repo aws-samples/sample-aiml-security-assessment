@@ -585,6 +585,22 @@ EDITS = (
             "status": "Failed",
         },
     ),
+    Edit(
+        "Still open, details changed (single-row pairing; review item F3): AC-17 "
+        "had no online evaluation configuration, now it has one that isn't "
+        "complete. One Failed row each, about different things.",
+        "update",
+        "AC-17",
+        "us-east-2",
+        "Failed",
+        {
+            "details": "Online evaluation 'sample-agent-eval' (sample-agent-eval-0001) "
+            "is missing one or more operational coverage settings.",
+            "resolution": "Set the evaluation ACTIVE and ENABLED, use non-zero "
+            "sampling, add evaluators, and configure CloudWatch input and output "
+            "log groups.",
+        },
+    ),
 )
 
 _DAYS_IN_PARENTHESES = re.compile(r"\((\d+) days?\)")

@@ -135,6 +135,19 @@
     "current_details": "AgentCore token vault 'default' uses a customer-managed KMS key."
    },
    {
+    "area": "agentcore",
+    "region": "us-east-2",
+    "check_id": "AC-17",
+    "finding": "AgentCore Online Evaluation Coverage",
+    "change": "Still open",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "No AgentCore online evaluation configurations found.",
+    "current_details": "Online evaluation 'sample-agent-eval' (sample-agent-eval-0001) is missing one or more operational coverage settings."
+   },
+   {
     "area": "agent-registry",
     "region": "Global",
     "check_id": "AR-01",
@@ -185,6 +198,19 @@
     "severity": "High",
     "previous_details": "Agentic AI security domain: Agent Identity & Access. Agent credentials stored in the Identity token vault should use customer-controlled encryption where enhanced key control is required. Source check AC-14: AgentCore token vault 'default' uses a service-managed or AWS-owned key.",
     "current_details": "Agentic AI security domain: Agent Identity & Access. Agent credentials stored in the Identity token vault should use customer-controlled encryption where enhanced key control is required. Source check AC-14: AgentCore token vault 'default' uses a customer-managed KMS key."
+   },
+   {
+    "area": "agentic",
+    "region": "us-east-2",
+    "check_id": "AG-32",
+    "finding": "Agentic AI Online Evaluation Assurance",
+    "change": "Still open",
+    "match_rule": "single-row",
+    "previous_status": "Failed",
+    "current_status": "Failed",
+    "severity": "Medium",
+    "previous_details": "Agentic AI security domain: Auditability & Continuous Assurance. Online evaluation provides continuous evidence about agent behavior, quality, and policy-relevant outcomes. Source check AC-17: No AgentCore online evaluation configurations found.",
+    "current_details": "Agentic AI security domain: Auditability & Continuous Assurance. Online evaluation provides continuous evidence about agent behavior, quality, and policy-relevant outcomes. Source check AC-17: Online evaluation 'sample-agent-eval' (sample-agent-eval-0001) is missing one or more operational coverage settings."
    },
    {
     "area": "owasp",

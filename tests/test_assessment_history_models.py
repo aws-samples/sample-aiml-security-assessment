@@ -231,6 +231,29 @@ def test_compared_row_reads_current_side_when_paired():
     assert row.reference == "https://docs.aws.amazon.com/"
 
 
+@pytest.mark.parametrize(
+    "change, rule, current_details, expected",
+    [
+        (Change.STILL_OPEN, MatchRule.SINGLE_ROW, "resource b", True),
+        (Change.STILL_OPEN, MatchRule.SINGLE_ROW, "resource a", False),
+        (Change.STILL_OPEN, MatchRule.EXACT, "resource a", False),
+        (Change.STILL_OPEN, MatchRule.DETAILS, "resource a", False),
+        (Change.REGRESSED, MatchRule.SINGLE_ROW, "resource b", False),
+    ],
+)
+def test_details_changed_only_for_a_single_row_still_open_pair(
+    change, rule, current_details, expected
+):
+    # Review item F3: two Failed rows paired only because each run had one.
+    row = ComparedRow(
+        change,
+        rule,
+        make_finding("SM-01", details="resource a"),
+        make_finding("SM-01", details=current_details),
+    )
+    assert row.details_changed is expected
+
+
 def test_compared_row_one_sided_statuses():
     only_previous = ComparedRow(
         Change.NO_LONGER_REPORTED, MatchRule.UNMATCHED, make_finding(), None

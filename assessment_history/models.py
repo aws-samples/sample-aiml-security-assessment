@@ -268,6 +268,19 @@ class ComparedRow:
     def reference(self) -> str:
         return self._latest.reference
 
+    @property
+    def details_changed(self) -> bool:
+        """Still open only because each run had one row, and the details differ.
+
+        The two Failed rows may be about different resources: one fixed, and
+        another now failing (review item F3). The page says so.
+        """
+        return (
+            self.change is Change.STILL_OPEN
+            and self.match_rule is MatchRule.SINGLE_ROW
+            and self.previous.details != self.current.details
+        )
+
     def to_csv_record(
         self, previous_execution_id: str, current_execution_id: str
     ) -> dict[str, str]:

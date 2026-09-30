@@ -250,6 +250,15 @@ def test_single_account_sample_results(folders):
     assert {row.previous.finding for row in ar01} == {
         "AWS Agent Registry IAM Full Access Check"
     }
+    # AC-17: one Failed row each, about different things (review item F3). Its
+    # Agentic AI row (AG-32) follows it.
+    for check_id in ("AC-17", "AG-32"):
+        (row,) = rows[(check_id, "us-east-2")]
+        assert (row.change, row.match_rule, row.details_changed) == (
+            Change.STILL_OPEN,
+            MatchRule.SINGLE_ROW,
+            True,
+        ), check_id
     # The severity shown for a finding no longer assessed is the previous run's.
     (sm26,) = rows[("SM-26", "us-east-2")]
     assert sm26.severity == "High"
