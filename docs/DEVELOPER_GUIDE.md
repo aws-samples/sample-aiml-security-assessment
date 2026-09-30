@@ -905,7 +905,8 @@ When you change something it depends on:
 - **A sample report:** rerun `sample-reports/scripts/build_changes_sample.py`
   and review the diff.
 
-Run the package's tests with its 100% line and branch coverage bar:
+Run the package's tests with its 100% line and branch coverage bar (CI runs
+the same check):
 
 ```bash
 .venv/bin/python -m pytest tests/test_assessment_history_*.py \

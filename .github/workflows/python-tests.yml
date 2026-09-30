@@ -7,6 +7,11 @@ on:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
       - "assessment_history/**"
+      # The changes-report wiring tests read these, and the golden tests read the
+      # sample reports, so a change to any of them must run the tests.
+      - "buildspec.yml"
+      - "deployment/**"
+      - "sample-reports/**"
       - "consolidate_html_reports.py"
       - "tests/test_consolidate_responsible_ai_grc.py"
       - ".github/workflows/python-tests.yml"
@@ -16,6 +21,11 @@ on:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
       - "assessment_history/**"
+      # The changes-report wiring tests read these, and the golden tests read the
+      # sample reports, so a change to any of them must run the tests.
+      - "buildspec.yml"
+      - "deployment/**"
+      - "sample-reports/**"
       - "consolidate_html_reports.py"
       - "tests/test_consolidate_responsible_ai_grc.py"
       - ".github/workflows/python-tests.yml"
@@ -90,6 +100,23 @@ jobs:
           python -m pytest tests/test_consolidate_responsible_ai_grc.py -v --tb=short
           cd aiml-security-assessment/functions/security/generate_consolidated_report
           python -m pytest test_generate_report.py -v --tb=short
+
+      - name: Enforce 100% coverage for assessment_history
+        # The package's documented bar: 100% line and branch coverage. Its own
+        # data file, so the coverage.xml uploaded below is unchanged.
+        env:
+          COVERAGE_FILE: .coverage.assessment-history
+          AIML_ASSESSMENT_BUCKET_NAME: test-assessment-bucket
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing  # pragma: allowlist secret
+        run: |
+          python -m pytest tests/test_assessment_history_*.py \
+            -q \
+            --cov=assessment_history \
+            --cov-branch \
+            --cov-report=term-missing \
+            --cov-fail-under=100
 
       - name: Upload coverage report
         if: always()

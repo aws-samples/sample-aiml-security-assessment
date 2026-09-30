@@ -312,7 +312,8 @@ Each folder must hold one complete run. The setting is ignored in this mode.
 | `sample-reports/scripts/build_changes_sample.py` | Builds the sample page and CSV and the golden data |
 | `sample-reports/scripts/capture_changes_screenshot.py` | Captures `sample-reports/changes-overview.png` from the sample page |
 
-Run the tests with the package's 100% line and branch coverage bar:
+Run the tests with the package's 100% line and branch coverage bar (CI runs
+the same check):
 
 ```bash
 .venv/bin/python -m pytest tests/test_assessment_history_*.py \

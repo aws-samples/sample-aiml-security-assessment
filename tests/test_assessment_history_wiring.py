@@ -284,11 +284,36 @@ def workflow():
         return yaml.safe_load(handle)
 
 
-def test_ci_runs_when_the_package_changes(workflow):
+def test_ci_runs_when_the_package_or_its_inputs_change(workflow):
     # PyYAML reads the bare key "on" as True.
     triggers = workflow.get("on", workflow.get(True))
     for event in ("push", "pull_request"):
-        assert "assessment_history/**" in triggers[event]["paths"]
+        paths = triggers[event]["paths"]
+        # The package, the build step and templates the wiring tests read, and
+        # the sample reports the golden tests read.
+        for path in (
+            "assessment_history/**",
+            "buildspec.yml",
+            "deployment/**",
+            "sample-reports/**",
+        ):
+            assert path in paths, (event, path)
+
+
+def test_ci_enforces_full_coverage_for_the_package(workflow):
+    runs = [
+        step.get("run", "")
+        for job in workflow["jobs"].values()
+        for step in job["steps"]
+    ]
+    gate = [run for run in runs if "--cov=assessment_history" in run]
+    assert len(gate) == 1
+    for flag in (
+        "tests/test_assessment_history_*.py",
+        "--cov-branch",
+        "--cov-fail-under=100",
+    ):
+        assert flag in gate[0], flag
 
 
 def test_ci_actions_are_pinned_to_commits(workflow):
