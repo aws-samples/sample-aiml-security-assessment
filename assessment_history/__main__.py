@@ -1,7 +1,7 @@
 """Command line: ``python3 -m assessment_history compare``.
 
 S3 mode is what buildspec.yml runs after each assessment. For each account it
-compares the current run with the most recent complete run saved before it,
+compares the current run with the most recent usable run saved before it,
 writes ``security_assessment_changes_<YYYYMMDD_HHMMSS>.csv`` and ``.html`` into
 ``<bucket>/<account_id>/`` and prints what it did::
 
@@ -102,7 +102,7 @@ def history_enabled(environ: Mapping[str, str], out: Output) -> bool:
 
 
 def first_run_note(account: str) -> str:
-    """The log line for an account with no complete earlier run."""
+    """The log line for an account with no usable earlier run."""
     return (
         f"No previous run for account {account}; changes report skipped. "
         "If this stack was redeployed, or earlier results were moved or deleted, "

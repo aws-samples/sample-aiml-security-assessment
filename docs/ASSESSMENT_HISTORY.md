@@ -291,7 +291,7 @@ can contain resource names chosen by anyone who can create resources.
 | `Compared run <id> (saved <time>) with run <id> (saved <time>), N day(s) apart` | The two runs used |
 | `No changes since the last assessment` | Nothing changed; the report is still written |
 | `Written: s3://...` | Where the report was written |
-| `No previous run for account <id>; changes report skipped. If this stack was redeployed, or earlier results were moved or deleted, they aren't compared. ...` | First run for the account, or no complete earlier run in the bucket |
+| `No previous run for account <id>; changes report skipped. If this stack was redeployed, or earlier results were moved or deleted, they aren't compared. ...` | First run for the account, or no usable earlier run in the bucket |
 | `Skipped run <id> saved <time>: incomplete (...)` | An incomplete run passed over |
 | `Skipped run <id> saved <time>: the assessment run did not succeed (...)` | Its run record says the Step Functions execution didn't succeed |
 | `Skipped run <id> saved <time>: its run record <file> can't be read` | The run record isn't valid, so the run isn't used |
@@ -314,7 +314,7 @@ can contain resource names chosen by anyone who can create resources.
 - **Re-runs.** Every run is the same build; there is no separate "first run"
   setting. Start a run from CodeBuild (**Start build**) or on a schedule (see
   [Can I schedule automated assessments?](TROUBLESHOOTING.md#customization-and-configuration)).
-  Each run is compared with the most recent complete run before it.
+  Each run is compared with the most recent usable run before it.
 - **Redeploying.** History lives in the infrastructure stack's
   `AssessmentBucket`. Updating the stack keeps it. Deleting and recreating the
   stack creates a new bucket, so history starts over. Switching between
@@ -360,7 +360,7 @@ Each folder must hold one complete run. The setting is ignored in this mode.
 - A check that lists several resources in one row (for example, AC-03 lists
   every stale role) shows as No longer reported plus New when the list
   changes, because the rows can't be paired with certainty.
-- The comparison is always with the most recent complete run. Month, quarter,
+- The comparison is always with the most recent usable run. Month, quarter,
   and year views are planned as a follow-up.
 - Runs are ordered by save time, so files copied back into a results folder
   can change which run is picked (see above).

@@ -11507,7 +11507,7 @@ https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-polic
                     <li>If one run has several Failed rows and the other a single row that isn't Failed, such as a Passed summary, each Failed row is paired with that row.</li>
                     <li>Anything left is unpaired and shows as New or No longer reported.</li>
                 </ol>
-                <p class="finding-details" style="margin-top: 12px;">The previous run is the most recent complete run saved before this one. Only modules enabled and regions scanned in both runs are compared. The changes CSV records which rule paired each row. See docs/ASSESSMENT_HISTORY.md in the repository.</p></div></div>
+                <p class="finding-details" style="margin-top: 12px;">The previous run is the most recent usable run saved before this one: its results are complete and, in single-account mode, its run record doesn't say it failed. Only modules enabled and regions scanned in both runs are compared. The changes CSV records which rule paired each row. See docs/ASSESSMENT_HISTORY.md in the repository.</p></div></div>
             </section>
         </main>
     </div>

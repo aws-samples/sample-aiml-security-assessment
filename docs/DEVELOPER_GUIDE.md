@@ -874,7 +874,7 @@ To update report styling, layout, or features:
 ## Assessment History (Changes Since Last Assessment)
 
 The `assessment_history/` package at the repository root compares each
-account's current run with its previous complete run and writes the changes
+account's current run with its previous usable run and writes the changes
 report. `buildspec.yml` runs it in the post-build phase (`run_changes_report`),
 after the existing reports. It reads the findings CSVs in the central bucket
 and never fails the build. User-facing behavior is in
@@ -885,7 +885,7 @@ and never fails the build. User-facing behavior is in
 | `models.py` | Record shapes, change states, area routing, CSV columns |
 | `normalize.py` | Day counts and dates blanked out before matching, each tied to the scanner code that writes it |
 | `compare.py` | Pairs two runs' rows and labels each; no AWS calls |
-| `discover.py` | Groups an account folder's CSVs into runs, picks the previous complete run, reads the CSVs |
+| `discover.py` | Groups an account folder's CSVs into runs, picks the previous usable run (complete files, and a run record that doesn't say it failed), reads the CSVs |
 | `render_common.py`, `render_changes.py` | The HTML page, reusing `report_template.py`'s CSS, escaping, names, and icons |
 | `__main__.py` | `python3 -m assessment_history compare`: S3 mode for the build, local-folder mode for people |
 

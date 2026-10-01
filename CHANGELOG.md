@@ -20,7 +20,7 @@ section.
 - Added a "Changes since last assessment" report. After each run, every
   account whose run completed gets
   `security_assessment_changes_<YYYYMMDD_HHMMSS>.html` and `.csv` next to its
-  main report, comparing the run with the account's previous complete run and
+  main report, comparing the run with the account's previous usable run and
   labeling each finding Resolved, Still open, Regressed, New, No longer
   reported, or No longer assessed. It reads only the existing findings CSVs,
   runs in the CodeBuild post-build phase in both deployment modes, and can't
@@ -68,7 +68,7 @@ section.
 3. **CodeBuild run required** because `buildspec.yml` changed and the new
    `assessment_history/` package runs in the post-build phase. If
    `GitHubBranch` pins a tag or commit, update it first. The first run after
-   upgrading is compared with the account's latest complete earlier run, if
+   upgrading is compared with the account's latest usable earlier run, if
    one is in the bucket. In single-account mode each run also writes a small
    `assessment_history_run_<execution_id>.json` next to its findings CSVs,
    recording whether the run succeeded, so a failed run is never used as the

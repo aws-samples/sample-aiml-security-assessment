@@ -521,7 +521,7 @@ The "By Compliance Standard" section is **extensible**: adding NIST AI RMF (`Ena
 ### Changes Since Last Assessment (`EnableAssessmentHistory`)
 
 After each run, the framework compares each account's findings with that
-account's previous complete run and writes
+account's previous usable run and writes
 `security_assessment_changes_<timestamp>.html` and `.csv` next to the run's
 main report. Each finding is labeled Resolved, Still open, Regressed, New, No
 longer reported, or No longer assessed. This is **on by default**; set the
