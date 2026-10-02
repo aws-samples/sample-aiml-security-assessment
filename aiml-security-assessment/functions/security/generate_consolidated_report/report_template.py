@@ -136,6 +136,25 @@ OWASP_ICON_SMALL = (
 )
 OWASP_LLM_TOP10_URL = "https://genai.owasp.org/llm-top-10/"
 
+# HIPAA/HITECH icon (medical-shield outline, no official AWS HIPAA icon).
+# Color chosen to not collide with:
+#   * OWASP's green (#10B981 / --success),
+#   * By Lens's yellow (#F59E0B / --warning),
+#   * By Industry's purple (#8B5CF6 / --accent).
+# A muted professional blue is used to avoid signaling severity.
+HIPAA_ICON = (
+    '<span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
+    '<rect fill="#2563EB" width="80" height="80"/>'
+    '<path fill="#FFF" fill-rule="evenodd" d="M40 10 18 18v20c0 13 8 24 22 28 14-4 22-15 22-28V18L40 10zm-5 26h8v-8h10a5 5 0 0 1 0 10h-10v8a5 5 0 0 1-10 0v-8H25a5 5 0 0 1 0-10h10v8a5 5 0 0 1 10 0v-8z"/></svg></span>'
+)
+HIPAA_ICON_SMALL = (
+    '<span class="service-icon" style="width: 18px; height: 18px;">'
+    '<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
+    '<rect fill="#2563EB" width="80" height="80"/>'
+    '<path fill="#FFF" fill-rule="evenodd" d="M40 10 18 18v20c0 13 8 24 22 28 14-4 22-15 22-28V18L40 10zm-5 26h8v-8h10a5 5 0 0 1 0 10h-10v8a5 5 0 0 1-10 0v-8H25a5 5 0 0 1 0-10h10v8a5 5 0 0 1 10 0v-8z"/></svg></span>'
+)
+HIPAA_REFERENCE_URL = "https://aws.amazon.com/compliance/hipaa-compliance/"
+
 # COMPLIANCE_STANDARDS — registry of compliance-standard sections.
 # Each entry produces a sidebar nav item + service card + section + filter
 # option + scope chip in the report. Callers (generate_consolidated_report
@@ -158,6 +177,32 @@ COMPLIANCE_STANDARDS: List[Dict[str, str]] = [
             "Each finding's OWASP category (LLM01–LLM10) is encoded in the "
             "Finding_Details text. Preliminary and illustrative — validate "
             "mappings with your Security/Compliance team before using as evidence."
+        ),
+    },
+    {
+        "slug": "hipaa",
+        "name": "HIPAA Compliance",
+        "prefix": "HP-",
+        "icon": HIPAA_ICON,
+        "icon_small": HIPAA_ICON_SMALL,
+        "reference_url": HIPAA_REFERENCE_URL,
+        "section_title": "HIPAA/HITECH-Aligned Configuration Findings",
+        "scope_text": (
+            "Scope: 7 optional automated configuration checks (HP-01 through HP-07) "
+            "for selected AWS AI/ML resources (Bedrock custom models & guardrails, "
+            "SageMaker endpoints & training jobs, VPC endpoints, AIML-prefixed "
+            "CloudWatch Logs log groups, and AI/ML dataset-shaped S3 buckets). "
+            "Each finding carries an illustrative citation to the HIPAA Security "
+            "Rule (45 CFR Part 164 Subpart C) and, where applicable, the HITECH "
+            "Breach Notification Rule. "
+            "DISCLAIMER: These are AUTOMATED CONFIGURATION CHECKS. They do NOT "
+            "constitute a HIPAA compliance audit, certification, or risk analysis; "
+            "do NOT establish the presence or absence of electronic protected "
+            "health information (ePHI) in any resource; and do NOT cover "
+            "administrative, physical, or organizational safeguards beyond what "
+            "is readable from the AWS API surface. Covered entities and business "
+            "associates remain responsible for their own documented Risk Analysis "
+            "under 164.308(a)(1) and their own control mappings."
         ),
     },
     # Future: {"slug": "nist", "name": "NIST AI RMF", "prefix": "NR-", ...}

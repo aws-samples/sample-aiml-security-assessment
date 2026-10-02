@@ -870,6 +870,28 @@ class TestReportFailureHandling(unittest.TestCase):
                 self.event["OriginalInput"],
             )
 
+    def test_validation_requires_hipaa_artifact_when_enable_hipaa_true(self):
+        # HIPAA is independent: no hidden Responsible AI GRC dependency.
+        # Setting enableHIPAA=true alone should require the hipaa CSV.
+        self.event["OriginalInput"]["enableHIPAA"] = "true"
+        # Populate every OTHER assessment regionally so only the HIPAA artifact
+        # is the missing one — this narrows any failure message to hipaa.
+        self.assessment_results["owasp"] = {
+            "owasp_security_report_synthetic-execution-id_us-east-1": [
+                {"Check_ID": "OW-01"}
+            ]
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "hipaa_security_report_synthetic-execution-id_us-east-1.csv",
+        ):
+            generate_report_app.validate_assessment_artifacts(
+                self.assessment_results,
+                "synthetic-execution-id",
+                self.event["OriginalInput"],
+            )
+
     def test_generate_html_report_propagates_template_failure(self):
         with mock.patch.object(
             generate_report_app,

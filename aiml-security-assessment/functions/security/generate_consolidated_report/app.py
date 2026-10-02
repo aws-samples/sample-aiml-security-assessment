@@ -95,11 +95,14 @@ def validate_assessment_artifacts(
         if selected_services[category]
     }
     owasp_enabled = _flag_is_true(original_input.get("enableOWASP"))
+    hipaa_enabled = _flag_is_true(original_input.get("enableHIPAA"))
     responsible_ai_grc_enabled = _flag_is_true(
         original_input.get("enableResponsibleAIGRC")
     )
     if owasp_enabled:
         per_region_categories["owasp"] = "owasp"
+    if hipaa_enabled:
+        per_region_categories["hipaa"] = "hipaa"
 
     expected_artifacts = []
     for category, fragment in per_region_categories.items():

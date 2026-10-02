@@ -66,7 +66,7 @@ additional compatibility syntax.
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 94 core security checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus 38 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 94 core security checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus 38 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC, 12-check OWASP Top 10 for LLM, and 7-check HIPAA/HITECH-aligned configuration assessments, generating interactive HTML reports with findings and remediation guidance.
 
 The current deployment is validated only in the standard AWS commercial
 partition (`aws`). Partition-aware implementation details must not be treated
@@ -141,6 +141,7 @@ sample-aiml-security-assessment/
 │   │   ├── agent_registry_assessments/  # AWS Agent Registry checks (8)
 │   │   ├── responsible_ai_grc_assessments/  # Optional Responsible AI GRC checks (64)
 │   │   ├── owasp_assessments/        # Optional OWASP Top 10 for LLM checks (12)
+│   │   ├── hipaa_assessments/        # Optional HIPAA/HITECH-aligned automated configuration checks (7)
 │   │   ├── responsible_ai_grc_tests/ # Responsible AI GRC-specific unit and coverage tests
 │   │   ├── iam_permission_caching/   # AWS IAM permissions cache
 │   │   ├── cleanup_bucket/           # Amazon S3 cleanup
@@ -339,7 +340,7 @@ selection, and single-/multi-account reporting.
 
 ## Assessment Structure
 
-The framework includes **94 core security checks** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus **38 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableResponsibleAIGRCAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **94 core security checks** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus **38 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableResponsibleAIGRCAssessment` is enabled, **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled, and **7 optional HIPAA/HITECH-aligned configuration checks** when `EnableHIPAAAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
@@ -815,7 +816,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 
 ### Current Status
 
-- **AI/ML Assessment**: 94 core checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, 38 always-on Agentic AI Security checks, plus 64 optional Responsible AI GRC checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
+- **AI/ML Assessment**: 94 core checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, 38 always-on Agentic AI Security checks, plus 64 optional Responsible AI GRC checks, 12 optional OWASP Top 10 for LLM checks, and 7 optional HIPAA/HITECH-aligned configuration checks (see [Security Checks Reference](SECURITY_CHECKS.md))
 
 ### Potential Additions
 
@@ -892,6 +893,7 @@ end-to-end. Concrete steps:
 
 1. **Choose a 2–3 letter prefix** that satisfies `^[A-Z]{2,3}-\d{2}$`:
    - OWASP → `OW-` (already implemented)
+   - HIPAA/HITECH → `HP-` (already implemented)
    - NIST AI RMF → suggested `NR-`
    - EU AI Act → suggested `EU-`
 
@@ -1154,6 +1156,7 @@ Before pushing, run these checks locally to catch issues early:
   -r aiml-security-assessment/functions/security/generate_consolidated_report/requirements.txt \
   -r aiml-security-assessment/functions/security/iam_permission_caching/requirements.txt \
   -r aiml-security-assessment/functions/security/owasp_assessments/requirements.txt \
+  -r aiml-security-assessment/functions/security/hipaa_assessments/requirements.txt \
   -r aiml-security-assessment/functions/security/resolve_regions/requirements.txt \
   -r aiml-security-assessment/functions/security/sagemaker_assessments/requirements.txt
 .venv/bin/pip check

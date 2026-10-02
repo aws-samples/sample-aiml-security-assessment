@@ -82,6 +82,12 @@ phases:
       # case-sensitive StringEquals "true" gate matches a "True"/"TRUE" input.
       - export ENABLE_OWASP="$(echo "${ENABLE_OWASP:-false}" | tr '[:upper:]' '[:lower:]')"
       - echo "OWASP assessment enabled is $ENABLE_OWASP"
+      # EnableHIPAAAssessment toggle (CodeBuild env var; default false). Threaded
+      # into the Step Functions execution input as enableHIPAA; the ASL HIPAA
+      # branch runs only when this is "true". Lower-cased here so the ASL's
+      # case-sensitive StringEquals "true" gate matches a "True"/"TRUE" input.
+      - export ENABLE_HIPAA="$(echo "${ENABLE_HIPAA:-false}" | tr '[:upper:]' '[:lower:]')"
+      - echo "HIPAA assessment enabled is $ENABLE_HIPAA"
       - |
         # Validate required environment variables
         missing_vars=()
@@ -149,6 +155,8 @@ phases:
         export SAM_ENABLE_AGENTCORE_PARAMETER
         SAM_ENABLE_AGENT_REGISTRY_PARAMETER="ParameterKey=EnableAgentRegistryAssessment,ParameterValue=${ENABLE_AGENT_REGISTRY}"
         export SAM_ENABLE_AGENT_REGISTRY_PARAMETER
+        SAM_ENABLE_HIPAA_PARAMETER="ParameterKey=EnableHIPAAAssessment,ParameterValue=${ENABLE_HIPAA}"
+        export SAM_ENABLE_HIPAA_PARAMETER
         export SAM_TARGET_REGIONS_PARAMETER
         export SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER
         export SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER
@@ -272,7 +280,7 @@ phases:
               record_failure "$accountId" "deployment" "Failed to recover a failed CloudFormation stack"
               unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
               continue
-            elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "aiml-security-$accountId" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
+            elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "aiml-security-$accountId" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_ENABLE_HIPAA_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
               echo "ERROR: Deploy failed for account $accountId"
               record_failure "$accountId" "deployment" "SAM deployment failed"
               unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
@@ -281,7 +289,7 @@ phases:
 
             STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name aiml-security-$accountId --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
             if [[ $STATE_MACHINE_ARN != "" && $STATE_MACHINE_ARN != "None" ]]; then
-              if EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$accountId\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
+              if EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$accountId\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\",\"enableHIPAA\":\"$ENABLE_HIPAA\"}" --query 'executionArn' --output text); then
                 if [[ -n "$EXECUTION_ARN" && "$EXECUTION_ARN" != "None" ]]; then
                   echo "Started execution: $EXECUTION_ARN"
                   echo "$EXECUTION_ARN" > /tmp/execution_arns/$accountId.txt
@@ -305,13 +313,13 @@ phases:
           if ! recover_failed_stack aws-sam-cli-managed-default || ! recover_failed_stack aiml-security-mgmt; then
             echo "ERROR: Failed to recover deployment stack for management account"
             record_failure "$AWS_ACCOUNT_ID" "deployment" "Failed to recover a failed CloudFormation stack"
-          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-mgmt --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
+          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-mgmt --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_ENABLE_HIPAA_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
             echo "ERROR: Deploy failed for management account"
             record_failure "$AWS_ACCOUNT_ID" "deployment" "SAM deployment failed"
           else
             STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name aiml-security-mgmt --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
             if [[ $STATE_MACHINE_ARN != "" && $STATE_MACHINE_ARN != "None" ]]; then
-              if MGMT_EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
+              if MGMT_EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\",\"enableHIPAA\":\"$ENABLE_HIPAA\"}" --query 'executionArn' --output text); then
                 if [[ -n "$MGMT_EXECUTION_ARN" && "$MGMT_EXECUTION_ARN" != "None" ]]; then
                   echo "Started management account execution: $MGMT_EXECUTION_ARN"
                   echo "$MGMT_EXECUTION_ARN" > /tmp/execution_arns/$AWS_ACCOUNT_ID.txt
@@ -339,7 +347,7 @@ phases:
           if ! recover_failed_stack aws-sam-cli-managed-default || ! recover_failed_stack "$STACK_NAME"; then
             echo "ERROR: Failed to recover deployment stack for single account"
             exit 1
-          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "$STACK_NAME" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
+          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "$STACK_NAME" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_ENABLE_HIPAA_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
             echo "ERROR: SAM deploy failed for single account"
             exit 1
           fi
@@ -349,7 +357,7 @@ phases:
             exit 1
           fi
           # Capture execution ARN for post-build phase to wait on
-          EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text)
+          EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\",\"enableHIPAA\":\"$ENABLE_HIPAA\"}" --query 'executionArn' --output text)
           if [[ -z "$EXECUTION_ARN" || "$EXECUTION_ARN" == "None" ]]; then
             echo "ERROR: Failed to start Step Function execution"
             exit 1
@@ -551,6 +559,9 @@ phases:
                 fi
                 if [[ $ENABLE_OWASP == "true" ]]; then
                   required_artifact_prefixes+=(owasp)
+                fi
+                if [[ $ENABLE_HIPAA == "true" ]]; then
+                  required_artifact_prefixes+=(hipaa)
                 fi
 
                 artifacts_complete=true

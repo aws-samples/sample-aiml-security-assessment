@@ -599,7 +599,7 @@
                                 "Next": "OWASP Assessment Incomplete"
                             }
                         ],
-                        "End": true
+                        "Next": "HIPAA Enabled?"
                     },
                     "OWASP Assessment Incomplete": {
                         "Type": "Pass",
@@ -610,9 +610,87 @@
                                 "findings": []
                             }
                         },
-                        "End": true
+                        "Next": "HIPAA Enabled?"
                     },
                     "OWASP Assessment Skipped": {
+                        "Type": "Pass",
+                        "Result": {
+                            "statusCode": 200,
+                            "skipped": true,
+                            "body": {
+                                "findings": []
+                            }
+                        },
+                        "Next": "HIPAA Enabled?"
+                    },
+                    "HIPAA Enabled?": {
+                        "Type": "Choice",
+                        "Choices": [
+                            {
+                                "And": [
+                                    {
+                                        "Variable": "$.OriginalInput.enableHIPAA",
+                                        "IsPresent": true
+                                    },
+                                    {
+                                        "Variable": "$.OriginalInput.enableHIPAA",
+                                        "StringEquals": "true"
+                                    }
+                                ],
+                                "Next": "HIPAA Security Assessment"
+                            }
+                        ],
+                        "Default": "HIPAA Assessment Skipped"
+                    },
+                    "HIPAA Security Assessment": {
+                        "Type": "Task",
+                        "Resource": "arn:aws:states:::lambda:invoke",
+                        "Parameters": {
+                            "FunctionName": "${HIPAASecurityAssessmentFunction}",
+                            "Payload": {
+                                "Execution.$": "$.Execution",
+                                "StateMachine.$": "$.StateMachine",
+                                "Region.$": "$.Region",
+                                "RegionIndex.$": "$.RegionIndex"
+                            }
+                        },
+                        "Retry": [
+                            {
+                                "ErrorEquals": [
+                                    "Lambda.ServiceException",
+                                    "Lambda.AWSLambdaException",
+                                    "Lambda.SdkClientException",
+                                    "Lambda.TooManyRequestsException"
+                                ],
+                                "IntervalSeconds": 1,
+                                "MaxAttempts": 3,
+                                "BackoffRate": 2,
+                                "JitterStrategy": "FULL"
+                            }
+                        ],
+                        "Catch": [
+                            {
+                                "ErrorEquals": [
+                                    "States.ALL"
+                                ],
+                                "ResultPath": "$.hipaaError",
+                                "Next": "HIPAA Assessment Incomplete"
+                            }
+                        ],
+                        "End": true
+                    },
+                    "HIPAA Assessment Incomplete": {
+                        "Type": "Pass",
+                        "Result": {
+                            "statusCode": 207,
+                            "incomplete": true,
+                            "body": {
+                                "findings": []
+                            }
+                        },
+                        "End": true
+                    },
+                    "HIPAA Assessment Skipped": {
                         "Type": "Pass",
                         "Result": {
                             "statusCode": 200,

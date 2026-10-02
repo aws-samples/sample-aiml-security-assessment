@@ -4,7 +4,7 @@ This file provides guidance to coding agents when working with code in this repo
 
 ## What this is
 
-A serverless framework that scans AWS accounts for AI/ML security misconfigurations and produces interactive HTML reports. The full catalog contains 208 checks across seven assessment areas: 94 core checks (40 Amazon Bedrock, 29 Amazon SageMaker AI with `SM-29` reserved, 17 Amazon Bedrock AgentCore, and 8 AWS Agent Registry), up to 38 Agentic AI Security checks, 64 optional Responsible AI GRC checks, and 12 optional OWASP Top 10 for LLM checks. Checks are derived from the AWS Well-Architected Generative AI Lens, the Agentic AI Lens, AWS Responsible AI GRC guidance, and the OWASP Top 10 for LLM 2025.
+A serverless framework that scans AWS accounts for AI/ML security misconfigurations and produces interactive HTML reports. The full catalog contains 215 checks across eight assessment areas: 94 core checks (40 Amazon Bedrock, 29 Amazon SageMaker AI with `SM-29` reserved, 17 Amazon Bedrock AgentCore, and 8 AWS Agent Registry), up to 38 Agentic AI Security checks, 64 optional Responsible AI GRC checks, 12 optional OWASP Top 10 for LLM checks, and 7 optional HIPAA/HITECH-aligned configuration checks. Checks are derived from the AWS Well-Architected Generative AI Lens, the Agentic AI Lens, AWS Responsible AI GRC guidance, the OWASP Top 10 for LLM 2025, and selected 45 CFR Part 164 Subpart C technical safeguard patterns.
 
 ## Commands
 
@@ -25,6 +25,7 @@ The suites that need their **own** session are the ones that live outside `tests
   -r aiml-security-assessment/functions/security/generate_consolidated_report/requirements.txt \
   -r aiml-security-assessment/functions/security/iam_permission_caching/requirements.txt \
   -r aiml-security-assessment/functions/security/owasp_assessments/requirements.txt \
+  -r aiml-security-assessment/functions/security/hipaa_assessments/requirements.txt \
   -r aiml-security-assessment/functions/security/resolve_regions/requirements.txt \
   -r aiml-security-assessment/functions/security/sagemaker_assessments/requirements.txt
 .venv/bin/pip check

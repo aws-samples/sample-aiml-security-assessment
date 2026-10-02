@@ -17,6 +17,7 @@ Metadata:
           - EnableResponsibleAIGRCAssessment
           - EnableFinServAssessment
           - EnableOWASPAssessment
+          - EnableHIPAAAssessment
           - EmailAddress
       - Label:
           default: Advanced Options
@@ -58,6 +59,8 @@ Metadata:
         default: Responsible AI GRC checks (legacy parameter name; see option above)
       EnableOWASPAssessment:
         default: OWASP Top 10 for LLM checks
+      EnableHIPAAAssessment:
+        default: HIPAA/HITECH-aligned configuration checks
       EmailAddress:
         default: Notification email address
       ConcurrentAccountScans:
@@ -227,6 +230,20 @@ Parameters:
       account. Enable this only when you need the additional compliance-standard
       assessment; the findings add a dedicated "By Compliance Standard" report
       section.
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+
+  EnableHIPAAAssessment:
+    Description: >
+      Run seven optional HIPAA/HITECH-aligned automated configuration checks
+      (HP-01 through HP-07) against AI/ML-related resources in every scanned
+      account. WARNING: These are AUTOMATED CONFIGURATION CHECKS ONLY. They do
+      NOT constitute a HIPAA compliance audit or certification, do NOT establish
+      the presence or absence of ePHI, do NOT cover administrative/physical/
+      organizational safeguards, and do NOT replace formal Risk Analysis under
+      164.308(a)(1). The covered entity remains solely responsible for full
+      HIPAA compliance.
     Type: String
     AllowedValues: ["true", "false"]
     Default: "false"
@@ -617,6 +634,9 @@ Resources:
             Type: PLAINTEXT
           - Name: ENABLE_OWASP
             Value: !Ref EnableOWASPAssessment
+            Type: PLAINTEXT
+          - Name: ENABLE_HIPAA
+            Value: !Ref EnableHIPAAAssessment
             Type: PLAINTEXT
           - Name: ENABLE_FINSERV
             Value: !Ref EnableFinServAssessment

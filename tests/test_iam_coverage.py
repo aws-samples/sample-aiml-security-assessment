@@ -575,6 +575,7 @@ _VERIFIED_REMEDIATION_IAM_ACTIONS = {
 }
 
 _VERIFIED_REMEDIATION_CONDITION_KEYS = {
+    "aws:SecureTransport",
     "bedrock:GuardrailIdentifier",
     "iam:AWSServiceName",
     "kms:ViaService",

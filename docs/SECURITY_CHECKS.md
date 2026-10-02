@@ -1,10 +1,10 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 208 security checks performed by the AI/ML Security Assessment framework (94 core checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, 38 Agentic AI Security checks, 64 Responsible AI GRC checks, and 12 OWASP Top 10 for LLM checks).
+This document provides a comprehensive reference for all 215 security checks performed by the AI/ML Security Assessment framework (94 core checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, 38 Agentic AI Security checks, 64 Responsible AI GRC checks, 12 OWASP Top 10 for LLM checks, and 7 HIPAA/HITECH-aligned configuration checks).
 
 Sources differ by bucket and are not interchangeable: the core Bedrock, SageMaker, AgentCore, and AWS Agent Registry checks derive from the AWS Well-Architected **Generative AI Lens** security best practices (`gensec*`) and service security documentation; the Agentic AI Security checks from the AWS Well-Architected **Agentic AI Lens**; the `FS-*` **Responsible AI GRC** checks from the AWS GRC User Guide; and the `OW-*` checks from the OWASP Top 10 for LLM. The AWS Well-Architected **Responsible AI Lens** is not a source for any of them — see [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md).
 
-The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. The framework also emits `BR-00`, `SM-00`, `AC-00`, `AR-00`, `FS-00`, and `OW-00` operational marker rows at runtime; these are not controls and are excluded from the 208-check total. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
+The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. The framework also emits `BR-00`, `SM-00`, `AC-00`, `AR-00`, `FS-00`, and `OW-00` operational marker rows at runtime; these are not controls and are excluded from the 215-check total. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
 
 The counts above describe the full catalog. Core service assessments are enabled
 by default and can be selected independently with the four
@@ -1025,3 +1025,42 @@ organized by OWASP category:
 **Preliminary and illustrative.** OWASP mappings have not been reviewed by
 external auditors. Validate mappings with your Security/Compliance team
 before using as audit evidence.
+
+---
+
+## HIPAA Compliance Checks (7)
+
+These 7 checks (HP-XX) inspect AI/ML-related AWS resources for automated
+configuration alignment with selected **HIPAA Security Rule (45 CFR Part 164
+Subpart C)** technical safeguards and **HITECH Act** enhancement patterns.
+HP-01..HP-07 are **independent direct AWS API calls** — HIPAA checks have
+no hidden source dependency on any other assessment (unlike OWASP → FS).
+When enabled, the HIPAA Lambda runs per region after the OWASP Lambda and
+writes region-suffixed `hipaa_security_report_<execution_id>_<region>.csv`
+artifacts. Findings appear alongside OWASP in the **"By Compliance
+Standard"** sidebar section of the HTML report. When left `false`, no HP-*
+findings are produced and the HIPAA section is omitted entirely.
+
+**IMPORTANT SCOPE DISCLAIMER:** HP-* checks are **automated configuration
+scans only**. They do NOT constitute a HIPAA compliance audit or
+certification, do NOT determine the presence or absence of ePHI, do NOT
+cover administrative/physical/organizational safeguards, do NOT verify
+Business Associate Agreements, and do NOT replace formal Risk Analysis
+under 164.308(a)(1). The covered entity remains solely responsible for
+full HIPAA/HITECH compliance.
+
+**Opt-in.** HIPAA checks run only when the `EnableHIPAAAssessment`
+deployment parameter is `true` and the Step Functions execution input
+includes `"enableHIPAA": "true"`.
+
+The full catalog including scope disclaimers, severity rubric, compliance
+framework citation tags, per-check remediation, and N/A/incomplete-path
+semantics is in **[`SECURITY_CHECKS_HIPAA.md`](./SECURITY_CHECKS_HIPAA.md)**:
+
+- **HP-01 Bedrock Custom Models: CMK Encryption** — 45 CFR 164.312(a)(2)(iv) at rest
+- **HP-02 Bedrock Guardrails: Content Filter DENY-mode** — 164.312(c)(1) integrity
+- **HP-03 SageMaker Endpoints: VPC + No Public Internet** — 164.312(e)(1)/(e)(2)(ii)
+- **HP-04 SageMaker Training Jobs: Inter-Container + VPC Isolation + CMK** — combined encryption + transit
+- **HP-05 CloudWatch Logs: AIML-Prefixed Data Protection Policies** — 164.312(b) audit controls + HITECH §13402
+- **HP-06 AIML EC2 VPC Endpoints (Bedrock/SageMaker/KMS/S3/Logs/SecretsManager)** — private transit
+- **HP-07 AIML-Related S3 Buckets: CMK Encryption + Versioning + PAB Account-Level** — encryption + integrity
