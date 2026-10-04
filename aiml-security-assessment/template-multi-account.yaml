@@ -313,6 +313,7 @@ Resources:
                     - agent_registry_security_report_*
                     - responsible_ai_grc_security_report_*
                     - owasp_security_report_*
+                    - hipaa_security_report_*
             - Sid: AssessmentCsvRead
               Effect: Allow
               Action:
@@ -324,6 +325,7 @@ Resources:
                 - !Sub '${AIMLAssessmentBucket.Arn}/agent_registry_security_report_*.csv'
                 - !Sub '${AIMLAssessmentBucket.Arn}/responsible_ai_grc_security_report_*.csv'
                 - !Sub '${AIMLAssessmentBucket.Arn}/owasp_security_report_*.csv'
+                - !Sub '${AIMLAssessmentBucket.Arn}/hipaa_security_report_*.csv'
             - Sid: AssessmentHtmlWrite
               Effect: Allow
               Action:
@@ -1138,6 +1140,7 @@ Resources:
                 - sagemaker:ListEndpoints
                 - sagemaker:DescribeEndpoint
                 - sagemaker:DescribeEndpointConfig
+                - sagemaker:DescribeModel
                 - sagemaker:ListTrainingJobs
                 - sagemaker:DescribeTrainingJob
               Resource: '*'
@@ -1151,19 +1154,27 @@ Resources:
               Effect: Allow
               Action:
                 - logs:DescribeLogGroups
+                - logs:DescribeAccountPolicies
                 - logs:GetDataProtectionPolicy
               Resource: '*'
+            - Sid: HIPAAKMSPermissions
+              Effect: Allow
+              Action:
+                - kms:DescribeKey
+              Resource: !Sub 'arn:${AWS::Partition}:kms:*:${AWS::AccountId}:key/*'
             - Sid: HIPAAS3Permissions
               Effect: Allow
               Action:
-                # ListAllMyBuckets is account-level, no resource-level IAM.
+                # ListAllMyBuckets + account-level PAB are account-level, no resource-level IAM.
                 - s3:ListAllMyBuckets
+                - s3:GetAccountPublicAccessBlock
               Resource: '*'
             - Sid: HIPAAS3BucketConfiguration
               Effect: Allow
               Action:
                 - s3:GetEncryptionConfiguration
                 - s3:GetBucketVersioning
+                - s3:GetPublicAccessBlock
               Resource:
                 - !Sub 'arn:${AWS::Partition}:s3:::*'
 

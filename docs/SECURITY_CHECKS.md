@@ -1057,10 +1057,10 @@ The full catalog including scope disclaimers, severity rubric, compliance
 framework citation tags, per-check remediation, and N/A/incomplete-path
 semantics is in **[`SECURITY_CHECKS_HIPAA.md`](./SECURITY_CHECKS_HIPAA.md)**:
 
-- **HP-01 Bedrock Custom Models: CMK Encryption** — 45 CFR 164.312(a)(2)(iv) at rest
-- **HP-02 Bedrock Guardrails: Content Filter DENY-mode** — 164.312(c)(1) integrity
-- **HP-03 SageMaker Endpoints: VPC + No Public Internet** — 164.312(e)(1)/(e)(2)(ii)
-- **HP-04 SageMaker Training Jobs: Inter-Container + VPC Isolation + CMK** — combined encryption + transit
-- **HP-05 CloudWatch Logs: AIML-Prefixed Data Protection Policies** — 164.312(b) audit controls + HITECH §13402
-- **HP-06 AIML EC2 VPC Endpoints (Bedrock/SageMaker/KMS/S3/Logs/SecretsManager)** — private transit
-- **HP-07 AIML-Related S3 Buckets: CMK Encryption + Versioning + PAB Account-Level** — encryption + integrity
+- **HP-01 Bedrock Custom Models: CMK Encryption (kms:DescribeKey KeyManager==CUSTOMER)** — 45 CFR 164.312(a)(2)(iv) at rest
+- **HP-02 Bedrock Guardrails: PHI PII Redaction BLOCK or ANONYMIZE** — 164.312(c)(1) integrity + 164.312(a)(2)(iv)
+- **HP-03 SageMaker Endpoints + Training: EnableNetworkIsolation=True (DescribeModel + EndpointConfig + 90d Training)** — 164.312(e)(1)/(e)(2)(ii) no public egress
+- **HP-04 SageMaker Endpoint + Training Encryption: CMK Keys + Inter-Container Encryption True** — combined encryption at rest + in-transit
+- **HP-05 CloudWatch Logs: AIML-Prefixed Active Data Protection (Per-Group or Account-Level Policy)** — 164.312(b) audit controls + HITECH §13402
+- **HP-06 AIML EC2 VPC Endpoints: 12 Services (Bedrock/SageMaker/STS/KMS/SecretsManager/Logs/S3/EC2), State==available** — private transit 164.312(e)(1)
+- **HP-07 AIML-Related S3 Buckets Global (RegionIndex==0): CMK Encryption + Versioning Enabled + Account/Bucket-Level PAB** — encryption + integrity

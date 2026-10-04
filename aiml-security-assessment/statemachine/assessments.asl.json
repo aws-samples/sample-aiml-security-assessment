@@ -8,7 +8,8 @@
                 "bedrock": "${EnableBedrockAssessment}",
                 "sagemaker": "${EnableSageMakerAssessment}",
                 "agentcore": "${EnableAgentCoreAssessment}",
-                "agent-registry": "${EnableAgentRegistryAssessment}"
+                "agent-registry": "${EnableAgentRegistryAssessment}",
+                "hipaa": "${EnableHIPAAAssessment}"
             },
             "ResultPath": "$.ServiceSelection",
             "Next": "Cleanup S3 Bucket"
@@ -627,14 +628,30 @@
                         "Type": "Choice",
                         "Choices": [
                             {
-                                "And": [
+                                "Or": [
                                     {
-                                        "Variable": "$.OriginalInput.enableHIPAA",
-                                        "IsPresent": true
+                                        "And": [
+                                            {
+                                                "Variable": "$.OriginalInput.enableHIPAA",
+                                                "IsPresent": true
+                                            },
+                                            {
+                                                "Variable": "$.OriginalInput.enableHIPAA",
+                                                "StringEquals": "true"
+                                            }
+                                        ]
                                     },
                                     {
-                                        "Variable": "$.OriginalInput.enableHIPAA",
-                                        "StringEquals": "true"
+                                        "And": [
+                                            {
+                                                "Variable": "$.OriginalInput.ServiceSelection['hipaa']",
+                                                "IsPresent": true
+                                            },
+                                            {
+                                                "Variable": "$.OriginalInput.ServiceSelection['hipaa']",
+                                                "StringEquals": "true"
+                                            }
+                                        ]
                                     }
                                 ],
                                 "Next": "HIPAA Security Assessment"
@@ -677,6 +694,7 @@
                                 "Next": "HIPAA Assessment Incomplete"
                             }
                         ],
+                        "ResultPath": null,
                         "End": true
                     },
                     "HIPAA Assessment Incomplete": {

@@ -161,6 +161,44 @@ REQUIRED_AGENT_REGISTRY_ACTIONS = {
     "agent-registry:ListRegistryRecords",
 }
 
+# IAM actions the HIPAA-aligned checks (HP-01..HP-07) require, by boto3 op →
+# IAM PascalCase mapping validated against the AGENTS.md alias-mapping rules:
+#   s3control.get_public_access_block(AccountId) → s3:GetAccountPublicAccessBlock
+#   s3.get_bucket_encryption → s3:GetEncryptionConfiguration (not s3:GetBucketEncryption)
+# Keep this set in sync with hipaa_assessments/app.py.
+REQUIRED_HIPAA_ACTIONS = {
+    # HP-01 Bedrock custom model CMK encryption
+    "bedrock:ListCustomModels",
+    "bedrock:GetCustomModel",
+    # HP-02 Bedrock guardrail PHI PII
+    "bedrock:ListGuardrails",
+    "bedrock:GetGuardrail",
+    # HP-03 SageMaker network isolation (model + endpoint config paths)
+    "sagemaker:ListEndpoints",
+    "sagemaker:DescribeEndpoint",
+    "sagemaker:DescribeEndpointConfig",
+    "sagemaker:DescribeModel",
+    "sagemaker:ListTrainingJobs",
+    "sagemaker:DescribeTrainingJob",
+    # HP-04 SageMaker endpoint/training encryption (shared with HP-03 + KMS)
+    # HP-05 CloudWatch Logs data protection (account + log-group scope)
+    "logs:DescribeLogGroups",
+    "logs:DescribeAccountPolicies",
+    "logs:GetDataProtectionPolicy",
+    # HP-06 VPC endpoint availability
+    "ec2:DescribeVpcs",
+    "ec2:DescribeVpcEndpoints",
+    # HP-07 S3 CMK encryption + versioning + PAB
+    #   (account-level PAB uses s3control client → s3:GetAccountPublicAccessBlock)
+    "s3:ListAllMyBuckets",
+    "s3:GetEncryptionConfiguration",
+    "s3:GetBucketVersioning",
+    "s3:GetPublicAccessBlock",
+    "s3:GetAccountPublicAccessBlock",
+    # Shared across HP-01 / HP-04 / HP-07 (CMK validation via kms:DescribeKey)
+    "kms:DescribeKey",
+}
+
 _ACTION_RE = re.compile(r"-\s+([a-z0-9-]+:[A-Za-z0-9]+)")
 
 # Matches a top-level (2-space-indented) CloudFormation logical resource ID line,
@@ -284,6 +322,18 @@ def test_required_agentcore_actions_are_granted(template):
     )
 
 
+@pytest.mark.parametrize("template", _TEMPLATES, ids=lambda p: os.path.basename(p))
+def test_required_hipaa_actions_are_granted(template):
+    """Every runtime template must grant the complete HIPAA API inventory."""
+    assert os.path.exists(template), f"template not found: {template}"
+    granted = _granted_actions(template)
+    missing = sorted(a for a in REQUIRED_HIPAA_ACTIONS if a not in granted)
+    assert not missing, (
+        f"{os.path.basename(template)} is missing required HIPAA IAM action(s): "
+        f"{missing}. Add them or a HIPAA check will hit AccessDenied / COULD NOT ASSESS."
+    )
+
+
 # Resource-scoped guards (SAM templates only) --------------------------------
 #
 # The file-wide tests above are necessary but not sufficient for the SAM
@@ -297,6 +347,7 @@ _RESPONSIBLE_AI_GRC_FUNCTION_ID = "ResponsibleAIGRCAssessmentFunction"
 _SAGEMAKER_FUNCTION_ID = "SagemakerSecurityAssessmentFunction"
 _AGENTCORE_FUNCTION_ID = "AgentCoreSecurityAssessmentFunction"
 _AGENT_REGISTRY_FUNCTION_ID = "AgentRegistrySecurityAssessmentFunction"
+_HIPAA_FUNCTION_ID = "HIPAASecurityAssessmentFunction"
 
 
 @pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=lambda p: os.path.basename(p))
@@ -379,6 +430,26 @@ def test_required_agent_registry_actions_are_granted_to_the_registry_function(
         f"{os.path.basename(template)}: {_AGENT_REGISTRY_FUNCTION_ID}'s own policy "
         f"block is missing required IAM action(s): {missing}. A grant present "
         "elsewhere in this file does not help this function at runtime."
+    )
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=lambda p: os.path.basename(p))
+def test_required_hipaa_actions_are_granted_to_the_hipaa_function(template):
+    """Scoped HIPAA grant audit — a grant on Bedrock/SM/AC must NOT satisfy
+    HIPAASecurityAssessmentFunction's requirement.
+
+    Reproduces the same bug class the FS-16/FS-20 guard closed: without the
+    resource-scoped check, s3:GetAccountPublicAccessBlock present on a different
+    function would silently satisfy HIPAA HP-07's s3control PAB requirement even
+    though HIPAASecurityAssessmentFunction itself had no grant.
+    """
+    granted = _granted_actions_for_resource(template, _HIPAA_FUNCTION_ID)
+    missing = sorted(a for a in REQUIRED_HIPAA_ACTIONS if a not in granted)
+    assert not missing, (
+        f"{os.path.basename(template)}: {_HIPAA_FUNCTION_ID}'s own policy "
+        f"block is missing required HIPAA IAM action(s): {missing}. A grant "
+        "present elsewhere in this file does not help this function at "
+        "runtime — add the action(s) to this function's own Policies block."
     )
 
 

@@ -124,7 +124,7 @@ both single-account and multi-account deployment modes.
 1. **Account Discovery**: In multi-account mode, lists active accounts from AWS Organizations or uses `MultiAccountListOverride`
 2. **Role Assumption**: In multi-account mode, assumes `AIMLSecurityMemberRole` in each target account
 3. **AWS SAM Deployment**: Deploys or updates the AI/ML assessment stack through AWS SAM
-4. **Assessment Execution**: Triggers AWS Step Functions workflow in each account, passing `enableResponsibleAIGRC` and `enableOWASP` from the deployment parameters
+4. **Assessment Execution**: Triggers AWS Step Functions workflow in each account, passing `enableResponsibleAIGRC`, `enableOWASP`, and `enableHIPAA` from the deployment parameters (each defaulted `false` except via CodeBuild env when the deployment parameter is `true`).
 5. **Results Consolidation**: Syncs per-account reports to the infrastructure bucket and creates a consolidated report for multi-account runs
 
 #### Project Structure
@@ -181,7 +181,7 @@ sample-aiml-security-assessment/
 
 - **AWS SAM Application**: AI/ML security assessment stack
 - **AWS Step Functions**: Single workflow orchestrating all assessments
-- **AWS Lambda Functions**: One per core service (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry), one Responsible AI GRC assessment Lambda invoked when Responsible AI GRC or OWASP needs FS-* source rows, one OWASP assessment Lambda invoked only when enabled, plus utilities
+- **AWS Lambda Functions**: One per core service (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry), one Responsible AI GRC assessment Lambda invoked when Responsible AI GRC or OWASP needs FS-* source rows, one OWASP assessment Lambda invoked only when enabled, **one HIPAA assessment Lambda invoked only when `enableHIPAA == "true"`**, plus utilities
 - **Local Amazon S3 Bucket**: Storage for account-specific results
 
 ### Assessment Execution Workflow
@@ -264,6 +264,30 @@ sample-aiml-security-assessment/
             "End": true
           },
           "OWASP Assessment Skipped": {
+            "Type": "Pass",
+            "Next": "HIPAA Enabled?"
+          },
+          "HIPAA Enabled?": {
+            "Type": "Choice",
+            "Comment": "Runs HIPAA when OriginalInput.enableHIPAA OR ServiceSelection.hipaa is true (dual-path preservation)",
+            "Choices": [
+              {
+                "Or": [
+                  {"Variable": "$.OriginalInput.enableHIPAA", "StringEquals": "true"},
+                  {"Variable": "$.ServiceSelection.hipaa",   "StringEquals": "true"}
+                ],
+                "Next": "HIPAA Security Assessment"
+              }
+            ],
+            "Default": "HIPAA Assessment Skipped"
+          },
+          "HIPAA Security Assessment": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "ResultPath": null,
+            "End": true
+          },
+          "HIPAA Assessment Skipped": {
             "Type": "Pass",
             "End": true
           }
