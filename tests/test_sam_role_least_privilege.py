@@ -382,6 +382,7 @@ _ARTIFACT_PREFIXES = {
         "agent_registry_security_report_*.csv",
         "responsible_ai_grc_security_report_*.csv",
         "owasp_security_report_*.csv",
+        "hipaa_security_report_*.csv",
         "security_assessment_single_account_*.html",
         "permissions_cache_*.json",
     ),
@@ -412,6 +413,7 @@ _ARTIFACT_PREFIXES = {
         "responsible_ai_grc_security_report_*.csv",
         "owasp_security_report_*.csv",
     ),
+    "HIPAASecurityAssessmentFunction": ("hipaa_security_report_*.csv",),
 }
 
 

@@ -133,6 +133,16 @@ OWASP source dependency, but the Responsible AI GRC section, `FS-` rows, and
 `responsible_ai_grc_security_report_*.csv` are intentionally omitted from the
 customer-facing report bucket.
 
+**Expected when HIPAA-only or HIPAA alongside other flags:** If
+`EnableHIPAAAssessment=true`, `HP-*` rows are rendered under the "By Compliance
+Standard" sidebar section regardless of which direct services are enabled.
+HIPAA does not auto-enable any other assessment. The HIPAA Lambda calls AWS
+APIs directly for every target region and writes
+`hipaa_security_report_<execution_id>_<region>.csv` artifacts. When the section
+is missing, confirm the Step Functions input carries `"enableHIPAA": "true"`
+and that `hipaa_*_security_report_*.csv` objects exist in the S3 bucket under
+the current execution ID prefix.
+
 **Solutions:**
 
 - Confirm the infrastructure stack parameter `EnableResponsibleAIGRCAssessment`
@@ -726,6 +736,7 @@ A: Performance factors:
 - **Concurrent executions**: Multi-account assessments run in parallel (configurable through the `ConcurrentAccountScans` parameter)
 - **Region scope**: Multi-region scans multiply the amount of service inventory collected
 - **Responsible AI GRC and OWASP checks**: Enabling `EnableResponsibleAIGRCAssessment` adds the optional `FS-` checks; enabling `EnableOWASPAssessment` adds the optional `OW-` checks and may also run the `FS-*` assessment as a source dependency, increasing run time
+- **HIPAA checks**: Enabling `EnableHIPAAAssessment` adds seven optional `HP-` HIPAA/HITECH-aligned automated configuration checks. HIPAA runs **independently** (no hidden source dependency on other assessments) and increases Lambda runtime per region. These are automated configuration scans only — they do NOT constitute HIPAA certification or a complete compliance audit.
 
 If assessments consistently timeout, increase `CodeBuildTimeout`, reduce `TargetRegions`, reduce the account batch size with `MultiAccountListOverride`, or lower concurrency if throttling is the bottleneck. Lambda timeout changes require editing the SAM templates.
 

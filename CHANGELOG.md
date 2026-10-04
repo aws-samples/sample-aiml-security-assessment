@@ -17,6 +17,25 @@ section.
   Disabled services skip their assessment Lambda and CSV requirements; reports
   label them Not selected and explain reduced Agentic AI / OWASP source coverage.
   Optional Responsible AI GRC and OWASP assessments remain independently enabled.
+- Added seven optional HIPAA/HITECH-aligned automated configuration checks
+  (`HP-01` through `HP-07`), gated by the new `EnableHIPAAAssessment` deployment
+  parameter (default `false`; opt-in like `EnableOWASPAssessment`). The HIPAA
+  Lambda runs per region (after the OWASP Lambda, no hidden source dependency
+  on other assessments, independent of the four direct-service enablement
+  switches) and inspects Bedrock custom model CMK encryption, Bedrock guardrail
+  content-filter PII BLOCK/MASK entities, SageMaker endpoint EnableNetworkIsolation,
+  SageMaker training job inter-container traffic encryption + VPC isolation +
+  CMK volume KMS, CloudWatch Logs AIML-prefixed data protection policies,
+  AIML-related EC2 VPC endpoints, and AI/ML-hinted S3 bucket CMK encryption +
+  versioning + account-level PublicAccessBlock. Findings surface 45 CFR Part 164
+  Subpart C and HITECH Act citation tags in a new `Compliance_Frameworks` CSV
+  column and are rendered under the "By Compliance Standard" report section
+  alongside OWASP. Catalog headcount grows from 208 checks across seven areas
+  to 215 across eight. WARNING: These are automated configuration checks only;
+  they do NOT constitute HIPAA certification, an audit, or a replacement for
+  164.308(a)(1) Risk Analysis. See the full scope disclaimer in
+  `docs/SECURITY_CHECKS_HIPAA.md` and in the parameter description of every
+  deployment template.
 
 ### Fixed
 
@@ -38,6 +57,33 @@ section.
   required for this feature. Direct SAM users must redeploy `template.yaml` or
   `template-multi-account.yaml` with the desired `Enable*Assessment` parameters
   and start a new execution. All switches default to true on upgrade.
+- **HIPAA/HITECH optional assessment:**
+  1. Single-account deployments: Redeploy your CloudFormation stack with the
+     updated `deployment/aiml-security-single-account.yaml` so the new
+     `EnableHIPAAAssessment` parameter (default `false`) and the CodeBuild
+     `ENABLE_HIPAA` environment variable mapping are registered.
+  2. Multi-account deployments: First update the central-infrastructure stack
+     with the updated `deployment/2-aiml-security-codebuild.yaml` to register
+     `EnableHIPAAAssessment` and the `ENABLE_HIPAA` CodeBuild mapping. No
+     member-role StackSet change is required — the HIPAA Lambda IAM grants are
+     per-Lambda in the SAM templates, not in the member deployment role.
+  3. After the top-level deployment template update completes, re-run the
+     CodeBuild project with this revision so it deploys the updated
+     `aiml-security-assessment/template.yaml` (single-account) or
+     `template-multi-account.yaml` (multi-account member + management) SAM
+     templates, which include the new `HIPAASecurityAssessmentFunction`
+     resource, its least-privilege IAM policy, the `EnableHIPAAAssessment`
+     SAM parameter, the state machine `HIPAA Enabled?` → `HIPAA Security
+     Assessment` → `HIPAA Assessment Incomplete` / `Skipped` branch, and the
+     updated `buildspec.yml` artifact-validation prefix gate and start-execution
+     enableHIPAA JSON input. The SAM templates are updated in lockstep (exact
+     parity), and both the `consolidate_html_reports.py` root consolidator and
+     the Lambda report generator route HP-* findings through COMPLIANCE_STANDARDS
+     without further edits.
+  4. Set `EnableHIPAAAssessment=true` only when you want the additional
+     compliance-standard check. Leaving it `false` (default) causes no behavior
+     change for existing deployments: no HIPAA Lambda is invoked, no HIPAA CSV
+     artifacts are required, and no HIPAA section appears in reports.
 
 These instructions assume the 2.0.0 prerequisites below are already applied.
 When upgrading from an earlier release, complete the 2.0.0 member-role and

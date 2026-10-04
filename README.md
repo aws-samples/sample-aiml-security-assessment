@@ -6,12 +6,13 @@
 
 **Open-source automated security scanner for generative AI and machine learning workloads on AWS.** It brings together separate assessments for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry. Core checks are guided by the [AWS Well-Architected Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html). The optional **Responsible AI GRC** module adds technical checks for AI governance, risk, and compliance. Optional **OWASP Top 10 for LLM** checks extend coverage across common LLM security risks. Responsible AI GRC checks draw on the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf).
 
-Run **[208 checks](docs/SECURITY_CHECKS.md)** across AWS accounts and regions:
+Run **[215 checks](docs/SECURITY_CHECKS.md)** across AWS accounts and regions:
 
 - **94 core checks, enabled by default,** for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry
 - **Up to 38 Agentic AI Security checks**, synthesized from service findings and native AgentCore gateway checks
 - **64 optional Responsible AI GRC checks** for selected technical controls informed by AWS governance, risk, and compliance guidance
 - **12 optional OWASP Top 10 for LLM checks**, including mapping-based coverage and native system-prompt-leakage checks
+- **7 optional HIPAA/HITECH-aligned configuration checks**, including CMK encryption, VPC isolation, audit logging, and data protection on AI/ML-related resources
 
 Deploy in a single account or across AWS Organizations. Assessments support
 multi-region execution within the standard AWS commercial partition and
@@ -53,7 +54,7 @@ The framework generates professional, interactive security assessment reports wi
 
 - **Executive Summary** with severity counts and service breakdown
 - **Priority Recommendations** highlighting critical issues requiring immediate attention
-- **[208 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, AWS Agent Registry, Agentic AI Security, Responsible AI GRC, and OWASP Top 10 for LLM
+- **[215 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, AWS Agent Registry, Agentic AI Security, Responsible AI GRC, OWASP Top 10 for LLM, and HIPAA/HITECH-aligned configuration
 - **Multi-Region Support** within the standard AWS commercial partition for core Bedrock, SageMaker, AgentCore, and AWS Agent Registry checks, with per-region risk breakdown
 - **Interactive Filtering** by account, region, service, severity, and status
 - **Light/Dark Mode Toggle** with persistent user preference
@@ -98,7 +99,7 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 | Challenge | How This Framework Helps |
 | --- | --- |
 | **Manual security audits are time-consuming** | Fully automated scanning with one-click CloudFormation deployment |
-| **Inconsistent security checks across teams** | Standardized 208-check assessment based on AWS Well-Architected Generative AI Lens and Agentic AI Lens best practices, AWS Responsible AI governance/risk/compliance guidance, and OWASP Top 10 for LLM |
+| **Inconsistent security checks across teams** | Standardized 215-check assessment based on AWS Well-Architected Generative AI Lens and Agentic AI Lens best practices, AWS Responsible AI governance/risk/compliance guidance, OWASP Top 10 for LLM, and selected 45 CFR Part 164 technical safeguard patterns |
 | **Difficulty tracking AI/ML security posture** | Interactive HTML dashboards with severity breakdown and per-account visibility |
 | **Multi-account complexity** | Consolidated reporting across AWS Organizations with cross-account role assumption |
 | **Compliance and audit support** | Exportable reports to supplement your compliance program, with remediation guidance linked to AWS documentation |
@@ -113,6 +114,7 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 - **[Agentic AI Security](docs/SECURITY_CHECKS.md#agentic-ai-security-checks-38)** (38 always-on checks) - Covers bounded autonomy, agent identity and access, tool authorization, Registry governance and provenance, guardrail enforcement, prompt/input protection, memory privacy, auditability and continuous assurance, and abuse/cost protection. Maps selected Amazon Bedrock, Amazon Bedrock AgentCore, and AWS Agent Registry findings into the [AWS Well-Architected Agentic AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html) view and adds native AgentCore gateway checks.
 - **[Responsible AI GRC](docs/SECURITY_CHECKS.md#responsible-ai-grc-checks-64-additional-5-upstream-extensions)** (64 opt-in checks) - Covers unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful or biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, and out-of-date training data. Enable with `EnableResponsibleAIGRCAssessment`; checks are derived from the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf).
 - **[OWASP Top 10 for LLM](docs/SECURITY_CHECKS.md#owasp-top-10-for-llm-checks-12)** (12 opt-in checks) - Covers LLM01 through LLM10 by mapping existing Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Responsible AI GRC findings, plus two native LLM07 checks for system prompt leakage. AWS Agent Registry findings are intentionally excluded because the current Registry controls do not directly establish an OWASP LLM01–LLM10 control. Enable with `EnableOWASPAssessment`; results align to the [OWASP Top 10 for LLM 2025](https://genai.owasp.org/llm-top-10/) and render in the "By Compliance Standard" report section. When needed, this also runs Responsible AI GRC as a hidden source dependency.
+- **[HIPAA/HITECH-Aligned Configuration](docs/SECURITY_CHECKS.md#hipaa-compliance-checks-7)** (7 opt-in checks) - Covers CMK at-rest encryption for Bedrock custom models and SageMaker training jobs, VPC isolation for SageMaker endpoints and training, CloudWatch Logs data protection for AIML-prefixed log groups, AIML-related EC2 VPC endpoint presence, and CMK encryption + versioning + public-access-block for AI/ML-shaped S3 buckets. Enable with `EnableHIPAAAssessment`; calls AWS APIs directly (no hidden source dependency) and renders in the "By Compliance Standard" report section. **WARNING: automated configuration checks only — not a HIPAA audit/certification; does not cover administrative/physical/organizational safeguards or Risk Analysis 164.308(a)(1).**
 
 **Deployment Options:**
 
@@ -136,7 +138,7 @@ This tool operates within the [AWS Shared Responsibility Model](https://aws.amaz
 
 **No guarantee of security or compliance.** This framework identifies common misconfigurations based on AWS best practices and the AWS Well-Architected Framework. It does not cover all possible security risks, does not replace formal compliance audits (SOC 2, HIPAA, and similar), and does not guarantee that your workloads are secure. Use the results as one input into your broader security program.
 
-**208 checks across seven areas.** The assessment covers Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, AWS Agent Registry, always-on Agentic AI Security, optional Responsible AI GRC checks, and optional OWASP Top 10 for LLM checks. Other AI/ML services (Amazon Comprehend, Amazon Rekognition, Amazon Textract, and others) are not currently assessed.
+**215 checks across eight areas.** The assessment covers Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, AWS Agent Registry, always-on Agentic AI Security, optional Responsible AI GRC checks, optional OWASP Top 10 for LLM checks, and optional HIPAA/HITECH-aligned automated configuration checks. Other AI/ML services (Amazon Comprehend, Amazon Rekognition, Amazon Textract, and others) are not currently assessed.
 
 **AWS partition support.** The deployment and assessment are validated only in
 the standard AWS commercial partition (`aws`). AWS GovCloud (US)
@@ -509,6 +511,36 @@ Lambda is always deployed but is invoked only when the flag is `true`.
 > customer-facing report bucket. Setting both flags to `true` surfaces the
 > Responsible AI GRC section and CSV normally.
 
+### Optional: HIPAA/HITECH-Aligned Configuration Checks (`EnableHIPAAAssessment`)
+
+The 7 HIPAA/HITECH-aligned (HP-XX) checks are **opt-in** and default to
+`false`. Set the `EnableHIPAAAssessment` deployment parameter to `true` when
+you want the additional compliance-standard assessment. When enabled, the
+HIPAA Lambda runs **per region** after the OWASP Lambda completes. The HIPAA
+Lambda calls AWS APIs **directly** (it does not read other CSVs and has no
+hidden source dependency on other assessments): it enumerates Bedrock custom
+models and guardrails, SageMaker in-service endpoints and recent training
+jobs, CloudWatch Logs AIML-prefixed groups, regional AIML EC2 VPC Endpoints,
+and AI/ML-hinted S3 buckets, then emits HP-01..HP-07 findings with 45 CFR
+Part 164 Subpart C and HITECH citation tags in the `Compliance_Frameworks`
+CSV column. Findings appear in the **"By Compliance Standard"** sidebar
+section alongside OWASP. When left `false`, no HP-* rows are produced and
+the HIPAA section is omitted entirely. The toggle is threaded into the Step
+Functions execution input (`enableHIPAA`); the HIPAA Lambda is always
+deployed but is invoked only when the flag is `true`.
+
+> **REQUIRED DISCLAIMER — DO NOT DELETE OR SOFTEN:** These are AUTOMATED
+> CONFIGURATION CHECKS ONLY. They do NOT:
+> * constitute a HIPAA compliance audit or certification,
+> * establish the presence or absence of ePHI in any resource,
+> * cover Administrative Safeguards (164.308), Physical Safeguards (164.310),
+>   Organizational/Policy requirements, or Business Associate Agreements,
+> * replace formal Risk Analysis under 164.308(a)(1) or Risk Management under
+>   164.308(a)(2).
+>
+> The covered entity remains solely responsible for full HIPAA/HITECH
+> compliance.
+
 The "By Compliance Standard" section is **extensible**: adding NIST AI RMF (`EnableNISTAssessment`) or EU AI Act (`EnableEUAIActAssessment`) later follows the same pattern.
 
 #### Scope and limitations
@@ -688,8 +720,9 @@ If you need to reduce scope, review the role policies in:
 | Document | Description |
 | --- | --- |
 | [Changelog](CHANGELOG.md) | User-facing changes and required deployment actions for unreleased work and tagged versions |
-| [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 208 security checks with severity levels |
+| [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 215 security checks with severity levels |
 | [OWASP Top 10 for LLM Checks](docs/SECURITY_CHECKS_OWASP.md) | Complete OW-01..12 reference: mapping-derived OWASP LLM01..LLM10 rows, native LLM07 checks, source dependencies, references, and status semantics |
+| [HIPAA/HITECH-Aligned Checks](docs/SECURITY_CHECKS_HIPAA.md) | Complete HP-01..07 reference: scope disclaimers, severity rubric, 45 CFR/HITECH citation tags, per-check remediation and N/A semantics, and AI/ML-resource scoping rules |
 | [Responsible AI GRC Scope](docs/RESPONSIBLE_AI_GRC_SCOPE.md) | What Responsible AI GRC is and is not, its relationship to the AWS Well-Architected Responsible AI Lens, the per-bucket source catalog, check-count reconciliation, terminology, and the compatibility policy for preserved identifiers |
 | [Responsible AI GRC Checks](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md) | Complete FS-01..69 reference: shared introduction, severity rubric, upstream-overlap table, compliance framework mapping, and all check definitions (Part 1 infrastructure controls, Part 2 guardrails & content safety, Part 3 app-layer controls & gaps) |
 | [Responsible AI GRC Severity Methodology](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md) | Likelihood × Impact → ASFF severity model, disposition rules, and research basis for FS check severities |

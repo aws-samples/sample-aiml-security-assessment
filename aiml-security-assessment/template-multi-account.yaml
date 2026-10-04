@@ -17,6 +17,7 @@ Metadata:
           - EnableAgentCoreAssessment
           - EnableAgentRegistryAssessment
           - MaxRegionConcurrency
+          - EnableHIPAAAssessment
       - Label:
           default: Optional Security Policy Baselines
         Parameters:
@@ -41,6 +42,8 @@ Metadata:
         default: AWS regions to scan
       MaxRegionConcurrency:
         default: Regional scan concurrency
+      EnableHIPAAAssessment:
+        default: HIPAA/HITECH-aligned configuration checks
 
 Parameters:
   EnableBedrockAssessment:
@@ -87,6 +90,20 @@ Parameters:
       values reduce concurrent Lambda usage; higher values speed up large
       multi-region scans. Set to 1 for fully sequential scanning.
     ConstraintDescription: Must be between 1 and 40.
+  EnableHIPAAAssessment:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Run the HIPAA/HITECH-aligned automated configuration checks (HP-01
+      through HP-07) in every scanned region. These are optional automated
+      configuration checks — they do NOT constitute a HIPAA compliance
+      audit, certification, or risk analysis, and do NOT determine whether
+      electronic protected health information (ePHI) exists in any resource.
+      Enable only when you want the additional compliance-standard
+      assessment on Bedrock custom models & guardrails, SageMaker endpoints
+      & training jobs, VPC endpoints, AIML-prefixed CloudWatch Logs log
+      groups, and AI/ML dataset-shaped S3 buckets.
   RequireBedrockZeroDataRetention:
     Type: String
     Default: "false"
@@ -146,6 +163,7 @@ Resources:
         AgentRegistrySecurityAssessmentFunction: !GetAtt AgentRegistrySecurityAssessmentFunction.Arn
         ResponsibleAIGRCAssessmentFunction: !GetAtt ResponsibleAIGRCAssessmentFunction.Arn
         OWASPSecurityAssessmentFunction: !GetAtt OWASPSecurityAssessmentFunction.Arn
+        HIPAASecurityAssessmentFunction: !GetAtt HIPAASecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
         MaxRegionConcurrency: !Ref MaxRegionConcurrency
@@ -168,6 +186,8 @@ Resources:
             FunctionName: !Ref ResponsibleAIGRCAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref OWASPSecurityAssessmentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref HIPAASecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref GenerateConsolidatedReportFunction
 
@@ -293,6 +313,7 @@ Resources:
                     - agent_registry_security_report_*
                     - responsible_ai_grc_security_report_*
                     - owasp_security_report_*
+                    - hipaa_security_report_*
             - Sid: AssessmentCsvRead
               Effect: Allow
               Action:
@@ -304,6 +325,7 @@ Resources:
                 - !Sub '${AIMLAssessmentBucket.Arn}/agent_registry_security_report_*.csv'
                 - !Sub '${AIMLAssessmentBucket.Arn}/responsible_ai_grc_security_report_*.csv'
                 - !Sub '${AIMLAssessmentBucket.Arn}/owasp_security_report_*.csv'
+                - !Sub '${AIMLAssessmentBucket.Arn}/hipaa_security_report_*.csv'
             - Sid: AssessmentHtmlWrite
               Effect: Allow
               Action:
@@ -1077,6 +1099,84 @@ Resources:
                 # itself; no per-function GetFunctionConfiguration is needed.
                 - lambda:ListFunctions
               Resource: '*'
+
+  HIPAASecurityAssessmentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-HIPAAAssessment'
+      CodeUri: functions/security/hipaa_assessments/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      Timeout: 600 # 10 minutes
+      MemorySize: 1024
+      Environment:
+        Variables:
+          AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+      Policies:
+        - Statement:
+            - Sid: HIPAADataWrite
+              Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource: !Sub '${AIMLAssessmentBucket.Arn}/hipaa_security_report_*.csv'
+            - Sid: HIPAABedrockPermissions
+              Effect: Allow
+              Action:
+                - bedrock:ListCustomModels
+                - bedrock:GetCustomModel
+                # list_guardrails is account-level, no resource-level IAM.
+                - bedrock:ListGuardrails
+              Resource: '*'
+            - Sid: HIPAABedrockGuardrailDetails
+              Effect: Allow
+              Action:
+                - bedrock:GetGuardrail
+              Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:guardrail/*'
+            - Sid: HIPAASageMakerPermissions
+              Effect: Allow
+              Action:
+                - sagemaker:ListEndpoints
+                - sagemaker:DescribeEndpoint
+                - sagemaker:DescribeEndpointConfig
+                - sagemaker:DescribeModel
+                - sagemaker:ListTrainingJobs
+                - sagemaker:DescribeTrainingJob
+              Resource: '*'
+            - Sid: HIPAAEC2Permissions
+              Effect: Allow
+              Action:
+                - ec2:DescribeVpcs
+                - ec2:DescribeVpcEndpoints
+              Resource: '*'
+            - Sid: HIPAACloudWatchLogsPermissions
+              Effect: Allow
+              Action:
+                - logs:DescribeLogGroups
+                - logs:DescribeAccountPolicies
+                - logs:GetDataProtectionPolicy
+              Resource: '*'
+            - Sid: HIPAAKMSPermissions
+              Effect: Allow
+              Action:
+                - kms:DescribeKey
+              Resource: !Sub 'arn:${AWS::Partition}:kms:*:${AWS::AccountId}:key/*'
+            - Sid: HIPAAS3Permissions
+              Effect: Allow
+              Action:
+                # ListAllMyBuckets + account-level PAB are account-level, no resource-level IAM.
+                - s3:ListAllMyBuckets
+                - s3:GetAccountPublicAccessBlock
+              Resource: '*'
+            - Sid: HIPAAS3BucketConfiguration
+              Effect: Allow
+              Action:
+                - s3:GetEncryptionConfiguration
+                - s3:GetBucketVersioning
+                - s3:GetPublicAccessBlock
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:s3:::*'
 
   # S3 bucket (always created for local storage)
   AIMLAssessmentBucket:
