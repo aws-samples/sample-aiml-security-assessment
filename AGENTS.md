@@ -4,7 +4,7 @@ This file provides guidance to coding agents when working with code in this repo
 
 ## What this is
 
-A serverless framework that scans AWS accounts for AI/ML security misconfigurations and produces interactive HTML reports. The full catalog contains 208 checks across seven assessment areas: 94 core checks (40 Amazon Bedrock, 29 Amazon SageMaker AI with `SM-29` reserved, 17 Amazon Bedrock AgentCore, and 8 AWS Agent Registry), up to 38 Agentic AI Security checks, 64 optional Responsible AI GRC checks, and 12 optional OWASP Top 10 for LLM checks. Checks are derived from the AWS Well-Architected Generative AI Lens, the Agentic AI Lens, AWS Responsible AI GRC guidance, and the OWASP Top 10 for LLM 2025.
+A serverless framework that scans AWS accounts for AI/ML security misconfigurations and produces interactive HTML reports. The full catalog contains 225 checks across seven assessment areas: 111 core checks (57 Amazon Bedrock, 29 Amazon SageMaker AI with `SM-29` reserved, 17 Amazon Bedrock AgentCore, and 08 AWS Agent Registry), up to 38 Agentic AI Security checks, 64 optional Responsible AI GRC checks, and 12 optional OWASP Top 10 for LLM checks. Checks are derived from the AWS Well-Architected Generative AI Lens, the Agentic AI Lens, AWS Responsible AI GRC guidance, and the OWASP Top 10 for LLM 2025.
 
 ## Commands
 

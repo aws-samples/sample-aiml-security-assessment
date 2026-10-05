@@ -61,7 +61,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 
 - Monitor state machine executions in each account
 - Check Lambda function logs for errors
-- Verify Lambda has sufficient timeout. Most assessment Lambdas default to 10 minutes; Responsible AI GRC has its own timeout in the SAM templates
+- Verify Lambda has sufficient timeout. Most assessment Lambdas default to 10 minutes; the Bedrock assessment runs up to 15 minutes, the Lambda maximum, and Responsible AI GRC has its own timeout in the SAM templates
 - Verify AWS IAM permissions allow Lambda to access required services
 - In multi-region scans, review each region's Map state iteration. A single service branch can be marked incomplete while the state machine still generates a report for the remaining services and regions
 
@@ -655,8 +655,8 @@ A: Minimal ongoing costs:
 
 **Q: Can I customize which security checks are included?**
 
-A: All 94 core checks (40 Bedrock, 29 SageMaker AI, 17 AgentCore,
-and 8 AWS Agent Registry) and 38 Agentic AI Security checks run by default to
+A: All 111 core checks (57 Bedrock, 29 SageMaker AI, 17 AgentCore,
+and 08 AWS Agent Registry) and 38 Agentic AI Security checks run by default to
 provide comprehensive coverage. If `EnableResponsibleAIGRCAssessment` is
 enabled, the 64 optional Responsible AI GRC checks also run. If
 `EnableOWASPAssessment` is enabled, the 12 optional OWASP Top 10 for LLM checks
