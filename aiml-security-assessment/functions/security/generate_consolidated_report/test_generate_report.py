@@ -471,6 +471,72 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertNotIn("Responsible AI GRC", by_service_nav)
             self.assertNotIn("Financial Services", content)
 
+    def test_multi_account_report_renders_compliance_standards(self):
+        """A multi-account report renders the AISF and OWASP sections only when
+        their derived rows are present."""
+        source = {
+            "account_id": "111122223333",
+            "region": "us-east-1",
+            "check_id": "BR-20",
+            "finding": "Knowledge Base Encryption",
+            "details": "Details",
+            "resolution": "Fix it",
+            "reference": "https://example.com",
+            "severity": "High",
+            "status": "Failed",
+            "_service": "bedrock",
+        }
+        aisf = dict(
+            source,
+            check_id="AISF-05",
+            finding="AISF AIR-BDR-KB-03: Knowledge Base Vector Store Encryption",
+            _service="aisf",
+        )
+        owasp = dict(
+            source,
+            account_id="444455556666",
+            check_id="OW-01",
+            finding="OWASP LLM01 Prompt Injection",
+            _service="owasp",
+        )
+        failed = {"passed": 0, "failed": 1}
+
+        without_derived = generate_report_direct(
+            all_findings=[source],
+            service_findings={"bedrock": [source]},
+            service_stats={"bedrock": failed},
+            mode="multi",
+            account_ids=["111122223333", "444455556666"],
+        )
+        with_derived = generate_report_direct(
+            all_findings=[source, aisf, owasp],
+            service_findings={
+                "bedrock": [source],
+                "aisf": [aisf],
+                "owasp": [owasp],
+            },
+            service_stats={"bedrock": failed, "aisf": failed, "owasp": failed},
+            mode="multi",
+            account_ids=["111122223333", "444455556666"],
+        )
+
+        report_path = os.path.join(
+            self.test_dir, "multi_account_compliance_report.html"
+        )
+        with open(report_path, "w") as f:
+            f.write(with_derived)
+        print(f"\nMulti-account compliance report generated at: {report_path}")
+
+        self.assertNotIn("By Compliance Standard", without_derived)
+        self.assertNotIn('id="aisf"', without_derived)
+        self.assertIn("2 Accounts", with_derived)
+        self.assertIn("By Compliance Standard", with_derived)
+        self.assertIn('id="aisf"', with_derived)
+        self.assertIn("AWS AI Security Framework", with_derived)
+        self.assertIn("AISF-05", with_derived)
+        self.assertIn("OWASP Top 10", with_derived)
+        self.assertIn("OW-01", with_derived)
+
     def test_missing_data_fields(self):
         """Test handling of assessment results with missing fields"""
         incomplete_data = {
@@ -594,7 +660,17 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertNotIn("<h3>By Governance Framework</h3>", html)
         self.assertNotIn('<option value="responsible-ai-grc">', html)
         self.assertNotIn('data-scope-service="responsible-ai-grc"', html)
-        self.assertNotIn('class="scope-governance"', html)
+        # scope-governance is the shared class for three scope groups: agentic,
+        # Responsible AI GRC, and compliance standards. This test is about the
+        # Responsible AI GRC one, so it asserts on that group specifically. The
+        # bare class is no longer absent here: the fixture carries SM-01 and
+        # SM-03, two of the three source checks AISF control AIR-SGM-TRN-05
+        # derives from, so the derived AISF standard reports incomplete coverage
+        # and renders the compliance scope group.
+        self.assertNotIn(
+            '<div class="scope-governance" data-scope-service="responsible-ai-grc">',
+            html,
+        )
         self.assertNotIn("Responsible AI GRC", html)
         self.assertIn(
             "wellarchitected/latest/generative-ai-lens/generative-ai-lens.html", html

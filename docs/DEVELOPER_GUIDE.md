@@ -1043,9 +1043,39 @@ must also be wired. Concrete steps:
    multi-account consolidator. A selected standard with a missing,
    unreadable, or header-only CSV must be reported as incomplete, not
    displayed with zero findings.
+   - **The S3 read path.** `app.py` turns every registry slug into an
+     `s3:ListBucket` prefix, and the report Lambda's `s3:prefix` condition in
+     both SAM templates names the producing artifacts explicitly. A standard
+     that writes a CSV needs its prefix added to that condition (and to the
+     `GetObject` list), or the listing returns `AccessDenied`, the
+     `except ClientError` re-raises, and report generation fails for every
+     category, not only the new one. `tests/test_sam_role_least_privilege.py`
+     asserts the prefixes are present.
 
 8. **Update docs**: add a `SECURITY_CHECKS_<STANDARD>.md` in the OWASP
    style, bump the check count in `README.md` and `docs/SECURITY_CHECKS.md`.
+
+### Variant: a derived standard (AISF-style)
+
+A **derived** standard publishes a framework view over checks that already
+ship, so it has no Lambda, no CSV, no Step Functions branch and no IAM change.
+`AISF-` rows are produced by `derive_aisf_findings()` in
+`generate_consolidated_report/aisf_mappings.py`, called from both consolidators
+after their source rows are collected. Steps 1 through 5 and the S3 wiring in
+step 7 do not apply; instead:
+
+- Add `"derived": True` to the registry entry. That key is read in exactly one
+  place, the `category_slugs` comprehension in `app.py`, to keep the slug out of
+  the S3 prefix list. Every other consumer keeps the slug so the section still
+  renders and routes.
+- Register the standard and its first rows in the same change. A registered
+  standard with zero rows renders nothing at all (`if _total <= 0: continue`),
+  which looks exactly like a wiring bug.
+- Exclude the derived rows from the check-count total, and say so where the
+  count is published. They restate verdicts that are already counted.
+- Map only a control its named incumbents assert in full, and pin the map in
+  `tests/test_aisf_derived_standard.py`. See
+  [SECURITY_CHECKS_AISF.md](SECURITY_CHECKS_AISF.md).
 
 9. **Add tests**: mapping emission, native-check behavior, enabled/skipped
    Step Functions paths, artifact completeness, routing, and report-template

@@ -55,6 +55,15 @@ agentcore_app = importlib.util.module_from_spec(_spec)
 sys.modules["agentcore_app"] = agentcore_app
 _spec.loader.exec_module(agentcore_app)
 
+# In the whole suite another function's `schema` module can be the one app.py
+# imports, and its create_finding fills Compliance_Frameworks from that
+# function's map. A test of an AgentCore mapping reads this map by Check_ID.
+_ac_compliance_spec = importlib.util.spec_from_file_location(
+    "aisf_compliance_agentcore", os.path.join(_ac_dir, "aisf_compliance_agentcore.py")
+)
+_ac_compliance = importlib.util.module_from_spec(_ac_compliance_spec)
+_ac_compliance_spec.loader.exec_module(_ac_compliance)
+
 
 @pytest.fixture(autouse=True)
 def _artifact_content_reads_enabled(monkeypatch):
@@ -18006,6 +18015,9 @@ class TestAC30RuntimeInboundAuthorization:
         findings = agentcore_app.check_agentcore_runtime_inbound_authorization()
 
         assert findings[0]["Status"] == "Failed"
+        assert "AISF AIR-ACR-ID-11 (partial)" in (
+            _ac_compliance.aisf_frameworks(findings[0]["Check_ID"]).split(" | ")
+        )
 
     @patch("agentcore_app.agentcore_client")
     def test_a_runtime_with_no_authorizer_enforces_sigv4(self, mock_ac):
@@ -35135,6 +35147,9 @@ class TestAC48ExecutionRoleTrustAndSharing:
         assert failed[0]["Severity"] == "High"
         assert "WideRole" in failed[0]["Finding_Details"]
         assert "[runtime family]" in failed[0]["Finding_Details"]
+        assert "AISF AIR-ACR-RT-13 (partial)" in (
+            _ac_compliance.aisf_frameworks(failed[0]["Check_ID"]).split(" | ")
+        )
         assert not self._named(findings, "AgentCore Execution Role Trust Guard Missing")
 
     @patch("agentcore_app.iam_client")
@@ -41137,6 +41152,11 @@ class TestAC27RoleTrustSourceArnNamesTheGateway:
         assert "gw-a (role RoleA)" in details
         assert "gw-c (role RoleC)" in details
         assert_finding_schema(reach[0])
+        # AIR-ACR-RT-13's gateway-role restriction needs this role's trust
+        # hardened, so the row carries the control.
+        assert "AISF AIR-ACR-RT-13 (partial)" in (
+            _ac_compliance.aisf_frameworks(reach[0]["Check_ID"]).split(" | ")
+        )
         passed = self._named(
             findings, "AgentCore Gateway Role Trust Confused Deputy Guard"
         )

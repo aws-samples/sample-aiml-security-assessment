@@ -8,7 +8,7 @@ This module provides a unified report generation function used by both:
 
 from datetime import datetime, timezone
 import html
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 # Responsible AI GRC service icon (no official AWS icon exists for
@@ -136,14 +136,53 @@ OWASP_ICON_SMALL = (
 )
 OWASP_LLM_TOP10_URL = "https://genai.owasp.org/llm-top-10/"
 
-# COMPLIANCE_STANDARDS — registry of compliance-standard sections.
+# AWS AI Security Framework icon (no official AWS icon; layered-framework mark).
+AISF_ICON = (
+    '<span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
+    '<rect fill="#0972D3" width="80" height="80"/>'
+    '<path fill="#FFF" d="M40 14L64 26L40 38L16 26L40 14ZM40 44L22 35L16 38L40 50L64 38L58 35L40 44ZM40 56L22 47L16 50L40 62L64 50L58 47L40 56Z"/></svg></span>'
+)
+AISF_ICON_SMALL = (
+    '<span class="service-icon" style="width: 18px; height: 18px;">'
+    '<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
+    '<rect fill="#0972D3" width="80" height="80"/>'
+    '<path fill="#FFF" d="M40 14L64 26L40 38L16 26L40 14ZM40 44L22 35L16 38L40 50L64 38L58 35L40 44ZM40 56L22 47L16 50L40 62L64 50L58 47L40 56Z"/></svg></span>'
+)
+
+# COMPLIANCE_STANDARDS: registry of compliance-standard sections.
 # Each entry produces a sidebar nav item + service card + section + filter
 # option + scope chip in the report. Callers (generate_consolidated_report
 # and consolidate_html_reports) also iterate this list to initialise
-# service_stats/service_findings and route Check_ID prefixes, so appending a
-# new entry here (with a unique slug + Check_ID prefix) is sufficient — no
-# loop-body edits required in the report layer or its callers.
-COMPLIANCE_STANDARDS: List[Dict[str, str]] = [
+# service_stats/service_findings and route Check_ID prefixes.
+#
+# Required keys: slug, name, prefix, icon, icon_small, reference_url,
+# section_title, scope_text.
+#
+# Optional key "derived" (bool, default False). A derived standard runs no
+# assessment Lambda and writes no CSV to S3; its rows are computed at
+# consolidation time from verdicts that checks already shipping produced (see
+# aisf_mappings.derive_aisf_findings). A producing standard has an assessment
+# function whose CSV lands under "<slug>_security_report_" in the assessment
+# bucket.
+#
+# Appending an entry here is NOT sufficient on its own, contrary to what this
+# comment claimed before AISF was added. Two things sit outside the loops:
+#
+#  1. S3 prefix construction. generate_consolidated_report/app.py turns every
+#     non-derived slug into a list_objects_v2 prefix, and that function's
+#     s3:ListBucket grant in template.yaml restricts s3:prefix to a fixed
+#     StringLike list. A slug that writes no artifact draws AccessDenied,
+#     which the caller re-raises, so the whole report fails. That is what the
+#     "derived" key prevents: it keeps such a slug out of the prefix list.
+#     Registering a producing standard instead means extending the IAM
+#     condition and the artifact-validation sites too.
+#  2. Row production. Nothing in the report layer invents rows. A producing
+#     standard needs its Step Functions branch and its CSV; a derived standard
+#     needs an explicit derivation call in both consolidators. A registered
+#     standard with zero rows renders nothing at all (see "if _total <= 0:
+#     continue" in the compliance loop below), which is indistinguishable from
+#     a wiring bug, so registration and the first rows ship together.
+COMPLIANCE_STANDARDS: List[Dict[str, Any]] = [
     {
         "slug": "owasp",
         "name": "OWASP Top 10 LLM",
@@ -159,6 +198,37 @@ COMPLIANCE_STANDARDS: List[Dict[str, str]] = [
             "Finding_Details text. Preliminary and illustrative — validate "
             "mappings with your Security/Compliance team before using as evidence."
         ),
+    },
+    {
+        "slug": "aisf",
+        "name": "AWS AI Security Framework",
+        "prefix": "AISF-",
+        "icon": AISF_ICON,
+        "icon_small": AISF_ICON_SMALL,
+        "reference_url": GENAI_LENS_URL,
+        "section_title": "AWS AI Security Framework Findings",
+        "scope_text": (
+            "Scope: 3 of the 105 in-scope AISF controls carry a derived AISF- "
+            "row; the remaining 102 are not yet rendered as rows, and their "
+            "absence from this section is not evidence of compliance. A row is a "
+            "narrower claim than coverage: 64 of the 105 are covered by checks "
+            "that already ship and assert the whole control, 39 are asserted in "
+            "part, and 2 are not implementable from configuration. The "
+            "Compliance_Frameworks column on the producer rows names the rest: "
+            "the 61 covered controls without a row, and the 39 asserted in "
+            "part under a (partial) tag. AISF-01, AISF-02, "
+            "AISF-03, AISF-04 and AISF-06 are retired: each restated a check "
+            "that asserts only part of its control, so no row is derived for "
+            "them. These rows restate existing check verdicts under AISF "
+            "control ids, so they are <strong>not</strong> counted in the "
+            "framework's 277-check total. AISF-00 marks an account and region "
+            "where AISF-relevant checks ran but a mapped source check was "
+            "absent. Preliminary and illustrative: validate the control "
+            "mapping with your Security/Compliance team before using it as "
+            "evidence."
+        ),
+        # No assessment Lambda and no S3 artifact. See the `derived` note above.
+        "derived": True,
     },
     # Future: {"slug": "nist", "name": "NIST AI RMF", "prefix": "NR-", ...}
     # Future: {"slug": "euaiact", "name": "EU AI Act", "prefix": "EU-", ...}

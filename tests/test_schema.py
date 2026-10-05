@@ -56,6 +56,7 @@ class TestCreateFindingValid:
             "Severity",
             "Status",
             "Region",
+            "Compliance_Frameworks",
         }
         assert set(result.keys()) == expected_keys
 

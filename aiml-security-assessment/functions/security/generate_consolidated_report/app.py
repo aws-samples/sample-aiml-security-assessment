@@ -8,6 +8,7 @@ from io import StringIO
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+from aisf_mappings import derive_aisf_findings
 from report_template import (
     COMPLIANCE_STANDARDS,
     core_service_selection,
@@ -164,13 +165,24 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         # (responsible_ai_grc_security_report_) differs from its report
         # slug (responsible-ai-grc); category_to_csv_fragment maps between
         # them for the prefix list and the filename-matching loop below.
+        #
+        # Derived standards are excluded here and only here. A derived standard
+        # (AISF) writes no CSV, so listing its prefix would be a request this
+        # function's s3:ListBucket grant does not permit: the grant's s3:prefix
+        # condition in template.yaml names the producing artifacts only, so the
+        # call returns AccessDenied, the except ClientError below re-raises, and
+        # report generation fails for every category. The fix belongs on the
+        # registry, not on the IAM condition. All other consumers of
+        # COMPLIANCE_STANDARDS keep the derived slug: it still needs its report
+        # category, its service_stats/service_findings buckets, its prefix
+        # routing, and its rendered section.
         category_slugs = [
             "bedrock",
             "sagemaker",
             "agentcore",
             "agent-registry",
             "responsible-ai-grc",
-        ] + [std["slug"] for std in COMPLIANCE_STANDARDS]
+        ] + [std["slug"] for std in COMPLIANCE_STANDARDS if not std.get("derived")]
         category_to_csv_fragment = {
             "agent-registry": "agent_registry",
             "responsible-ai-grc": "responsible_ai_grc",
@@ -395,6 +407,34 @@ def generate_html_report(
                     # and must not inflate the region count / multi-region UI.
                     if region and region != GLOBAL_REGION_LABEL and "," not in region:
                         regions.add(region)
+
+    # AISF is a derived standard: no assessment Lambda produced AISF-* rows, so
+    # they are computed here from the verdicts collected above. The input list
+    # is snapshotted by the call, so appending to all_findings below is safe.
+    # Derived rows run through the same seen_findings key as CSV rows so a
+    # source file that appeared twice cannot double-count an AISF control.
+    derived_aisf_findings = derive_aisf_findings(all_findings)
+    for finding in derived_aisf_findings:
+        output_service = finding["_service"]
+        dedup_key = (
+            finding.get("Account_ID", ""),
+            output_service,
+            finding.get("Check_ID", ""),
+            finding.get("Region", ""),
+            finding.get("Finding_Details", ""),
+        )
+        if dedup_key in seen_findings:
+            continue
+        seen_findings.add(dedup_key)
+        all_findings.append(finding)
+        service_findings[output_service].append(finding)
+        status = finding.get("Status", "").lower()
+        if status == "passed":
+            service_stats[output_service]["passed"] += 1
+        elif status == "failed":
+            service_stats[output_service]["failed"] += 1
+        elif status == "n/a":
+            service_stats[output_service]["na"] += 1
 
     account_id = assessment_results.get("account_id", "Unknown")
     timestamp = assessment_results.get(
