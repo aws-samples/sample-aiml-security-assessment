@@ -36,10 +36,6 @@ EXPECTED_ENV_OWNERS = {
         "AgentCoreSecurityAssessmentFunction",
         "RequireAgentCoreOnlineEvaluation",
     ),
-    "REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL": (
-        "AgentRegistrySecurityAssessmentFunction",
-        "RequireAgentRegistryManualApproval",
-    ),
     "REQUIRE_AGENT_REGISTRY_CMK": (
         "AgentRegistrySecurityAssessmentFunction",
         "RequireAgentRegistryCMK",
@@ -175,28 +171,20 @@ def test_readme_uses_json_for_comma_separated_cloudformation_parameters():
     assert '"ParameterKey": "ApprovedOrganizationIds"' in readme
 
 
-def test_agent_registry_manual_approval_baseline_reaches_every_deploy_path():
-    buildspec = (REPO_ROOT / "buildspec.yml").read_text(encoding="utf-8")
-    parameter_variable = "SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER"
-
-    assert (
-        f'{parameter_variable}="ParameterKey=RequireAgentRegistryManualApproval,'
-        'ParameterValue=${REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL:-false}"' in buildspec
-    )
-    deploy_commands = [
-        line for line in buildspec.splitlines() if "sam deploy --template-file" in line
-    ]
-    assert len(deploy_commands) == 3
-    assert all(f'"${parameter_variable}"' in line for line in deploy_commands)
-
-    for template_name in (
+def test_agent_registry_manual_approval_is_not_an_opt_in_on_any_deploy_path():
+    """AR-03 fails automatic approval by default, so no deploy path may carry
+    the parameter that once made that failure opt-in."""
+    for path in (
+        "buildspec.yml",
+        "aiml-security-assessment/template.yaml",
+        "aiml-security-assessment/template-multi-account.yaml",
         "deployment/aiml-security-single-account.yaml",
         "deployment/2-aiml-security-codebuild.yaml",
+        "aiml-security-assessment/functions/security/agent_registry_assessments/app.py",
     ):
-        template = (REPO_ROOT / template_name).read_text(encoding="utf-8")
-        assert "RequireAgentRegistryManualApproval:" in template
-        assert "Name: REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL" in template
-        assert "Value: !Ref RequireAgentRegistryManualApproval" in template
+        text = (REPO_ROOT / path).read_text(encoding="utf-8")
+        assert "RequireAgentRegistryManualApproval" not in text, path
+        assert "REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL" not in text, path
 
 
 def test_agent_registry_cmk_baseline_reaches_every_deploy_path():

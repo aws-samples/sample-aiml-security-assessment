@@ -1,0 +1,80 @@
+{
+ "services": {
+  "agent-registry": {
+   "registry": {
+    "arns": [
+     "arn:*:agent-registry:*:*:registry/*"
+    ],
+    "read": [
+     "GetRegistry",
+     "GetResourcePolicy",
+     "InvokeRegistryMcp",
+     "ListDiscoverableRegistryRecords",
+     "ListRegistryRecords",
+     "ListTagsForResource",
+     "SearchDiscoverableRegistryRecords"
+    ],
+    "write": [
+     "CreateRegistryRecord",
+     "DeleteRegistry",
+     "DeleteResourcePolicy",
+     "PutResourcePolicy",
+     "UpdateRegistry"
+    ]
+   },
+   "registry-record": {
+    "arns": [
+     "arn:*:agent-registry:*:*:registry/*/record/*"
+    ],
+    "read": [
+     "GetDiscoverableRegistryRecord",
+     "GetRegistryRecord",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteRegistryRecord",
+     "SubmitRegistryRecordForApproval",
+     "UpdateRegistryRecord",
+     "UpdateRegistryRecordStatus"
+    ]
+   }
+  },
+  "bedrock-agentcore": {
+   "registry": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:registry/*"
+    ],
+    "read": [
+     "GetRegistry",
+     "InvokeRegistryMcp",
+     "ListRegistryRecords",
+     "SearchRegistryRecords"
+    ],
+    "write": [
+     "CreateRegistryRecord",
+     "DeleteRegistry",
+     "UpdateRegistry"
+    ]
+   },
+   "registry-record": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:registry/*/record/*"
+    ],
+    "read": [
+     "GetRegistryRecord"
+    ],
+    "write": [
+     "DeleteRegistryRecord",
+     "SubmitRegistryRecordForApproval",
+     "UpdateRegistryRecord",
+     "UpdateRegistryRecordStatus"
+    ]
+   }
+  }
+ },
+ "source": "https://servicereference.us-east-1.amazonaws.com/v1/<service>/<service>.json",
+ "versions": {
+  "agent-registry": "v1.4",
+  "bedrock-agentcore": "v1.4"
+ }
+}

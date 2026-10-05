@@ -46,7 +46,7 @@ section.
   sample by `sample-reports/scripts/build_changes_sample.py`; the screenshot
   comes from `sample-reports/scripts/capture_changes_screenshot.py`.
 
-- **67 new checks**, growing the catalog from 208 to 275 checks (160 core).
+- **69 new checks**, growing the catalog from 208 to 277 checks (162 core).
   - **Amazon Bedrock (17):** `BR-41` Central Guardrail Enforcement, `BR-42`
     Foundation Model Invocation Allow-List, `BR-43` Region Invocation Control,
     `BR-44` Marketplace Model Subscription Control, `BR-45` API Key Governance,
@@ -80,6 +80,8 @@ section.
     execution role trust and sharing (`AC-48`); DNS egress (`AC-49`); ECR
     enhanced scanning (`AC-50`); web ACL Anti-DDoS (`AC-51`); Cognito user pool
     authentication (`AC-52`); and inter-agent anomaly alarms (`AC-53`).
+  - **AWS Agent Registry (2):** `AR-09` Registry Approval Authority Separation
+    and `AR-10` Registry Lifecycle Event Routing.
   - **Agentic AI Security (1):** `AG-39` Gateway WAF Rule Coverage.
   Behavior worth knowing:
   - A new check that cannot read the whole population it judges reports
@@ -178,7 +180,7 @@ back `Passed` names what it could not read.
   every resource reads as unscoped. A negated or `Null`-only condition that
   names a key without enforcing it earns no credit. Every consumer of the IAM
   permissions cache reports a principal listed under `principal_errors` as
-  `N/A` instead of clean.
+  `N/A` instead of clean. The AWS Agent Registry checks do the same.
 - **Amazon Bedrock.** `BR-01` fails policies that grant every Bedrock action or
   grant it through `NotAction`. `BR-02` reads ECS services, SageMaker notebook
   instances and EC2 instances beside Lambda functions, and fails an AgentCore
@@ -277,11 +279,16 @@ back `Passed` names what it could not read.
   `AC-46` and `AC-53` credit an alarm that notifies through a composite alarm.
   `AC-46` adds an `AgentCore Runtime Cost Anomaly Alerting` row. `AC-49` adds
   a Network Firewall leg and reads transit gateway routes.
-- **Agentic AI Security.** `AG-24` takes an `AUTHENTICATE_ONLY` gateway's
-  verdict from `AG-25`. `AG-39` and `AC-51` credit a WAF filter only to a
-  `Block` rule that no earlier `Allow` on the same attack class bypasses.
-  `AG-39` fails a gateway set to `FAIL_OPEN`. The gateway WAF rows say which
-  front doors were not read only on rows that judged a gateway.
+- **AWS Agent Registry and Agentic AI Security.** `AR-01` reads users and group
+  policies beside roles, and fails a wildcard `agent-registry` action on a
+  wildcard resource. `AR-03` fails every registry with auto-approval rules.
+  `AR-10` evaluates the EventBridge content matchers on `source` and
+  `detail-type` and credits a rule only with a delivering target. `AG-24` takes
+  an `AUTHENTICATE_ONLY` gateway's verdict from `AG-25`. `AG-39` and `AC-51`
+  credit a WAF filter only to a `Block` rule that no earlier `Allow` on the
+  same attack class bypasses. `AG-39` fails a gateway set to `FAIL_OPEN`.
+  The gateway WAF rows say which front doors were not read only on rows that
+  judged a gateway.
 - **Changes since last assessment.** The first run after this upgrade
   rewrites the text of most `AC-*` rows and adds the `AC-18` to `AC-53` and
   `AG-39` rows, so the changes report for that run lists many AgentCore rows
@@ -337,6 +344,8 @@ back `Passed` names what it could not read.
   stop when a service returns the same `NextToken` twice.
 - `SM-23` reports a Region with no InService endpoint as `N/A`, where it used to
   pass with nothing to judge.
+- `AR-10` no longer credits a rule filtered on a top-level field it does not
+  read as routing every approval transition.
 - The AgentCore assessment no longer exceeds its 600-second Lambda timeout in
   an account with about 100 principals holding AgentCore actions. `AC-03`
   starts every principal's IAM service last accessed job before reading any,
@@ -418,12 +427,17 @@ IAM permissions are introduced by service selection.
 2. **Central or single-account infrastructure update required next** because
    `deployment/2-aiml-security-codebuild.yaml` and
    `deployment/aiml-security-single-account.yaml` changed. The CodeBuild
-   deployment role gains the same managed-policy permissions.
+   deployment role gains the same managed-policy permissions, and the
+   `RequireAgentRegistryManualApproval` parameter is removed. A stack update
+   that still passes that parameter fails, so drop it from any saved parameter
+   file first. Direct AWS SAM users drop it from their parameter overrides for
+   the same reason. `AR-03` now fails every auto-approving registry, which the
+   parameter used to gate.
 3. **CodeBuild run required last.** Rerun CodeBuild; it redeploys the
-   assessment code, the state machine and the AWS SAM template for your mode.
-   Direct SAM users must redeploy the template they use. The state machine
-   passes `TargetRegions` to the AgentCore function, so `AC-26` and `AC-48` can
-   compare Regions.
+   assessment code, `buildspec.yml`, the state machine and the AWS SAM template
+   for your mode. Direct SAM users must redeploy the template they use. The
+   state machine passes `TargetRegions` to the AgentCore function, so `AC-26`
+   and `AC-48` can compare Regions.
 
 The AWS SAM templates (`aiml-security-assessment/template.yaml` and
 `aiml-security-assessment/template-multi-account.yaml`) carry the same IAM
@@ -436,9 +450,9 @@ change:
   `SageMakerAssessmentReadsPolicy2`, and `AgentCoreAssessmentReadsPolicy`. Each
   stack creates five more customer managed policies, named with the stack name
   as a prefix.
-- New actions on the Bedrock, SageMaker AI and AgentCore assessment roles and
-  the IAM permissions cache role. The IAM permissions cache role gains
-  `iam:GetRole` on the account's roles, `iam:GetUser` and
+- New actions on the Bedrock, SageMaker AI, AgentCore and AWS Agent Registry
+  assessment roles and the IAM permissions cache role. The IAM permissions
+  cache role gains `iam:GetRole` on the account's roles, `iam:GetUser` and
   `iam:ListGroupsForUser` on its users, and an `IAMGroupPolicyRead` statement
   (`iam:ListAttachedGroupPolicies`, `iam:ListGroupPolicies` and
   `iam:GetGroupPolicy`) on its groups. Every new action is a Get, List,

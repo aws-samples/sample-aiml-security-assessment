@@ -33,7 +33,6 @@ Metadata:
           - RequireBedrockZeroDataRetention
           - RequireMarketplaceEndpointCMK
           - RequireAgentCoreOnlineEvaluation
-          - RequireAgentRegistryManualApproval
           - RequireAgentRegistryCMK
           - AgentCoreTokenVaultId
           - EnableAgentCoreArtifactContentReads
@@ -81,8 +80,6 @@ Metadata:
         default: Require Marketplace endpoint customer-managed keys
       RequireAgentCoreOnlineEvaluation:
         default: Require AgentCore online evaluation
-      RequireAgentRegistryManualApproval:
-        default: Require Agent Registry manual approval
       RequireAgentRegistryCMK:
         default: Require Agent Registry customer-managed keys
       AgentCoreTokenVaultId:
@@ -268,12 +265,6 @@ Parameters:
     Default: "false"
     AllowedValues: ["true", "false"]
     Description: Fail AC-17 when no complete active online evaluation configuration is found.
-
-  RequireAgentRegistryManualApproval:
-    Type: String
-    Default: "false"
-    AllowedValues: ["true", "false"]
-    Description: Fail AR-03 when an Agent Registry automatically approves submitted records.
 
   RequireAgentRegistryCMK:
     Type: String
@@ -680,9 +671,6 @@ Resources:
             Type: PLAINTEXT
           - Name: REQUIRE_AGENTCORE_ONLINE_EVALUATION
             Value: !Ref RequireAgentCoreOnlineEvaluation
-            Type: PLAINTEXT
-          - Name: REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL
-            Value: !Ref RequireAgentRegistryManualApproval
             Type: PLAINTEXT
           - Name: REQUIRE_AGENT_REGISTRY_CMK
             Value: !Ref RequireAgentRegistryCMK

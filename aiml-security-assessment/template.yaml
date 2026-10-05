@@ -23,7 +23,6 @@ Metadata:
           - RequireBedrockZeroDataRetention
           - RequireMarketplaceEndpointCMK
           - RequireAgentCoreOnlineEvaluation
-          - RequireAgentRegistryManualApproval
           - RequireAgentRegistryCMK
           - AgentCoreTokenVaultId
           - EnableAgentCoreArtifactContentReads
@@ -106,11 +105,6 @@ Parameters:
     Default: "false"
     AllowedValues: ["true", "false"]
     Description: Fail AC-17 in a region with no AgentCore runtime when no running online evaluation configuration is found. Every runtime is judged whatever this is set to.
-  RequireAgentRegistryManualApproval:
-    Type: String
-    Default: "false"
-    AllowedValues: ["true", "false"]
-    Description: Fail AR-03 when an Agent Registry automatically approves submitted records.
   RequireAgentRegistryCMK:
     Type: String
     Default: "false"
@@ -2586,7 +2580,6 @@ Resources:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
           TARGET_REGIONS: !Ref TargetRegions
-          REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL: !Ref RequireAgentRegistryManualApproval
           REQUIRE_AGENT_REGISTRY_CMK: !Ref RequireAgentRegistryCMK
       Policies:
         - Statement:
@@ -2623,6 +2616,21 @@ Resources:
                 - agent-registry:GetRegistry
                 - agent-registry:ListRegistryRecords
               Resource: !Sub 'arn:${AWS::Partition}:agent-registry:*:${AWS::AccountId}:registry/*'
+            - Sid: RegistryEventRuleInventory
+              # AR-10 lists the default event bus's rules, and those of a bus in
+              # this account and Region that a Registry rule forwards to.
+              # ListRules has no resource-level authorization.
+              Effect: Allow
+              Action:
+                - events:ListRules # AR-10
+              Resource: '*'
+            - Sid: RegistryEventRuleTargetRead
+              # AR-10 reads the targets of the rules that match Registry events.
+              # rule/* also covers custom-bus rules, rule/<bus-name>/<rule-name>.
+              Effect: Allow
+              Action:
+                - events:ListTargetsByRule # AR-10
+              Resource: !Sub 'arn:${AWS::Partition}:events:*:${AWS::AccountId}:rule/*'
 
 
   ResponsibleAIGRCAssessmentFunction:
