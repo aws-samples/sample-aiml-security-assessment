@@ -37,7 +37,7 @@ section.
   sample by `sample-reports/scripts/build_changes_sample.py`; the screenshot
   comes from `sample-reports/scripts/capture_changes_screenshot.py`.
 
-- **17 new checks**, growing the catalog from 208 to 225 checks (111 core).
+- **30 new checks**, growing the catalog from 208 to 238 checks (124 core).
   - **Amazon Bedrock (17):** `BR-41` Central Guardrail Enforcement, `BR-42`
     Foundation Model Invocation Allow-List, `BR-43` Region Invocation Control,
     `BR-44` Marketplace Model Subscription Control, `BR-45` API Key Governance,
@@ -49,6 +49,14 @@ section.
     Lambda Function Public Invoke Configuration, `BR-55` KMS Key Enclave
     Attestation Binding, `BR-56` Bedrock LLM Jacking Activity and `BR-57`
     Agent Handoff Source Identity.
+  - **Amazon SageMaker AI (13):** `SM-31` Endpoint Inference Data Capture,
+    `SM-32` SageMaker Configuration Compliance Evaluation, `SM-33` Training Job
+    Network Boundary, `SM-34` SageMaker Creation Guardrails, `SM-35` Security
+    Service Delegated Administrator, `SM-36` Security Hub AI Security
+    Standard, `SM-37` GuardDuty Lambda Protection, `SM-38` GuardDuty Runtime
+    Monitoring, `SM-39` EKS VPC CNI Network Policy, `SM-40` Secrets Manager
+    Rotation, `SM-41` AWS IoT Device-Scoped Policy, `SM-42` Batch Transform
+    Creation Guardrail and `SM-43` Model Artifact Integrity.
   Behavior worth knowing:
   - A new check that cannot read the whole population it judges reports
     `N/A` naming the failed read or the denied action, not `Passed`.
@@ -107,6 +115,10 @@ section.
     Bedrock findings whose text was rewritten as "No longer reported" beside
     the same finding as "New", because findings are matched on their text.
     Later reports compare like with like.
+  - `SM-43` reads model artifact objects with `HeadObject` and records whether
+    an expected value is stored, never that it was compared at load time.
+    Weights fetched by container startup code and models served from ECS, EKS
+    or EC2 are not read.
 
 ### Changed
 
@@ -124,7 +136,7 @@ back `Passed` names what it could not read.
   read instead of clean, and do not report `Passed` while one is listed. A
   boundary that removes an action now removes it from the grant those checks
   judge. Each managed policy is now fetched once per run.
-- **IAM evaluation in the Bedrock checks.** Policy
+- **IAM evaluation in the Bedrock and SageMaker AI checks.** Policy
   conditions are read as IAM evaluates them: `ArnEquals` and `ArnLike` both
   treat `*` and `?` as wildcards, values in one condition are ORed, a
   set-operator prefix (`ForAllValues:`, `ForAnyValue:`) is required on a
@@ -161,6 +173,24 @@ back `Passed` names what it could not read.
   judged on its VPC and subnet routes. `BR-53` compares the Resource Groups
   Tagging API with each listed resource type and fails a resource it never
   returned as untagged.
+- **Amazon SageMaker AI.** `SM-02`, `SM-11` and `SM-35` add rows for API method
+  authorization, Lambda function network boundary and per-Region delegated
+  administrators. `SM-04` adds rows for whether GuardDuty findings reach
+  Security Hub and an EventBridge rule with a target, and fails an `ACTIVE`
+  finding left at workflow status `NEW` for more than 30 days. `SM-09` reads
+  Studio user profiles and default space roles. `SM-10` fails a VPC notebook
+  whose `DirectInternetAccess` is not `Disabled`. `SM-14` judges every container
+  of the models an endpoint or inference component serves, so an unserved model
+  is no longer `Failed`, and a Region with no served model is `N/A`. `SM-22`,
+  `SM-23` and `SM-31` read shadow variants, batch transform models, monitoring
+  baselines and capture options. `SM-26` adds an organization auto-enable row:
+  the delegated administrator must report `ALL` for both members and the
+  `AI_PROTECTION` feature, and the row is `N/A` in any other account. `SM-34`
+  holds every SageMaker action that defines a guardrail key in the service
+  authorization reference. `SM-37`, `SM-38` and `SM-39` judge AgentCore
+  runtimes, EKS Fargate profiles and node counts, MicroVMs, and the egress of
+  every VPC a SageMaker workload runs in. `SM-40` fails a rotation gap over 90
+  days. `SM-43` fails an artifact bucket under an AWS managed key.
 - **Report wording.** `Passed` text names only what the check read, and
   `Finding_Details` names each unread leg instead of describing the whole
   control as satisfied.
@@ -203,6 +233,10 @@ back `Passed` names what it could not read.
 - The Bedrock assessment Lambda's timeout is 900 seconds, the Lambda maximum,
   up from 600, so its per-read deadline stops 60 seconds before 900 instead of
   before 600.
+- `SM-35`'s Detective membership read and `SM-38`'s event data store listing
+  stop when a service returns the same `NextToken` twice.
+- `SM-23` reports a Region with no InService endpoint as `N/A`, where it used to
+  pass with nothing to judge.
 
 ### Deployment impact
 
@@ -259,29 +293,35 @@ The AWS SAM templates (`aiml-security-assessment/template.yaml` and
 `aiml-security-assessment/template-multi-account.yaml`) carry the same IAM
 change:
 
-- Two new `AWS::IAM::ManagedPolicy` resources, each attached only to one
+- Four new `AWS::IAM::ManagedPolicy` resources, each attached only to one
   assessment function, for reads that do not fit that function's
   9,000-character inline policy budget: `BedrockAssessmentReadsPolicy` and
-  `BedrockAssessmentReadsPolicy2`. Each stack creates two more customer managed
-  policies, named with the stack name as a prefix.
-- New actions on the Bedrock assessment role and the IAM permissions cache
-  role. The IAM permissions cache role gains `iam:GetRole` on the account's
-  roles, `iam:GetUser` and `iam:ListGroupsForUser` on its users, and an
-  `IAMGroupPolicyRead` statement (`iam:ListAttachedGroupPolicies`,
+  `BedrockAssessmentReadsPolicy2` and `SageMakerAssessmentReadsPolicy` and
+  `SageMakerAssessmentReadsPolicy2`. Each stack creates four more customer
+  managed policies, named with the stack name as a prefix.
+- New actions on the Bedrock and SageMaker AI assessment roles and the IAM
+  permissions cache role. The IAM permissions cache role gains `iam:GetRole` on
+  the account's roles, `iam:GetUser` and `iam:ListGroupsForUser` on its users,
+  and an `IAMGroupPolicyRead` statement (`iam:ListAttachedGroupPolicies`,
   `iam:ListGroupPolicies` and `iam:GetGroupPolicy`) on its groups. Every new
   action is a Get, List, Describe, Search, BatchGet or Lookup read, except
-  `logs:FilterLogEvents` (a read) and `bedrock:ApplyGuardrail`. Actions without
-  a resource type in the service authorization reference are granted on `*`. S3
-  bucket ARNs carry no account, so the S3 bucket reads are granted on
-  `arn:${AWS::Partition}:s3:::*` and reach any bucket whose policy admits the
-  role. Every other action is scoped to this account's resource ARNs, except
-  where noted below. No statement grants `Action: '*'`.
+  `apigateway:GET` (a read), `logs:FilterLogEvents` (a read) and
+  `bedrock:ApplyGuardrail`. Actions without a resource type in the service
+  authorization reference are granted on `*`. S3 bucket ARNs carry no account,
+  so the S3 bucket reads are granted on `arn:${AWS::Partition}:s3:::*` and
+  reach any bucket whose policy admits the role. Every other action is scoped
+  to this account's resource ARNs, except where noted below. No statement
+  grants `Action: '*'`.
 - Grants to review before deploying:
   - `bedrock:ApplyGuardrail` (`BR-26`) probes a guardrail's output and is
     billed per text unit. `CrossAccountGuardrailRead` and
     `CrossAccountGuardrailOutputProbe` leave the account segment open, so the
     role can read and apply a guardrail another account shares or the
     organization enforces.
+  - `s3:GetObject` on `arn:${AWS::Partition}:s3:::*/*` for the SageMaker AI
+    role (`SM-43`), because the buckets are named by the customer. `SM-43`
+    calls only `HeadObject`, but the grant also permits reading object contents
+    in any bucket whose policy admits the role.
   - The Bedrock role's new `s3:GetObject` is limited to invocation log keys and
     `.metadata.json` objects.
   - `BR-52` reads AWS Backup recovery points with
@@ -292,8 +332,17 @@ change:
     Region with `s3:GetBucketLocation` (on `arn:${AWS::Partition}:s3:::*`).
     All four are reads.
   - `cloudwatch:DescribeAlarms` moves from the account's `alarm:*` ARNs to `*`
-    on the Bedrock role, because composite alarms are returned only to a `*`
-    grant.
+    on the Bedrock role, and the SageMaker AI role gains it on `*`, because
+    composite alarms are returned only to a `*` grant.
+  - `ec2:GetManagedPrefixListEntries`, the Route 53 Resolver firewall rule and
+    domain list reads, and the Network Firewall policy and rule group reads
+    leave the account segment open, because those resources can be shared
+    through AWS RAM.
+  - The SageMaker AI role's CloudTrail trail reads (`SM-09`) leave the account
+    segment open, because an organization trail's ARN names the management
+    account. Its AWS Organizations reads (`organizations:DescribePolicy`,
+    `organizations:ListParents` and `organizations:ListTargetsForPolicy`) are
+    scoped to organization ARNs, which name the management account too.
   - `ecs:ListTasks` is granted on `*` under an `ArnLike` `ecs:cluster`
     condition on the account's clusters, following the Amazon ECS developer
     guide's example; the service authorization reference names a resource type

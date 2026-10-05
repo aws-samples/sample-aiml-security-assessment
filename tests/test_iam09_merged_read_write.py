@@ -1,4 +1,4 @@
-"""AIR-FND-IAM-09 merged read-and-write leg of BR-01.
+"""AIR-FND-IAM-09 merged read-and-write leg of BR-01 and SM-02.
 
 Each check reports a wildcard or NotAction Allow that grants both a read and a
 write action on one resource type of its namespace, as the service
@@ -15,6 +15,7 @@ import os
 import sys
 from dataclasses import dataclass
 from typing import Any, Callable
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -41,6 +42,24 @@ def _load(package, module_name):
 
 
 bedrock_app = _load("bedrock_assessments", "iam09_bedrock_app")
+sagemaker_app = _load("sagemaker_assessments", "iam09_sagemaker_app")
+
+
+def _sagemaker_run(cache):
+    iam = MagicMock()
+    iam.generate_service_last_accessed_details.return_value = {"JobId": "job-1"}
+    iam.get_service_last_accessed_details.return_value = {
+        "JobStatus": "COMPLETED",
+        "ServicesLastAccessed": [],
+    }
+    iam.get_caller_identity.return_value = {
+        "Account": "123456789012",
+        "Arn": "arn:aws:sts::123456789012:assumed-role/test/session",
+    }
+    with patch.object(sagemaker_app.boto3, "client", return_value=iam):
+        return extract_csv_data(
+            sagemaker_app.check_sagemaker_iam_permissions(cache, "us-east-1")
+        )
 
 
 @dataclass
@@ -71,6 +90,20 @@ PACKAGES = [
         (
             "Bedrock or Data Store Read and Write Merged in One Grant",
             "Bedrock Wildcard Action Grant",
+        ),
+    ),
+    Package(
+        "SM-02",
+        _sagemaker_run,
+        "SageMaker Read and Write Merged in One Grant",
+        "sagemaker",
+        "sagemaker:*Model",
+        "sagemaker:Describe*",
+        ("sagemaker:*Model", "arn:aws:sagemaker:us-east-1:123456789012:model/m1"),
+        sagemaker_app,
+        (
+            "SageMaker Read and Write Merged in One Grant",
+            "SageMaker Service-Wide Grant in Customer Policy",
         ),
     ),
 ]
@@ -455,7 +488,10 @@ class TestUnreadPopulation:
 def test_the_access_level_tables_are_generated_from_the_service_reference():
     """Every type carries the three keys the leg reads, and every ARN glob has
     no unreplaced ${Variable}."""
-    for package in ("bedrock_assessments",):
+    for package in (
+        "bedrock_assessments",
+        "sagemaker_assessments",
+    ):
         with open(
             os.path.join(_SECURITY, package, "iam_access_levels.json"), encoding="utf-8"
         ) as handle:
