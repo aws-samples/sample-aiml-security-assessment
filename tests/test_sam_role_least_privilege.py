@@ -97,12 +97,18 @@ _EXPECTED_ACTIONS = {
         "s3:ListBucket",
     },
     "IAMPermissionCachingFunction": {
+        "iam:GetGroupPolicy",
         "iam:GetPolicy",
         "iam:GetPolicyVersion",
+        "iam:GetRole",
         "iam:GetRolePolicy",
+        "iam:GetUser",
         "iam:GetUserPolicy",
+        "iam:ListAttachedGroupPolicies",
         "iam:ListAttachedRolePolicies",
         "iam:ListAttachedUserPolicies",
+        "iam:ListGroupPolicies",
+        "iam:ListGroupsForUser",
         "iam:ListRolePolicies",
         "iam:ListRoles",
         "iam:ListUserPolicies",
@@ -430,6 +436,7 @@ def test_iam_permission_cache_identity_reads_are_resource_scoped(template):
     required_resources = {
         "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*",
         "arn:${AWS::Partition}:iam::${AWS::AccountId}:user/*",
+        "arn:${AWS::Partition}:iam::${AWS::AccountId}:group/*",
         "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/*",
         "arn:${AWS::Partition}:iam::aws:policy/*",
     }

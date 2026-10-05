@@ -59,6 +59,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from datetime import datetime, timezone
 from io import StringIO
 from typing import Any, Dict, List, Optional
@@ -157,6 +158,128 @@ def _permission_cache_unavailable_findings(
             )
         ],
     }
+
+
+UNRECORDED_PRINCIPAL_ERRORS_NOTE = (
+    "The IAM permissions cache predates schema version 2 and did not record "
+    "per-principal read errors, so a principal whose policies could not be read "
+    "looks the same as one with no policies."
+)
+
+SCP_NOT_EVALUATED_NOTE = (
+    "Service control policies were not evaluated per principal. They only remove "
+    "permissions, so an SCP can make this finding a false Failed but cannot hide "
+    "a grant it reports."
+)
+
+
+def _principal_read_errors(
+    cache: Dict[str, Any], principal_type: str
+) -> Optional[Dict[str, List[str]]]:
+    """Map each principal of ``principal_type`` whose cache read failed to the
+    stages that failed. None when the cache predates ``principal_errors``."""
+    errors = cache.get("principal_errors")
+    if not isinstance(errors, list):
+        return None
+    failed: Dict[str, List[str]] = {}
+    for error in errors:
+        if (
+            isinstance(error, dict)
+            and error.get("type") == principal_type
+            and error.get("name")
+        ):
+            failed.setdefault(str(error["name"]), []).append(
+                str(error.get("stage", "unknown"))
+            )
+    return failed
+
+
+def _name_list(names: List[str], limit: int = 10) -> str:
+    shown = ", ".join(f"'{n}'" for n in names[:limit])
+    if len(names) > limit:
+        shown += f" and {len(names) - limit} more"
+    return shown
+
+
+def _as_list(value: Any) -> List[Any]:
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def _action_covers(pattern: str, action: str) -> bool:
+    """Whether IAM action ``pattern`` matches every action ``action`` names.
+
+    Exact for a concrete ``action``. For a wildcard ``action`` only a bare
+    ``*`` or a literal prefix ending in ``*`` is credited, so an uncertain
+    case reads as not covered."""
+    pattern, action = pattern.lower(), action.lower()
+    if not any(c in action for c in "*?"):
+        return fnmatchcase(action, pattern)
+    if pattern == "*":
+        return True
+    return (
+        pattern.endswith("*")
+        and not any(c in pattern[:-1] for c in "*?")
+        and action.startswith(pattern[:-1])
+    )
+
+
+def _actions_overlap(pattern: str, action: str) -> bool:
+    """Whether IAM action patterns could name a common action. Wildcards on
+    both sides read as overlapping unless their service prefixes differ."""
+    pattern, action = pattern.lower(), action.lower()
+    if fnmatchcase(action, pattern) or fnmatchcase(pattern, action):
+        return True
+    if not any(c in pattern for c in "*?") or not any(c in action for c in "*?"):
+        return False
+    p_service, a_service = pattern.split(":", 1)[0], action.split(":", 1)[0]
+    return fnmatchcase(p_service, a_service) or fnmatchcase(a_service, p_service)
+
+
+def _boundary_removes(boundary: Any, action: str) -> bool:
+    """Whether a permissions boundary removes every action ``action`` names.
+
+    The effective grant is the intersection of the identity policy and the
+    boundary, so an action no boundary Allow reaches is not granted. Conditions
+    and resources on a boundary Allow are ignored, and only an unconditional
+    Deny on Resource ``*`` removes an action, so each approximation keeps a
+    grant and can only over-report."""
+    if boundary is None:
+        return False
+    if isinstance(boundary, str):
+        try:
+            boundary = json.loads(boundary)
+        except (ValueError, TypeError):
+            return False
+    if not isinstance(boundary, dict):
+        return False
+    statements = [s for s in _as_list(boundary.get("Statement")) if isinstance(s, dict)]
+    for stmt in statements:
+        if (
+            stmt.get("Effect") == "Deny"
+            and "Condition" not in stmt
+            and "*" in _as_list(stmt.get("Resource"))
+            and any(
+                isinstance(p, str) and _action_covers(p, action)
+                for p in _as_list(stmt.get("Action"))
+            )
+        ):
+            return True
+    for stmt in statements:
+        if stmt.get("Effect") != "Allow":
+            continue
+        if any(
+            isinstance(p, str) and _actions_overlap(p, action)
+            for p in _as_list(stmt.get("Action"))
+        ):
+            return False
+        if "NotAction" in stmt and not any(
+            isinstance(p, str) and _action_covers(p, action)
+            for p in _as_list(stmt.get("NotAction"))
+        ):
+            return False
+    return True
 
 
 def _bucket_name_from_arn(bucket_arn: str) -> str:
@@ -1528,6 +1651,9 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
 
         SENSITIVE_WILDCARDS = ["iam:*", "s3:*", "ec2:*", "lambda:*", "*"]
         agents_with_issues = []
+        unread = []
+        role_permissions = permission_cache.get("role_permissions", {})
+        read_errors = _principal_read_errors(permission_cache, "role")
 
         for agent_summary in agents:
             agent_id = agent_summary["agentId"]
@@ -1536,31 +1662,55 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
                 detail = bedrock_agent.get_agent(agentId=agent_id)
             except ClientError as e:
                 logger.warning(f"Could not describe agent {agent_name}: {e}")
+                unread.append(
+                    f"agent '{agent_name}' (GetAgent failed: "
+                    f"{e.response.get('Error', {}).get('Code', 'error')})"
+                )
                 continue
             role_arn = detail.get("agent", {}).get("agentResourceRoleArn", "")
             if not role_arn:
                 continue
             role_name = role_arn.split("/")[-1]
-            role_perms = (
-                (permission_cache or {}).get("role_permissions", {}).get(role_name, {})
-            )
+            if read_errors is not None and role_name in read_errors:
+                unread.append(
+                    f"agent '{agent_name}' role '{role_name}' (cache read failed at "
+                    f"{', '.join(read_errors[role_name])})"
+                )
+            elif role_name not in role_permissions:
+                unread.append(
+                    f"agent '{agent_name}' role '{role_name}' (not in the permissions cache)"
+                )
+            role_perms = role_permissions.get(role_name) or {}
+            boundary = role_perms.get("permissions_boundary")
+            if boundary is None and "permissions_boundary" in (
+                (read_errors or {}).get(role_name, [])
+            ):
+                continue
             for policy in role_perms.get("attached_policies", []) + role_perms.get(
                 "inline_policies", []
             ):
                 doc = policy.get("document", {})
                 if isinstance(doc, str):
                     doc = json.loads(doc)
-                for stmt in doc.get("Statement", []):
+                for stmt in _as_list(doc.get("Statement")):
                     if stmt.get("Effect") != "Allow":
                         continue
                     actions = stmt.get("Action", [])
                     if isinstance(actions, str):
                         actions = [actions]
                     for action in actions:
-                        if action in SENSITIVE_WILDCARDS:
+                        if action in SENSITIVE_WILDCARDS and not _boundary_removes(
+                            boundary, action
+                        ):
                             agents_with_issues.append(
                                 f"Agent '{agent_name}' role '{role_name}' allows '{action}'"
                             )
+
+        notes = []
+        if unread:
+            notes.append(f"Not read ({len(unread)}): " + "; ".join(unread[:10]) + ".")
+        if read_errors is None:
+            notes.append(UNRECORDED_PRINCIPAL_ERRORS_NOTE)
 
         if agents_with_issues:
             findings["status"] = "WARN"
@@ -1571,6 +1721,8 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
                     finding_details=(
                         "The following agents have execution roles with wildcard or overly broad actions:\n"
                         + "\n".join(f"- {i}" for i in agents_with_issues[:10])
+                        + "\n"
+                        + " ".join(notes + [SCP_NOT_EVALUATED_NOTE])
                     ),
                     resolution=(
                         "1. Replace wildcard actions with specific actions the agent needs.\n"
@@ -1584,12 +1736,39 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
                     compliance_frameworks=COMPLIANCE_MAP["FS-07"],
                 )
             )
+        elif unread:
+            findings["status"] = "N/A"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-07",
+                    finding_name="Agent Action Boundary Check Incomplete",
+                    finding_details=(
+                        f"Reviewed {len(agents) - len(unread)} of {len(agents)} "
+                        "agent(s) with no wildcard sensitive actions found, but the "
+                        "rest could not be assessed. " + " ".join(notes)
+                    ),
+                    resolution=(
+                        "Grant the IAM Permission Caching task read access to the "
+                        "listed roles (or bedrock:GetAgent for the listed agents), "
+                        "then rerun the assessment."
+                    ),
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-permissions.html",
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-07"],
+                )
+            )
         else:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-07",
                     finding_name="Agent Action Boundaries Look Appropriate",
-                    finding_details=f"Reviewed {len(agents)} agent(s); no wildcard sensitive actions found.",
+                    finding_details=" ".join(
+                        [
+                            f"Reviewed {len(agents)} agent(s); no wildcard sensitive actions found."
+                        ]
+                        + notes
+                    ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-permissions.html",
                     severity="High",
@@ -2788,10 +2967,16 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
     findings = _empty_findings("Knowledge Base IAM Least Privilege Check")
     try:
         issues = []
+        read_errors = _principal_read_errors(permission_cache, "role")
         for role_name, perms in (
             (permission_cache or {}).get("role_permissions", {}).items()
         ):
             if not isinstance(perms, dict):
+                continue
+            boundary = perms.get("permissions_boundary")
+            if boundary is None and "permissions_boundary" in (
+                (read_errors or {}).get(role_name, [])
+            ):
                 continue
             for policy in (perms.get("attached_policies", []) or []) + (
                 perms.get("inline_policies", []) or []
@@ -2832,6 +3017,10 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                     if isinstance(actions, str):
                         actions = [actions]
                     for action in actions:
+                        if isinstance(action, str) and _boundary_removes(
+                            boundary, action
+                        ):
+                            continue
                         if _is_overbroad_kb_action(action):
                             issues.append(f"Role '{role_name}' allows '{action}'")
                         elif unscoped_resource and _kb_action_requires_resource_scope(
@@ -2842,6 +3031,16 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                                 "(no ARN scoping to supported Bedrock resources)"
                             )
 
+        unread = sorted(read_errors or {})
+        notes = []
+        if unread:
+            notes.append(
+                f"{len(unread)} role(s) could not be fully read from the IAM "
+                f"permissions cache, so their grants are unknown: {_name_list(unread)}."
+            )
+        if read_errors is None:
+            notes.append(UNRECORDED_PRINCIPAL_ERRORS_NOTE)
+
         if issues:
             findings["status"] = "WARN"
             findings["csv_data"].append(
@@ -2851,6 +3050,8 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                     finding_details=(
                         f"{len(issues)} broad Knowledge Base permission issue(s):\n"
                         + "\n".join(f"- {i}" for i in issues[:10])
+                        + "\n"
+                        + " ".join(notes + [SCP_NOT_EVALUATED_NOTE])
                     ),
                     resolution=(
                         "Replace wildcard Bedrock actions (e.g. bedrock:*) with "
@@ -2864,15 +3065,39 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                     compliance_frameworks=COMPLIANCE_MAP["FS-22"],
                 )
             )
+        elif unread:
+            findings["status"] = "N/A"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-22",
+                    finding_name="Knowledge Base IAM Least Privilege Check Incomplete",
+                    finding_details=(
+                        "No wildcard Bedrock permissions and no unscoped "
+                        "(Resource '*') Knowledge Base actions found in the roles "
+                        "that were read. " + " ".join(notes)
+                    ),
+                    resolution=(
+                        "Grant the IAM Permission Caching task read access to the "
+                        "listed roles, then rerun the assessment."
+                    ),
+                    reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html",
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-22"],
+                )
+            )
         else:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-22",
                     finding_name="Knowledge Base IAM Permissions Look Appropriate",
-                    finding_details=(
-                        "No wildcard Bedrock permissions and no unscoped "
-                        "(Resource '*') Knowledge Base actions found in reviewed "
-                        "roles."
+                    finding_details=" ".join(
+                        [
+                            "No wildcard Bedrock permissions and no unscoped "
+                            "(Resource '*') Knowledge Base actions found in reviewed "
+                            "roles."
+                        ]
+                        + notes
                     ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",

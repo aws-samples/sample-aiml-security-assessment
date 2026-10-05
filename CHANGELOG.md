@@ -37,6 +37,17 @@ section.
   sample by `sample-reports/scripts/build_changes_sample.py`; the screenshot
   comes from `sample-reports/scripts/capture_changes_screenshot.py`.
 
+### Changed
+
+- **IAM permissions cache.** The cache (schema version 2) records each user's
+  group policies and each role's and user's permissions boundary, and lists
+  under `principal_errors` every principal whose policy or boundary read
+  failed. `FS-07` and `FS-22` report such a principal as not read instead of
+  clean, and do not report `Passed` while one is listed. A boundary that
+  removes an action now removes it from the grant those checks judge.
+- Pinned `boto3` and `botocore` 1.43.108 in every function's
+  `requirements.txt` and in `tests/requirements.txt`.
+
 ### Fixed
 
 - Preserve default-enabled artifact completeness checks when an older CodeBuild
@@ -47,6 +58,8 @@ section.
 - Emit N/A/Informational coverage rows on each OWASP control affected by omitted
   direct-service evidence, including controls that lose their only source.
   Make the GRC guardrail prerequisite text self-contained.
+- The IAM permissions cache no longer drops a principal's policies silently
+  when a read fails.
 
 ### Deployment impact
 
@@ -78,6 +91,15 @@ When upgrading from an earlier release, complete the 2.0.0 member-role and
 central infrastructure updates first. Then apply this feature's parameters
 and rerun CodeBuild to deploy the assessment/report changes. No additional
 IAM permissions are introduced by service selection.
+
+**IAM permissions cache.** A CodeBuild run deploys both AWS SAM templates
+(`aiml-security-assessment/template.yaml` and
+`aiml-security-assessment/template-multi-account.yaml`). The IAM permissions
+cache role gains `iam:GetRole` on the account's roles, `iam:GetUser` and
+`iam:ListGroupsForUser` on its users, and an `IAMGroupPolicyRead` statement
+(`iam:ListAttachedGroupPolicies`, `iam:ListGroupPolicies` and
+`iam:GetGroupPolicy`) on its groups. Every new action is a read. No member-role
+StackSet or central infrastructure update is required.
 
 ## 2.0.0 - 2026-09-18
 

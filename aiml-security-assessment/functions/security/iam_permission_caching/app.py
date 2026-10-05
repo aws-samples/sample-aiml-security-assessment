@@ -18,6 +18,10 @@ boto3_config = Config(
     )
 )
 
+# Version 2 adds principal_errors, a per-principal permissions_boundary and
+# fully paginated policy lists.
+CACHE_SCHEMA_VERSION = 2
+
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.ERROR)
@@ -39,6 +43,8 @@ def write_permissions_to_s3(permission_cache, execution_id):
         cache_data = {
             "role_permissions": permission_cache.role_permissions,
             "user_permissions": permission_cache.user_permissions,
+            "principal_errors": permission_cache.principal_errors,
+            "cache_schema_version": CACHE_SCHEMA_VERSION,
             "generated_at": datetime.now().isoformat(),
         }
 
@@ -69,7 +75,9 @@ class IAMPermissionCache:
         self.iam_client = iam_client
         self.role_permissions = {}
         self.user_permissions = {}
+        self.principal_errors = []
         self.policy_cache = {}
+        self.group_policy_cache = {}
 
     def initialize(self):
         """
@@ -81,21 +89,141 @@ class IAMPermissionCache:
 
     def _get_policy_document(self, policy_arn, version_id):
         """
-        Get policy document with caching
+        Get policy document with caching. A failed read raises so the caller can
+        record it against the principal it was read for.
         """
         cache_key = f"{policy_arn}:{version_id}"
         if cache_key not in self.policy_cache:
-            try:
-                response = self.iam_client.get_policy_version(
-                    PolicyArn=policy_arn, VersionId=version_id
-                )
-                self.policy_cache[cache_key] = response["PolicyVersion"]["Document"]
-            except Exception as e:
-                logger.error(
-                    f"Error getting policy document for {policy_arn}: {str(e)}"
-                )
-                return None
+            response = self.iam_client.get_policy_version(
+                PolicyArn=policy_arn, VersionId=version_id
+            )
+            self.policy_cache[cache_key] = response["PolicyVersion"]["Document"]
         return self.policy_cache[cache_key]
+
+    def _managed_policy_document(self, policy_arn):
+        """
+        Read a managed policy's default version document
+        """
+        policy_info = self.iam_client.get_policy(PolicyArn=policy_arn)["Policy"]
+        return self._get_policy_document(policy_arn, policy_info["DefaultVersionId"])
+
+    def _record_error(self, principal_type, name, stage, error):
+        logger.error(f"Error reading {stage} for {principal_type} {name}: {error}")
+        self.principal_errors.append(
+            {"type": principal_type, "name": name, "stage": stage, "error": str(error)}
+        )
+
+    def _group_policies(self, group_name):
+        """
+        Return a group's attached and inline policies, read once per group
+        """
+        if group_name in self.group_policy_cache:
+            return self.group_policy_cache[group_name]
+
+        policies = []
+        paginator = self.iam_client.get_paginator("list_attached_group_policies")
+        for page in paginator.paginate(GroupName=group_name):
+            for policy in page["AttachedPolicies"]:
+                policy_arn = policy["PolicyArn"]
+                policies.append(
+                    {
+                        "name": policy["PolicyName"],
+                        "arn": policy_arn,
+                        "group": group_name,
+                        "document": self._managed_policy_document(policy_arn),
+                    }
+                )
+
+        paginator = self.iam_client.get_paginator("list_group_policies")
+        for page in paginator.paginate(GroupName=group_name):
+            for policy_name in page["PolicyNames"]:
+                policy_doc = self.iam_client.get_group_policy(
+                    GroupName=group_name, PolicyName=policy_name
+                )["PolicyDocument"]
+                policies.append(
+                    {"name": policy_name, "group": group_name, "document": policy_doc}
+                )
+
+        self.group_policy_cache[group_name] = policies
+        return policies
+
+    def _cache_principal(self, principal_type, name):
+        """
+        Read one role's or user's attached, inline and boundary policies.
+
+        Every list is paginated. A failed read is appended to principal_errors
+        and the rest of the principal is still read, so a consumer sees both what
+        was collected and what was not.
+        """
+        kind = "Role" if principal_type == "role" else "User"
+        name_param = {f"{kind}Name": name}
+        entry = {
+            "attached_policies": [],
+            "inline_policies": [],
+            "permissions_boundary": None,
+        }
+
+        try:
+            paginator = self.iam_client.get_paginator(
+                f"list_attached_{principal_type}_policies"
+            )
+            for page in paginator.paginate(**name_param):
+                for policy in page["AttachedPolicies"]:
+                    policy_arn = policy["PolicyArn"]
+                    try:
+                        entry["attached_policies"].append(
+                            {
+                                "name": policy["PolicyName"],
+                                "arn": policy_arn,
+                                "document": self._managed_policy_document(policy_arn),
+                            }
+                        )
+                    except Exception as e:
+                        self._record_error(
+                            principal_type,
+                            name,
+                            "attached_policy",
+                            f"{policy_arn}: {e}",
+                        )
+        except Exception as e:
+            self._record_error(principal_type, name, "list_attached_policies", e)
+
+        try:
+            paginator = self.iam_client.get_paginator(f"list_{principal_type}_policies")
+            get_inline = getattr(self.iam_client, f"get_{principal_type}_policy")
+            for page in paginator.paginate(**name_param):
+                for policy_name in page["PolicyNames"]:
+                    try:
+                        policy_doc = get_inline(**name_param, PolicyName=policy_name)[
+                            "PolicyDocument"
+                        ]
+                        entry["inline_policies"].append(
+                            {"name": policy_name, "document": policy_doc}
+                        )
+                    except Exception as e:
+                        self._record_error(
+                            principal_type,
+                            name,
+                            "inline_policy",
+                            f"{policy_name}: {e}",
+                        )
+        except Exception as e:
+            self._record_error(principal_type, name, "list_inline_policies", e)
+
+        # ListRoles and ListUsers do not return PermissionsBoundary; only GetRole
+        # and GetUser do.
+        try:
+            detail = getattr(self.iam_client, f"get_{principal_type}")(**name_param)
+            boundary = detail[kind].get("PermissionsBoundary") or {}
+            boundary_arn = boundary.get("PermissionsBoundaryArn")
+            if boundary_arn:
+                entry["permissions_boundary"] = self._managed_policy_document(
+                    boundary_arn
+                )
+        except Exception as e:
+            self._record_error(principal_type, name, "permissions_boundary", e)
+
+        return entry
 
     def _cache_role_permissions(self):
         """
@@ -106,63 +234,9 @@ class IAMPermissionCache:
         for page in paginator.paginate():
             for role in page["Roles"]:
                 role_name = role["RoleName"]
-                self.role_permissions[role_name] = {
-                    "attached_policies": [],
-                    "inline_policies": [],
-                }
-
-                # Get attached policies
-                try:
-                    attached_policies = self.iam_client.list_attached_role_policies(
-                        RoleName=role_name
-                    )
-                    for policy in attached_policies["AttachedPolicies"]:
-                        policy_arn = policy["PolicyArn"]
-                        try:
-                            policy_info = self.iam_client.get_policy(
-                                PolicyArn=policy_arn
-                            )["Policy"]
-                            policy_doc = self._get_policy_document(
-                                policy_arn, policy_info["DefaultVersionId"]
-                            )
-                            if policy_doc:
-                                self.role_permissions[role_name][
-                                    "attached_policies"
-                                ].append(
-                                    {
-                                        "name": policy["PolicyName"],
-                                        "arn": policy_arn,
-                                        "document": policy_doc,
-                                    }
-                                )
-                        except Exception as e:
-                            logger.error(f"Error getting policy {policy_arn}: {str(e)}")
-                except Exception as e:
-                    logger.error(
-                        f"Error getting attached policies for role {role_name}: {str(e)}"
-                    )
-
-                # Get inline policies
-                try:
-                    inline_policies = self.iam_client.list_role_policies(
-                        RoleName=role_name
-                    )
-                    for policy_name in inline_policies["PolicyNames"]:
-                        try:
-                            policy_doc = self.iam_client.get_role_policy(
-                                RoleName=role_name, PolicyName=policy_name
-                            )["PolicyDocument"]
-                            self.role_permissions[role_name]["inline_policies"].append(
-                                {"name": policy_name, "document": policy_doc}
-                            )
-                        except Exception as e:
-                            logger.error(
-                                f"Error getting inline policy {policy_name}: {str(e)}"
-                            )
-                except Exception as e:
-                    logger.error(
-                        f"Error getting inline policies for role {role_name}: {str(e)}"
-                    )
+                self.role_permissions[role_name] = self._cache_principal(
+                    "role", role_name
+                )
 
     def _cache_user_permissions(self):
         """
@@ -173,63 +247,27 @@ class IAMPermissionCache:
         for page in paginator.paginate():
             for user in page["Users"]:
                 user_name = user["UserName"]
-                self.user_permissions[user_name] = {
-                    "attached_policies": [],
-                    "inline_policies": [],
-                }
+                self.user_permissions[user_name] = self._cache_principal(
+                    "user", user_name
+                )
 
-                # Get attached policies
+                # Group policies apply to the member as if attached to the user,
+                # so they are cached per user; a failed read is recorded rather
+                # than left looking like a user with no groups.
                 try:
-                    attached_policies = self.iam_client.list_attached_user_policies(
-                        UserName=user_name
+                    group_policies = []
+                    group_paginator = self.iam_client.get_paginator(
+                        "list_groups_for_user"
                     )
-                    for policy in attached_policies["AttachedPolicies"]:
-                        policy_arn = policy["PolicyArn"]
-                        try:
-                            policy_info = self.iam_client.get_policy(
-                                PolicyArn=policy_arn
-                            )["Policy"]
-                            policy_doc = self._get_policy_document(
-                                policy_arn, policy_info["DefaultVersionId"]
+                    for group_page in group_paginator.paginate(UserName=user_name):
+                        for group in group_page["Groups"]:
+                            group_policies.extend(
+                                self._group_policies(group["GroupName"])
                             )
-                            if policy_doc:
-                                self.user_permissions[user_name][
-                                    "attached_policies"
-                                ].append(
-                                    {
-                                        "name": policy["PolicyName"],
-                                        "arn": policy_arn,
-                                        "document": policy_doc,
-                                    }
-                                )
-                        except Exception as e:
-                            logger.error(f"Error getting policy {policy_arn}: {str(e)}")
+                    self.user_permissions[user_name]["group_policies"] = group_policies
                 except Exception as e:
-                    logger.error(
-                        f"Error getting attached policies for user {user_name}: {str(e)}"
-                    )
-
-                # Get inline policies
-                try:
-                    inline_policies = self.iam_client.list_user_policies(
-                        UserName=user_name
-                    )
-                    for policy_name in inline_policies["PolicyNames"]:
-                        try:
-                            policy_doc = self.iam_client.get_user_policy(
-                                UserName=user_name, PolicyName=policy_name
-                            )["PolicyDocument"]
-                            self.user_permissions[user_name]["inline_policies"].append(
-                                {"name": policy_name, "document": policy_doc}
-                            )
-                        except Exception as e:
-                            logger.error(
-                                f"Error getting inline policy {policy_name}: {str(e)}"
-                            )
-                except Exception as e:
-                    logger.error(
-                        f"Error getting inline policies for user {user_name}: {str(e)}"
-                    )
+                    self._record_error("user", user_name, "group_policies", e)
+                    self.user_permissions[user_name]["group_policies_error"] = str(e)
 
 
 def lambda_handler(event, context):
