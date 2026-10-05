@@ -1,0 +1,556 @@
+{
+ "services": {
+  "bedrock-agentcore": {
+   "ab-test": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:ab-test/*"
+    ],
+    "read": [
+     "GetABTest"
+    ],
+    "write": [
+     "DeleteABTest",
+     "UpdateABTest"
+    ]
+   },
+   "apikeycredentialprovider": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:token-vault/*/apikeycredentialprovider/*"
+    ],
+    "read": [
+     "GetApiKeyCredentialProvider",
+     "GetResourceApiKey",
+     "ListApiKeyCredentialProviders",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateApiKeyCredentialProvider",
+     "DeleteApiKeyCredentialProvider",
+     "UpdateApiKeyCredentialProvider"
+    ]
+   },
+   "batch-evaluate": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:batch-evaluate/*"
+    ],
+    "read": [
+     "GetBatchEvaluation"
+    ],
+    "write": [
+     "DeleteBatchEvaluation",
+     "StopBatchEvaluation"
+    ]
+   },
+   "browser": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:aws:browser/*"
+    ],
+    "read": [
+     "GetBrowserSession"
+    ],
+    "write": [
+     "SaveBrowserSessionProfile",
+     "StartBrowserSession",
+     "StopBrowserSession",
+     "UpdateBrowserStream"
+    ]
+   },
+   "browser-custom": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:browser-custom/*"
+    ],
+    "read": [
+     "GetBrowser",
+     "GetBrowserSession",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteBrowser",
+     "SaveBrowserSessionProfile",
+     "StartBrowserSession",
+     "StopBrowserSession",
+     "UpdateBrowserStream"
+    ]
+   },
+   "browser-profile": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:browser-profile/*"
+    ],
+    "read": [
+     "GetBrowserProfile",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteBrowserProfile",
+     "SaveBrowserSessionProfile",
+     "StartBrowserSession"
+    ]
+   },
+   "capacity-provider": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:capacity-provider/*"
+    ],
+    "read": [
+     "GetCapacityProvider",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteCapacityProvider",
+     "DeleteCapacityProviderSession",
+     "PassCapacityProvider",
+     "PutSystemLogEvents",
+     "UpdateCapacityProvider"
+    ]
+   },
+   "code-interpreter": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:aws:code-interpreter/*"
+    ],
+    "read": [
+     "GetCodeInterpreterSession",
+     "ListCodeInterpreterSessions"
+    ],
+    "write": [
+     "InvokeCodeInterpreter",
+     "StartCodeInterpreterSession",
+     "StopCodeInterpreterSession"
+    ]
+   },
+   "code-interpreter-custom": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:code-interpreter-custom/*"
+    ],
+    "read": [
+     "GetCodeInterpreter",
+     "GetCodeInterpreterSession",
+     "ListCodeInterpreterSessions",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteCodeInterpreter",
+     "InvokeCodeInterpreter",
+     "StartCodeInterpreterSession",
+     "StopCodeInterpreterSession"
+    ]
+   },
+   "configuration-bundle": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:configuration-bundle/*"
+    ],
+    "read": [
+     "GetConfigurationBundle",
+     "GetConfigurationBundleVersion",
+     "ListConfigurationBundleVersions"
+    ],
+    "write": [
+     "DeleteConfigurationBundle",
+     "UpdateConfigurationBundle"
+    ]
+   },
+   "consent-portal": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:consent-portal/*"
+    ],
+    "read": [
+     "GetConsentPortal"
+    ],
+    "write": [
+     "CreateConsentPortal",
+     "DeleteConsentPortal",
+     "UpdateConsentPortal"
+    ]
+   },
+   "dataset": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:dataset/*"
+    ],
+    "read": [
+     "GetDataset",
+     "ListDatasetExamples",
+     "ListDatasetVersions"
+    ],
+    "write": [
+     "AddDatasetExamples",
+     "CreateDatasetVersion",
+     "DeleteDataset",
+     "DeleteDatasetExamples",
+     "UpdateDataset",
+     "UpdateDatasetExamples"
+    ]
+   },
+   "evaluator": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:evaluator/*"
+    ],
+    "read": [
+     "GetEvaluator",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteEvaluator",
+     "Evaluate",
+     "UpdateEvaluator"
+    ]
+   },
+   "gateway": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:gateway/*"
+    ],
+    "read": [
+     "GatewayGetWebACLForResource",
+     "GetGateway",
+     "GetGatewayRateLimit",
+     "GetGatewayRule",
+     "GetGatewayTarget",
+     "GetResourcePolicy",
+     "ListGatewayRateLimits",
+     "ListGatewayRules",
+     "ListGatewayTargets",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "AuthorizeAction",
+     "BatchPutGatewayRateLimits",
+     "CreateGatewayRateLimit",
+     "CreateGatewayRule",
+     "CreateGatewayTarget",
+     "DeleteGateway",
+     "DeleteGatewayRateLimit",
+     "DeleteGatewayRule",
+     "DeleteGatewayTarget",
+     "DeleteResourcePolicy",
+     "GatewayAssociateWebACL",
+     "GatewayDisassociateWebACL",
+     "InvokeGateway",
+     "ManageResourceScopedPolicy",
+     "PartiallyAuthorizeActions",
+     "PutResourcePolicy",
+     "SynchronizeGatewayTargets",
+     "UpdateGateway",
+     "UpdateGatewayRateLimit",
+     "UpdateGatewayRule",
+     "UpdateGatewayTarget"
+    ]
+   },
+   "harness": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:harness/*"
+    ],
+    "read": [
+     "GetHarness",
+     "GetHarnessEndpoint",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateHarnessEndpoint",
+     "DeleteHarness",
+     "DeleteHarnessEndpoint",
+     "InvokeHarness",
+     "UpdateHarness",
+     "UpdateHarnessEndpoint"
+    ]
+   },
+   "harness-endpoint": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:harness/*/harness-endpoint/*"
+    ],
+    "read": [
+     "GetHarnessEndpoint"
+    ],
+    "write": [
+     "DeleteHarnessEndpoint",
+     "InvokeHarness",
+     "UpdateHarnessEndpoint"
+    ]
+   },
+   "memory": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:memory/*"
+    ],
+    "read": [
+     "GetEvent",
+     "GetMemory",
+     "GetMemoryRecord",
+     "ListActors",
+     "ListEvents",
+     "ListMemoryExtractionJobs",
+     "ListMemoryRecords",
+     "ListSessions",
+     "ListTagsForResource",
+     "RetrieveMemoryRecords"
+    ],
+    "write": [
+     "AllowVendedLogDeliveryForResource",
+     "BatchCreateMemoryRecords",
+     "BatchDeleteMemoryRecords",
+     "BatchUpdateMemoryRecords",
+     "CreateEvent",
+     "DeleteEvent",
+     "DeleteMemory",
+     "DeleteMemoryRecord",
+     "StartMemoryExtractionJob",
+     "UpdateMemory"
+    ]
+   },
+   "oauth2credentialprovider": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:token-vault/*/oauth2credentialprovider/*"
+    ],
+    "read": [
+     "CompleteResourceTokenAuth",
+     "GetOauth2CredentialProvider",
+     "GetResourceOauth2Token",
+     "ListOauth2CredentialProviders",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateOauth2CredentialProvider",
+     "DeleteOauth2CredentialProvider",
+     "UpdateOauth2CredentialProvider"
+    ]
+   },
+   "online-evaluation-config": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:online-evaluation-config/*"
+    ],
+    "read": [
+     "GetOnlineEvaluationConfig",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteOnlineEvaluationConfig",
+     "UpdateOnlineEvaluationConfig"
+    ]
+   },
+   "payment-manager": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:payment-manager/*"
+    ],
+    "read": [
+     "GetPaymentConnector",
+     "GetPaymentInstrument",
+     "GetPaymentInstrumentBalance",
+     "GetPaymentManager",
+     "GetPaymentSession",
+     "ListPaymentConnectors",
+     "ListPaymentInstruments",
+     "ListPaymentSessions",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "AllowVendedLogDeliveryForResource",
+     "CreatePaymentConnector",
+     "CreatePaymentInstrument",
+     "CreatePaymentSession",
+     "DeletePaymentConnector",
+     "DeletePaymentInstrument",
+     "DeletePaymentManager",
+     "DeletePaymentSession",
+     "ProcessPayment",
+     "UpdatePaymentConnector",
+     "UpdatePaymentManager"
+    ]
+   },
+   "paymentcredentialprovider": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:token-vault/*/paymentcredentialprovider/*"
+    ],
+    "read": [
+     "GetPaymentCredentialProvider",
+     "GetResourcePaymentToken",
+     "ListPaymentCredentialProviders",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreatePaymentCredentialProvider",
+     "DeletePaymentCredentialProvider",
+     "UpdatePaymentCredentialProvider"
+    ]
+   },
+   "policy": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:policy-engine/*/policy/*"
+    ],
+    "read": [
+     "GetPolicy",
+     "GetPolicySummary"
+    ],
+    "write": [
+     "DeletePolicy",
+     "UpdatePolicy"
+    ]
+   },
+   "policy-engine": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:policy-engine/*"
+    ],
+    "read": [
+     "GetPolicy",
+     "GetPolicyEngine",
+     "GetPolicyEngineSummary",
+     "GetPolicyGeneration",
+     "GetPolicyGenerationSummary",
+     "GetPolicySummary",
+     "ListPolicies",
+     "ListPolicyGenerationAssets",
+     "ListPolicyGenerationSummaries",
+     "ListPolicyGenerations",
+     "ListPolicySummaries",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "AuthorizeAction",
+     "CreatePolicy",
+     "DeletePolicy",
+     "DeletePolicyEngine",
+     "PartiallyAuthorizeActions",
+     "StartPolicyGeneration",
+     "UpdatePolicy",
+     "UpdatePolicyEngine"
+    ]
+   },
+   "recommendation": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:recommendation/*"
+    ],
+    "read": [
+     "GetRecommendation"
+    ],
+    "write": [
+     "DeleteRecommendation"
+    ]
+   },
+   "runtime": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:runtime/*"
+    ],
+    "read": [
+     "GetAgentCard",
+     "GetAgentRuntime",
+     "GetAgentRuntimeEndpoint",
+     "GetResourcePolicy",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateAgentRuntimeEndpoint",
+     "DeleteAgentRuntime",
+     "DeleteAgentRuntimeEndpoint",
+     "DeleteResourcePolicy",
+     "InvokeAgentRuntime",
+     "InvokeAgentRuntimeCommand",
+     "InvokeAgentRuntimeCommandShell",
+     "InvokeAgentRuntimeForUser",
+     "InvokeAgentRuntimeWithWebSocketStream",
+     "InvokeAgentRuntimeWithWebSocketStreamForUser",
+     "PutResourcePolicy",
+     "StopRuntimeSession",
+     "UpdateAgentRuntime",
+     "UpdateAgentRuntimeEndpoint"
+    ]
+   },
+   "runtime-endpoint": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:runtime/*/runtime-endpoint/*"
+    ],
+    "read": [
+     "GetAgentCard",
+     "GetAgentRuntimeEndpoint",
+     "GetResourcePolicy",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteAgentRuntimeEndpoint",
+     "DeleteResourcePolicy",
+     "InvokeAgentRuntime",
+     "InvokeAgentRuntimeCommand",
+     "InvokeAgentRuntimeCommandShell",
+     "InvokeAgentRuntimeForUser",
+     "InvokeAgentRuntimeWithWebSocketStream",
+     "InvokeAgentRuntimeWithWebSocketStreamForUser",
+     "PutResourcePolicy",
+     "StopRuntimeSession",
+     "UpdateAgentRuntimeEndpoint"
+    ]
+   },
+   "token-vault": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:token-vault/*"
+    ],
+    "read": [
+     "CompleteResourceTokenAuth",
+     "GetApiKeyCredentialProvider",
+     "GetOauth2CredentialProvider",
+     "GetPaymentCredentialProvider",
+     "GetResourceApiKey",
+     "GetResourceOauth2Token",
+     "GetResourcePaymentToken",
+     "GetTokenVault",
+     "ListApiKeyCredentialProviders",
+     "ListOauth2CredentialProviders",
+     "ListPaymentCredentialProviders",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateApiKeyCredentialProvider",
+     "CreateOauth2CredentialProvider",
+     "CreatePaymentCredentialProvider",
+     "DeleteApiKeyCredentialProvider",
+     "DeleteOauth2CredentialProvider",
+     "DeletePaymentCredentialProvider",
+     "SetTokenVaultCMK",
+     "UpdateApiKeyCredentialProvider",
+     "UpdateOauth2CredentialProvider",
+     "UpdatePaymentCredentialProvider"
+    ]
+   },
+   "workload-identity": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:workload-identity-directory/*/workload-identity/*"
+    ],
+    "read": [
+     "CompleteResourceTokenAuth",
+     "GetResourceApiKey",
+     "GetResourceOauth2Token",
+     "GetResourcePaymentToken",
+     "GetWorkloadIdentity",
+     "ListTagsForResource",
+     "ListWorkloadIdentities"
+    ],
+    "write": [
+     "CreateWorkloadIdentity",
+     "DeleteWorkloadIdentity",
+     "GetWorkloadAccessToken",
+     "GetWorkloadAccessTokenForJWT",
+     "GetWorkloadAccessTokenForUserId",
+     "UpdateWorkloadIdentity"
+    ]
+   },
+   "workload-identity-directory": {
+    "arns": [
+     "arn:*:bedrock-agentcore:*:*:workload-identity-directory/*"
+    ],
+    "read": [
+     "CompleteResourceTokenAuth",
+     "GetResourceApiKey",
+     "GetResourceOauth2Token",
+     "GetResourcePaymentToken",
+     "GetWorkloadIdentity",
+     "ListTagsForResource",
+     "ListWorkloadIdentities"
+    ],
+    "write": [
+     "CreateWorkloadIdentity",
+     "DeleteWorkloadIdentity",
+     "GetWorkloadAccessToken",
+     "GetWorkloadAccessTokenForJWT",
+     "GetWorkloadAccessTokenForUserId",
+     "UpdateWorkloadIdentity"
+    ]
+   }
+  }
+ },
+ "source": "https://servicereference.us-east-1.amazonaws.com/v1/<service>/<service>.json",
+ "versions": {
+  "bedrock-agentcore": "v1.4"
+ }
+}

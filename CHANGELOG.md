@@ -37,7 +37,7 @@ section.
   sample by `sample-reports/scripts/build_changes_sample.py`; the screenshot
   comes from `sample-reports/scripts/capture_changes_screenshot.py`.
 
-- **30 new checks**, growing the catalog from 208 to 238 checks (124 core).
+- **67 new checks**, growing the catalog from 208 to 275 checks (160 core).
   - **Amazon Bedrock (17):** `BR-41` Central Guardrail Enforcement, `BR-42`
     Foundation Model Invocation Allow-List, `BR-43` Region Invocation Control,
     `BR-44` Marketplace Model Subscription Control, `BR-45` API Key Governance,
@@ -57,6 +57,21 @@ section.
     Monitoring, `SM-39` EKS VPC CNI Network Policy, `SM-40` Secrets Manager
     Rotation, `SM-41` AWS IoT Device-Scoped Policy, `SM-42` Batch Transform
     Creation Guardrail and `SM-43` Model Artifact Integrity.
+  - **Amazon Bedrock AgentCore (36):** `AC-18` to `AC-53`, covering CloudTrail
+    data events, log delivery, masking, unmask, retention and tamper
+    guardrails (`AC-18` to `AC-22`, `AC-26`); memory record scope (`AC-23`);
+    gateway rate limits, target authorization, policy conditions and inbound
+    allow lists (`AC-24`, `AC-25`, `AC-27`, `AC-31`); authorizer guardrails,
+    inbound authorization, JWT issuer conditions and token issuance (`AC-28`
+    to `AC-30`, `AC-32`, `AC-33`); inline runtime credentials (`AC-34`);
+    policy engine tool scope, key scope, guardrail wiring and session binding
+    (`AC-35` to `AC-38`); online evaluation operation, coverage, result
+    protection, pass role, trust and judge model scope (`AC-39` to `AC-44`);
+    tool role scope, session limits and invocation path (`AC-45` to `AC-47`);
+    execution role trust and sharing (`AC-48`); DNS egress (`AC-49`); ECR
+    enhanced scanning (`AC-50`); web ACL Anti-DDoS (`AC-51`); Cognito user pool
+    authentication (`AC-52`); and inter-agent anomaly alarms (`AC-53`).
+  - **Agentic AI Security (1):** `AG-39` Gateway WAF Rule Coverage.
   Behavior worth knowing:
   - A new check that cannot read the whole population it judges reports
     `N/A` naming the failed read or the denied action, not `Passed`.
@@ -119,6 +134,9 @@ section.
     an expected value is stored, never that it was compared at load time.
     Weights fetched by container startup code and models served from ECS, EKS
     or EC2 are not read.
+  - `AC-53` finds caller and callee pairs from Application Signals metrics, so
+    runtimes not instrumented with Application Signals cannot be assessed and
+    the row says so.
 - Added the `EnableSageMakerArtifactObjectReads` deployment parameter (default
   `false`) to both AWS SAM templates and both deployment templates, passed to
   CodeBuild as `ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS`. `SM-43` calls
@@ -143,7 +161,7 @@ back `Passed` names what it could not read.
   read instead of clean, and do not report `Passed` while one is listed. A
   boundary that removes an action now removes it from the grant those checks
   judge. Each managed policy is now fetched once per run.
-- **IAM evaluation in the Bedrock and SageMaker AI checks.** Policy
+- **IAM evaluation in the Bedrock, SageMaker AI and AgentCore checks.** Policy
   conditions are read as IAM evaluates them: `ArnEquals` and `ArnLike` both
   treat `*` and `?` as wildcards, values in one condition are ORed, a
   set-operator prefix (`ForAllValues:`, `ForAnyValue:`) is required on a
@@ -228,6 +246,21 @@ back `Passed` names what it could not read.
   are renamed or split in this release, so the first changes report after the
   upgrade lists the old rows as No longer reported and the new rows as New,
   even where the setting did not change. Later runs compare normally.
+- **Amazon Bedrock AgentCore.** Checks read every runtime version an endpoint
+  serves, not only the latest. `AC-01` and `AC-08` read prefix list entries
+  and require a `bedrock-agentcore` endpoint in each runtime's own VPC.
+  `AC-06` judges who can read browser recordings. `AC-17` requires every
+  endpoint's log group to be scored by online evaluation; with the default
+  `RequireAgentCoreOnlineEvaluation=false`, an unscored Region now reports
+  `Failed` where it reported `N/A`. `AC-26` requires deletion protection on
+  runtime log groups and reads log file validation. `AC-36`, `AC-40`, `AC-45`,
+  `AC-46` and `AC-53` credit an alarm that notifies through a composite alarm.
+  `AC-46` adds an `AgentCore Runtime Cost Anomaly Alerting` row. `AC-49` adds
+  a Network Firewall leg and reads transit gateway routes.
+- **Agentic AI Security.** `AG-24` takes an `AUTHENTICATE_ONLY` gateway's
+  verdict from `AG-25`. `AG-39` and `AC-51` credit a WAF filter only to a
+  `Block` rule that no earlier `Allow` on the same attack class bypasses.
+  `AG-39` fails a gateway set to `FAIL_OPEN`.
 - **Report wording.** `Passed` text names only what the check read, and
   `Finding_Details` names each unread leg instead of describing the whole
   control as satisfied.
@@ -252,6 +285,8 @@ back `Passed` names what it could not read.
 - Emit N/A/Informational coverage rows on each OWASP control affected by omitted
   direct-service evidence, including controls that lose their only source.
   Make the GRC guardrail prerequisite text self-contained.
+- `AC-04` no longer fails every runtime. `GetAgentRuntime` returns no logging
+  member, so the check now reads log delivery instead.
 - The IAM permissions cache no longer drops a principal's policies silently
   when a read fails.
 - `BR-02` no longer calls `ecs:ListTasks` without a cluster when
@@ -275,6 +310,19 @@ back `Passed` names what it could not read.
   stop when a service returns the same `NextToken` twice.
 - `SM-23` reports a Region with no InService endpoint as `N/A`, where it used to
   pass with nothing to judge.
+- The AgentCore assessment no longer exceeds its 600-second Lambda timeout in
+  an account with about 100 principals holding AgentCore actions. `AC-03`
+  starts every principal's IAM service last accessed job before reading any,
+  and reads each job before waiting on it. The IAM pattern comparison behind
+  `AC-23`, `AC-32` and `AC-33` decides the literal characters around each `*`
+  before the full comparison and reuses repeated answers. Results are
+  unchanged.
+- The AgentCore assessment Lambda's timeout is 900 seconds, up from 600, and
+  its guard stops 60 seconds before the invocation's remaining time, read from
+  the Lambda context, instead of at a fixed 540 seconds. At 540 seconds the
+  guard had skipped 19 checks, `AC-35` to `AC-53`, as `N/A` in an account with
+  19 runtimes. `AC-34` reads three code archives or images at once and
+  downloads an image that several tags name once.
 
 ### Deployment impact
 
@@ -323,44 +371,52 @@ IAM permissions are introduced by service selection.
    `deployment/2-aiml-security-codebuild.yaml` and
    `deployment/aiml-security-single-account.yaml` changed. The CodeBuild
    deployment role gains the same managed-policy permissions.
-3. **CodeBuild run required last.** Rerun CodeBuild; it redeploys the AWS SAM
-   template for your mode. Direct SAM users must redeploy the template they
-   use.
+3. **CodeBuild run required last.** Rerun CodeBuild; it redeploys the
+   assessment code, the state machine and the AWS SAM template for your mode.
+   Direct SAM users must redeploy the template they use. The state machine
+   passes `TargetRegions` to the AgentCore function, so `AC-26` and `AC-48` can
+   compare Regions.
 
 The AWS SAM templates (`aiml-security-assessment/template.yaml` and
 `aiml-security-assessment/template-multi-account.yaml`) carry the same IAM
 change:
 
-- Four new `AWS::IAM::ManagedPolicy` resources, each attached only to one
+- Five new `AWS::IAM::ManagedPolicy` resources, each attached only to one
   assessment function, for reads that do not fit that function's
   9,000-character inline policy budget: `BedrockAssessmentReadsPolicy` and
-  `BedrockAssessmentReadsPolicy2` and `SageMakerAssessmentReadsPolicy` and
-  `SageMakerAssessmentReadsPolicy2`. Each stack creates four more customer
-  managed policies, named with the stack name as a prefix.
-- New actions on the Bedrock and SageMaker AI assessment roles and the IAM
-  permissions cache role. The IAM permissions cache role gains `iam:GetRole` on
-  the account's roles, `iam:GetUser` and `iam:ListGroupsForUser` on its users,
-  and an `IAMGroupPolicyRead` statement (`iam:ListAttachedGroupPolicies`,
-  `iam:ListGroupPolicies` and `iam:GetGroupPolicy`) on its groups. Every new
-  action is a Get, List, Describe, Search, BatchGet or Lookup read, except
-  `apigateway:GET` (a read), `logs:FilterLogEvents` (a read) and
-  `bedrock:ApplyGuardrail`. Actions without a resource type in the service
-  authorization reference are granted on `*`. S3 bucket ARNs carry no account,
-  so the S3 bucket reads are granted on `arn:${AWS::Partition}:s3:::*` and
-  reach any bucket whose policy admits the role. Every other action is scoped
-  to this account's resource ARNs, except where noted below. No statement
-  grants `Action: '*'`.
+  `BedrockAssessmentReadsPolicy2`, `SageMakerAssessmentReadsPolicy` and
+  `SageMakerAssessmentReadsPolicy2`, and `AgentCoreAssessmentReadsPolicy`. Each
+  stack creates five more customer managed policies, named with the stack name
+  as a prefix.
+- New actions on the Bedrock, SageMaker AI and AgentCore assessment roles and
+  the IAM permissions cache role. The IAM permissions cache role gains
+  `iam:GetRole` on the account's roles, `iam:GetUser` and
+  `iam:ListGroupsForUser` on its users, and an `IAMGroupPolicyRead` statement
+  (`iam:ListAttachedGroupPolicies`, `iam:ListGroupPolicies` and
+  `iam:GetGroupPolicy`) on its groups. Every new action is a Get, List,
+  Describe, Search, BatchGet or Lookup read, except `apigateway:GET` (a read),
+  `logs:FilterLogEvents` (a read), `bedrock:ApplyGuardrail` and `kms:Decrypt`.
+  Actions without a resource type in the service authorization reference are
+  granted on `*`. S3 bucket ARNs carry no account, so the S3 bucket reads are
+  granted on `arn:${AWS::Partition}:s3:::*` and reach any bucket whose policy
+  admits the role. Every other action is scoped to this account's resource
+  ARNs, except where noted below. No statement grants `Action: '*'`.
 - Grants to review before deploying:
   - `bedrock:ApplyGuardrail` (`BR-26`) probes a guardrail's output and is
     billed per text unit. `CrossAccountGuardrailRead` and
     `CrossAccountGuardrailOutputProbe` leave the account segment open, so the
     role can read and apply a guardrail another account shares or the
     organization enforces.
+  - `kms:Decrypt` on the AgentCore role (`AC-07`) is allowed only when the
+    request comes through `bedrock-agentcore` (`kms:ViaService`), so the check
+    can describe a memory encrypted with a customer managed key. A key policy
+    that does not admit the role still denies it.
   - `s3:GetObject` on `arn:${AWS::Partition}:s3:::*/*` for the SageMaker AI
-    role (`SM-43`), because the buckets are named by the customer. It is
-    granted only when `EnableSageMakerArtifactObjectReads` is `true` (default
-    `false`). `SM-43` calls only `HeadObject`, but the grant also permits
-    reading object contents in any bucket whose policy admits the role.
+    (`SM-43`) and AgentCore (`AC-34`, `AC-35`, with `s3:GetObjectVersion`)
+    roles, because the buckets are named by the customer. The SageMaker AI
+    grant exists only when `EnableSageMakerArtifactObjectReads` is `true`
+    (default `false`). `SM-43` calls only `HeadObject`, but the grant also
+    permits reading object contents in any bucket whose policy admits the role.
   - The Bedrock role's new `s3:GetObject` is limited to invocation log keys and
     `.metadata.json` objects.
   - `BR-52` reads AWS Backup recovery points with
@@ -370,18 +426,21 @@ change:
     account's mantle `project/*` ARNs). `BR-47` and `BR-52` read each bucket's
     Region with `s3:GetBucketLocation` (on `arn:${AWS::Partition}:s3:::*`).
     All four are reads.
+  - `AC-34` downloads up to 512 MiB of container image layers per assessed
+    image through the existing `ecr:GetDownloadUrlForLayer` grant.
   - `cloudwatch:DescribeAlarms` moves from the account's `alarm:*` ARNs to `*`
-    on the Bedrock role, and the SageMaker AI role gains it on `*`, because
-    composite alarms are returned only to a `*` grant.
+    on the Bedrock role, and the SageMaker AI and AgentCore roles gain it on
+    `*`, because composite alarms are returned only to a `*` grant.
   - `ec2:GetManagedPrefixListEntries`, the Route 53 Resolver firewall rule and
     domain list reads, and the Network Firewall policy and rule group reads
     leave the account segment open, because those resources can be shared
     through AWS RAM.
   - The SageMaker AI role's CloudTrail trail reads (`SM-09`) leave the account
     segment open, because an organization trail's ARN names the management
-    account. Its AWS Organizations reads (`organizations:DescribePolicy`,
-    `organizations:ListParents` and `organizations:ListTargetsForPolicy`) are
-    scoped to organization ARNs, which name the management account too.
+    account. The SageMaker AI and AgentCore roles' AWS Organizations reads
+    (`organizations:DescribePolicy`, `organizations:ListParents` and
+    `organizations:ListTargetsForPolicy`) are scoped to organization ARNs,
+    which name the management account too.
   - `ecs:ListTasks` is granted on `*` under an `ArnLike` `ecs:cluster`
     condition on the account's clusters, following the Amazon ECS developer
     guide's example; the service authorization reference names a resource type
@@ -394,9 +453,9 @@ change:
 label. Updating the deployment templates for that is optional; the CodeBuild
 run above deploys the SAM template change.
 
-**Lambda timeouts.** The AWS SAM templates raise the Bedrock and SageMaker AI
-assessment functions' `Timeout` to 900. A CodeBuild run of this revision
-deploys it. No IAM permission changes.
+**Lambda timeouts.** The AWS SAM templates raise the Bedrock, SageMaker AI and
+AgentCore assessment functions' `Timeout` to 900. A CodeBuild run of this
+revision deploys them. No IAM permission changes.
 
 **SageMaker AI artifact object reads.** A CodeBuild run of this revision
 deploys the SageMaker AI role without `s3:GetObject`, because

@@ -172,7 +172,7 @@ Because `aws-samples` is an OSPO-managed organization, pushes to your personal f
 ## Relationship to upstream SM/BR/AC checks
 
 The upstream [sample-aiml-security-assessment](https://github.com/aws-samples/sample-aiml-security-assessment)
-framework already provides 124 core security checks (42 SageMaker checks through SM-43 with SM-29 reserved, BR-01 to BR-57, AC-01 to AC-17, and AR-01 to AR-08) and 38 always-on Agentic AI Security checks (AG-01 to AG-38).
+framework already provides 160 core security checks (42 SageMaker checks through SM-43 with SM-29 reserved, BR-01 to BR-57, AC-01 to AC-53, and AR-01 to AR-08) and 39 always-on Agentic AI Security checks (AG-01 to AG-39).
 The 69 FS numbers in this document are **additive**: they enhance the upstream with FinServ-specific
 detection and remediation guidance drawn from the AWS GRC User Guide. A few FS
 checks overlap with upstream checks — in those cases, the FS check adds FinServ-specific depth
@@ -215,7 +215,7 @@ whether the FS check adds FinServ-specific regulatory specificity, (3) severity 
 - **Extend upstream (5 FS checks merged into 5 upstream checks):** FS-17 → SM-07; FS-18 → SM-23; FS-19 → SM-22; FS-23 → BR-06; FS-64 → BR-04. These checks are replaced by upstream-extension notes in Parts 1 and 3 and are removed from `responsible_ai_grc_assessments/app.py`.
 - **Keep separate (64 FS checks):** All other FS checks ship as standalone entries. This includes FS-20, FS-22, FS-25, FS-26, FS-39, FS-41, all Guardrail-policy-level checks (FS-27, FS-28, FS-36, FS-38, FS-45, FS-47, FS-50, FS-51, FS-59), and all FS checks that have no upstream overlap at all.
 
-After FinServ consolidation the framework contains **124 upstream + 38 AG + 64 FS = 226 distinct checks** before optional OWASP checks. With the 12 optional OWASP Top 10 for LLM checks enabled, the full catalog contains **238 distinct checks**. The FinServ consolidation reduces duplication without losing FinServ-specific regulatory depth.
+After FinServ consolidation the framework contains **160 upstream + 39 AG + 64 FS = 263 distinct checks** before optional OWASP checks. With the 12 optional OWASP Top 10 for LLM checks enabled, the full catalog contains **275 distinct checks**. The FinServ consolidation reduces duplication without losing FinServ-specific regulatory depth.
 
 ---
 

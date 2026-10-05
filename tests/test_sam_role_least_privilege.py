@@ -364,6 +364,36 @@ _EXPECTED_ACTIONS = {
         "sso:ListPermissionSets",
         "tag:GetResources",
     },
+    "AgentCoreAssessmentReadsPolicy": {
+        "access-analyzer:ListAnalyzers",
+        "bedrock-agentcore:ListTagsForResource",
+        "cloudfront:ListDistributions",
+        "ec2:DescribeTransitGatewayAttachments",
+        "ec2:DescribeTransitGatewayVpcAttachments",
+        "ec2:SearchTransitGatewayRoutes",
+        "ecr:BatchGetImage",
+        "ecr:DescribeImages",
+        "ecr:GetDownloadUrlForLayer",
+        "firehose:DescribeDeliveryStream",
+        "logs:DescribeDestinations",
+        "logs:DescribeSubscriptionFilters",
+        "logs:ListTagsForResource",
+        "network-firewall:DescribeLoggingConfiguration",
+        "s3:GetBucketObjectLockConfiguration",
+        "s3:GetBucketOwnershipControls",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "shield:DescribeSubscription",
+        "shield:GetSubscriptionState",
+        "shield:ListProtections",
+        "logs:ListScheduledQueries",
+        "logs:GetScheduledQuery",
+        "apigateway:GET",
+        "network-firewall:ListRuleGroups",
+        "logs:DescribeLogStreams",
+        "bedrock-agentcore:GetBrowser",
+        "bedrock-agentcore:GetCodeInterpreter",
+    },
     "SageMakerAssessmentReadsPolicy": {
         "ec2:DescribeManagedPrefixLists",
         "eks:ListFargateProfiles",
@@ -555,34 +585,109 @@ _EXPECTED_ACTIONS = {
     },
     "AgentCoreSecurityAssessmentFunction": {
         "bedrock-agentcore:GetAgentRuntime",
-        "bedrock-agentcore:GetBrowser",
-        "bedrock-agentcore:GetCodeInterpreter",
+        "bedrock-agentcore:GetCapacityProvider",
+        "bedrock-agentcore:GetConsentPortal",
         "bedrock-agentcore:GetGateway",
+        "bedrock-agentcore:GetGatewayTarget",
+        "bedrock-agentcore:GetHarness",
         "bedrock-agentcore:GetMemory",
         "bedrock-agentcore:GetOnlineEvaluationConfig",
+        "bedrock-agentcore:GetPaymentManager",
         "bedrock-agentcore:GetPolicyEngine",
         "bedrock-agentcore:GetResourcePolicy",
         "bedrock-agentcore:GetTokenVault",
         "bedrock-agentcore:ListAgentRuntimes",
+        "bedrock-agentcore:ListApiKeyCredentialProviders",
         "bedrock-agentcore:ListBrowsers",
         "bedrock-agentcore:ListCodeInterpreters",
+        "bedrock-agentcore:ListEvaluators",
+        "bedrock-agentcore:ListGatewayRateLimits",
+        "bedrock-agentcore:ListGatewayTargets",
         "bedrock-agentcore:ListGateways",
         "bedrock-agentcore:ListMemories",
+        "bedrock-agentcore:ListOauth2CredentialProviders",
+        "bedrock-agentcore:ListPaymentCredentialProviders",
         "bedrock-agentcore:ListOnlineEvaluationConfigs",
         "bedrock-agentcore:ListPolicies",
         "bedrock-agentcore:ListPolicyEngines",
+        "bedrock-agentcore:ListWorkloadIdentities",
+        "cloudtrail:GetEventDataStore",
+        "cloudtrail:GetEventSelectors",
+        "cloudtrail:GetTrail",
+        "cloudtrail:GetTrailStatus",
+        "cloudtrail:ListEventDataStores",
+        "cloudtrail:ListTrails",
+        "cloudwatch:DescribeAlarms",
         "cloudwatch:PutMetricData",
+        "cognito-idp:DescribeUserPool",
+        "cognito-idp:DescribeUserPoolClient",
+        "cognito-idp:ListUserPoolClients",
         "ec2:DescribeRouteTables",
+        "ec2:DescribeSecurityGroups",
         "ec2:DescribeSubnets",
         "ec2:DescribeVpcEndpoints",
         "ec2:DescribeVpcs",
         "ecr:DescribeRepositories",
+        "ecr:GetRegistryScanningConfiguration",
         "iam:GenerateServiceLastAccessedDetails",
         "iam:GetRole",
         "iam:GetServiceLastAccessedDetails",
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:GetKeyPolicy",
+        "kms:ListGrants",
+        "logs:DescribeAccountPolicies",
+        "logs:DescribeDeliveries",
+        "logs:DescribeDeliverySources",
         "logs:DescribeLogGroups",
-        "s3:GetObject",
+        "logs:GetDataProtectionPolicy",
+        "oam:GetSinkPolicy",
+        "oam:ListAttachedLinks",
+        "oam:ListSinks",
+        "organizations:DescribePolicy",
+        "organizations:ListAccounts",
+        "organizations:ListPolicies",
+        "organizations:ListParents",
+        "organizations:ListTargetsForPolicy",
+        "route53resolver:GetFirewallConfig",
+        "route53resolver:ListFirewallDomainLists",
+        "route53resolver:ListFirewallDomains",
+        "route53resolver:ListFirewallRuleGroupAssociations",
+        "route53resolver:ListFirewallRules",
+        "s3:GetBucketPolicy",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetBucketVersioning",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetLifecycleConfiguration",
         "s3:PutObject",
+        "wafv2:GetWebACL",
+        "bedrock-agentcore:GetBatchEvaluation",
+        "bedrock-agentcore:GetEvaluator",
+        "bedrock-agentcore:ListAgentRuntimeEndpoints",
+        "bedrock-agentcore:ListBatchEvaluations",
+        "bedrock-agentcore:ListHarnesses",
+        "bedrock-agentcore:ListPaymentManagers",
+        "ce:GetAnomalySubscriptions",
+        "cloudwatch:ListMetrics",
+        "ec2:GetManagedPrefixListEntries",
+        "events:ListRules",
+        "inspector2:ListCoverage",
+        "logs:DescribeDeliveryDestinations",
+        "network-firewall:DescribeFirewall",
+        "network-firewall:DescribeRuleGroup",
+        "network-firewall:ListFirewalls",
+        "oam:ListLinks",
+        "organizations:DescribeOrganization",
+        "s3:GetAccountPublicAccessBlock",
+        "xray:GetTraceSegmentDestination",
+        "bedrock:GetModelInvocationLoggingConfiguration",
+        "bedrock-agentcore:ListAgentRuntimeVersions",
+        "bedrock-agentcore:ListConsentPortals",
+        "ce:GetAnomalyMonitors",
+        "ec2:DescribeNatGateways",
+        "events:ListTargetsByRule",
+        "logs:DescribeMetricFilters",
+        "network-firewall:DescribeFirewallPolicy",
     },
     "AgentRegistrySecurityAssessmentFunction": {
         "agent-registry:GetRegistry",
@@ -669,6 +774,47 @@ def test_sam_resource_actions_match_reviewed_inventory(template, logical_id):
         f"{os.path.basename(template)} {logical_id} IAM drift. "
         f"Missing: {sorted(expected - actual)}; excess: {sorted(actual - expected)}"
     )
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+def test_agentcore_memory_decrypt_is_confined_to_agentcore(template):
+    """AC-07's kms:Decrypt reaches only keys AgentCore uses on the role's behalf.
+
+    GetMemory on a customer managed key memory with strategies ran kms:Decrypt
+    under the caller through forward access sessions (CloudTrail, 2026-09-27),
+    so the role needs the grant. Without the kms:ViaService condition it would
+    decrypt any ciphertext under any key in the account.
+    """
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    statements = [
+        statement
+        for policy in data["Resources"]["AgentCoreSecurityAssessmentFunction"][
+            "Properties"
+        ]["Policies"]
+        if isinstance(policy, dict)
+        for statement in policy.get("Statement", [])
+    ]
+    decrypting = [
+        statement
+        for statement in statements
+        if "kms:Decrypt" in (statement.get("Action") or [])
+    ]
+
+    assert decrypting == [
+        {
+            "Sid": "AgentCoreMemoryKeyDecrypt",
+            "Effect": "Allow",
+            "Action": ["kms:Decrypt"],
+            "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:kms:*:${AWS::AccountId}:key/*"
+            },
+            "Condition": {
+                "StringLike": {"kms:ViaService": "bedrock-agentcore.*.amazonaws.com"}
+            },
+        }
+    ]
 
 
 @pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
@@ -1140,6 +1286,7 @@ def test_bedrock_managed_policy_is_attached_only_to_the_bedrock_function(templat
         if resource.get("Type") == "AWS::IAM::ManagedPolicy"
     }
     assert managed == {
+        "AgentCoreAssessmentReadsPolicy",
         "BedrockAssessmentReadsPolicy",
         "BedrockAssessmentReadsPolicy2",
         "SageMakerAssessmentReadsPolicy",
@@ -1981,6 +2128,288 @@ def test_sagemaker_managed_policy_2_is_identical_in_both_templates():
     assert blocks[0] == blocks[1]
 
 
+_AGENTCORE_MANAGED_GRANTS = [
+    # AC-49's threat categories and ALERT log read. ListRuleGroups has no
+    # resource type in the service authorization reference (2026-10-04).
+    ("Allow", "network-firewall:ListRuleGroups", json.dumps("*")),
+    (
+        "Allow",
+        "logs:DescribeLogStreams",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:logs:*:${AWS::AccountId}:log-group:*"}
+        ),
+    ),
+    # AC-53's scheduled query reads: ListScheduledQueries has no resource type
+    # in the service authorization reference (2026-10-04), GetScheduledQuery
+    # takes scheduled-query.
+    ("Allow", "logs:ListScheduledQueries", json.dumps("*")),
+    (
+        "Allow",
+        "logs:GetScheduledQuery",
+        json.dumps(
+            {
+                "Fn::Sub": (
+                    "arn:${AWS::Partition}:logs:*:${AWS::AccountId}:scheduled-query:*"
+                )
+            }
+        ),
+    ),
+    # AC-35 reads an API Gateway target's stage export, and nothing else of
+    # API Gateway.
+    (
+        "Allow",
+        "apigateway:GET",
+        json.dumps(
+            {
+                "Fn::Sub": (
+                    "arn:${AWS::Partition}:apigateway:*::/restapis/*/stages/*/exports/*"
+                )
+            }
+        ),
+    ),
+    (
+        "Allow",
+        "logs:DescribeSubscriptionFilters",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:logs:*:${AWS::AccountId}:log-group:*"}
+        ),
+    ),
+    (
+        "Allow",
+        "firehose:DescribeDeliveryStream",
+        json.dumps(
+            {
+                "Fn::Sub": (
+                    "arn:${AWS::Partition}:firehose:*:${AWS::AccountId}:"
+                    "deliverystream/*"
+                )
+            }
+        ),
+    ),
+    (
+        "Allow",
+        "s3:GetBucketObjectLockConfiguration",
+        json.dumps({"Fn::Sub": "arn:${AWS::Partition}:s3:::*"}),
+    ),
+    (
+        "Allow",
+        "s3:GetBucketOwnershipControls",
+        json.dumps({"Fn::Sub": "arn:${AWS::Partition}:s3:::*"}),
+    ),
+    # No resource type in the service authorization reference (2026-10-03).
+    ("Allow", "cloudfront:ListDistributions", json.dumps("*")),
+    ("Allow", "shield:DescribeSubscription", json.dumps("*")),
+    ("Allow", "shield:GetSubscriptionState", json.dumps("*")),
+    ("Allow", "shield:ListProtections", json.dumps("*")),
+    (
+        "Allow",
+        "ecr:DescribeImages",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:ecr:*:${AWS::AccountId}:repository/*"}
+        ),
+    ),
+    # No resource type in the service authorization reference (2026-10-03).
+    ("Allow", "logs:DescribeDestinations", json.dumps("*")),
+    (
+        "Allow",
+        "network-firewall:DescribeLoggingConfiguration",
+        json.dumps(
+            {
+                "Fn::Sub": (
+                    "arn:${AWS::Partition}:network-firewall:*:${AWS::AccountId}:"
+                    "firewall/*"
+                )
+            }
+        ),
+    ),
+    # No resource type in the service authorization reference (2026-10-03).
+    ("Allow", "access-analyzer:ListAnalyzers", json.dumps("*")),
+    (
+        "Allow",
+        "bedrock-agentcore:ListTagsForResource",
+        json.dumps(
+            [
+                {
+                    "Fn::Sub": (
+                        "arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:"
+                        "evaluator/*"
+                    )
+                },
+                {
+                    "Fn::Sub": (
+                        "arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:"
+                        "online-evaluation-config/*"
+                    )
+                },
+            ]
+        ),
+    ),
+    (
+        "Allow",
+        "logs:ListTagsForResource",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:logs:*:${AWS::AccountId}:log-group:*"}
+        ),
+    ),
+    (
+        "Allow",
+        "ecr:BatchGetImage",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:ecr:*:${AWS::AccountId}:repository/*"}
+        ),
+    ),
+    (
+        "Allow",
+        "ecr:GetDownloadUrlForLayer",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:ecr:*:${AWS::AccountId}:repository/*"}
+        ),
+    ),
+    # Moved intact from the inline policy, prefix scope unchanged.
+    (
+        "Allow",
+        "s3:GetObject",
+        json.dumps({"Fn::Sub": "${AIMLAssessmentBucket.Arn}/permissions_cache_*.json"}),
+    ),
+    # AC-49's transit gateway hop. The two Describe actions have no resource
+    # type in the service authorization reference (2026-10-04);
+    # SearchTransitGatewayRoutes takes transit-gateway-route-table.
+    ("Allow", "ec2:DescribeTransitGatewayAttachments", json.dumps("*")),
+    ("Allow", "ec2:DescribeTransitGatewayVpcAttachments", json.dumps("*")),
+    (
+        "Allow",
+        "ec2:SearchTransitGatewayRoutes",
+        json.dumps(
+            {
+                "Fn::Sub": (
+                    "arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:"
+                    "transit-gateway-route-table/*"
+                )
+            }
+        ),
+    ),
+    # AC-34 code archives and AC-35 tool schemas, read by exact key.
+    (
+        "Allow",
+        "s3:GetObject",
+        json.dumps({"Fn::Sub": "arn:${AWS::Partition}:s3:::*/*"}),
+    ),
+    # AC-34 reads a code archive pinned by versionId with VersionId, which
+    # the GetObject API reference says needs s3:GetObjectVersion; same scope.
+    (
+        "Allow",
+        "s3:GetObjectVersion",
+        json.dumps({"Fn::Sub": "arn:${AWS::Partition}:s3:::*/*"}),
+    ),
+    # Moved from the inline policy with its custom-tool ARNs, plus the AWS
+    # managed browser and Code Interpreter AC-01 and AC-06 read (RT-08, RT-09).
+    *(
+        (
+            "Allow",
+            action,
+            json.dumps(
+                [
+                    {"Fn::Sub": f"arn:${{AWS::Partition}}:bedrock-agentcore:*:{arn}"}
+                    for arn in (
+                        "${AWS::AccountId}:code-interpreter-custom/*",
+                        "${AWS::AccountId}:browser-custom/*",
+                        "aws:code-interpreter/*",
+                        "aws:browser/*",
+                    )
+                ],
+                sort_keys=True,
+            ),
+        )
+        for action in (
+            "bedrock-agentcore:GetCodeInterpreter",
+            "bedrock-agentcore:GetBrowser",
+        )
+    ),
+]
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+@pytest.mark.parametrize("partition", ["aws", "aws-us-gov"])
+def test_agentcore_managed_policy_renders_within_its_budget(template, partition):
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    document = data["Resources"]["AgentCoreAssessmentReadsPolicy"]["Properties"][
+        "PolicyDocument"
+    ]
+    rendered = json.dumps(
+        _render_policy_intrinsics(document, partition), separators=(",", ":")
+    )
+    assert len(rendered) <= _MANAGED_POLICY_BUDGET, (
+        f"{os.path.basename(template)} AgentCoreAssessmentReadsPolicy renders to "
+        f"{len(rendered):,} characters in {partition}; keep it below the "
+        f"{_MANAGED_POLICY_BUDGET:,}-character project budget and never exceed "
+        f"IAM's {_MANAGED_POLICY_LIMIT:,}-character managed policy limit."
+    )
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+def test_agentcore_managed_policy_holds_exactly_the_approved_grants(template):
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    resource = data["Resources"]["AgentCoreAssessmentReadsPolicy"]
+    assert resource["Type"] == "AWS::IAM::ManagedPolicy"
+    # No ManagedPolicyName: CloudFormation names it <stack>-<logical id>-<suffix>,
+    # which the deploy role's policy/aiml-security-* and policy/aiml-sec-*
+    # patterns admit for the stack names this project deploys.
+    assert "ManagedPolicyName" not in resource["Properties"]
+    document = resource["Properties"]["PolicyDocument"]
+    assert all(
+        set(s) <= {"Sid", "Effect", "Action", "Resource"} for s in document["Statement"]
+    )
+    grants = sorted(
+        (
+            statement["Effect"],
+            action,
+            json.dumps(statement["Resource"], sort_keys=True),
+        )
+        for statement in document["Statement"]
+        for action in statement["Action"]
+    )
+    assert grants == sorted(_AGENTCORE_MANAGED_GRANTS)
+    inline = _actions(template, "AgentCoreSecurityAssessmentFunction")
+    assert not {action for _, action, _ in grants} & inline
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+def test_agentcore_managed_policy_is_attached_only_to_the_agentcore_function(template):
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    properties = data["Resources"]["AgentCoreAssessmentReadsPolicy"]["Properties"]
+    assert not {"Roles", "Users", "Groups"} & set(properties)
+    referencing = {
+        logical_id
+        for logical_id, resource in data["Resources"].items()
+        if logical_id != "AgentCoreAssessmentReadsPolicy"
+        and _references(resource, "AgentCoreAssessmentReadsPolicy")
+    }
+    assert referencing == {"AgentCoreSecurityAssessmentFunction"}
+    policies = data["Resources"]["AgentCoreSecurityAssessmentFunction"]["Properties"][
+        "Policies"
+    ]
+    references = [
+        p for p in policies if _references(p, "AgentCoreAssessmentReadsPolicy")
+    ]
+    assert references == [{"Fn::Ref": "AgentCoreAssessmentReadsPolicy"}]
+    assert not _references(data.get("Outputs", {}), "AgentCoreAssessmentReadsPolicy")
+
+
+def test_agentcore_managed_policy_is_identical_in_both_templates():
+    documents = []
+    for template in _SAM_TEMPLATES:
+        with open(template, encoding="utf-8") as template_file:
+            data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+        documents.append(data["Resources"]["AgentCoreAssessmentReadsPolicy"])
+    assert documents[0] == documents[1]
+
+
 _ARTIFACT_PREFIXES = {
     "IAMPermissionCachingFunction": ("permissions_cache_*.json",),
     "GenerateConsolidatedReportFunction": (
@@ -2023,10 +2452,20 @@ _ARTIFACT_PREFIXES = {
 }
 
 
+_ARTIFACT_MANAGED_POLICIES = {
+    "AgentCoreSecurityAssessmentFunction": ("AgentCoreAssessmentReadsPolicy",),
+}
+
+
 @pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
 @pytest.mark.parametrize("logical_id", sorted(_ARTIFACT_PREFIXES))
 def test_assessment_artifact_access_is_prefix_scoped(template, logical_id):
-    block = _resource_block(template, logical_id)
+    # A function's grants on the assessment bucket include those of the
+    # managed policy attached to it.
+    block = _resource_block(template, logical_id) + "".join(
+        _resource_block(template, policy)
+        for policy in _ARTIFACT_MANAGED_POLICIES.get(logical_id, ())
+    )
     assert "${AIMLAssessmentBucket.Arn}/*" not in block
     for prefix in _ARTIFACT_PREFIXES[logical_id]:
         assert f"${{AIMLAssessmentBucket.Arn}}/{prefix}" in block
@@ -2070,10 +2509,11 @@ def test_service_last_access_generation_is_identity_scoped(template, logical_id)
     assert "iam:GetServiceLastAccessedDetails" in _unconditioned_wildcard_actions(
         template, logical_id
     )
-    # The Bedrock role folds its unconditioned '*' reads into one statement
-    # to stay under the inline policy budget.
+    # The Bedrock and AgentCore roles fold their unconditioned '*' reads into
+    # one statement to stay under the inline policy budget.
     results_sid = {
         "BedrockSecurityAssessmentFunction": "AccountReadsOnWildcard",
+        "AgentCoreSecurityAssessmentFunction": "AgentCoreReadsWithoutResourceType",
     }.get(logical_id, "IAMServiceLastAccessResults")
     results = _statement_block(template, logical_id, results_sid)
     assert "iam:GetServiceLastAccessedDetails" in results
@@ -2377,15 +2817,18 @@ def test_sagemaker_foundation_reads_wildcard_only_where_iam_has_no_resource_type
 
 @pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
 def test_agentcore_resource_reads_and_metric_writes_are_constrained(template):
-    inventory = _statement_block(
+    wildcard = _unconditioned_wildcard_actions(
+        template, "AgentCoreSecurityAssessmentFunction"
+    )
+    merged = _statement_block(
         template,
         "AgentCoreSecurityAssessmentFunction",
-        "AgentCoreAccountInventoryPermissions",
+        "AgentCoreReadsWithoutResourceType",
     )
-    assert "bedrock-agentcore:ListAgentRuntimes" in inventory
-    assert "bedrock-agentcore:GetAgentRuntime" not in inventory
-    assert "bedrock-agentcore:ListPolicies" not in inventory
-    assert re.search(r"Resource:\s+['\"]\*['\"]", inventory)
+    assert "bedrock-agentcore:ListAgentRuntimes" in wildcard
+    assert "bedrock-agentcore:GetAgentRuntime" not in wildcard
+    assert "bedrock-agentcore:ListPolicies" not in wildcard
+    assert re.search(r"Resource:\s+['\"]\*['\"]", merged)
 
     reads = _statement_block(
         template,
@@ -2409,14 +2852,9 @@ def test_agentcore_resource_reads_and_metric_writes_are_constrained(template):
         assert resource in reads
     assert not re.search(r"Resource:\s+['\"]\*['\"]", reads)
 
-    token_vault = _statement_block(
-        template,
-        "AgentCoreSecurityAssessmentFunction",
-        "AgentCoreTokenVaultRead",
-    )
-    assert "bedrock-agentcore:GetTokenVault" in token_vault
-    assert re.search(r"Resource:\s+['\"]\*['\"]", token_vault)
-    assert "token-vault/" not in token_vault
+    assert "bedrock-agentcore:GetTokenVault" in wildcard
+    assert re.search(r"Resource:\s+['\"]\*['\"]", merged)
+    assert "token-vault/" not in merged
 
     service_role = _statement_block(
         template, "AgentCoreSecurityAssessmentFunction", "IAMRolePermissions"
@@ -2443,6 +2881,241 @@ def test_agentcore_resource_reads_and_metric_writes_are_constrained(template):
     assert "ecr:DescribeRepositories" in repositories
     assert "ecr:*:${AWS::AccountId}:repository/*" in repositories
     assert not re.search(r"Resource:\s+['\"]\*['\"]", repositories)
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+def test_agentcore_observability_and_governance_reads_are_scoped_where_iam_allows(
+    template,
+):
+    """The AgentCore telemetry and policy reads wildcard only the enumerations.
+
+    Each enumeration below has no resource type in the IAM service authorization
+    reference, so an ARN on it denies the call. The read that follows it does take
+    a resource, and is scoped. Splitting them keeps the wildcard on the statement
+    that cannot avoid it instead of on the statement that can.
+    """
+    wildcard_enumerations = {
+        "CloudTrailTrailInventory": ("cloudtrail:ListTrails",),
+        "LogsDeliveryInventory": (
+            "logs:DescribeDeliverySources",
+            "logs:DescribeDeliveries",
+        ),
+        "LogsAccountPolicyInventory": ("logs:DescribeAccountPolicies",),
+        "ObservabilitySinkInventory": ("oam:ListSinks",),
+        "OrganizationsInventoryPermissions": ("organizations:ListPolicies",),
+    }
+    # Keyed by the Sid each group held before the fold into
+    # AgentCoreReadsWithoutResourceType.
+    wildcard = _unconditioned_wildcard_actions(
+        template, "AgentCoreSecurityAssessmentFunction"
+    )
+    merged = _statement_block(
+        template,
+        "AgentCoreSecurityAssessmentFunction",
+        "AgentCoreReadsWithoutResourceType",
+    )
+    for former_sid, actions in wildcard_enumerations.items():
+        for action in actions:
+            assert action in wildcard, former_sid
+        assert re.search(r"Resource:\s+['\"]\*['\"]", merged)
+
+    scoped_reads = {
+        "CloudTrailEventSelectorRead": (
+            "cloudtrail:GetEventSelectors",
+            "cloudtrail:*:${AWS::AccountId}:trail/*",
+        ),
+        "AgentCoreIdentityInventory": (
+            "bedrock-agentcore:ListWorkloadIdentities",
+            "bedrock-agentcore:*:${AWS::AccountId}:workload-identity-directory/*",
+        ),
+        "LogsDataProtectionPolicyRead": (
+            "logs:GetDataProtectionPolicy",
+            "logs:*:${AWS::AccountId}:log-group:*",
+        ),
+        "ObservabilitySinkPolicyRead": (
+            "oam:GetSinkPolicy",
+            "oam:*:${AWS::AccountId}:sink/*",
+        ),
+        "PolicyEngineKeyStateRead": (
+            "kms:ListGrants",
+            "kms:*:${AWS::AccountId}:key/*",
+        ),
+        "OrganizationsPolicyRead": (
+            "organizations:DescribePolicy",
+            "organizations::*:policy/*/*/*",
+        ),
+    }
+    for sid, (action, resource) in scoped_reads.items():
+        statement = _statement_block(
+            template, "AgentCoreSecurityAssessmentFunction", sid
+        )
+        assert action in statement
+        assert resource in statement
+        assert not re.search(r"Resource:\s+['\"]\*['\"]", statement)
+
+    # AC-26's key policy read shares the key state statement's key/* resource.
+    key_state = _statement_block(
+        template, "AgentCoreSecurityAssessmentFunction", "PolicyEngineKeyStateRead"
+    )
+    assert "kms:GetKeyPolicy" in key_state
+    assert "kms:*:${AWS::AccountId}:key/*" in key_state
+    assert not re.search(r"Resource:\s+['\"]\*['\"]", key_state)
+
+    # AC-18 reads each trail's logging state beside its selectors, on the same
+    # trail ARN, and lists the credential providers in the token vault.
+    trail_read = _statement_block(
+        template, "AgentCoreSecurityAssessmentFunction", "CloudTrailEventSelectorRead"
+    )
+    assert "cloudtrail:GetTrailStatus" in trail_read
+    identity = _statement_block(
+        template, "AgentCoreSecurityAssessmentFunction", "AgentCoreIdentityInventory"
+    )
+    assert "bedrock-agentcore:ListOauth2CredentialProviders" in identity
+    assert "bedrock-agentcore:ListApiKeyCredentialProviders" in identity
+    assert "bedrock-agentcore:*:${AWS::AccountId}:token-vault/*" in identity
+
+    # DescribeSecurityGroups has no resource-level authorization either, so it
+    # is granted on '*' with no condition.
+    assert "ec2:DescribeSecurityGroups" in wildcard
+    assert re.search(r"Resource:\s+['\"]\*['\"]", merged)
+
+    # The gateway execution role's name is chosen by whoever created the gateway,
+    # so the trust read covers role/* in this account and no other account.
+    gateway_role = _statement_block(
+        template, "AgentCoreSecurityAssessmentFunction", "AgentCoreGatewayRoleTrustRead"
+    )
+    assert "iam:GetRole" in gateway_role
+    assert "iam::${AWS::AccountId}:role/*" in gateway_role
+    assert "iam::*:role/" not in gateway_role
+    assert not re.search(r"Resource:\s+['\"]\*['\"]", gateway_role)
+
+    # AC-06 reads each recording bucket, whose name the customer chose, so the
+    # grant covers bucket ARNs and nothing wider.
+    recording = _statement_block(
+        template, "AgentCoreSecurityAssessmentFunction", "BrowserRecordingBucketRead"
+    )
+    for action in (
+        "s3:GetEncryptionConfiguration",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetBucketPolicy",
+        "s3:GetLifecycleConfiguration",
+        "s3:GetBucketVersioning",
+    ):
+        assert action in recording
+    assert "Resource: !Sub 'arn:${AWS::Partition}:s3:::*'" in recording
+    assert "s3:GetAccountPublicAccessBlock" not in recording
+    assert not re.search(r"Resource:\s+['\"]\*['\"]", recording)
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+def test_agentcore_round2_reads_wildcard_only_enumerations(template):
+    """The round-2 AgentCore reads take '*' only where no resource is named.
+
+    The first group's actions have no resource type in the service
+    authorization reference. The second group's actions list every
+    resource of their type, so the request names no ARN to match. Both are
+    granted on '*' with no condition. Every per-resource read is scoped to
+    its resource type.
+    """
+    unscoped = _unconditioned_wildcard_actions(
+        template, "AgentCoreSecurityAssessmentFunction"
+    )
+    merged = _statement_block(
+        template,
+        "AgentCoreSecurityAssessmentFunction",
+        "AgentCoreReadsWithoutResourceType",
+    )
+    for action in (
+        "xray:GetTraceSegmentDestination",
+        "logs:DescribeDeliveryDestinations",
+        "organizations:DescribeOrganization",
+        "oam:ListLinks",
+        "s3:GetAccountPublicAccessBlock",
+        "events:ListRules",
+        "inspector2:ListCoverage",
+        "bedrock-agentcore:ListPaymentManagers",
+        "bedrock-agentcore:ListHarnesses",
+        "bedrock-agentcore:ListBatchEvaluations",
+        "bedrock-agentcore:ListAgentRuntimeEndpoints",
+        "bedrock-agentcore:ListAgentRuntimeVersions",
+        "bedrock-agentcore:ListConsentPortals",
+        "cloudtrail:ListEventDataStores",
+        "organizations:ListAccounts",
+        "ec2:DescribeNatGateways",
+        "bedrock:GetModelInvocationLoggingConfiguration",
+    ):
+        assert action in unscoped
+    assert re.search(r"Resource:\s+['\"]\*['\"]", merged)
+
+    for action in (
+        "network-firewall:ListFirewalls",
+        "cloudwatch:ListMetrics",
+        "ce:GetAnomalySubscriptions",
+    ):
+        assert action in unscoped
+    assert not any(a.startswith("network-firewall:Describe") for a in unscoped)
+
+    scoped = {
+        "NetworkFirewallRead": (
+            (
+                "network-firewall:DescribeFirewall",
+                "network-firewall:DescribeRuleGroup",
+            ),
+            (
+                "network-firewall:*:${AWS::AccountId}:firewall/*",
+                "network-firewall:*:*:stateful-rulegroup/*",
+            ),
+        ),
+        # Its own statement, so the policy ARN pairs with no other action.
+        "FirewallPolicyRead": (
+            ("network-firewall:DescribeFirewallPolicy",),
+            ("network-firewall:*:${AWS::AccountId}:firewall-policy/*",),
+        ),
+        "PrefixListEntryRead": (
+            ("ec2:GetManagedPrefixListEntries",),
+            ("ec2:*:*:prefix-list/*",),
+        ),
+        "AgentCoreEvaluationRead": (
+            ("bedrock-agentcore:GetEvaluator", "bedrock-agentcore:GetBatchEvaluation"),
+            (
+                "bedrock-agentcore:*:${AWS::AccountId}:evaluator/*",
+                "bedrock-agentcore:*:${AWS::AccountId}:batch-evaluate/*",
+            ),
+        ),
+        # rule/* covers both service reference formats, rule/${RuleName} on the
+        # default bus and rule/${EventBusName}/${RuleName} on a custom one.
+        "EventRuleTargetRead": (
+            ("events:ListTargetsByRule",),
+            ("events:*:${AWS::AccountId}:rule/*",),
+        ),
+        "MetricFilterRead": (
+            ("logs:DescribeMetricFilters",),
+            ("logs:*:${AWS::AccountId}:log-group:*",),
+        ),
+        "CostAnomalyMonitorRead": (
+            ("ce:GetAnomalyMonitors",),
+            ("ce::${AWS::AccountId}:anomalymonitor/*",),
+        ),
+    }
+    for sid, (actions, resources) in scoped.items():
+        statement = _statement_block(
+            template, "AgentCoreSecurityAssessmentFunction", sid
+        )
+        for action in actions:
+            assert action in statement
+        for resource in resources:
+            assert resource in statement
+        assert not re.search(r"Resource:\s+['\"]\*['\"]", statement)
+
+    firewall = _statement_block(
+        template, "AgentCoreSecurityAssessmentFunction", "NetworkFirewallRead"
+    )
+    assert "firewall-policy/" not in firewall
+    assert "DescribeFirewallPolicy" not in firewall
+
+    # Not approved, so the AgentCore role must not hold it.
+    agentcore = _actions(template, "AgentCoreSecurityAssessmentFunction")
+    assert "wafv2:GetSampledRequests" not in agentcore
 
 
 @pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
@@ -2494,6 +3167,11 @@ def test_assessment_reads_wildcard_only_where_iam_has_no_resource_type(template)
         ("SagemakerSecurityAssessmentFunction", "EC2SubnetExposureInventory"): (
             "ec2:DescribeSubnets",
             "ec2:DescribeRouteTables",
+        ),
+        ("AgentCoreSecurityAssessmentFunction", "AgentCoreReadsWithoutResourceType"): (
+            "route53resolver:ListFirewallRuleGroupAssociations",
+            "route53resolver:ListFirewallDomainLists",
+            "ecr:GetRegistryScanningConfiguration",
         ),
     }
     for (logical_id, sid), actions in wildcard.items():
@@ -2582,6 +3260,26 @@ def test_assessment_reads_wildcard_only_where_iam_has_no_resource_type(template)
         ("BedrockSecurityAssessmentFunction", "BackupVaultLockRead"): (
             "backup:DescribeRecoveryPoint",
             "backup:*:${AWS::AccountId}:recovery-point:*",
+        ),
+        ("AgentCoreSecurityAssessmentFunction", "AgentCoreGatewayWebACLRead"): (
+            "wafv2:GetWebACL",
+            "wafv2:*:${AWS::AccountId}:regional/webacl/*/*",
+        ),
+        ("AgentCoreSecurityAssessmentFunction", "DNSFirewallRuleRead"): (
+            "route53resolver:ListFirewallRules",
+            "route53resolver:*:*:firewall-rule-group/*",
+        ),
+        ("AgentCoreSecurityAssessmentFunction", "DNSFirewallDomainRead"): (
+            "route53resolver:ListFirewallDomains",
+            "route53resolver:*:*:firewall-domain-list/*",
+        ),
+        ("AgentCoreSecurityAssessmentFunction", "DNSFirewallConfigRead"): (
+            "route53resolver:GetFirewallConfig",
+            "route53resolver:*:${AWS::AccountId}:firewall-config/*",
+        ),
+        ("AgentCoreSecurityAssessmentFunction", "CognitoUserPoolRead"): (
+            "cognito-idp:DescribeUserPoolClient",
+            "cognito-idp:*:${AWS::AccountId}:userpool/*",
         ),
     }
     for (logical_id, sid), (*actions, resource) in scoped.items():
@@ -2708,3 +3406,38 @@ def test_responsible_ai_non_bedrock_resource_reads_are_arn_scoped(template):
     assert "organizations::*:policy/*/*/*" in organizations
     assert "organizations::aws:policy/*/*" in organizations
     assert not re.search(r"Resource:\s+['\"]\*['\"]", organizations)
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+def test_agentcore_reads_alarms_on_star_so_composites_are_returned(template):
+    """DescribeAlarms omits composite alarms under a grant narrower than '*'
+    (API_DescribeAlarms), which would fail every alarm actioned only through
+    a composite. The '*' grant must be the role's only DescribeAlarms grant."""
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    statements = [
+        statement
+        for policy in data["Resources"]["AgentCoreSecurityAssessmentFunction"][
+            "Properties"
+        ]["Policies"]
+        if isinstance(policy, dict)
+        for statement in policy.get("Statement", [])
+    ]
+    reading = [
+        statement
+        for statement in statements
+        if "cloudwatch:DescribeAlarms" in (statement.get("Action") or [])
+    ]
+
+    assert len(reading) == 1
+    assert reading[0]["Sid"] == "AgentCoreReadsWithoutResourceType"
+    assert reading[0]["Effect"] == "Allow"
+    assert reading[0]["Resource"] == "*"
+    assert "Condition" not in reading[0]
+    block = _statement_block(
+        template,
+        "AgentCoreSecurityAssessmentFunction",
+        "AgentCoreReadsWithoutResourceType",
+    )
+    assert "API_DescribeAlarms" in block

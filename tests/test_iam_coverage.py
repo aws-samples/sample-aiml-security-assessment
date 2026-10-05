@@ -174,6 +174,30 @@ REQUIRED_AGENTCORE_ACTIONS = {
     "bedrock-agentcore:ListPolicyEngines",
     "bedrock-agentcore:GetPolicyEngine",
     "bedrock-agentcore:GetResourcePolicy",
+    "bedrock-agentcore:ListGatewayRateLimits",
+    "bedrock-agentcore:ListGatewayTargets",
+    "bedrock-agentcore:GetGatewayTarget",
+    # AC-18 counts the identity resources and reads each trail's region and
+    # logging state.
+    "bedrock-agentcore:ListWorkloadIdentities",
+    "bedrock-agentcore:ListOauth2CredentialProviders",
+    "bedrock-agentcore:ListApiKeyCredentialProviders",
+    "cloudtrail:GetTrail",
+    "cloudtrail:GetTrailStatus",
+    # AC-18 reads the CloudTrail Lake event data stores beside the trails.
+    "cloudtrail:ListEventDataStores",
+    "cloudtrail:GetEventDataStore",
+    # AC-22 lists each sink's attached links and the organization's accounts.
+    "oam:ListAttachedLinks",
+    "organizations:ListAccounts",
+    # AC-50 reads the registry scanning configuration.
+    "ecr:GetRegistryScanningConfiguration",
+    # AC-52 reads the Cognito user pools AgentCore JWT authorizers name.
+    "cognito-idp:DescribeUserPool",
+    "cognito-idp:ListUserPoolClients",
+    "cognito-idp:DescribeUserPoolClient",
+    # AC-40 reads the alarms on evaluation scores.
+    "cloudwatch:DescribeAlarms",
 }
 
 REQUIRED_AGENT_REGISTRY_ACTIONS = {
@@ -397,6 +421,27 @@ def test_required_agentcore_actions_are_granted_to_the_agentcore_function(templa
         "grant present elsewhere in this file does not help this function at "
         "runtime — add the action(s) to this function's own Policies block."
     )
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=lambda p: os.path.basename(p))
+def test_agentcore_managed_policy_reads_are_granted(template):
+    # AC-26 reads the archive chain and AC-06 the recording bucket's Object
+    # Ownership from the AgentCore function. The Bedrock
+    # function's own logs:DescribeSubscriptionFilters grant does not reach it,
+    # and the inline policy has no room, so the reads live in the managed
+    # policy attached only to the AgentCore function.
+    granted = _granted_actions_for_resource(template, "AgentCoreAssessmentReadsPolicy")
+    missing = sorted(
+        a
+        for a in (
+            "logs:DescribeSubscriptionFilters",
+            "firehose:DescribeDeliveryStream",
+            "s3:GetBucketObjectLockConfiguration",
+            "s3:GetBucketOwnershipControls",
+        )
+        if a not in granted
+    )
+    assert not missing
 
 
 @pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=lambda p: os.path.basename(p))

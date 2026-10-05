@@ -1,4 +1,4 @@
-"""AIR-FND-IAM-09 merged read-and-write leg of BR-01 and SM-02.
+"""AIR-FND-IAM-09 merged read-and-write leg of BR-01, SM-02 and AC-02.
 
 Each check reports a wildcard or NotAction Allow that grants both a read and a
 write action on one resource type of its namespace, as the service
@@ -43,6 +43,7 @@ def _load(package, module_name):
 
 bedrock_app = _load("bedrock_assessments", "iam09_bedrock_app")
 sagemaker_app = _load("sagemaker_assessments", "iam09_sagemaker_app")
+agentcore_app = _load("agentcore_assessments", "iam09_agentcore_app")
 
 
 def _sagemaker_run(cache):
@@ -104,6 +105,23 @@ PACKAGES = [
         (
             "SageMaker Read and Write Merged in One Grant",
             "SageMaker Service-Wide Grant in Customer Policy",
+        ),
+    ),
+    Package(
+        "AC-02",
+        lambda cache: agentcore_app.check_agentcore_full_access_roles(cache),
+        "AgentCore Read and Write Merged in One Grant",
+        "bedrock-agentcore",
+        "bedrock-agentcore:*AgentRuntime",
+        "bedrock-agentcore:List*",
+        (
+            "bedrock-agentcore:*AgentRuntime",
+            "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/r1",
+        ),
+        agentcore_app,
+        (
+            "AgentCore Read and Write Merged in One Grant",
+            "AgentCore IAM Full Access Check",
         ),
     ),
 ]
@@ -302,6 +320,27 @@ class TestResourceScope:
         assert [row["Status"] for row in _merged(pkg, rows)] == ["Failed"]
 
 
+class TestAgentCoreGetPrefix:
+    """``bedrock-agentcore:Get*`` includes GetWorkloadAccessToken, which the
+    service reference classifies as Write on workload-identity."""
+
+    def test_get_star_on_every_resource_merges_workload_identity(self):
+        rows = agentcore_app.check_agentcore_full_access_roles(
+            _cache(roles={"getter": _identity(_allow("bedrock-agentcore:Get*"))})
+        )
+        (merged,) = [r for r in rows if r["Finding"] == PACKAGES[2].merged]
+        assert "GetWorkloadAccessToken" in merged["Finding_Details"]
+
+    def test_get_star_scoped_to_a_runtime_reaches_no_workload_identity(self):
+        runtime = "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/r1"
+        rows = agentcore_app.check_agentcore_full_access_roles(
+            _cache(
+                roles={"getter": _identity(_allow("bedrock-agentcore:Get*", runtime))}
+            )
+        )
+        assert [r["Status"] for r in rows] == ["Passed"]
+
+
 class TestPermissionsBoundary:
     def test_a_boundary_outside_the_namespace_removes_the_grant(self, pkg):
         outside = _boundary(_allow("logs:PutLogEvents"))
@@ -491,6 +530,7 @@ def test_the_access_level_tables_are_generated_from_the_service_reference():
     for package in (
         "bedrock_assessments",
         "sagemaker_assessments",
+        "agentcore_assessments",
     ):
         with open(
             os.path.join(_SECURITY, package, "iam_access_levels.json"), encoding="utf-8"
