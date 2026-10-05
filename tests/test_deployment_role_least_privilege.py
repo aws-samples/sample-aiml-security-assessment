@@ -283,3 +283,71 @@ def test_multi_account_assume_role_uses_the_configured_member_role_name():
     )
     assert "arn:${AWS::Partition}:iam::*:role/aiml-security-*" not in text
     assert "arn:${AWS::Partition}:iam::*:role/aiml-sec-*" not in text
+
+
+# The AWS::IAM::ManagedPolicy handler permissions for create, read, update and
+# delete, from `aws cloudformation describe-type --type-name
+# AWS::IAM::ManagedPolicy`, less the group and user attachments these stacks
+# never make.
+_MANAGED_POLICY_HANDLER_ACTIONS = {
+    "iam:CreatePolicy",
+    "iam:DeletePolicy",
+    "iam:GetPolicy",
+    "iam:GetPolicyVersion",
+    "iam:ListPolicyVersions",
+    "iam:CreatePolicyVersion",
+    "iam:DeletePolicyVersion",
+    "iam:ListEntitiesForPolicy",
+}
+_SAM_TEMPLATES = (
+    _REPO_ROOT / "aiml-security-assessment" / "template.yaml",
+    _REPO_ROOT / "aiml-security-assessment" / "template-multi-account.yaml",
+)
+_STACK_POLICY_ARNS = (
+    "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-security-*",
+    "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-sec-*",
+)
+
+
+def _statement_actions(statement: str) -> set[str]:
+    return set(re.findall(r"-\s+(iam:[A-Za-z]+)", statement))
+
+
+def test_deployment_roles_can_manage_the_stacks_managed_policies():
+    """A SAM managed policy fails the deploy unless every deploy role can run
+    its CloudFormation handler and attach it to the stack's roles."""
+    assert any(
+        "Type: AWS::IAM::ManagedPolicy" in _text(template)
+        for template in _SAM_TEMPLATES
+    )
+    for template, lifecycle_sid, attach_sid in (
+        (
+            _MEMBER_TEMPLATE,
+            "AssessmentManagedPolicyLifecycle",
+            "AssessmentRoleBasicLoggingPolicy",
+        ),
+        (_SINGLE_TEMPLATE, "IAMManagedPolicyLifecycle", "IAMBasicLoggingPolicy"),
+        (_MULTI_TEMPLATE, "IAMManagedPolicyLifecycle", "IAMBasicLoggingPolicy"),
+    ):
+        text = _text(template)
+        lifecycle = _statement_by_sid(text, lifecycle_sid)
+        assert _statement_actions(lifecycle) == _MANAGED_POLICY_HANDLER_ACTIONS, (
+            template
+        )
+        resources = re.findall(r"!Sub ['\"]([^'\"]+)['\"]", lifecycle)
+        assert sorted(resources) == sorted(_STACK_POLICY_ARNS), template
+        assert "Condition" not in lifecycle
+
+        attach = _statement_by_sid(text, attach_sid)
+        assert _statement_actions(attach) == {
+            "iam:AttachRolePolicy",
+            "iam:DetachRolePolicy",
+        }
+        condition = attach[attach.index("Condition:") :]
+        attachable = re.findall(r"!Sub ['\"]([^'\"]+)['\"]", condition)
+        assert sorted(attachable) == sorted(
+            (
+                "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+                *_STACK_POLICY_ARNS,
+            )
+        ), template

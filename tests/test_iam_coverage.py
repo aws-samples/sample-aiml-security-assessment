@@ -358,6 +358,15 @@ def test_required_sagemaker_actions_are_granted_to_the_sagemaker_function(templa
 
 
 @pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=lambda p: os.path.basename(p))
+def test_br47_br52_browser_read_is_granted_to_the_bedrock_function(template):
+    # BR-47 and BR-52 call GetBrowser from the Bedrock function. The AgentCore
+    # function's own GetBrowser grant does not reach it, which read
+    # AccessDeniedException live and left both bucket lists incomplete.
+    granted = _granted_actions_for_resource(template, "BedrockAssessmentReadsPolicy")
+    assert "bedrock-agentcore:GetBrowser" in granted
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=lambda p: os.path.basename(p))
 def test_required_agentcore_actions_are_granted_to_the_agentcore_function(template):
     granted = _granted_actions_for_resource(template, _AGENTCORE_FUNCTION_ID)
     missing = sorted(a for a in REQUIRED_AGENTCORE_ACTIONS if a not in granted)
@@ -501,6 +510,9 @@ def test_runtime_guidance_does_not_use_invalid_iam_identifiers():
 # for permissions. A new IAM-shaped token in remediation text must be reviewed
 # and added deliberately.
 _VERIFIED_REMEDIATION_IAM_ACTIONS = {
+    # aoss:APIAccessAll (resource type Collection) was read from the aoss
+    # service reference JSON on 2026-10-04.
+    "aoss:APIAccessAll",
     "aoss:ListCollections",
     "agent-registry:GetRegistry",
     "agent-registry:ListRegistries",
@@ -518,6 +530,10 @@ _VERIFIED_REMEDIATION_IAM_ACTIONS = {
     "bedrock-agentcore:ListGateways",
     "bedrock-agentcore:ListOnlineEvaluationConfigs",
     "bedrock-agentcore:ListPolicies",
+    # bedrock:ApplyGuardrail (IsWrite false, resource types guardrail and
+    # guardrail-profile) was read from the bedrock service reference JSON on
+    # 2026-10-04.
+    "bedrock:ApplyGuardrail",
     "bedrock:CreateModelInvocationJob",
     "bedrock:CreatePrompt",
     "bedrock:GetAgent",
@@ -562,6 +578,7 @@ _VERIFIED_REMEDIATION_IAM_ACTIONS = {
     "macie2:GetAutomatedDiscoveryConfiguration",
     "macie2:GetMacieSession",
     "organizations:DescribeOrganization",
+    "organizations:ListParents",
     "organizations:ListPolicies",
     "organizations:ListRoots",
     "organizations:ListTargetsForPolicy",
@@ -574,11 +591,706 @@ _VERIFIED_REMEDIATION_IAM_ACTIONS = {
     "servicequotas:ListServiceQuotas",
 }
 
+# Verified from the vendored service model's own permission documentation
+# (botocore s3vectors 2025-07-15: "You must have the
+# s3vectors:PutVectorBucketPolicy permission to use this operation"), not from
+# AWS Knowledge like the block above.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"s3vectors:PutVectorBucketPolicy"}
+
+# Verified on 2026-09-27 against the Service Authorization Reference JSON
+# (servicereference.us-east-1.amazonaws.com/v1/<service>/<service>.json): the
+# bedrock-mantle file lists CreateInference with the bedrock-mantle:Model action
+# condition key, and the s3 file lists GetObject.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-mantle:CreateInference",
+    "s3:GetObject",
+}
+
+# Verified on 2026-09-27 against the same Service Authorization Reference JSON:
+# the logs file lists AssociateKmsKey on the log-group resource.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"logs:AssociateKmsKey"}
+
+# Verified on 2026-09-28 against the same Service Authorization Reference JSON:
+# the bedrock file lists ListFlowAliases and GetFlowVersion on the flow resource.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock:GetFlowVersion",
+    "bedrock:ListFlowAliases",
+}
+
+# Verified on 2026-09-28 against the same Service Authorization Reference JSON:
+# the bedrock file lists UpdatePrompt and CreatePromptVersion on the prompt
+# resource.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock:CreatePromptVersion",
+    "bedrock:UpdatePrompt",
+}
+
+# Verified on 2026-09-25 by submitting a policy naming each action to
+# iam-access-analyzer ValidatePolicy (a read-only call that creates nothing):
+# an action the service does not define comes back as INVALID_ACTION, and every
+# action below came back clean.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "aws-marketplace:Subscribe",
+    "aws-marketplace:Unsubscribe",
+    "bedrock:CallWithBearerToken",
+    "bedrock-mantle:CallWithBearerToken",
+    # BR-02's EC2 workload leg: same method, 2026-09-27.
+    "ec2:DescribeInstances",
+    "iam:GetInstanceProfile",
+    # The two PutAccountDataRetention actions: same method, 2026-09-27.
+    "bedrock-mantle:PutAccountDataRetention",
+    "bedrock:PutAccountDataRetention",
+    "iam:CreateServiceSpecificCredential",
+    "iam:ListServiceSpecificCredentials",
+    "logs:DescribeLogGroups",
+    "logs:DescribeMetricFilters",
+    "logs:PutRetentionPolicy",
+    "organizations:DescribePolicy",
+    "s3:GetLifecycleConfiguration",
+}
+
+# Verified on 2026-09-25 with IAM Access Analyzer validate-policy, which is an
+# oracle for both halves: it reports INVALID_ACTION for an action the service
+# does not define and INVALID_GLOBAL_CONDITION_KEY for an unknown condition key.
+# The probe policy carried three invented actions
+# (logs:DescribeNotARealThing, oam:GetSinkPolicyDocument,
+# cloudtrail:ListTrailsAndStuff) and one invented condition key
+# (aws:PrincipalOrgIdentifier) as negative controls; all four were reported and
+# every name below was not, so the run discriminates rather than passing
+# everything.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:ListMemories",
+    "cloudtrail:GetEventSelectors",
+    "cloudtrail:ListTrails",
+    "logs:DescribeDeliveries",
+    "logs:DescribeDeliverySources",
+    "logs:DescribeLogGroups",
+    "logs:Unmask",
+    "oam:GetSinkPolicy",
+    "oam:ListSinks",
+}
+
+# Verified on 2026-09-25 with a second Access Analyzer validate-policy run whose
+# negative controls were two invented actions
+# (bedrock-agentcore:GetMemoryThatDoesNotExist,
+# bedrock-agentcore:NotARealMemoryAction) and one invented condition key
+# (bedrock-agentcore:memoryNamespaceThatDoesNotExist). All three were reported
+# and GetMemory was not, alongside the memory read actions AC-23 assesses and
+# the bedrock-agentcore namespace, strategyId, actorId and sessionId condition
+# keys it accepts as scoping.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"bedrock-agentcore:GetMemory"}
+
+# Verified on 2026-09-29 with an Access Analyzer validate-policy run for the
+# AC-33 user id leg. Its negative control was one invented action
+# (bedrock-agentcore:GetWorkloadAccessTokenForUserIdNotReal), which was reported
+# as INVALID_ACTION, and the action below was not.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:GetWorkloadAccessTokenForUserId"
+}
+
+# Verified on 2026-10-03 with an Access Analyzer validate-policy run for the
+# SM-02 API method authorization leg. Its negative control was one invented
+# action (execute-api:InvokeThatDoesNotExist), which was reported as
+# INVALID_ACTION, and the action below was not.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"execute-api:Invoke"}
+
+# Verified on 2026-09-25 with a third Access Analyzer validate-policy run for the
+# gateway controls AC-24 through AC-27. Its negative controls were four invented
+# actions (ec2:DescribeVpcEndpointsThatDoNotExist,
+# kms:GetKeyPolicyDocumentNotReal, organizations:DescribePolicyDetailNotReal,
+# bedrock-agentcore:ListGatewayRateLimitEntriesNotReal) and two invented
+# condition keys (aws:SourceArnPrefixNotReal,
+# bedrock-agentcore:GatewayAuthorizerKindNotReal). All six were reported,
+# INVALID_ACTION for the actions and INVALID_GLOBAL_CONDITION_KEY plus
+# INVALID_SERVICE_CONDITION_KEY for the keys, and none of the names below was, so
+# the run discriminates in both directions.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:GetGatewayTarget",
+    "bedrock-agentcore:ListGatewayRateLimits",
+    "bedrock-agentcore:ListGatewayTargets",
+    "ec2:DescribeSecurityGroups",
+    "ec2:DescribeVpcEndpoints",
+    "iam:GetRole",
+    "kms:GetKeyPolicy",
+}
+
+# Verified on 2026-09-25 with a fourth Access Analyzer validate-policy run, this
+# one against policyType SERVICE_CONTROL_POLICY because AC-28's remediation text
+# describes an SCP. Its negative controls were three invented actions
+# (bedrock-agentcore:CreateGatewayNotReal,
+# bedrock-agentcore:UpdateGatewayThatDoesNotExist,
+# organizations:DescribePolicyDocumentNotReal) and one invented condition key
+# (bedrock-agentcore:GatewayAuthorizerModeNotReal). All four were reported and
+# none of the names below was.
+#
+# The run is an oracle for name existence only, not for which actions a condition
+# key applies to: a control statement pairing bedrock-agentcore:CreateGateway
+# with bedrock-agentcore:RuntimeAuthorizerType, a pairing no reference declares,
+# drew no finding either. The GatewayAuthorizerType-to-CreateGateway wiring rests
+# on the AgentCore devguide, which disagrees with the two IAM reference
+# surfaces.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:CreateGateway",
+    "bedrock-agentcore:UpdateGateway",
+    "organizations:DescribePolicy",
+}
+
+# Verified on 2026-09-25 with two more Access Analyzer validate-policy runs for
+# the identity controls AC-29 through AC-34: a SERVICE_CONTROL_POLICY run for
+# AC-29's SCP text and an IDENTITY_POLICY run for AC-32's condition advice. The
+# SCP run's negative controls were two invented actions
+# (bedrock-agentcore:CreateAgentRuntimeNotReal,
+# bedrock-agentcore:ModifyAgentRuntimeThatDoesNotExist) and one invented
+# condition key (bedrock-agentcore:RuntimeAuthorizerModeNotReal); the identity
+# run's were one invented action
+# (bedrock-agentcore:GetWorkloadAccessTokenForJWTNotReal) and two invented
+# condition keys (bedrock-agentcore:InboundJwtClaimNotReal/iss,
+# bedrock-agentcore:OutboundJwtClaim/iss). All six were reported and none of the
+# names below was.
+#
+# Unlike AC-28's GatewayAuthorizerType, the RuntimeAuthorizerType-to-runtime
+# wiring does not rest on a devguide sentence: the machine-readable service
+# reference wires that key to exactly CreateAgentRuntime and UpdateAgentRuntime,
+# and every InboundJwtClaim key to exactly CompleteResourceTokenAuth and
+# GetWorkloadAccessTokenForJWT.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:CreateAgentRuntime",
+    "bedrock-agentcore:UpdateAgentRuntime",
+}
+
+# Verified on 2026-09-25 with one more IDENTITY_POLICY Access Analyzer
+# validate-policy run for the policy controls AC-36 and AC-37. Its negative
+# controls were bedrock-agentcore:GetPolicyEngineNotReal,
+# bedrock:InvokeGuardrailChecksNotReal and the singular
+# bedrock:InvokeGuardrailCheck, which settles the plural spelling; all three were
+# reported and neither name below was.
+#
+# InvokeGuardrailChecks reaches AC-37's resolution text through the
+# GUARDRAIL_CHECK_ACTION constant, so the token scan below does not see it. It is
+# classified here anyway, because the scan reading a Name instead of a string is
+# a property of the scan and not a statement about the action.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:GetPolicyEngine",
+    "bedrock:InvokeGuardrailChecks",
+}
+
+# Verified on 2026-09-25 with two IDENTITY_POLICY Access Analyzer validate-policy
+# runs for the evaluation controls AC-39 through AC-44. The first run covered the
+# nine evaluation actions with two negative controls,
+# bedrock-agentcore:NotARealEvaluationAction and the plausible
+# bedrock-agentcore:UpdateEvaluatorConfig; the second covered iam:PassRole with
+# iam:PassedToService against three negative controls, iam:PassRoleNotReal,
+# iam:PassedToServiceNotReal and the plausible iam:PassedToRole. All five were
+# reported and none of the names below was.
+#
+# The six writes in EVALUATION_ADMINISTRATION_ACTIONS reach AC-02's resolution
+# text through that constant, so the token scan below does not see them. They are
+# classified here for the same reason InvokeGuardrailChecks is.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:ListEvaluators",
+    "bedrock-agentcore:CreateEvaluator",
+    "bedrock-agentcore:UpdateEvaluator",
+    "bedrock-agentcore:DeleteEvaluator",
+    "bedrock-agentcore:CreateOnlineEvaluationConfig",
+    "bedrock-agentcore:UpdateOnlineEvaluationConfig",
+    "bedrock-agentcore:DeleteOnlineEvaluationConfig",
+    "iam:PassRole",
+}
+
 _VERIFIED_REMEDIATION_CONDITION_KEYS = {
     "bedrock:GuardrailIdentifier",
     "iam:AWSServiceName",
     "kms:ViaService",
+    # Same Access Analyzer run as the action block above.
+    "aws:PrincipalOrgID",
+    "aws:PrincipalOrgPaths",
+    # Same Access Analyzer run as the gateway action block above.
+    "aws:SourceAccount",
+    "aws:SourceArn",
+    "aws:SourceVpce",
+    # Same SERVICE_CONTROL_POLICY run as the AC-28 action block above.
+    "bedrock-agentcore:GatewayAuthorizerType",
+    # Same two runs as the AC-29 action block above. The reference publishes no
+    # bare InboundJwtClaim key: it is five keys, one per claim, and the token
+    # scan stops at the slash.
+    "bedrock-agentcore:RuntimeAuthorizerType",
+    "bedrock-agentcore:InboundJwtClaim",
+    # Same second run as the AC-42 action block above.
+    "iam:PassedToService",
+    # Verified 2026-09-28 with ValidatePolicy (RESOURCE_POLICY) on a key policy
+    # statement: kms:CallerAccountNotReal came back INVALID_SERVICE_CONDITION_KEY
+    # and kms:CallerAccount raised nothing.
+    "kms:CallerAccount",
 }
+
+# Verified the same way and on the same date: ValidatePolicy reports an
+# undefined condition key as INVALID_CONDITION_KEY, and reported none of these.
+# It also reported MISSING_QUALIFIER for aws-marketplace:ProductId, which is
+# multi-valued, so BR-44's remediation text names ForAllValues:StringEquals.
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {
+    "aws-marketplace:ProductId",
+    "aws:RequestedRegion",
+    "bedrock:BearerTokenType",
+    "bedrock-mantle:BearerTokenType",
+    # The two DataRetentionMode keys: same method, 2026-09-27.
+    "bedrock-mantle:DataRetentionMode",
+    "bedrock:DataRetentionMode",
+    "bedrock:ModelArn",
+    "iam:ServiceSpecificCredentialAgeDays",
+    "iam:ServiceSpecificCredentialServiceName",
+}
+
+# Verified with the bedrock-mantle:CreateInference entry above.
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {"bedrock-mantle:Model"}
+
+# Verified 2026-10-03 with ValidatePolicy (SERVICE_CONTROL_POLICY) on a Deny of
+# CreateGateway and UpdateGateway: bedrock-agentcore:DiscoveryUrlNotReal came
+# back INVALID_SERVICE_CONDITION_KEY, aws:SourceVpcNotReal came back
+# INVALID_GLOBAL_CONDITION_KEY, and neither key below raised a key finding.
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {
+    "bedrock-agentcore:DiscoveryUrl",
+    "aws:SourceVpc",
+}
+
+# Verified the same way on 2026-09-25 for the SageMaker checks. The
+# condition key was submitted in its qualified aws:ResourceTag/<key> form, which
+# is the only form IAM accepts; a bogus aws:...Tag/<key> key came back as
+# INVALID_GLOBAL_CONDITION_KEY, so the clean result is discriminating.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "config:DescribeComplianceByConfigRule",
+    "sagemaker:DescribeEndpoint",
+    "sagemaker:DescribeTrainingJob",
+    "sagemaker:InvokeEndpoint",
+}
+
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {"aws:ResourceTag"}
+
+# Confirmed on 2026-09-27 from the sagemaker service-reference JSON: the key is
+# listed as Bool and is an ActionConditionKey of CreateTrainingJob. SM-33 names
+# it in the training network isolation resolution.
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {"sagemaker:NetworkIsolation"}
+
+# Confirmed the same way on 2026-09-27: both keys are ActionConditionKeys of
+# CreateTrainingJob, and the short names sagemaker:VolumeKmsKey and
+# sagemaker:OutputKmsKey are defined by no action. SM-34 names the ARN keys.
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {
+    "sagemaker:OutputKmsKeyArn",
+    "sagemaker:VolumeKmsKeyArn",
+}
+
+# Verified the same way on 2026-09-25 for BR-46's per-bucket Macie leg. The
+# knowledge-base data-source operations live on the bedrock-agent client but are
+# authorized under the bedrock: action prefix, so the three near-misses
+# bedrock:ListDataSource, macie2:DescribeBucket and macie2:GetAutomatedDiscovery
+# were submitted alongside them and all three came back INVALID_ACTION.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock:GetDataSource",
+    "bedrock:ListDataSources",
+    "macie2:DescribeBuckets",
+}
+
+# Verified on 2026-09-26 with one IDENTITY_POLICY validate-policy run, one
+# statement per action so a finding's path index names the action it belongs to,
+# for the network and eventing legs. Eight negative controls were
+# submitted alongside: ec2:DescribeVpcSubnets, ec2:DescribeVpcRouteTables,
+# route53resolver:GetFirewallRuleGroupAssociations,
+# route53resolver:GetFirewallRules, wafv2:DescribeWebACL, events:DescribeRules,
+# events:ListRuleTargets and route53resolver:NotARealFirewallAction. All eight
+# came back INVALID_ACTION, the run reported exactly eight findings, and none of
+# the seven names below was reported.
+#
+# The first attempt built its controls by singularising the real name
+# (ec2:DescribeRouteTable, route53resolver:ListFirewallRule), which makes the
+# control a substring of the action it is meant to discriminate, so a substring
+# read of the findings would accuse the valid plural. Each control below is a
+# near-miss in some other position, and no name in the run is a substring of any
+# other in either direction.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "ec2:DescribeSubnets",
+    "ec2:DescribeRouteTables",
+    "route53resolver:ListFirewallRuleGroupAssociations",
+    "route53resolver:ListFirewallRules",
+    "wafv2:GetWebACL",
+    "events:ListRules",
+    "events:ListTargetsByRule",
+}
+
+# Verified on 2026-09-26 with one IDENTITY_POLICY validate-policy run for AC-49's
+# domain-list leg, one statement per name. The three negative controls
+# route53resolver:DescribeFirewallDomainLists, route53resolver:GetFirewallDomains
+# and route53resolver:ListFirewallDomainNames came back INVALID_ACTION at
+# statement indexes 2, 3 and 4, and indexes 0 and 1, the two names below, were
+# not reported.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "route53resolver:ListFirewallDomainLists",
+    "route53resolver:ListFirewallDomains",
+}
+
+# Verified on 2026-09-26 with one IDENTITY_POLICY validate-policy run for AC-49's
+# fail-open leg, one statement per name. The three negative controls
+# route53resolver:DescribeFirewallConfig,
+# route53resolver:GetFirewallConfiguration and
+# route53resolver:ReadFirewallFailOpen came back INVALID_ACTION at statement
+# indexes 1, 2 and 3, and index 0, the name below, was not reported.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "route53resolver:GetFirewallConfig",
+}
+
+# Verified on 2026-09-26 with one IDENTITY_POLICY validate-policy run for BR-47's
+# customization job leg, one statement per name. The three negative controls
+# bedrock:ListCustomizationJobs, bedrock:DescribeModelCustomizationJob and
+# bedrock:ListModelCustomizationJob came back INVALID_ACTION at statement
+# indexes 2, 3 and 4, and indexes 0 and 1, the two names below, were not
+# reported.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock:ListModelCustomizationJobs",
+    "bedrock:GetModelCustomizationJob",
+}
+
+# Verified on 2026-09-26 with one IDENTITY_POLICY validate-policy run for the
+# Bedrock legs, one statement per name so a finding's path index names
+# the entry it belongs to. Nine negative controls were submitted alongside:
+# bedrock:DescribePrompts, bedrock:ReadPrompt, bedrock:StreamConverse,
+# macie2:ListClassifyJobs, s3:ReadBucketPolicy and
+# organizations:GetEffectivePolicy came back INVALID_ACTION, and
+# aws:ArnOfPrincipal, aws:VpcSource and aws:PrivateTransport came back
+# INVALID_GLOBAL_CONDITION_KEY. None of the names below was reported.
+#
+# The same run reported bedrock:Converse and bedrock:ConverseStream as
+# INVALID_ACTION. The guardrail enforcement page lists Converse and
+# ConverseStream among the inference APIs bedrock:GuardrailIdentifier applies
+# to, but they are authorized by bedrock:InvokeModel and
+# bedrock:InvokeModelWithResponseStream and have no IAM action of their own, so
+# BR-49 asserts the Deny over those two and names no Converse action.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock:ListPrompts",
+    "bedrock:GetPrompt",
+    "macie2:ListClassificationJobs",
+    "s3:GetBucketPolicy",
+    "organizations:DescribeEffectivePolicy",
+}
+
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {
+    "aws:PrincipalArn",
+    "aws:SourceVpc",
+    "aws:SecureTransport",
+}
+
+# Verified on 2026-09-28 with one IDENTITY_POLICY validate-policy run for the
+# AC-14 vault population, one statement per name on a token-vault ARN.
+# bedrock-agentcore:ListOauth2CredentialProviders,
+# ListApiKeyCredentialProviders and ListPaymentCredentialProviders at indexes 0
+# to 2 were not reported. The negative controls
+# bedrock-agentcore:ListOauth2CredentialProvider and
+# ListPaymentCredentialProviderz came back INVALID_ACTION at indexes 3 and 4.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:ListOauth2CredentialProviders",
+    "bedrock-agentcore:ListApiKeyCredentialProviders",
+    "bedrock-agentcore:ListPaymentCredentialProviders",
+}
+
+# Verified on 2026-09-28 with one IDENTITY_POLICY validate-policy run for the
+# AC-11 and AC-36 key legs, one statement per name on a key ARN.
+# kms:ListGrants at index 0, kms:DescribeKey at index 1 and
+# kms:GrantConstraintType on kms:CreateGrant at index 2 were not reported. The
+# negative controls kms:ListGrantz and kms:DescribeKeyz came back INVALID_ACTION
+# at indexes 3 and 4, and kms:GrantConstraintTypez came back
+# INVALID_SERVICE_CONDITION_KEY at index 5.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"kms:ListGrants", "kms:DescribeKey"}
+
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {"kms:GrantConstraintType"}
+
+# Confirmed on 2026-09-28 from the bedrock service-reference JSON for BR-07's
+# prompt write leg: DeletePrompt and RenderPrompt are both defined on the prompt
+# and prompt-version resource types, and the near-misses
+# bedrock:DeletePromptVersion and bedrock:RenderPrompts are defined by no action.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"bedrock:DeletePrompt", "bedrock:RenderPrompt"}
+
+# Verified on 2026-09-27 with one IDENTITY_POLICY validate-policy run for the
+# AgentCore payment manager and harness legs of AC-02 and AC-48, one statement
+# per name. The negative controls bedrock-agentcore:ListPaymentManager,
+# bedrock-agentcore:DescribePaymentManager and bedrock-agentcore:ListHarness
+# came back INVALID_ACTION at statement indexes 5, 6 and 7, and
+# aws:AccountOfPrincipal came back INVALID_GLOBAL_CONDITION_KEY at index 8.
+# Indexes 0 to 4, the names below, were not reported.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:ListPaymentManagers",
+    "bedrock-agentcore:GetPaymentManager",
+    "bedrock-agentcore:ListHarnesses",
+    "bedrock-agentcore:GetHarness",
+}
+
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {"aws:PrincipalAccount"}
+
+# Verified on 2026-09-27 with one IDENTITY_POLICY validate-policy run for the
+# AC-23 remediation, one statement per key. aws:PrincipalTag/userId at index 0
+# and as a policy variable inside bedrock-agentcore:namespace at index 2, and
+# bedrock-agentcore:actorId and sessionId at index 3, were not reported. The
+# negative controls aws:PrincipalTagz/userId came back
+# INVALID_GLOBAL_CONDITION_KEY at index 1 and bedrock-agentcore:actorIdz came
+# back INVALID_SERVICE_CONDITION_KEY at index 4.
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {"aws:PrincipalTag"}
+
+# Verified on 2026-09-27 with one IDENTITY_POLICY validate-policy run for the
+# AC-45 command shell leg, one statement per name on a runtime ARN.
+# bedrock-agentcore:InvokeAgentRuntimeCommandShell at index 0 and
+# bedrock-agentcore:InvokeAgentRuntimeCommand at index 1 were not reported. The
+# negative controls bedrock-agentcore:InvokeAgentRuntimeCommandShellz and
+# bedrock-agentcore:InvokeAgentRuntimeCommandz came back INVALID_ACTION at
+# indexes 2 and 3.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:InvokeAgentRuntimeCommandShell",
+    "bedrock-agentcore:InvokeAgentRuntimeCommand",
+}
+
+# Verified on 2026-09-27 with one IDENTITY_POLICY validate-policy run for the
+# AC-27 and AC-47 Deny-form legs, three names in one Action list.
+# bedrock-agentcore:InvokeGateway at action index 0 and
+# bedrock-agentcore:InvokeAgentRuntime at index 1 were not reported. The negative
+# control bedrock-agentcore:InvokeGatewayz came back INVALID_ACTION at index 2.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:InvokeGateway",
+    "bedrock-agentcore:InvokeAgentRuntime",
+}
+
+# Verified on 2026-09-27 with one IDENTITY_POLICY validate-policy run for the
+# AC-28 and AC-29 attachment legs, one statement per name on its resource type.
+# organizations:ListParents at index 0 and organizations:ListTargetsForPolicy at
+# index 1 were not reported. The negative control organizations:ListParentz came
+# back INVALID_ACTION at index 2.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "organizations:ListParents",
+    "organizations:ListTargetsForPolicy",
+}
+
+# Verified on 2026-09-27 with one IDENTITY_POLICY validate-policy run for the
+# AC-26 trail log file validation leg, on the trail resource type.
+# cloudtrail:GetTrail at index 0 was not reported. The negative control
+# cloudtrail:GetTrailz came back INVALID_ACTION at index 1.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "cloudtrail:GetTrail",
+}
+
+# Verified on 2026-09-27 with one IDENTITY_POLICY validate-policy run for the
+# AC-18 trail status and identity inventory legs. cloudtrail:GetTrailStatus,
+# cloudtrail:GetTrail, bedrock-agentcore:ListWorkloadIdentities,
+# bedrock-agentcore:ListOauth2CredentialProviders and
+# bedrock-agentcore:ListApiKeyCredentialProviders were not reported. The
+# negative controls bedrock-agentcore:ListNotARealThing and
+# cloudtrail:GetTrailStatusAndStuff came back INVALID_ACTION.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "cloudtrail:GetTrailStatus",
+}
+
+# Verified on 2026-09-27 with one IDENTITY_POLICY validate-policy run for
+# SM-09's notebook access leg, one statement per name. The negative controls
+# sagemaker:CreateNotebookInstances and aws:SourceIpAddress came back
+# INVALID_ACTION and INVALID_GLOBAL_CONDITION_KEY at statement indexes 1 and 2,
+# and index 0, which names both entries below, drew only PRIVATE_IP_ADDRESS.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"sagemaker:CreateNotebookInstance"}
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {"aws:SourceIp"}
+# Verified on 2026-09-27 with one IDENTITY_POLICY validate-policy run for
+# SM-32's recorder leg. The negative control config:ListConfigurationRecorder
+# came back INVALID_ACTION at statement index 1, and index 0 drew nothing.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"config:ListConfigurationRecorders"}
+# Verified on 2026-09-27 with one IDENTITY_POLICY validate-policy run for the
+# NET-01 processing-job and Studio domain legs of SM-33 and SM-10, one
+# statement per name. The three negative controls sagemaker:ListProcessingJob,
+# sagemaker:GetDomain and sagemaker:DescribeStudioDomain came back
+# INVALID_ACTION at statement indexes 6, 7 and 8, and indexes 0 to 5, the six
+# names below, were not reported. All six are also listed in the sagemaker
+# service reference JSON.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "sagemaker:ListProcessingJobs",
+    "sagemaker:DescribeProcessingJob",
+    "sagemaker:ListDomains",
+    "sagemaker:DescribeDomain",
+    "sagemaker:ListNotebookInstances",
+    "sagemaker:DescribeNotebookInstance",
+}
+# Verified on 2026-09-28 with one IDENTITY_POLICY validate-policy run for
+# AC-08's endpoint inbound-scope leg, which reads each VPC's CIDR blocks. The
+# negative control ec2:DescribeVpc came back INVALID_ACTION at statement index
+# 1, and index 0 drew nothing. DescribeVpcs is also listed in the ec2 service
+# reference JSON.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"ec2:DescribeVpcs"}
+# Verified on 2026-09-28 against the ec2 service reference JSON, which lists
+# GetManagedPrefixListEntries on the prefix-list resource type. AC-01 and AC-08
+# name it when a security group rule references a prefix list whose entries
+# could not be read.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"ec2:GetManagedPrefixListEntries"}
+# Verified on 2026-09-28 against the bedrock-agentcore service reference JSON,
+# which lists ListAgentRuntimeVersions as a List action with no resource type,
+# and botocore's bedrock-agentcore-control model, which defines the operation.
+# AC-01 names it when a runtime's versions cannot be listed.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"bedrock-agentcore:ListAgentRuntimeVersions"}
+# Verified on 2026-09-28 with one IDENTITY_POLICY validate-policy run for the
+# AC-47 runtime invoke actions, one statement per name on a runtime ARN.
+# aws:ViaAWSService at index 0 and bedrock-agentcore:InvokeAgentRuntimeForUser,
+# InvokeAgentRuntimeWithWebSocketStream and
+# InvokeAgentRuntimeWithWebSocketStreamForUser at indexes 2 to 4 were not
+# reported. The negative controls aws:ViaAWSServiceNotReal (index 1),
+# InvokeAgentRuntimeForUsers and InvokeAgentRuntimeWithWebSocketStreams
+# (indexes 5 and 6) came back INVALID_GLOBAL_CONDITION_KEY and INVALID_ACTION.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:InvokeAgentRuntimeForUser",
+    "bedrock-agentcore:InvokeAgentRuntimeWithWebSocketStream",
+    "bedrock-agentcore:InvokeAgentRuntimeWithWebSocketStreamForUser",
+}
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {"aws:ViaAWSService"}
+# Verified on 2026-09-28 against the kms service reference JSON, which lists the
+# condition key kms:EncryptionContext:${EncryptionContextKey}. AC-12 names it
+# with the gateway context key aws:bedrock-agentcore-gateway:arn from the
+# gateway encryption guide's example key policy, and the token scan stops at
+# the second colon.
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {"kms:EncryptionContext"}
+# Verified on 2026-09-28 against the xray service reference JSON, which lists
+# GetTraceSegmentDestination as a Read action with no resource type. AC-19
+# names it when the Transaction Search destination cannot be read.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"xray:GetTraceSegmentDestination"}
+# Verified on 2026-09-28 against the logs service reference JSON, which lists
+# DescribeDeliveryDestinations as a List action with no resource type. AC-20
+# names it with DescribeDeliveries and DescribeDeliverySources when the log
+# groups behind AgentCore deliveries cannot be resolved.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"logs:DescribeDeliveryDestinations"}
+# Verified on 2026-09-28 against the oam service reference JSON, which lists
+# ListLinks with no resource type. AC-22 names it when an account with no sink
+# cannot list the links it shares telemetry through.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"oam:ListLinks"}
+# Verified on 2026-09-28 against the bedrock-agentcore service reference JSON,
+# which lists ListAgentRuntimeEndpoints with no resource type, and botocore's
+# bedrock-agentcore-control model, which defines the operation. AC-30 names it
+# when the versions a runtime's endpoints serve cannot be listed.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"bedrock-agentcore:ListAgentRuntimeEndpoints"}
+# Verified on 2026-09-28 against the bedrock-agentcore service reference JSON,
+# which lists GetEvaluator on the evaluator resource type, ListBatchEvaluations
+# with no resource type and GetBatchEvaluation on batch-evaluate, and botocore's
+# models: GetEvaluator is in bedrock-agentcore-control, the two batch reads in
+# the bedrock-agentcore data plane. AC-44 and AC-41 name them when an evaluator
+# or a batch evaluation cannot be read.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "bedrock-agentcore:GetEvaluator",
+    "bedrock-agentcore:ListBatchEvaluations",
+    "bedrock-agentcore:GetBatchEvaluation",
+}
+# Verified on 2026-09-28 against the cloudwatch service reference JSON, which
+# lists ListMetrics as a list action, and botocore's cloudwatch model, which
+# defines the operation with a Namespace filter. AC-40 names it when the score
+# metrics an alarm reads cannot be listed.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"cloudwatch:ListMetrics"}
+# Verified on 2026-09-28 against the inspector2 service reference JSON, which
+# lists ListCoverage with no resource type, and botocore's inspector2 model,
+# which defines the operation with a resourceType filter. AC-50 names it when
+# Inspector's coverage of an agent image repository cannot be listed.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"inspector2:ListCoverage"}
+
+# BR-46 and BR-47 training job legs, 2026-09-28: validate-policy reported the
+# negative control sagemaker:ListTrainingJob as INVALID_ACTION at statement
+# index 1 and nothing at index 0. The name is also in the sagemaker service
+# reference JSON.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"sagemaker:ListTrainingJobs"}
+
+# BR-47 transform, endpoint and evaluation job legs, 2026-10-03: validate-policy
+# reported the negative controls sagemaker:ListTransformJob and
+# bedrock:GetEvaluationJobs as INVALID_ACTION at statement index 1 and nothing
+# at index 0. Each name is also in its service reference JSON.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "sagemaker:ListTransformJobs",
+    "sagemaker:DescribeTransformJob",
+    "sagemaker:ListEndpoints",
+    "sagemaker:DescribeEndpointConfig",
+    "bedrock:GetEvaluationJob",
+}
+
+# BR-33 asks for lambda:ListTags, without which GetFunction withholds a
+# function's tags. validate-policy on 2026-09-28 reported the negative control
+# lambda:ListTagz as INVALID_ACTION at Action index 1 of one statement and
+# nothing at index 0.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"lambda:ListTags"}
+
+# Verified on 2026-10-03 for SM-39's Lambda VPC guardrail with one
+# SERVICE_CONTROL_POLICY ValidatePolicy run. It reported INVALID_ACTION for the
+# negative controls lambda:CreateFunctionNotReal and the plausible
+# lambda:UpdateFunctionVpcConfig, and INVALID_SERVICE_CONDITION_KEY for
+# lambda:VpcIdsNotReal and lambda:SubnetIdNotReal, and none of the names below.
+# The lambda service-reference JSON lists the three keys as ActionConditionKeys
+# of both actions, lambda:VpcIds as String and the other two as ArrayOfString.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "lambda:CreateFunction",
+    "lambda:UpdateFunctionConfiguration",
+}
+_VERIFIED_REMEDIATION_CONDITION_KEYS |= {
+    "lambda:VpcIds",
+    "lambda:SubnetIds",
+    "lambda:SecurityGroupIds",
+}
+
+# Verified on 2026-10-04 for SM-39's Lambda network connector guardrail with one
+# SERVICE_CONTROL_POLICY ValidatePolicy run. It reported INVALID_ACTION for the
+# negative control lambda:CreateNetworkConnectorz at Action index 2 and nothing
+# at indexes 0 and 1. The lambda service-reference JSON lists both actions, and
+# lambda:SubnetIds and lambda:SecurityGroupIds as ActionConditionKeys of
+# CreateNetworkConnector only.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "lambda:CreateNetworkConnector",
+    "lambda:UpdateNetworkConnector",
+}
+
+# AC-18 reads CloudTrail Lake event data stores. validate-policy on 2026-10-03
+# reported the negative control cloudtrail:GetEventDataStorez as INVALID_ACTION
+# at Action index 2 and nothing at indexes 0 and 1. Both names are also in the
+# cloudtrail service reference JSON.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "cloudtrail:ListEventDataStores",
+    "cloudtrail:GetEventDataStore",
+}
+
+# AC-22 lists each sink's attached links and the organization's accounts.
+# validate-policy on 2026-10-03 reported the negative control
+# oam:ListAttachedLinkz as INVALID_ACTION at Action index 2 and nothing at
+# indexes 0 and 1. Both names are also in the oam and organizations service
+# reference JSON.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "oam:ListAttachedLinks",
+    "organizations:ListAccounts",
+}
+
+# AC-06 names s3:GetBucketOwnershipControls in its retry text. validate-policy
+# on 2026-10-03 reported nothing for it, in the same run that reported
+# INVALID_ACTION for the negative control logs:DescribeSubscriptionFilterz, and
+# it is in the s3 service reference JSON with the bucket resource type.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"s3:GetBucketOwnershipControls"}
+
+# AC-26 follows each log group's subscription filters to a Firehose stream and
+# its archive bucket. validate-policy on 2026-10-03 reported nothing for each
+# of these names alone and INVALID_ACTION for the negative control
+# logs:DescribeSubscriptionFilterz. All three are in the logs, firehose and s3
+# service reference JSON.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {
+    "logs:DescribeSubscriptionFilters",
+    "firehose:DescribeDeliveryStream",
+    "s3:GetBucketObjectLockConfiguration",
+}
+
+# AC-26 follows a subscription filter to a CloudWatch Logs destination.
+# validate-policy on 2026-10-03 reported INVALID_ACTION only at Action index 1,
+# the negative control logs:DescribeDestinationz, and nothing at index 0. The
+# name is in the logs service reference JSON with no resource type.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"logs:DescribeDestinations"}
+
+# AC-49 reads where each reached firewall sends its ALERT log. validate-policy
+# on 2026-10-03 reported INVALID_ACTION only at Action index 1, the negative
+# control network-firewall:DescribeLoggingConfiguratioz, and nothing at index
+# 0. The name is in the network-firewall service reference JSON with the
+# Firewall resource type.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"network-firewall:DescribeLoggingConfiguration"}
+
+# AC-06 names s3:PutObject in the fix text of its recording write SCP row.
+# validate-policy on 2026-10-03 reported nothing at Action index 0 and
+# INVALID_ACTION for the negative control s3:PutObjectz at index 1 of the same
+# statement. It is in the s3 service reference JSON with the object resource
+# type.
+_VERIFIED_REMEDIATION_IAM_ACTIONS |= {"s3:PutObject"}
 
 _NON_IAM_REMEDIATION_TOKENS = {
     "arn:PARTITION",
@@ -619,8 +1331,17 @@ def _runtime_resolution_iam_tokens():
                     targets = (
                         node.targets if isinstance(node, ast.Assign) else [node.target]
                     )
+                    # A resolution held in a module constant (BR-20's
+                    # S3_VECTORS_RESOLUTION) reaches create_finding as a Name, so the
+                    # call-site scan above reads the identifier and never sees the
+                    # text. Collect the constants too, or an unverified action name
+                    # ships by being factored out of the call.
                     if any(
-                        isinstance(target, ast.Name) and target.id == "resolution"
+                        isinstance(target, ast.Name)
+                        and (
+                            target.id == "resolution"
+                            or target.id.endswith("_RESOLUTION")
+                        )
                         for target in targets
                     ):
                         resolution_values.append(node.value)

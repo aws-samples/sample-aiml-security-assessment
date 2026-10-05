@@ -379,9 +379,25 @@ Resources:
                   - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-security-*'
                   - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-sec-*'
                 Condition:
-                  ArnEquals:
+                  ArnLike:
                     iam:PolicyARN:
-                      !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+                      - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+                      - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-security-*'
+                      - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-sec-*'
+              - Sid: IAMManagedPolicyLifecycle
+                Action:
+                  - iam:CreatePolicy
+                  - iam:DeletePolicy
+                  - iam:GetPolicy
+                  - iam:GetPolicyVersion
+                  - iam:ListPolicyVersions
+                  - iam:CreatePolicyVersion
+                  - iam:DeletePolicyVersion
+                  - iam:ListEntitiesForPolicy
+                Effect: Allow
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-security-*'
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-sec-*'
               - Sid: IAMPassRole
                 Action:
                   - iam:PassRole
