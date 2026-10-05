@@ -112,6 +112,7 @@ REQUIRED_SAGEMAKER_ACTIONS = {
     "sagemaker:DescribeNotebookInstance",
     "sagemaker:ListDomains",
     "sagemaker:DescribeDomain",
+    "sagemaker:ListUserProfiles",  # SM-09
     "sagemaker:ListTrainingJobs",
     "sagemaker:DescribeTrainingJob",
     "sagemaker:ListModelPackageGroups",
@@ -141,6 +142,26 @@ REQUIRED_SAGEMAKER_ACTIONS = {
     "sagemaker:ListExperiments",
     "sagemaker:ListTrials",
     "sagemaker:ListAssociations",
+    # SM-35..SM-41.
+    "organizations:ListDelegatedAdministrators",
+    "securityhub:GetEnabledStandards",
+    "eks:ListClusters",
+    "eks:DescribeCluster",
+    "eks:ListAddons",
+    "eks:DescribeAddon",
+    "secretsmanager:ListSecrets",
+    "iot:ListPolicies",
+    "iot:GetPolicy",
+    "iot:ListTargetsForPolicy",
+    # Approved '*' reads for actions with no IAM resource type.
+    "ec2:DescribeVpcEndpoints",  # SM-02, SM-11, SM-18, SM-33
+    "ec2:DescribeFlowLogs",  # SM-37
+    "ec2:DescribeSecurityGroups",  # SM-39
+    "config:DescribeConformancePacks",  # SM-32
+    "iot:DescribeAccountAuditConfiguration",  # SM-41
+    "iot:ListAuditFindings",  # SM-41
+    "inspector2:BatchGetAccountStatus",  # SM-38
+    "lambda:ListFunctions",  # SM-38, SM-39, SM-40
 }
 
 REQUIRED_AGENTCORE_ACTIONS = {
@@ -1293,6 +1314,12 @@ _VERIFIED_REMEDIATION_IAM_ACTIONS |= {"network-firewall:DescribeLoggingConfigura
 _VERIFIED_REMEDIATION_IAM_ACTIONS |= {"s3:PutObject"}
 
 _NON_IAM_REMEDIATION_TOKENS = {
+    # SM-41 names the AWS IoT Core policy variables
+    # ${iot:Connection.Thing.ThingName} and iot:Connection.Thing.IsAttached, and
+    # the token scan stops at the first dot. Both are IoT Core policy
+    # variables, not IAM keys, and are listed on the IoT developer guide's
+    # thing-policy-variables page.
+    "iot:Connection",
     "arn:PARTITION",
     "s3:ObjectCreated",
     "s3:ObjectModified",

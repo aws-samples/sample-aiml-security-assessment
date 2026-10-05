@@ -7,6 +7,7 @@ the reviewed action inventory for each SAM resource and verifies that both
 single- and multi-account runtime templates stay synchronized with it.
 """
 
+import fnmatch
 import json
 import os
 import re
@@ -363,11 +364,107 @@ _EXPECTED_ACTIONS = {
         "sso:ListPermissionSets",
         "tag:GetResources",
     },
+    "SageMakerAssessmentReadsPolicy": {
+        "ec2:DescribeManagedPrefixLists",
+        "eks:ListFargateProfiles",
+        "ec2:GetManagedPrefixListEntries",
+        "iot:DescribeAuditTask",
+        "iot:ListAuditTasks",
+        "iot:ListThingPrincipals",
+        "iot:ListThingsInThingGroup",
+        "iot:ListThings",
+        "securityhub:GetFindings",
+        "iam:GetInstanceProfile",
+        "lambda:ListMicrovmImages",
+        "lambda:ListMicrovmImageVersions",
+        "ec2:DescribeVpcAttribute",
+        "organizations:ListAWSServiceAccessForOrganization",
+        "sagemaker:DescribeModelBiasJobDefinition",
+        "sagemaker:DescribeModelExplainabilityJobDefinition",
+        "sagemaker:DescribeModelQualityJobDefinition",
+        "sagemaker:ListMonitoringExecutions",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeDhcpOptions",
+        "bedrock-agentcore:ListAgentRuntimes",
+        "bedrock-agentcore:GetAgentRuntime",
+        "guardduty:GetAdministratorAccount",
+        "inspector2:GetDelegatedAdminAccount",
+        "securityhub:GetAdministratorAccount",
+        "bedrock:ListAgents",
+        "bedrock:ListAgentVersions",
+        "bedrock:ListAgentActionGroups",
+        "bedrock:GetAgentActionGroup",
+        "bedrock-agentcore:ListGateways",
+        "bedrock-agentcore:ListGatewayTargets",
+        "ecr:DescribeRepositories",
+        "s3:ListBucket",
+        "route53resolver:ListFirewallRuleGroupAssociations",
+        "route53resolver:ListFirewallDomainLists",
+        "route53resolver:ListFirewallRules",
+        "route53resolver:ListFirewallDomains",
+        "route53resolver:GetFirewallConfig",
+        "ec2:DescribeNatGateways",
+        "network-firewall:ListFirewalls",
+        "network-firewall:DescribeFirewall",
+        "network-firewall:DescribeFirewallPolicy",
+        "network-firewall:DescribeRuleGroup",
+        "organizations:DescribePolicy",
+        "bedrock-agentcore:GetGatewayTarget",
+        "lambda:GetFunctionConfiguration",
+        "apigateway:GET",
+    },
+    "SageMakerAssessmentReadsPolicy2": {
+        "lambda:ListMicrovms",
+        "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeTransitGatewayAttachments",
+        "ec2:DescribeTransitGatewayVpcAttachments",
+        "ec2:SearchTransitGatewayRoutes",
+        "lambda:GetMicrovm",
+        "lambda:GetNetworkConnector",
+        "ecs:DescribeTasks",
+        "ecs:ListTasks",
+        "ecs:DescribeCapacityProviders",
+        "eks:DescribeFargateProfile",
+        "securityhub:GetConfigurationPolicy",
+        "macie2:GetAdministratorAccount",
+        "macie2:DescribeOrganizationConfiguration",
+        "detective:ListInvitations",
+        "detective:ListGraphs",
+        "detective:DescribeOrganizationConfiguration",
+        "bedrock-agentcore:ListAgentRuntimeEndpoints",
+        "cloudtrail:ListEventDataStores",
+        "cloudtrail:GetEventDataStore",
+        "account:ListRegions",
+        "bedrock:ListModelCustomizationJobs",
+        "bedrock:ListModelInvocationJobs",
+        "bedrock:GetModelCustomizationJob",
+    },
     "SagemakerSecurityAssessmentFunction": {
+        "cloudtrail:LookupEvents",
+        "config:DescribeComplianceByConfigRule",
+        "config:DescribeConfigRules",
+        "config:DescribeConfigurationRecorders",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeSubnets",
+        "ecs:DescribeServices",
+        "eks:DescribeAddon",
+        "eks:DescribeCluster",
+        "eks:ListAddons",
+        "eks:ListClusters",
         "guardduty:GetDetector",
+        "guardduty:ListCoverage",
         "guardduty:ListDetectors",
+        "guardduty:DescribeOrganizationConfiguration",
         "iam:GenerateServiceLastAccessedDetails",
         "iam:GetServiceLastAccessedDetails",
+        "iot:GetPolicy",
+        "iot:ListPolicies",
+        "iot:ListTargetsForPolicy",
+        "organizations:DescribeOrganization",
+        "organizations:ListDelegatedAdministrators",
+        "organizations:ListParents",
+        "organizations:ListPolicies",
+        "organizations:ListTargetsForPolicy",
         "s3:GetObject",
         "s3:PutObject",
         "sagemaker:DescribeAutoMLJob",
@@ -376,9 +473,11 @@ _EXPECTED_ACTIONS = {
         "sagemaker:DescribeDataQualityJobDefinition",
         "sagemaker:DescribeDomain",
         "sagemaker:DescribeEndpoint",
+        "sagemaker:DescribeEndpointConfig",
         "sagemaker:DescribeFeatureGroup",
         "sagemaker:DescribeHyperParameterTuningJob",
         "sagemaker:DescribeModel",
+        "sagemaker:DescribeModelPackage",
         "sagemaker:DescribeMonitoringSchedule",
         "sagemaker:DescribeNotebookInstance",
         "sagemaker:DescribeProcessingJob",
@@ -406,7 +505,53 @@ _EXPECTED_ACTIONS = {
         "sagemaker:ListProcessingJobs",
         "sagemaker:ListTrainingJobs",
         "sagemaker:ListTransformJobs",
+        "sagemaker:ListUserProfiles",
         "sagemaker:ListTrials",
+        "secretsmanager:ListSecrets",
+        "securityhub:DescribeOrganizationConfiguration",
+        "securityhub:GetEnabledStandards",
+        "securityhub:ListEnabledProductsForImport",
+        "cloudwatch:DescribeAlarms",
+        "logs:DescribeMetricFilters",
+        "events:ListTargetsByRule",
+        "iot:ListPrincipalThings",
+        "iot:DescribeScheduledAudit",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetBucketPolicy",
+        "kms:DescribeKey",
+        "sagemaker:DescribeUserProfile",
+        "cloudtrail:GetTrailStatus",
+        "cloudtrail:GetEventSelectors",
+        "config:DescribeConfigurationRecorderStatus",
+        "config:DescribeConformancePackCompliance",
+        "sagemaker:DescribeInferenceComponent",
+        "ec2:DescribeVpcEndpoints",
+        "ec2:DescribeFlowLogs",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeInstances",
+        "config:DescribeConformancePacks",
+        "iot:DescribeAccountAuditConfiguration",
+        "iot:ListAuditFindings",
+        "iot:ListRoleAliases",
+        "iot:DescribeRoleAlias",
+        "inspector2:BatchGetAccountStatus",
+        "lambda:ListFunctions",
+        "cloudtrail:DescribeTrails",
+        "config:ListConfigurationRecorders",
+        "ecs:DescribeTaskDefinition",
+        "ecs:ListClusters",
+        "ecs:ListServices",
+        "events:ListRules",
+        "inspector2:ListCoverage",
+        "iot:ListScheduledAudits",
+        "ram:ListResources",
+        "securityhub:GetConfigurationPolicyAssociation",
+        "cloudwatch:DescribeAlarmHistory",
+        "ecr:DescribeImageSigningStatus",
+        "ecr:GetSigningConfiguration",
+        "elasticfilesystem:DescribeFileSystems",
+        "fsx:DescribeFileSystems",
+        "sagemaker:ListInferenceComponents",
     },
     "AgentCoreSecurityAssessmentFunction": {
         "bedrock-agentcore:GetAgentRuntime",
@@ -997,6 +1142,8 @@ def test_bedrock_managed_policy_is_attached_only_to_the_bedrock_function(templat
     assert managed == {
         "BedrockAssessmentReadsPolicy",
         "BedrockAssessmentReadsPolicy2",
+        "SageMakerAssessmentReadsPolicy",
+        "SageMakerAssessmentReadsPolicy2",
     }
     properties = data["Resources"]["BedrockAssessmentReadsPolicy"]["Properties"]
     assert not {"Roles", "Users", "Groups"} & set(properties)
@@ -1233,6 +1380,605 @@ def test_bedrock_second_managed_policy_is_identical_in_both_templates():
             data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
         documents.append(data["Resources"]["BedrockAssessmentReadsPolicy2"])
     assert documents[0] == documents[1]
+
+
+_SAGEMAKER_MONITORING_JOB_DEFINITIONS = json.dumps(
+    [
+        {
+            "Fn::Sub": "arn:${AWS::Partition}:sagemaker:*:${AWS::AccountId}:"
+            f"{kind}-job-definition/*"
+        }
+        for kind in ("model-quality", "model-bias", "model-explainability")
+    ]
+)
+_SAGEMAKER_MANAGED_GRANTS = [
+    ("Allow", "organizations:ListAWSServiceAccessForOrganization", '"*"'),
+    ("Allow", "ec2:DescribeManagedPrefixLists", '"*"'),
+    ("Allow", "iot:ListAuditTasks", '"*"'),
+    ("Allow", "iot:DescribeAuditTask", '"*"'),
+    # SM-41: ListThings has no resource type in the iot service reference.
+    ("Allow", "iot:ListThings", '"*"'),
+    ("Allow", "sagemaker:ListMonitoringExecutions", '"*"'),
+    ("Allow", "ec2:DescribeVpcs", '"*"'),
+    ("Allow", "ec2:DescribeDhcpOptions", '"*"'),
+    (
+        "Allow",
+        "ec2:GetManagedPrefixListEntries",
+        json.dumps({"Fn::Sub": "arn:${AWS::Partition}:ec2:*:*:prefix-list/*"}),
+    ),
+    (
+        "Allow",
+        "iot:ListThingsInThingGroup",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:iot:*:${AWS::AccountId}:thinggroup/*"}
+        ),
+    ),
+    (
+        "Allow",
+        "iot:ListThingPrincipals",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:iot:*:${AWS::AccountId}:thing/*"}
+        ),
+    ),
+    *(
+        ("Allow", action, _SAGEMAKER_MONITORING_JOB_DEFINITIONS)
+        for action in (
+            "sagemaker:DescribeModelQualityJobDefinition",
+            "sagemaker:DescribeModelBiasJobDefinition",
+            "sagemaker:DescribeModelExplainabilityJobDefinition",
+        )
+    ),
+    (
+        "Allow",
+        "eks:ListFargateProfiles",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:eks:*:${AWS::AccountId}:cluster/*"}
+        ),
+    ),
+    ("Allow", "bedrock-agentcore:ListAgentRuntimes", '"*"'),
+    ("Allow", "guardduty:GetAdministratorAccount", '"*"'),
+    ("Allow", "inspector2:GetDelegatedAdminAccount", '"*"'),
+    ("Allow", "bedrock:ListAgents", '"*"'),
+    ("Allow", "bedrock-agentcore:ListGateways", '"*"'),
+    (
+        "Allow",
+        "bedrock:ListAgentVersions",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:agent/*"}
+        ),
+    ),
+    (
+        "Allow",
+        "bedrock:ListAgentActionGroups",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:agent/*"}
+        ),
+    ),
+    (
+        "Allow",
+        "bedrock:GetAgentActionGroup",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:agent/*"}
+        ),
+    ),
+    (
+        "Allow",
+        "bedrock-agentcore:ListGatewayTargets",
+        json.dumps(
+            {
+                "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:*:"
+                "${AWS::AccountId}:gateway/*"
+            }
+        ),
+    ),
+    (
+        "Allow",
+        "bedrock-agentcore:GetGatewayTarget",
+        json.dumps(
+            {
+                "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:*:"
+                "${AWS::AccountId}:gateway/*"
+            }
+        ),
+    ),
+    (
+        "Allow",
+        "apigateway:GET",
+        json.dumps(
+            [
+                {"Fn::Sub": f"arn:${{AWS::Partition}}:apigateway:*::{path}"}
+                for path in (
+                    "/restapis",
+                    "/restapis/*/resources",
+                    "/restapis/*/resources/*/methods/*",
+                    "/apis",
+                    "/apis/*/routes",
+                    "/apis/*/integrations",
+                )
+            ],
+            sort_keys=True,
+        ),
+    ),
+    (
+        "Allow",
+        "lambda:GetFunctionConfiguration",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:lambda:*:${AWS::AccountId}:function:*"}
+        ),
+    ),
+    (
+        "Allow",
+        "securityhub:GetAdministratorAccount",
+        json.dumps(
+            {
+                "Fn::Sub": "arn:${AWS::Partition}:securityhub:*:"
+                "${AWS::AccountId}:hub/default"
+            }
+        ),
+    ),
+    ("Allow", "lambda:ListMicrovmImages", '"*"'),
+    (
+        "Allow",
+        "lambda:ListMicrovmImageVersions",
+        json.dumps(
+            {
+                "Fn::Sub": "arn:${AWS::Partition}:lambda:*:"
+                "${AWS::AccountId}:microvm-image:*"
+            }
+        ),
+    ),
+    (
+        "Allow",
+        "iam:GetInstanceProfile",
+        json.dumps(
+            {
+                "Fn::Sub": "arn:${AWS::Partition}:iam::"
+                "${AWS::AccountId}:instance-profile/*"
+            }
+        ),
+    ),
+    (
+        "Allow",
+        "ec2:DescribeVpcAttribute",
+        json.dumps({"Fn::Sub": "arn:${AWS::Partition}:ec2:*:${AWS::AccountId}:vpc/*"}),
+    ),
+    (
+        "Allow",
+        "securityhub:GetFindings",
+        json.dumps(
+            [
+                {
+                    "Fn::Sub": "arn:${AWS::Partition}:securityhub:*:"
+                    "${AWS::AccountId}:hub/default"
+                },
+                {
+                    "Fn::Sub": "arn:${AWS::Partition}:securityhub:*:"
+                    "${AWS::AccountId}:hubv2/*"
+                },
+            ]
+        ),
+    ),
+    (
+        "Allow",
+        "s3:ListBucket",
+        json.dumps({"Fn::Sub": "arn:${AWS::Partition}:s3:::*"}),
+    ),
+    (
+        "Allow",
+        "ecr:DescribeRepositories",
+        json.dumps({"Fn::Sub": "arn:${AWS::Partition}:ecr:*:*:repository/*"}),
+    ),
+    # SM-39: the DNS Firewall and Network Firewall reads AC-49 holds for the
+    # AgentCore role, over the ECS and Lambda workload VPCs.
+    ("Allow", "route53resolver:ListFirewallRuleGroupAssociations", '"*"'),
+    ("Allow", "route53resolver:ListFirewallDomainLists", '"*"'),
+    ("Allow", "ec2:DescribeNatGateways", '"*"'),
+    ("Allow", "network-firewall:ListFirewalls", '"*"'),
+    (
+        "Allow",
+        "route53resolver:ListFirewallRules",
+        json.dumps(
+            {
+                "Fn::Sub": "arn:${AWS::Partition}:route53resolver:*:*:"
+                "firewall-rule-group/*"
+            }
+        ),
+    ),
+    (
+        "Allow",
+        "route53resolver:ListFirewallDomains",
+        json.dumps(
+            {
+                "Fn::Sub": "arn:${AWS::Partition}:route53resolver:*:*:"
+                "firewall-domain-list/*"
+            }
+        ),
+    ),
+    (
+        "Allow",
+        "route53resolver:GetFirewallConfig",
+        json.dumps(
+            {
+                "Fn::Sub": "arn:${AWS::Partition}:route53resolver:*:"
+                "${AWS::AccountId}:firewall-config/*"
+            }
+        ),
+    ),
+    (
+        "Allow",
+        "network-firewall:DescribeFirewall",
+        json.dumps(
+            {
+                "Fn::Sub": "arn:${AWS::Partition}:network-firewall:*:"
+                "${AWS::AccountId}:firewall/*"
+            }
+        ),
+    ),
+    (
+        "Allow",
+        "network-firewall:DescribeFirewallPolicy",
+        json.dumps(
+            {"Fn::Sub": "arn:${AWS::Partition}:network-firewall:*:*:firewall-policy/*"}
+        ),
+    ),
+    (
+        "Allow",
+        "network-firewall:DescribeRuleGroup",
+        json.dumps(
+            [
+                {
+                    "Fn::Sub": "arn:${AWS::Partition}:network-firewall:*:*:"
+                    "stateful-rulegroup/*"
+                },
+                {
+                    "Fn::Sub": "arn:${AWS::Partition}:network-firewall:*:*:"
+                    "stateless-rulegroup/*"
+                },
+            ],
+            sort_keys=True,
+        ),
+    ),
+    (
+        "Allow",
+        "organizations:DescribePolicy",
+        json.dumps(
+            [
+                {"Fn::Sub": "arn:${AWS::Partition}:organizations::*:policy/*/*/*"},
+                {"Fn::Sub": "arn:${AWS::Partition}:organizations::aws:policy/*/*"},
+            ],
+            sort_keys=True,
+        ),
+    ),
+    (
+        "Allow",
+        "bedrock-agentcore:GetAgentRuntime",
+        json.dumps(
+            {
+                "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:*:"
+                "${AWS::AccountId}:runtime/*"
+            }
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+@pytest.mark.parametrize("partition", ["aws", "aws-us-gov"])
+def test_sagemaker_managed_policy_renders_within_its_budget(template, partition):
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    document = data["Resources"]["SageMakerAssessmentReadsPolicy"]["Properties"][
+        "PolicyDocument"
+    ]
+    rendered = json.dumps(
+        _render_policy_intrinsics(document, partition), separators=(",", ":")
+    )
+    assert len(rendered) <= _MANAGED_POLICY_BUDGET, (
+        f"{os.path.basename(template)} SageMakerAssessmentReadsPolicy renders to "
+        f"{len(rendered):,} characters in {partition}; keep it below the "
+        f"{_MANAGED_POLICY_BUDGET:,}-character project budget and never exceed "
+        f"IAM's {_MANAGED_POLICY_LIMIT:,}-character managed policy limit."
+    )
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+def test_sagemaker_managed_policy_holds_exactly_the_approved_grants(template):
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    resource = data["Resources"]["SageMakerAssessmentReadsPolicy"]
+    assert resource["Type"] == "AWS::IAM::ManagedPolicy"
+    document = resource["Properties"]["PolicyDocument"]
+    assert all(
+        set(s) <= {"Sid", "Effect", "Action", "Resource"} for s in document["Statement"]
+    )
+    grants = sorted(
+        (
+            statement["Effect"],
+            action,
+            json.dumps(statement["Resource"], sort_keys=True),
+        )
+        for statement in document["Statement"]
+        for action in statement["Action"]
+    )
+    assert grants == sorted(_SAGEMAKER_MANAGED_GRANTS)
+    inline = _actions(template, "SagemakerSecurityAssessmentFunction")
+    assert not {action for _, action, _ in grants} & inline
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+def test_sagemaker_managed_policy_is_attached_only_to_the_sagemaker_function(template):
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    properties = data["Resources"]["SageMakerAssessmentReadsPolicy"]["Properties"]
+    assert not {"Roles", "Users", "Groups"} & set(properties)
+    referencing = {
+        logical_id
+        for logical_id, resource in data["Resources"].items()
+        if logical_id != "SageMakerAssessmentReadsPolicy"
+        and _references(resource, "SageMakerAssessmentReadsPolicy")
+    }
+    assert referencing == {"SagemakerSecurityAssessmentFunction"}
+    policies = data["Resources"]["SagemakerSecurityAssessmentFunction"]["Properties"][
+        "Policies"
+    ]
+    references = [
+        p for p in policies if _references(p, "SageMakerAssessmentReadsPolicy")
+    ]
+    assert references == [{"Fn::Ref": "SageMakerAssessmentReadsPolicy"}]
+    assert not _references(data.get("Outputs", {}), "SageMakerAssessmentReadsPolicy")
+
+
+def _sagemaker_policy2_arn(suffix):
+    return json.dumps(
+        {
+            "Fn::Sub": "arn:${AWS::Partition}:"
+            + suffix.replace("ACCOUNT", "${AWS::AccountId}")
+        }
+    )
+
+
+_SAGEMAKER_MANAGED_GRANTS_2 = [
+    ("Allow", "lambda:ListMicrovms", '"*"', None),
+    ("Allow", "ec2:DescribeNetworkInterfaces", '"*"', None),
+    # SM-39's Bedrock job population. Both List actions have no resource type
+    # in the service authorization reference (2026-10-04);
+    # GetModelCustomizationJob takes model-customization-job.
+    ("Allow", "bedrock:ListModelCustomizationJobs", '"*"', None),
+    ("Allow", "bedrock:ListModelInvocationJobs", '"*"', None),
+    (
+        "Allow",
+        "bedrock:GetModelCustomizationJob",
+        _sagemaker_policy2_arn("bedrock:*:ACCOUNT:model-customization-job/*"),
+        None,
+    ),
+    # SM-39's transit gateway hop. The two Describe actions have no resource
+    # type in the service authorization reference (2026-10-04);
+    # SearchTransitGatewayRoutes takes transit-gateway-route-table.
+    ("Allow", "ec2:DescribeTransitGatewayAttachments", '"*"', None),
+    ("Allow", "ec2:DescribeTransitGatewayVpcAttachments", '"*"', None),
+    (
+        "Allow",
+        "ec2:SearchTransitGatewayRoutes",
+        _sagemaker_policy2_arn("ec2:*:ACCOUNT:transit-gateway-route-table/*"),
+        None,
+    ),
+    (
+        "Allow",
+        "lambda:GetMicrovm",
+        json.dumps(
+            [
+                {
+                    "Fn::Sub": "arn:${AWS::Partition}:lambda:*:${AWS::AccountId}:"
+                    "microvm-image:*"
+                },
+                {"Fn::Sub": "arn:${AWS::Partition}:lambda:*:aws:microvm-image:*"},
+            ],
+            sort_keys=True,
+        ),
+        None,
+    ),
+    (
+        "Allow",
+        "lambda:GetNetworkConnector",
+        _sagemaker_policy2_arn("lambda:*:ACCOUNT:network-connector:*"),
+        None,
+    ),
+    (
+        "Allow",
+        "ecs:DescribeTasks",
+        _sagemaker_policy2_arn("ecs:*:ACCOUNT:task/*"),
+        None,
+    ),
+    (
+        "Allow",
+        "ecs:DescribeCapacityProviders",
+        _sagemaker_policy2_arn("ecs:*:ACCOUNT:capacity-provider/*"),
+        None,
+    ),
+    (
+        "Allow",
+        "ecs:ListTasks",
+        '"*"',
+        json.dumps(
+            {
+                "ArnLike": {
+                    "ecs:cluster": {
+                        "Fn::Sub": "arn:${AWS::Partition}:ecs:*:${AWS::AccountId}:"
+                        "cluster/*"
+                    }
+                }
+            },
+            sort_keys=True,
+        ),
+    ),
+    (
+        "Allow",
+        "eks:DescribeFargateProfile",
+        _sagemaker_policy2_arn("eks:*:ACCOUNT:fargateprofile/*/*/*"),
+        None,
+    ),
+    (
+        "Allow",
+        "securityhub:GetConfigurationPolicy",
+        _sagemaker_policy2_arn("securityhub:*:ACCOUNT:configuration-policy/*"),
+        None,
+    ),
+    # SM-35's Macie and Detective Regional administrator reads. The four
+    # actions on '*' have no resource type in the service authorization
+    # reference (2026-10-04); DescribeOrganizationConfiguration has Graph.
+    ("Allow", "macie2:GetAdministratorAccount", '"*"', None),
+    ("Allow", "macie2:DescribeOrganizationConfiguration", '"*"', None),
+    ("Allow", "detective:ListInvitations", '"*"', None),
+    ("Allow", "detective:ListGraphs", '"*"', None),
+    (
+        "Allow",
+        "detective:DescribeOrganizationConfiguration",
+        _sagemaker_policy2_arn("detective:*:ACCOUNT:graph:*"),
+        None,
+    ),
+    # SM-37 reads the AgentCore runtime versions each endpoint serves.
+    # ListAgentRuntimeEndpoints has no resource type in the service
+    # authorization reference (2026-10-04).
+    ("Allow", "bedrock-agentcore:ListAgentRuntimeEndpoints", '"*"', None),
+    # SM-38 reads the event data stores that may record MicroVM data events.
+    # ListEventDataStores has no resource type in the service authorization
+    # reference (2026-10-04); GetEventDataStore has eventdatastore and
+    # ListRegions has account.
+    ("Allow", "cloudtrail:ListEventDataStores", '"*"', None),
+    (
+        "Allow",
+        "cloudtrail:GetEventDataStore",
+        _sagemaker_policy2_arn("cloudtrail:*:ACCOUNT:eventdatastore/*"),
+        None,
+    ),
+    (
+        "Allow",
+        "account:ListRegions",
+        _sagemaker_policy2_arn("account::ACCOUNT:account"),
+        None,
+    ),
+]
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+@pytest.mark.parametrize("partition", ["aws", "aws-us-gov"])
+def test_sagemaker_managed_policy_2_renders_within_its_budget(template, partition):
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    document = data["Resources"]["SageMakerAssessmentReadsPolicy2"]["Properties"][
+        "PolicyDocument"
+    ]
+    rendered = json.dumps(
+        _render_policy_intrinsics(document, partition), separators=(",", ":")
+    )
+    assert partition + ":" in rendered
+    assert len(rendered) <= _MANAGED_POLICY_BUDGET, (
+        f"{os.path.basename(template)} SageMakerAssessmentReadsPolicy2 renders to "
+        f"{len(rendered):,} characters in {partition}; keep it below the "
+        f"{_MANAGED_POLICY_BUDGET:,}-character project budget and never exceed "
+        f"IAM's {_MANAGED_POLICY_LIMIT:,}-character managed policy limit."
+    )
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+def test_sagemaker_managed_policy_2_holds_exactly_the_approved_grants(template):
+    """Only ecs:ListTasks takes a Condition: '*' bounded by ecs:cluster."""
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    resource = data["Resources"]["SageMakerAssessmentReadsPolicy2"]
+    assert resource["Type"] == "AWS::IAM::ManagedPolicy"
+    assert "ManagedPolicyName" not in resource["Properties"]
+    document = resource["Properties"]["PolicyDocument"]
+    assert all(
+        set(s) <= {"Sid", "Effect", "Action", "Resource", "Condition"}
+        for s in document["Statement"]
+    )
+    grants = sorted(
+        (
+            statement["Effect"],
+            action,
+            json.dumps(statement["Resource"], sort_keys=True),
+            json.dumps(statement["Condition"], sort_keys=True)
+            if "Condition" in statement
+            else None,
+        )
+        for statement in document["Statement"]
+        for action in statement["Action"]
+    )
+    assert grants == sorted(_SAGEMAKER_MANAGED_GRANTS_2)
+    actions = {action for _, action, _, _ in grants}
+    assert not actions & _actions(template, "SagemakerSecurityAssessmentFunction")
+    assert not actions & _actions(template, "SageMakerAssessmentReadsPolicy")
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+def test_sagemaker_managed_policy_2_is_attached_only_to_the_sagemaker_function(
+    template,
+):
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    properties = data["Resources"]["SageMakerAssessmentReadsPolicy2"]["Properties"]
+    assert not {"Roles", "Users", "Groups"} & set(properties)
+    referencing = {
+        logical_id
+        for logical_id, resource in data["Resources"].items()
+        if logical_id != "SageMakerAssessmentReadsPolicy2"
+        and _references(resource, "SageMakerAssessmentReadsPolicy2")
+    }
+    assert referencing == {"SagemakerSecurityAssessmentFunction"}
+    policies = data["Resources"]["SagemakerSecurityAssessmentFunction"]["Properties"][
+        "Policies"
+    ]
+    references = [
+        p for p in policies if _references(p, "SageMakerAssessmentReadsPolicy2")
+    ]
+    assert references == [{"Fn::Ref": "SageMakerAssessmentReadsPolicy2"}]
+    assert not _references(data.get("Outputs", {}), "SageMakerAssessmentReadsPolicy2")
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+@pytest.mark.parametrize(
+    ("image_arn", "reached"),
+    [
+        # An AWS-managed image (live ListManagedMicrovmImages, 2026-10-04).
+        ("arn:aws:lambda:us-east-1:aws:microvm-image:al2023-1", True),
+        ("arn:aws:lambda:us-east-1:123456789012:microvm-image:agent", True),
+        ("arn:aws:lambda:us-east-1:444455556666:microvm-image:agent", False),
+    ],
+)
+def test_sagemaker_get_microvm_reaches_aws_managed_images(template, image_arn, reached):
+    with open(template, encoding="utf-8") as template_file:
+        data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
+
+    statements = data["Resources"]["SageMakerAssessmentReadsPolicy2"]["Properties"][
+        "PolicyDocument"
+    ]["Statement"]
+    statement = next(s for s in statements if s["Sid"] == "MicrovmRead")
+    assert statement["Action"] == ["lambda:GetMicrovm"]
+    resource = statement["Resource"]
+    # A single Resource renders to one string, which must not be iterated by
+    # character: a lone "*" character would match every ARN.
+    patterns = _render_policy_intrinsics(
+        resource if isinstance(resource, list) else [resource], "aws"
+    )
+    assert all(isinstance(pattern, str) and len(pattern) > 1 for pattern in patterns)
+    assert (
+        any(fnmatch.fnmatchcase(image_arn, pattern) for pattern in patterns) is reached
+    )
+
+
+def test_sagemaker_managed_policy_2_is_identical_in_both_templates():
+    blocks = [
+        _resource_block(path, "SageMakerAssessmentReadsPolicy2")
+        for path in _SAM_TEMPLATES
+    ]
+    assert blocks[0] == blocks[1]
 
 
 _ARTIFACT_PREFIXES = {
@@ -1520,8 +2266,113 @@ def test_sagemaker_and_guardduty_resource_reads_are_arn_scoped(template):
         template, "SagemakerSecurityAssessmentFunction", "GuardDutyDetectorRead"
     )
     assert "guardduty:GetDetector" in detector
+    assert "guardduty:ListCoverage" in detector
     assert "guardduty:*:${AWS::AccountId}:detector/*" in detector
     assert not re.search(r"Resource:\s+['\"]\*['\"]", detector)
+
+    ecs_services = _statement_block(
+        template, "SagemakerSecurityAssessmentFunction", "EcsServiceRead"
+    )
+    assert "ecs:DescribeServices" in ecs_services
+    assert "ecs:*:${AWS::AccountId}:service/*" in ecs_services
+    assert not re.search(r"Resource:\s+['\"]\*['\"]", ecs_services)
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
+def test_sagemaker_foundation_reads_wildcard_only_where_iam_has_no_resource_type(
+    template,
+):
+    """SM-35..SM-41 take '*' only on list actions with no IAM resource type.
+
+    The servicereference.us-east-1.amazonaws.com action lists give no resource
+    type for organizations:ListDelegatedAdministrators, eks:ListClusters,
+    secretsmanager:ListSecrets or iot:ListPolicies, and give hub, cluster,
+    addon and policy for the four scoped reads below.
+    """
+    for sid, actions in (
+        (
+            "OrganizationsInventoryPermissions",
+            ("organizations:ListDelegatedAdministrators",),
+        ),
+        (
+            "AccountInventoryWithoutResourceType",
+            (
+                "eks:ListClusters",
+                "secretsmanager:ListSecrets",
+                "iot:ListPolicies",
+                "cloudtrail:LookupEvents",
+            ),
+        ),
+        (
+            "EC2NetworkPostureInventory",
+            (
+                "ec2:DescribeVpcEndpoints",
+                "ec2:DescribeFlowLogs",
+                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeInstances",
+            ),
+        ),
+        (
+            "GuardDutyInventoryPermissions",
+            ("guardduty:ListDetectors", "guardduty:DescribeOrganizationConfiguration"),
+        ),
+        ("ConformancePackInventory", ("config:DescribeConformancePacks",)),
+        (
+            "IoTDeviceDefenderAuditRead",
+            (
+                "iot:DescribeAccountAuditConfiguration",
+                "iot:ListAuditFindings",
+                "iot:ListRoleAliases",
+            ),
+        ),
+        ("InspectorAccountStatusRead", ("inspector2:BatchGetAccountStatus",)),
+        ("LambdaFunctionInventory", ("lambda:ListFunctions",)),
+    ):
+        statement = _statement_block(
+            template, "SagemakerSecurityAssessmentFunction", sid
+        )
+        for action in actions:
+            assert action in statement
+        assert re.search(r"Resource:\s+['\"]\*['\"]", statement)
+
+    for sid, actions, resources in (
+        (
+            "SecurityHubStandardsRead",
+            ("securityhub:GetEnabledStandards",),
+            ("securityhub:*:${AWS::AccountId}:hub/default",),
+        ),
+        (
+            "EKSAddonRead",
+            ("eks:DescribeCluster", "eks:ListAddons", "eks:DescribeAddon"),
+            (
+                "eks:*:${AWS::AccountId}:cluster/*",
+                "eks:*:${AWS::AccountId}:addon/*/*/*",
+            ),
+        ),
+        (
+            "IoTPolicyRead",
+            ("iot:GetPolicy", "iot:ListTargetsForPolicy"),
+            ("iot:*:${AWS::AccountId}:policy/*",),
+        ),
+        (
+            "IoTRoleAliasRead",
+            ("iot:DescribeRoleAlias",),
+            ("iot:*:${AWS::AccountId}:rolealias/*",),
+        ),
+    ):
+        statement = _statement_block(
+            template, "SagemakerSecurityAssessmentFunction", sid
+        )
+        for action in actions:
+            assert action in statement
+        for resource in resources:
+            assert resource in statement
+        assert not re.search(r"Resource:\s+['\"]\*['\"]", statement)
+
+    # SM-40 reads rotation metadata only; a secret value read would widen the
+    # role from inventory to data access.
+    block = _resource_block(template, "SagemakerSecurityAssessmentFunction")
+    assert "secretsmanager:GetSecretValue" not in block
 
 
 @pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
@@ -1639,6 +2490,10 @@ def test_assessment_reads_wildcard_only_where_iam_has_no_resource_type(template)
             "bedrock-agentcore:ListMemories",
             "bedrock-agentcore:ListGateways",
             "bedrock-agentcore:ListBrowsers",
+        ),
+        ("SagemakerSecurityAssessmentFunction", "EC2SubnetExposureInventory"): (
+            "ec2:DescribeSubnets",
+            "ec2:DescribeRouteTables",
         ),
     }
     for (logical_id, sid), actions in wildcard.items():
