@@ -596,6 +596,21 @@ def test_a08_a_service_selected_in_one_run_only_is_not_compared():
     }
 
 
+def test_a08_a_service_selected_again_in_the_current_run_is_not_compared():
+    # The other direction: SageMaker off in the previous run, on now.
+    result = _compare(
+        [make_finding("BR-01")],
+        [make_finding("BR-01"), make_finding("SM-26", region="us-east-1")],
+        previous={"modules": ("bedrock", "agentcore", "agent-registry")},
+    )
+    assert result.compared_services == ("bedrock", "agentcore", "agent-registry")
+    assert result.not_selected_services == {"sagemaker": "current run only"}
+    assert [row.check_id for row in result.rows] == ["BR-01"]
+    assert [(e.side, e.reason, e.finding.check_id) for e in result.excluded] == [
+        (CURRENT_RUN, SERVICE_NOT_IN_BOTH_RUNS, "SM-26"),
+    ]
+
+
 def test_a08_services_selected_in_neither_run_are_named():
     governance = {"modules": ("responsible-ai-grc",)}
     result = _compare(

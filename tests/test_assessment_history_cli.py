@@ -295,6 +295,21 @@ def test_the_log_names_a_service_not_selected_in_both_runs():
     ]
 
 
+def test_the_log_names_a_service_selected_again_in_the_current_run():
+    # The other direction: SageMaker off in the previous run, on now.
+    s3 = FakeS3()
+    put_run(s3, "run-p", utc(3), [make_finding("BR-01")], modules=WITHOUT_SAGEMAKER)
+    put_run(s3, "run-c", utc(27), [make_finding("BR-01", "Passed")])
+    code, lines = _run(_single(), s3=s3)
+    assert code == 0
+    assert [key for key, _ in s3.writes] == [CHANGES_KEY, CHANGES_PAGE_KEY]
+    assert lines[2:4] == [
+        "  Bedrock, AgentCore, Agent Registry: Regressed 0, New 0, Still open 0, "
+        "Resolved 1, No longer reported 0, No longer assessed 0",
+        "  Not compared (not selected in both runs): sagemaker (current run only)",
+    ]
+
+
 def test_the_log_has_no_headline_counts_without_a_service_in_both_runs():
     governance = ("responsible-ai-grc", "owasp")
     s3 = FakeS3()

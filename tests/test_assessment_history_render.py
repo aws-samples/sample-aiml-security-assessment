@@ -634,6 +634,36 @@ def test_a_service_not_selected_in_both_runs_is_not_shown_as_zero():
     ]
 
 
+def test_a_service_selected_again_is_not_shown_as_zero_either():
+    # The other direction: SageMaker off in the previous run, on now.
+    comparison = _comparison(
+        [make_finding("BR-01", "Failed")],
+        [
+            make_finding("BR-01", "Passed"),
+            make_finding("SM-26", "Failed", region="us-east-1"),
+        ],
+        previous={"modules": WITHOUT_SAGEMAKER},
+    )
+    page = _page(comparison)
+    assert [row["data-service"] for row in page.select("#findingsTable tbody tr")] == [
+        "bedrock"
+    ]
+    assert _area_rows(page)["SageMaker"] == ["Not selected in both runs"]
+    sagemaker = page.select_one('a.nav-item[data-filter-area="sagemaker"] .count')
+    assert sagemaker.get_text() == NOT_COUNTED
+    assert [li.get_text() for li in page.select("#notes li")] == [
+        "Not compared (not selected in both runs): SageMaker (current run only)"
+    ]
+    assert (
+        page.select_one(".tile-note")
+        .get_text()
+        .startswith(
+            "Counts are for Bedrock, AgentCore, and AWS Agent Registry. SageMaker "
+            "was not selected in both runs, so it isn't counted."
+        )
+    )
+
+
 @pytest.mark.parametrize(
     "current_modules, note",
     [
