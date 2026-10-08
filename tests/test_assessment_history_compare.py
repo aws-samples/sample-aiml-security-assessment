@@ -13,10 +13,12 @@ import pytest
 
 from assessment_history.compare import classify, compare_runs, dedupe
 from assessment_history.models import (
+    CORE_MODULES,
     CURRENT_RUN,
     MODULE_NOT_IN_BOTH_RUNS,
     PREVIOUS_RUN,
     REGION_NOT_IN_BOTH_RUNS,
+    SERVICE_NOT_IN_BOTH_RUNS,
     Change,
     MatchRule,
 )
@@ -572,6 +574,40 @@ def test_a08_module_in_one_run_only_is_not_compared():
         (CURRENT_RUN, MODULE_NOT_IN_BOTH_RUNS, "FS-02"),
         (PREVIOUS_RUN, MODULE_NOT_IN_BOTH_RUNS, "OW-03"),
     ]
+
+
+def test_a08_a_service_selected_in_one_run_only_is_not_compared():
+    result = _compare(
+        [
+            make_finding("BR-01"),
+            make_finding("SM-26", region="us-east-1"),
+            make_finding("OW-03"),
+        ],
+        [make_finding("BR-01")],
+        current={"modules": ("bedrock", "agentcore", "agent-registry")},
+    )
+    assert result.compared_services == ("bedrock", "agentcore", "agent-registry")
+    assert result.not_selected_services == {"sagemaker": "previous run only"}
+    assert result.not_compared_options == {"owasp": "previous run only"}
+    assert [row.check_id for row in result.rows] == ["BR-01"]
+    assert {(e.side, e.reason, e.finding.check_id) for e in result.excluded} == {
+        (PREVIOUS_RUN, SERVICE_NOT_IN_BOTH_RUNS, "SM-26"),
+        (PREVIOUS_RUN, MODULE_NOT_IN_BOTH_RUNS, "OW-03"),
+    }
+
+
+def test_a08_services_selected_in_neither_run_are_named():
+    governance = {"modules": ("responsible-ai-grc",)}
+    result = _compare(
+        [make_finding("FS-01")],
+        [make_finding("FS-01")],
+        previous=governance,
+        current=governance,
+    )
+    assert result.compared_services == ()
+    assert result.not_selected_services == dict.fromkeys(CORE_MODULES, "neither run")
+    assert result.not_compared_options == {}
+    assert [row.check_id for row in result.rows] == ["FS-01"]
 
 
 def test_a08_module_in_both_runs_is_compared():

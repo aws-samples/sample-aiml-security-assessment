@@ -20,9 +20,9 @@ rows are paired in five steps:
 A pair is only made when it's unambiguous: steps 1 and 2 need a key that is
 unique on both sides, so rows are never guessed into pairs. In step 4 one row
 is shared by several pairs; it's the only way a row appears more than once.
-Only modules enabled, and regions scanned, in both runs are compared; the rest
-is returned as excluded with a reason. Rows marked Global, or with no region,
-are always compared.
+Only core services selected, optional modules enabled, and regions scanned,
+in both runs are compared; the rest is returned as excluded with a reason.
+Rows marked Global, or with no region, are always compared.
 
 No AWS calls: runs arrive as ``models.Run`` values.
 """
@@ -34,6 +34,7 @@ from collections.abc import Callable, Iterable, Sequence
 
 from .models import (
     AREAS,
+    CORE_MODULES,
     CURRENT_RUN,
     FAILED,
     GLOBAL_REGION,
@@ -42,6 +43,7 @@ from .models import (
     PASSED,
     PREVIOUS_RUN,
     REGION_NOT_IN_BOTH_RUNS,
+    SERVICE_NOT_IN_BOTH_RUNS,
     Change,
     ComparedRow,
     Comparison,
@@ -138,6 +140,7 @@ def compare_runs(previous: Run, current: Run) -> Comparison:
         ),
         previous_saved_at=previous.saved_at,
         current_saved_at=current.saved_at,
+        compared_modules=shared_modules,
     )
 
 
@@ -159,7 +162,12 @@ def _in_scope(
     kept = []
     for finding in findings:
         if finding.module not in modules:
-            excluded.append(ExcludedFinding(side, MODULE_NOT_IN_BOTH_RUNS, finding))
+            reason = (
+                SERVICE_NOT_IN_BOTH_RUNS
+                if finding.module in CORE_MODULES
+                else MODULE_NOT_IN_BOTH_RUNS
+            )
+            excluded.append(ExcludedFinding(side, reason, finding))
         elif regions is not None and not _region_in_scope(finding.region, regions):
             excluded.append(ExcludedFinding(side, REGION_NOT_IN_BOTH_RUNS, finding))
         else:

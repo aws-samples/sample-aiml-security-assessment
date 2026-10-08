@@ -114,10 +114,11 @@ files**; a run's time is its latest file's time.
 The previous run is the most recent **usable** run saved before the current
 run. A run is usable when:
 
-- **Its files are complete.** Every core service (Bedrock, SageMaker,
-  AgentCore, AWS Agent Registry), and OWASP if it ran, has a CSV with at
-  least one row for every region the core CSV names show, and the Responsible
-  AI GRC CSV, if present, has at least one row. This follows the main
+- **Its files are complete.** Every core service the run selected (Bedrock,
+  SageMaker, AgentCore, AWS Agent Registry), and OWASP if it ran, has a CSV
+  with at least one row for every region the run's CSV names show (its core
+  CSVs, or its OWASP CSVs when no core service was selected), and the
+  Responsible AI GRC CSV, if present, has at least one row. This follows the main
   report's own completeness check, but from the files alone: the main report
   knows which regions the run was asked to scan and which options were on,
   and the files don't. So a run that failed partway can still look complete.
@@ -140,13 +141,38 @@ run. A run is usable when:
   is always the same.
 - Only the current run and the chosen previous run are read.
 
-Runs made before release 2.0.0 have no AWS Agent Registry CSV, so they are
-incomplete and never compared.
+**Service selection.** A service turned off with the deployment's
+`Enable*Assessment` switches writes no CSV, so its CSVs aren't required. Which
+services a run selected comes from:
+
+- the current run: the build's `ENABLE_BEDROCK`, `ENABLE_SAGEMAKER`,
+  `ENABLE_AGENTCORE`, and `ENABLE_AGENT_REGISTRY` settings (a missing setting
+  means selected);
+- an earlier single-account run: its run record, which lists the selected
+  services;
+- any other earlier run (multi-account runs, and single-account runs whose
+  record doesn't list the selection): the services it has CSVs for. In
+  multi-account mode the build uploads an account's files only after finding a
+  CSV for each selected service, so a service with no CSV there wasn't
+  selected.
+
+A selected service with no CSV still makes a run incomplete. A run with all
+four services off (Responsible AI GRC and OWASP only) is usable.
+
+Runs made before release 2.0.0 have no AWS Agent Registry CSV and no run
+record, so they are judged by their files: AWS Agent Registry counts as not
+selected in that run and isn't compared, and checks added in 2.0.0 are listed
+as found in only one run.
 
 ## What is compared
 
 Only what ran in both runs is compared:
 
+- **Core services** (Bedrock, SageMaker, AgentCore, AWS Agent Registry) are
+  compared only if both runs selected them. Otherwise the report says "Not
+  compared: not selected in both runs", and the service's sidebar count and
+  row in the counts by area say so instead of showing zero; the headline
+  counts leave it out and the note under them names it.
 - **Optional modules** (Responsible AI GRC, OWASP) are compared only if both
   runs have them. Otherwise the report says "Not compared: enabled in only
   one run".
@@ -236,7 +262,9 @@ choice carries over between the two reports).
   report can be identified with certainty, the header links to it.
 - **Summary counts:** Regressed, New, Still open, Resolved, No longer
   reported, and No longer assessed, for the four services only (Bedrock,
-  SageMaker, AgentCore, AWS Agent Registry). Most Agentic AI Security and
+  SageMaker, AgentCore, AWS Agent Registry), or those of them selected in both
+  runs; the note under the counts names any service left out. With none of
+  the four selected in both runs, the counts show "—". Most Agentic AI Security and
   OWASP rows are derived from service findings, so one change can appear in
   several areas; counts are shown per area and not added across areas.
 - **Counts by area:** under the main report's headings (By Service, By Lens,
@@ -297,6 +325,10 @@ can contain resource names chosen by anyone who can create resources.
 | `Skipped run <id> saved <time>: its run record <file> can't be read` | The run record isn't valid, so the run isn't used |
 | `Skipped run <id> saved <time>: unreadable (...)` | One of the run's CSVs can't be read; the next older run is tried |
 | `Skipped N more run(s)` | More than five runs were passed over |
+| `Not compared (not selected in both runs): <service> (<which run>)` | A core service selected in only one of the two runs, or in neither; it's left out of the comparison and the counts |
+| `No core service was selected in both runs, so there are no headline counts; see the changes CSV` | Only Responsible AI GRC or OWASP were compared |
+| `WARNING: ENABLE_<SERVICE>='<value>' is not true or false; the services with CSVs are taken as selected` | A service switch has an unexpected value |
+| `WARNING: ENABLE_<SERVICE> is '<value>', not true or false, so the run record does not list the selected services` | Single-account: the record is still written; later runs judge this run by its files |
 | `WARNING: Could not write the assessment run record s3://...` | Single-account: no record for this run; it will be judged by its files |
 | `WARNING: No execution ID was saved, so no assessment run record was written` | Single-account: the run didn't start |
 | `Ignored N run(s) saved after the current run: ...` | Runs newer than the current run |
@@ -360,6 +392,10 @@ Each folder must hold one complete run. The setting is ignored in this mode.
 - A check that lists several resources in one row (for example, AC-03 lists
   every stale role) shows as No longer reported plus New when the list
   changes, because the rows can't be paired with certainty.
+- OWASP rows are compared as one module. When a service is selected in one
+  run and not the other, the OWASP rows built from that service's findings
+  are still compared, so they can show as No longer reported, No longer
+  assessed, or New. The service's own rows are left out.
 - The comparison is always with the most recent usable run. Month, quarter,
   and year views are planned as a follow-up.
 - Runs are ordered by save time, so files copied back into a results folder

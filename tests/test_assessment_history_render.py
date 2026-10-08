@@ -583,6 +583,117 @@ def test_the_area_filter_and_the_sidebar_list_the_same_areas(which):
     assert _area_options(page) == _sidebar_areas(page)
 
 
+NOT_COUNTED = "\u2014"
+WITHOUT_SAGEMAKER = ("bedrock", "agentcore", "agent-registry")
+
+
+def _deselected_page(current_modules):
+    comparison = _comparison(
+        [
+            make_finding("BR-01", "Failed"),
+            make_finding("SM-26", "Failed", region="us-east-1"),
+        ],
+        [make_finding("BR-01", "Passed")],
+        current={"modules": current_modules},
+    )
+    return comparison, _page(comparison)
+
+
+def _area_rows(page):
+    return {
+        row.find_all("td")[0].get_text(): [
+            cell.get_text() for cell in row.find_all("td")[1:]
+        ]
+        for row in page.select(".area-table tbody tr")
+        if "group" not in (row.get("class") or [])
+    }
+
+
+def test_a_service_not_selected_in_both_runs_is_not_shown_as_zero():
+    comparison, page = _deselected_page(WITHOUT_SAGEMAKER)
+    assert comparison.not_selected_services == {"sagemaker": "previous run only"}
+    assert [row["data-service"] for row in page.select("#findingsTable tbody tr")] == [
+        "bedrock"
+    ]
+    rows = _area_rows(page)
+    assert rows["SageMaker"] == ["Not selected in both runs"]
+    assert rows["Bedrock"] == ["0", "0", "0", "1", "0", "0"]
+    assert rows["By Service total"] == ["0", "0", "0", "1", "0", "0"]
+    counts = {
+        item["data-filter-area"]: item.select_one(".count").get_text()
+        for item in page.select("a.nav-item[data-filter-area]")
+    }
+    assert counts == {
+        "bedrock": "1",
+        "sagemaker": NOT_COUNTED,
+        "agentcore": "0",
+        "agent-registry": "0",
+    }
+    assert [li.get_text() for li in page.select("#notes li")] == [
+        "Not compared (not selected in both runs): SageMaker (previous run only)"
+    ]
+
+
+@pytest.mark.parametrize(
+    "current_modules, note",
+    [
+        (
+            WITHOUT_SAGEMAKER,
+            "Counts are for Bedrock, AgentCore, and AWS Agent Registry. SageMaker "
+            "was not selected in both runs, so it isn't counted.",
+        ),
+        (
+            ("bedrock", "agent-registry"),
+            "Counts are for Bedrock and AWS Agent Registry. SageMaker and AgentCore "
+            "were not selected in both runs, so they aren't counted.",
+        ),
+        (
+            ("bedrock",),
+            "Counts are for Bedrock. SageMaker, AgentCore, and AWS Agent Registry "
+            "were not selected in both runs, so they aren't counted.",
+        ),
+    ],
+)
+def test_the_tile_note_names_the_services_left_out(current_modules, note):
+    _comparison_result, page = _deselected_page(current_modules)
+    text = page.select_one(".tile-note").get_text()
+    assert text.startswith(note + " Agentic AI Security")
+
+
+def test_with_no_service_selected_in_both_runs_there_are_no_headline_counts():
+    governance = {"modules": ("responsible-ai-grc", "owasp")}
+    page = _page(
+        _comparison(
+            [make_finding("FS-01", "Failed")],
+            [make_finding("FS-01", "Passed")],
+            previous=governance,
+            current=governance,
+        )
+    )
+    values = [
+        tile.select_one(".metric-value").get_text()
+        for tile in page.select(".metrics .metric")
+    ]
+    assert values == [NOT_COUNTED] * 6
+    assert (
+        page.select_one(".tile-note")
+        .get_text()
+        .startswith(
+            "None of Bedrock, SageMaker, AgentCore, and AWS Agent Registry was selected "
+            "in both runs, so there are no headline counts."
+        )
+    )
+    rows = _area_rows(page)
+    for service in ("Bedrock", "SageMaker", "AgentCore", "AWS Agent Registry"):
+        assert rows[service] == ["Not selected in both runs"], service
+    assert rows["By Service total"] == [NOT_COUNTED]
+    assert page.select_one("#notes li").get_text() == (
+        "Not compared (not selected in both runs): Bedrock (neither run), "
+        "SageMaker (neither run), AgentCore (neither run), "
+        "AWS Agent Registry (neither run)"
+    )
+
+
 def test_no_notes_card_when_there_is_nothing_to_note():
     comparison = _comparison([make_finding("BR-01", "Passed")], [make_finding("BR-01")])
     assert _page(comparison).select_one("#notes") is None

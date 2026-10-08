@@ -57,24 +57,21 @@ section.
   required for this feature. Direct SAM users must redeploy `template.yaml` or
   `template-multi-account.yaml` with the desired `Enable*Assessment` parameters
   and start a new execution. All switches default to true on upgrade.
-- **Changes since last assessment report:**
-
-1. **Single-account infrastructure update optional** —
-   `deployment/aiml-security-single-account.yaml` adds the
-   `EnableAssessmentHistory` parameter. Update the stack first only if you want
-   to be able to turn the report off.
-2. **Multi-account central infrastructure update optional** —
-   `deployment/2-aiml-security-codebuild.yaml` adds the same parameter.
-3. **CodeBuild run required** because `buildspec.yml` changed and the new
-   `assessment_history/` package runs in the post-build phase. If
-   `GitHubBranch` pins a tag or commit, update it first. The first run after
-   upgrading is compared with the account's latest usable earlier run, if
-   one is in the bucket. In single-account mode each run also writes a small
-   `assessment_history_run_<execution_id>.json` next to its findings CSVs,
-   recording whether the run succeeded, so a failed run is never used as the
-   previous run. It isn't written while `EnableAssessmentHistory` is `false`.
-
-No member-role StackSet update is required.
+- **Changes since last assessment report:** A CodeBuild run is required,
+  because `buildspec.yml` changed and the new `assessment_history/` package
+  runs in the post-build phase. If `GitHubBranch` pins a tag or commit, update
+  it first. Updating `deployment/aiml-security-single-account.yaml` or
+  `deployment/2-aiml-security-codebuild.yaml` is optional: it adds the
+  `EnableAssessmentHistory` parameter, needed only to be able to turn the
+  report off. No member-role StackSet update is required. The first run after
+  upgrading is compared with the account's latest usable earlier run, if one
+  is in the bucket. In single-account mode each run also writes a small
+  `assessment_history_run_<execution_id>.json` next to its findings CSVs,
+  recording whether the run succeeded and which services it selected, so a
+  failed run is never used as the previous run. It isn't written while
+  `EnableAssessmentHistory` is `false`. With service selection, only the
+  services selected in both runs are compared; a service selected in only one
+  of them is listed as not compared.
 
 These instructions assume the 2.0.0 prerequisites below are already applied.
 When upgrading from an earlier release, complete the 2.0.0 member-role and

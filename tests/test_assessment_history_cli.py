@@ -276,6 +276,41 @@ def test_a_governance_only_run_gets_a_changes_report():
     assert not [line for line in lines if line.startswith("WARNING")]
 
 
+def test_the_log_names_a_service_not_selected_in_both_runs():
+    s3 = FakeS3()
+    put_run(s3, "run-p", utc(3), [make_finding("BR-01")])
+    put_run(
+        s3,
+        "run-c",
+        utc(27),
+        [make_finding("BR-01", "Passed")],
+        modules=WITHOUT_SAGEMAKER,
+    )
+    code, lines = _run(_single(), s3=s3, environ={"ENABLE_SAGEMAKER": "false"})
+    assert code == 0
+    assert lines[2:4] == [
+        "  Bedrock, AgentCore, Agent Registry: Regressed 0, New 0, Still open 0, "
+        "Resolved 1, No longer reported 0, No longer assessed 0",
+        "  Not compared (not selected in both runs): sagemaker (previous run only)",
+    ]
+
+
+def test_the_log_has_no_headline_counts_without_a_service_in_both_runs():
+    governance = ("responsible-ai-grc", "owasp")
+    s3 = FakeS3()
+    put_run(s3, "run-p", utc(3), [make_finding("FS-01")], modules=governance)
+    put_run(s3, "run-c", utc(27), [make_finding("FS-01", "Passed")], modules=governance)
+    code, lines = _run(_single(), s3=s3, environ=ALL_OFF)
+    assert code == 0
+    assert lines[2:4] == [
+        "  No core service was selected in both runs, so there are no headline "
+        "counts; see the changes CSV",
+        "  Not compared (not selected in both runs): bedrock (neither run), "
+        "sagemaker (neither run), agentcore (neither run), "
+        "agent-registry (neither run)",
+    ]
+
+
 # --- S3 mode: several accounts -------------------------------------------------------
 
 

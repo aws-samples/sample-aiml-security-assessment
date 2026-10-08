@@ -7,7 +7,8 @@ Built from a ``models.Comparison`` with the main report's styling
   changes table to it;
 - header with both runs' saved times, days apart, the account, and a link to
   the current run's main report when it's known;
-- six headline counts for the four services, and counts by area;
+- six headline counts for the four services, and counts by area; a service
+  not selected in both runs is shown as not selected, never as zero;
 - the main report's findings table, with a Change column in place of Status.
 """
 
@@ -51,6 +52,8 @@ TILES = {
 SCORED_SEVERITIES = ("high", "medium", "low")
 MAX_LISTED = 20
 GITHUB_URL = "https://github.com/aws-samples/sample-aiml-security-assessment"
+NOT_COUNTED = "\u2014"
+NOT_SELECTED = "Not selected in both runs"
 SAME_FOLDER_NOTE = (
     "Links work when these files are in the same folder, for example "
     "downloaded together or copied with aws s3 sync."
@@ -145,6 +148,20 @@ def _page_areas(parts: PageParts, by_area: dict) -> list[str]:
     ]
 
 
+def _join(names: list[str]) -> str:
+    """ "A", "A and B", "A, B, and C"."""
+    if len(names) <= 2:
+        return " and ".join(names)
+    return ", ".join(names[:-1]) + ", and " + names[-1]
+
+
+def _area_count(comparison, area: str, by_area: dict) -> str:
+    """The sidebar count for an area: "—" for a service not compared."""
+    if area in comparison.not_selected_services:
+        return NOT_COUNTED
+    return str(_shown_by_default(by_area.get(area, Counter())))
+
+
 def _listing(items: dict[str, str], name) -> str:
     shown = [
         f"{name(item)} ({side})" for item, side in list(items.items())[:MAX_LISTED]
@@ -168,7 +185,7 @@ def _sidebar(comparison, by_area, parts: PageParts, main_report, csv_name, gener
         links = "".join(
             f'<a href="#changes" class="nav-item" data-filter-area="{attr(area)}">'
             f"{parts.area_icons[area]} {esc(parts.area_labels[area])}"
-            f'<span class="count">{_shown_by_default(by_area.get(area, Counter()))}</span></a>'
+            f'<span class="count">{_area_count(comparison, area, by_area)}</span></a>'
             for area in present
         )
         groups.append(
@@ -220,21 +237,42 @@ def _header(comparison, parts: PageParts, main_report) -> str:
                 </div>"""
 
 
-def _tiles(comparison) -> str:
+def _tiles(comparison, parts: PageParts) -> str:
+    services = comparison.compared_services
     counts = comparison.tile_counts()
     tiles = "".join(
         f'<div class="metric {TILES[change][0]}">'
         f'<div class="metric-label">{LABELS[change][0]} {change.value}</div>'
-        f'<div class="metric-value">{counts[change]}</div>'
+        f'<div class="metric-value">{counts[change] if services else NOT_COUNTED}</div>'
         f'<div class="metric-sub">{TILES[change][1]}</div></div>'
         for change in TILE_ORDER
     )
     return (
         f'<div class="metrics">{tiles}</div>'
-        '<p class="finding-details tile-note">Counts are for Bedrock, SageMaker, '
-        "AgentCore, and AWS Agent Registry. Agentic AI Security and OWASP rows are "
-        "mostly derived from those findings, so one change can appear in several "
-        "areas. The table below includes all assessment areas.</p>"
+        f'<p class="finding-details tile-note">{parts.escape_text(_tile_note(comparison, parts))}</p>'
+    )
+
+
+def _tile_note(comparison, parts: PageParts) -> str:
+    """What the headline counts cover, naming any service not compared."""
+    names = [parts.area_labels[area] for area in comparison.compared_services]
+    left_out = [parts.area_labels[area] for area in comparison.not_selected_services]
+    if not names:
+        return (
+            f"None of {_join(left_out)} was selected in both runs, so there are no "
+            "headline counts. The table below includes the assessment areas that "
+            "were compared."
+        )
+    note = f"Counts are for {_join(names)}."
+    if left_out:
+        verb, pronoun = (
+            ("was", "it isn't") if len(left_out) == 1 else ("were", "they aren't")
+        )
+        note += f" {_join(left_out)} {verb} not selected in both runs, so {pronoun} counted."
+    return note + (
+        " Agentic AI Security and OWASP rows are mostly derived from those findings, "
+        "so one change can appear in several areas. The table below includes all "
+        "assessment areas."
     )
 
 
@@ -245,10 +283,15 @@ def _notes(comparison, parts: PageParts) -> str:
     items = []
     if not comparison.has_changes:
         items.append("No changes since the last assessment.")
-    if comparison.not_compared_modules:
+    if comparison.not_selected_services:
+        items.append(
+            "Not compared (not selected in both runs): "
+            + _listing(comparison.not_selected_services, name)
+        )
+    if comparison.not_compared_options:
         items.append(
             "Not compared (enabled in only one run): "
-            + _listing(comparison.not_compared_modules, name)
+            + _listing(comparison.not_compared_options, name)
         )
     if comparison.not_compared_regions:
         items.append(
@@ -274,6 +317,13 @@ def _count_row(label: str, counts: Counter, css_class: str = "") -> str:
     return f'<tr class="{css_class}"><td>{label}</td>{cells}</tr>'
 
 
+def _note_row(label: str, text: str, css_class: str = "not-selected") -> str:
+    return (
+        f'<tr class="{css_class}"><td>{label}</td>'
+        f'<td colspan="6" style="color: var(--text-3);">{text}</td></tr>'
+    )
+
+
 def _area_table(comparison, by_area, parts: PageParts) -> str:
     esc = parts.escape_text
     rows = []
@@ -283,12 +333,16 @@ def _area_table(comparison, by_area, parts: PageParts) -> str:
             continue
         rows.append(f'<tr class="group"><td colspan="7">{esc(heading)}</td></tr>')
         rows += [
-            _count_row(esc(parts.area_labels[area]), by_area.get(area, Counter()))
+            _note_row(esc(parts.area_labels[area]), NOT_SELECTED)
+            if area in comparison.not_selected_services
+            else _count_row(esc(parts.area_labels[area]), by_area.get(area, Counter()))
             for area in present
         ]
         if areas == CORE_AREAS:
             rows.append(
                 _count_row("By Service total", comparison.tile_counts(), "total")
+                if comparison.compared_services
+                else _note_row("By Service total", NOT_COUNTED, "total")
             )
     header = "".join(f"<th>{change.value}</th>" for change in TILE_ORDER)
     return (
@@ -426,7 +480,7 @@ def _methodology() -> str:
                     <li>If one run has several Failed rows and the other a single row that isn't Failed, such as a Passed summary, each Failed row is paired with that row.</li>
                     <li>Anything left is unpaired and shows as New or No longer reported.</li>
                 </ol>
-                <p class="finding-details" style="margin-top: 12px;">The previous run is the most recent usable run saved before this one: its results are complete and, in single-account mode, its run record doesn't say it failed. Only modules enabled and regions scanned in both runs are compared. The changes CSV records which rule paired each row. See docs/ASSESSMENT_HISTORY.md in the repository.</p></div></div>
+                <p class="finding-details" style="margin-top: 12px;">The previous run is the most recent usable run saved before this one: its results are complete and, in single-account mode, its run record doesn't say it failed. Only services selected, optional modules enabled, and regions scanned in both runs are compared. The changes CSV records which rule paired each row. See docs/ASSESSMENT_HISTORY.md in the repository.</p></div></div>
             </section>"""
 
 
@@ -562,7 +616,7 @@ def render_changes_page(
         <main class="main">
             <section id="overview" class="section">
                 {_header(comparison, parts, main_report_name)}
-                {_tiles(comparison)}
+                {_tiles(comparison, parts)}
                 {_notes(comparison, parts)}
                 {_area_table(comparison, by_area, parts)}
             </section>

@@ -43,6 +43,8 @@ NOT_PRESENT = "Not present"
 PREVIOUS_RUN = "previous run"
 CURRENT_RUN = "current run"
 MODULE_NOT_IN_BOTH_RUNS = "module not enabled in both runs"
+SERVICE_NOT_IN_BOTH_RUNS = "service not selected in both runs"
+NEITHER_RUN = "neither run"
 REGION_NOT_IN_BOTH_RUNS = "region not scanned in both runs"
 
 CSV_COLUMNS = (
@@ -334,6 +336,9 @@ class Comparison:
     single_run_check_ids: dict[str, str] = field(default_factory=dict)
     previous_saved_at: datetime | None = None
     current_saved_at: datetime | None = None
+    # Modules in both runs: the core services selected in both, and the
+    # optional modules enabled in both.
+    compared_modules: frozenset[str] = frozenset(MODULES)
 
     @property
     def has_changes(self) -> bool:
@@ -347,6 +352,30 @@ class Comparison:
         previous_day = self.previous_saved_at.astimezone(UTC).date()
         current_day = self.current_saved_at.astimezone(UTC).date()
         return (current_day - previous_day).days
+
+    @property
+    def compared_services(self) -> tuple[str, ...]:
+        """The core services selected in both runs, in report order."""
+        return tuple(area for area in CORE_AREAS if area in self.compared_modules)
+
+    @property
+    def not_selected_services(self) -> dict[str, str]:
+        """Core services not compared because they weren't selected in both
+        runs, mapped to the run that selected them (or "neither run")."""
+        return {
+            area: self.not_compared_modules.get(area, NEITHER_RUN)
+            for area in CORE_AREAS
+            if area not in self.compared_modules
+        }
+
+    @property
+    def not_compared_options(self) -> dict[str, str]:
+        """Optional modules (Responsible AI GRC, OWASP) enabled in only one run."""
+        return {
+            module: side
+            for module, side in self.not_compared_modules.items()
+            if module not in CORE_AREAS
+        }
 
     def counts_by_area(self) -> dict[str, Counter[Change]]:
         """Rows per change state for each area, in report order."""

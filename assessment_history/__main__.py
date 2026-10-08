@@ -98,6 +98,13 @@ TILE_ORDER = (
     Change.NO_LONGER_ASSESSED,
 )
 MAX_LISTED = 10
+# Core service names in the log's headline-counts line.
+SERVICE_NAMES = {
+    "bedrock": "Bedrock",
+    "sagemaker": "SageMaker",
+    "agentcore": "AgentCore",
+    "agent-registry": "Agent Registry",
+}
 
 Output = Callable[[str], None]
 
@@ -204,16 +211,28 @@ def describe(comparison: Comparison) -> list[str]:
         f"(saved {format_utc(comparison.previous_saved_at)}), "
         f"{comparison.days_apart} day(s) apart"
     ]
-    if comparison.has_changes:
+    services = comparison.compared_services
+    if not comparison.has_changes:
+        lines.append("  No changes since the last assessment")
+    elif services:
         tiles = comparison.tile_counts()
         counts = ", ".join(f"{change.value} {tiles[change]}" for change in TILE_ORDER)
-        lines.append(f"  Bedrock, SageMaker, AgentCore, Agent Registry: {counts}")
+        names = ", ".join(SERVICE_NAMES[service] for service in services)
+        lines.append(f"  {names}: {counts}")
     else:
-        lines.append("  No changes since the last assessment")
-    if comparison.not_compared_modules:
+        lines.append(
+            "  No core service was selected in both runs, so there are no headline "
+            "counts; see the changes CSV"
+        )
+    if comparison.not_selected_services:
+        lines.append(
+            "  Not compared (not selected in both runs): "
+            + _listing(comparison.not_selected_services)
+        )
+    if comparison.not_compared_options:
         lines.append(
             "  Not compared (enabled in only one run): "
-            + _listing(comparison.not_compared_modules)
+            + _listing(comparison.not_compared_options)
         )
     if comparison.not_compared_regions:
         lines.append(
