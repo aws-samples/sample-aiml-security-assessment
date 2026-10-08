@@ -17,6 +17,7 @@ import pytest
 import yaml
 
 from assessment_history.discover import DirectorySource, read_run_record
+from assessment_history.models import CORE_MODULES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BUILDSPEC = REPO_ROOT / "buildspec.yml"
@@ -28,6 +29,7 @@ WORKFLOW = REPO_ROOT / ".github" / "workflows" / "python-tests.yml"
 
 PYTHON_STANDIN = """#!/bin/bash
 { echo "cwd=$PWD"; echo "setting=$ENABLE_ASSESSMENT_HISTORY"; printf 'arg=%s\\n' "$@"; } > "$STANDIN_LOG"
+echo "$ENABLE_BEDROCK $ENABLE_SAGEMAKER $ENABLE_AGENTCORE $ENABLE_AGENT_REGISTRY" > "$STANDIN_LOG.selection"
 exit "${STANDIN_EXIT:-0}"
 """
 TIMEOUT_STANDIN = """#!/bin/bash
@@ -198,6 +200,36 @@ def test_a_failing_tool_is_a_warning_and_never_fails_the_build(tmp_path):
     ]
 
 
+def test_the_tool_sees_the_service_switches(tmp_path):
+    # The tool reads the current run's selection from the environment.
+    switches = {
+        "ENABLE_BEDROCK": "true",
+        "ENABLE_SAGEMAKER": "false",
+        "ENABLE_AGENTCORE": "true",
+        "ENABLE_AGENT_REGISTRY": "false",
+    }
+    _run_function(tmp_path, switches)
+    seen = (tmp_path / "python.log.selection").read_text(encoding="utf-8").split()
+    assert seen == ["true", "false", "true", "false"]
+
+
+SWITCHES = (
+    "ENABLE_BEDROCK",
+    "ENABLE_SAGEMAKER",
+    "ENABLE_AGENTCORE",
+    "ENABLE_AGENT_REGISTRY",
+)
+
+
+@pytest.mark.parametrize("switch", SWITCHES)
+def test_post_build_sets_each_switch_before_the_history_steps(switch):
+    text = _post_build()
+    default = f'export {switch}="${{{switch}:-true}}"'
+    assert default in text
+    assert text.index(default) < text.index("run_changes_report() {")
+    assert text.index(default) < text.index("record_assessment_run() {")
+
+
 def test_the_step_never_writes_the_failure_ledger():
     script = _function_script()
     assert "record_failure" not in script
@@ -314,6 +346,52 @@ def test_the_run_record_says_whether_the_run_succeeded(
     assert record["succeeded"] is succeeded
     assert record["status"] == (status or "UNKNOWN")
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", record["written_at"])
+    # No switches set: every service counts as selected, as in buildspec.yml.
+    assert record["selected_services"] == dict.fromkeys(CORE_MODULES, True)
+
+
+@pytest.mark.parametrize(
+    "switches, selected",
+    [
+        (
+            {"ENABLE_SAGEMAKER": "false"},
+            {"bedrock", "agentcore", "agent-registry"},
+        ),
+        (dict.fromkeys(SWITCHES, "false"), set()),
+        (dict.fromkeys(SWITCHES, "true"), set(CORE_MODULES)),
+    ],
+)
+def test_the_run_record_lists_the_selected_services(tmp_path, switches, selected):
+    stdout, _calls, body = _record(
+        tmp_path, EXECUTION_ARN, "SUCCEEDED", "false", env=switches
+    )
+    assert stdout == ["status=0"]
+    record = json.loads(body)
+    assert record["selected_services"] == {
+        module: module in selected for module in CORE_MODULES
+    }
+    (tmp_path / RECORD_NAME).write_text(body, encoding="utf-8")
+    read = read_run_record(DirectorySource(tmp_path), RECORD_NAME, "run-c")
+    assert (read.problem, read.selected) == (None, selected)
+
+
+def test_an_unrecognized_switch_leaves_the_selection_out_of_the_record(tmp_path):
+    stdout, _calls, body = _record(
+        tmp_path,
+        EXECUTION_ARN,
+        "SUCCEEDED",
+        "false",
+        env={"ENABLE_AGENTCORE": "yes"},
+    )
+    assert stdout == [
+        "WARNING: ENABLE_AGENTCORE is 'yes', not true or false, so the run record "
+        "does not list the selected services",
+        "status=0",
+    ]
+    assert "selected_services" not in json.loads(body)
+    (tmp_path / RECORD_NAME).write_text(body, encoding="utf-8")
+    read = read_run_record(DirectorySource(tmp_path), RECORD_NAME, "run-c")
+    assert (read.problem, read.selected) == (None, None)
 
 
 @pytest.mark.parametrize(

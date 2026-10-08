@@ -195,6 +195,87 @@ def test_history_enabled(environ, enabled, warnings_out):
     assert lines == warnings_out
 
 
+# --- service selection --------------------------------------------------------------
+
+WITHOUT_SAGEMAKER = tuple(module for module in CORE_MODULES if module != "sagemaker")
+ALL_OFF = {name: "false" for name in cli.SELECTION_SETTINGS.values()}
+
+
+def test_selection_settings_cover_the_core_services():
+    assert tuple(cli.SELECTION_SETTINGS) == CORE_MODULES
+    assert list(cli.SELECTION_SETTINGS.values()) == [
+        "ENABLE_BEDROCK",
+        "ENABLE_SAGEMAKER",
+        "ENABLE_AGENTCORE",
+        "ENABLE_AGENT_REGISTRY",
+    ]
+
+
+@pytest.mark.parametrize(
+    "environ, selected, warnings_out",
+    [
+        ({}, set(CORE_MODULES), []),
+        ({"ENABLE_SAGEMAKER": "false"}, set(WITHOUT_SAGEMAKER), []),
+        ({"ENABLE_SAGEMAKER": " False "}, set(WITHOUT_SAGEMAKER), []),
+        (ALL_OFF, set(), []),
+        (
+            {"ENABLE_AGENTCORE": "yes"},
+            None,
+            [
+                "WARNING: ENABLE_AGENTCORE='yes' is not true or false; the services "
+                "with CSVs are taken as selected"
+            ],
+        ),
+    ],
+)
+def test_selected_services(environ, selected, warnings_out):
+    lines = []
+    assert cli.selected_services(environ, lines.append) == selected
+    assert lines == warnings_out
+
+
+def test_a_deselected_service_still_gets_a_changes_report():
+    # The review's case: SageMaker turned off, so neither run has its CSVs.
+    s3 = FakeS3()
+    put_run(s3, "run-p", utc(3), [make_finding("BR-01")], modules=WITHOUT_SAGEMAKER)
+    put_run(
+        s3,
+        "run-c",
+        utc(27),
+        [make_finding("BR-01", "Passed")],
+        modules=WITHOUT_SAGEMAKER,
+    )
+    code, lines = _run(_single(), s3=s3, environ={"ENABLE_SAGEMAKER": "false"})
+    assert code == 0
+    assert [key for key, _ in s3.writes] == [CHANGES_KEY, CHANGES_PAGE_KEY]
+    assert not [line for line in lines if line.startswith("WARNING")]
+
+
+def test_a_selected_service_with_no_csv_gets_no_changes_report():
+    s3 = FakeS3()
+    put_run(s3, "run-p", utc(3))
+    put_run(s3, "run-c", utc(27), modules=WITHOUT_SAGEMAKER)
+    code, lines = _run(_single(), s3=s3)
+    assert (code, s3.writes) == (0, [])
+    assert lines == [
+        _cannot(
+            ACCOUNT,
+            "the current run is incomplete (missing sagemaker CSV for us-east-1)",
+        )
+    ]
+
+
+def test_a_governance_only_run_gets_a_changes_report():
+    governance = ("responsible-ai-grc", "owasp")
+    s3 = FakeS3()
+    put_run(s3, "run-p", utc(3), modules=governance)
+    put_run(s3, "run-c", utc(27), modules=governance)
+    code, lines = _run(_single(), s3=s3, environ=ALL_OFF)
+    assert code == 0
+    assert [key for key, _ in s3.writes] == [CHANGES_KEY, CHANGES_PAGE_KEY]
+    assert not [line for line in lines if line.startswith("WARNING")]
+
+
 # --- S3 mode: several accounts -------------------------------------------------------
 
 

@@ -447,8 +447,9 @@ phases:
         # execution succeeded, next to its CSVs in the central bucket, so the
         # changes report never uses a failed run as its previous run. An
         # execution only succeeds when the main report's completeness check
-        # passes. Written only while the setting is on; it can never fail the
-        # build.
+        # passes. The record also lists the core services the run selected,
+        # so a later run can tell a deselected service from a missing CSV.
+        # Written only while the setting is on; it can never fail the build.
         record_assessment_run() {
           local execution_id="${1##*:}" status="${2:-UNKNOWN}" succeeded=true
           if [[ "$3" == true ]]; then
@@ -461,9 +462,23 @@ phases:
             echo "WARNING: No execution ID was saved, so no assessment run record was written"
             return 0
           fi
+          local selection="" pair flag value
+          for pair in bedrock:ENABLE_BEDROCK sagemaker:ENABLE_SAGEMAKER agentcore:ENABLE_AGENTCORE agent-registry:ENABLE_AGENT_REGISTRY; do
+            flag="${pair#*:}"
+            value="${!flag:-true}"
+            if [[ "$value" != true && "$value" != false ]]; then
+              echo "WARNING: $flag is '$value', not true or false, so the run record does not list the selected services"
+              selection=""
+              break
+            fi
+            selection+="${selection:+, }\"${pair%%:*}\": $value"
+          done
+          if [[ -n "$selection" ]]; then
+            selection=", \"selected_services\": {$selection}"
+          fi
           local key="$AWS_ACCOUNT_ID/assessment_history_run_${execution_id}.json"
-          if ! printf '{"execution_id": "%s", "succeeded": %s, "status": "%s", "written_at": "%s"}\n' \
-              "$execution_id" "$succeeded" "$status" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          if ! printf '{"execution_id": "%s", "succeeded": %s, "status": "%s", "written_at": "%s"%s}\n' \
+              "$execution_id" "$succeeded" "$status" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$selection" \
               | aws s3 cp - "s3://$BUCKET_REPORT/$key" --content-type application/json --only-show-errors; then
             echo "WARNING: Could not write the assessment run record s3://$BUCKET_REPORT/$key"
           fi

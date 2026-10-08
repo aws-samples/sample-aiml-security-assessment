@@ -11,7 +11,11 @@ writes ``security_assessment_changes_<YYYYMMDD_HHMMSS>.csv`` and ``.html`` into
 
 It never fails the build: a problem with one account is printed as a WARNING
 line, the other accounts carry on, and the exit code is 0. Setting
-ENABLE_ASSESSMENT_HISTORY=false turns it off. The CSV is written before the
+ENABLE_ASSESSMENT_HISTORY=false turns it off. ENABLE_BEDROCK,
+ENABLE_SAGEMAKER, ENABLE_AGENTCORE and ENABLE_AGENT_REGISTRY say which core
+services the current run selected (missing means selected, as in
+buildspec.yml), so a deselected service's missing CSVs don't make the run
+incomplete. The CSV is written before the
 page, so a page that can't be written still leaves the CSV. Accounts are
 started in an order that moves along one account with each CodeBuild build
 number, so when the time budget runs out it isn't always the same accounts
@@ -60,6 +64,14 @@ from .models import (
 from .render_changes import render_changes_page
 
 SETTING = "ENABLE_ASSESSMENT_HISTORY"
+# The CodeBuild switches for the core services (service selection), in
+# CORE_MODULES order. buildspec.yml sets each to true when it's missing.
+SELECTION_SETTINGS = {
+    "bedrock": "ENABLE_BEDROCK",
+    "sagemaker": "ENABLE_SAGEMAKER",
+    "agentcore": "ENABLE_AGENTCORE",
+    "agent-registry": "ENABLE_AGENT_REGISTRY",
+}
 CHANGES_FILE_PREFIX = "security_assessment_changes_"
 # The main report the scanners' report Lambda writes for each run. Its name has
 # no execution ID, so it's matched to a run by save time: the build uploads a
@@ -99,6 +111,28 @@ def history_enabled(environ: Mapping[str, str], out: Output) -> bool:
     if value != "true":
         out(f"WARNING: {SETTING}={raw!r} is not true or false; using true")
     return True
+
+
+def selected_services(environ: Mapping[str, str], out: Output) -> frozenset[str] | None:
+    """The core services the current run selected, from its switches.
+
+    A missing switch means selected, as in buildspec.yml. If a switch is
+    neither true nor false, the selection is unknown (None) and the services
+    the run has CSVs for are taken as selected.
+    """
+    selected = set()
+    for module, name in SELECTION_SETTINGS.items():
+        raw = environ.get(name)
+        value = "true" if raw is None else raw.strip().lower()
+        if value not in ("true", "false"):
+            out(
+                f"WARNING: {name}={raw!r} is not true or false; the services "
+                "with CSVs are taken as selected"
+            )
+            return None
+        if value == "true":
+            selected.add(module)
+    return frozenset(selected)
 
 
 def first_run_note(account: str) -> str:
@@ -255,9 +289,16 @@ def _s3_client():
     return boto3.client("s3", config=Config(retries=S3_RETRIES))
 
 
-def _compare_in_s3(client, bucket: str, account: str, execution_id: str, out: Output):
+def _compare_in_s3(
+    client,
+    bucket: str,
+    account: str,
+    execution_id: str,
+    selected: frozenset[str] | None,
+    out: Output,
+):
     source = S3Source(client, bucket, account)
-    found = discover(source, account, execution_id)
+    found = discover(source, account, execution_id, selected)
     out(f"Changes report for account {account}")
     for note in found.notes:
         out(f"  {note}")
@@ -304,6 +345,7 @@ def run_s3(args, accounts, client, environ, clock, out: Output) -> int:
     if not history_enabled(environ, out):
         out("Changes report disabled (EnableAssessmentHistory=false)")
         return 0
+    selected = selected_services(environ, out)
     client = client or _s3_client()
     failures = read_failures(args.failures_file) if args.failures_file else {}
     accounts, offset = rotate_accounts(accounts, environ)
@@ -338,7 +380,7 @@ def run_s3(args, accounts, client, environ, clock, out: Output) -> int:
             continue
         try:
             execution_id = _current_execution_id(args, account)
-            _compare_in_s3(client, args.bucket, account, execution_id, out)
+            _compare_in_s3(client, args.bucket, account, execution_id, selected, out)
         except Exception as error:  # one account must not stop the others
             _cannot_complete(out, account, [_reason(error)])
     return 0
