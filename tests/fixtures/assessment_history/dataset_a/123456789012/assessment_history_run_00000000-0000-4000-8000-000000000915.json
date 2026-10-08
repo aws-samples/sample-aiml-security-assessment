@@ -1,0 +1,12 @@
+{
+  "execution_id": "00000000-0000-4000-8000-000000000915",
+  "succeeded": true,
+  "status": "SUCCEEDED",
+  "written_at": "2026-09-15T10:00:05Z",
+  "selected_services": {
+    "bedrock": true,
+    "sagemaker": true,
+    "agentcore": true,
+    "agent-registry": true
+  }
+}

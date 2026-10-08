@@ -500,16 +500,41 @@ def test_local_mode_needs_one_run_per_folder(tmp_path):
 
 def test_local_mode_needs_complete_runs(tmp_path):
     _local_runs(tmp_path)
-    (tmp_path / "current" / report_name("agentcore", "run-c", "us-east-1")).unlink()
+    name = report_name("agentcore", "run-c", "us-east-1")
+    (tmp_path / "current" / name).write_text(
+        "Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region\n",
+        encoding="utf-8",
+    )
     code, lines = _run(_local(tmp_path))
     folder = tmp_path / "current"
     assert (code, lines) == (
         1,
-        [
-            f"ERROR: the run in {folder} is incomplete "
-            "(missing agentcore CSV for us-east-1)"
-        ],
+        [f"ERROR: the run in {folder} is incomplete ({name} has no findings)"],
     )
+
+
+def test_local_mode_compares_a_run_without_a_deselected_service(tmp_path):
+    # The review's reproduction: real CSVs with the SageMaker files removed.
+    s3 = FakeS3()
+    regions = ("us-east-1", "us-west-2")
+    without_sagemaker = tuple(
+        module for module in CORE_MODULES if module != "sagemaker"
+    )
+    put_run(
+        s3,
+        "run-p",
+        utc(3),
+        [make_finding("BR-01")],
+        regions=regions,
+        modules=without_sagemaker,
+    )
+    put_run(s3, "run-c", utc(27), [make_finding("BR-01", "Passed")], regions=regions)
+    _write_folder(s3, "run-p", tmp_path / "previous")
+    _write_folder(s3, "run-c", tmp_path / "current")
+    code, lines = _run(_local(tmp_path))
+    assert code == 0
+    assert lines[0] == f"Changes report for account {ACCOUNT}"
+    assert not [line for line in lines if line.startswith("ERROR")]
 
 
 def test_local_mode_reports_a_missing_folder(tmp_path):

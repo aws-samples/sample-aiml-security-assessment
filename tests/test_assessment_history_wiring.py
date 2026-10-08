@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from assessment_history.discover import DirectorySource, run_record_problem
+from assessment_history.discover import DirectorySource, read_run_record
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BUILDSPEC = REPO_ROOT / "buildspec.yml"
@@ -332,9 +332,8 @@ def test_the_changes_report_reads_the_record_the_build_writes(
 ):
     _stdout, _calls, body = _record(tmp_path, EXECUTION_ARN, status, failed)
     (tmp_path / RECORD_NAME).write_text(body, encoding="utf-8")
-    assert run_record_problem(DirectorySource(tmp_path), RECORD_NAME, "run-c") == (
-        problem
-    )
+    record = read_run_record(DirectorySource(tmp_path), RECORD_NAME, "run-c")
+    assert record.problem == problem
 
 
 @pytest.mark.parametrize("arn", ["", "None"])

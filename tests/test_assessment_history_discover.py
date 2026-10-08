@@ -31,6 +31,8 @@ from assessment_history.discover import (
     parse_findings_csv,
     parse_report_name,
     read_complete_run,
+    read_run_record,
+    recorded_selection,
     run_record_name,
     run_records,
 )
@@ -62,6 +64,10 @@ HEADER = (
     "Check_ID,Finding,Finding_Details,Resolution,Reference,Severity,Status,Region\n"
 )
 ALL_MODULES = CORE_MODULES + ("responsible-ai-grc", "owasp")
+ALL_CORE = frozenset(CORE_MODULES)
+TWO_REGIONS = ("us-east-1", "us-west-2")
+WITHOUT_SAGEMAKER = tuple(module for module in CORE_MODULES if module != "sagemaker")
+GOVERNANCE_ONLY = ("responsible-ai-grc", "owasp")
 
 
 def _source(s3):
@@ -304,34 +310,78 @@ def test_regions_are_unknown_without_region_suffixes_or_core_files():
     assert _run_files(("responsible-ai-grc", None, utc(1))).regions is None
 
 
+def test_regions_come_from_owasp_csvs_when_no_core_service_ran():
+    governance_only = _run_files(
+        ("owasp", "us-east-1", utc(1)),
+        ("owasp", "us-west-2", utc(1)),
+        ("responsible-ai-grc", None, utc(1)),
+    )
+    assert governance_only.regions == {"us-east-1", "us-west-2"}
+    with_core = _run_files(
+        ("bedrock", "us-east-1", utc(1)), ("owasp", "us-west-2", utc(1))
+    )
+    assert with_core.regions == {"us-east-1"}
+
+
+_GRC = [("responsible-ai-grc", None, utc(1))]
+_OWASP_BOTH = [("owasp", region, utc(1)) for region in TWO_REGIONS]
+
+
 @pytest.mark.parametrize(
-    "specs, missing",
+    "specs, selected, missing",
     [
-        (_core(), []),
-        (_core() + [("responsible-ai-grc", None, utc(1))], []),
+        (_core(), None, []),
+        (_core(), ALL_CORE, []),
+        (_core() + _GRC, None, []),
         (
             _core(skip={("agentcore", "us-west-2")}),
+            None,
             ["agentcore CSV for us-west-2"],
         ),
-        (_core() + [("owasp", "us-east-1", utc(1))], ["owasp CSV for us-west-2"]),
+        (_core() + [("owasp", "us-east-1", utc(1))], None, ["owasp CSV for us-west-2"]),
+        # Selection not known: the services with CSVs are taken as selected.
+        (_GRC, None, []),
+        ([(module, None, utc(1)) for module in CORE_MODULES[:3]], None, []),
+        ([(module, None, utc(1)) for module in CORE_MODULES], None, []),
         (
-            [("responsible-ai-grc", None, utc(1))],
-            [
-                "bedrock CSV",
-                "sagemaker CSV",
-                "agentcore CSV",
-                "agent-registry CSV",
-            ],
+            _core(skip={("sagemaker", region) for region in TWO_REGIONS}),
+            None,
+            [],
+        ),
+        # Selection known: a selected service with no CSV is missing ...
+        (
+            _GRC,
+            ALL_CORE,
+            ["bedrock CSV", "sagemaker CSV", "agentcore CSV", "agent-registry CSV"],
         ),
         (
             [(module, None, utc(1)) for module in CORE_MODULES[:3]],
+            ALL_CORE,
             ["agent-registry CSV"],
         ),
-        ([(module, None, utc(1)) for module in CORE_MODULES], []),
+        (
+            _core(skip={("sagemaker", region) for region in TWO_REGIONS}),
+            ALL_CORE,
+            ["sagemaker CSV for us-east-1", "sagemaker CSV for us-west-2"],
+        ),
+        # ... and a deselected one isn't.
+        (
+            _core(skip={("sagemaker", region) for region in TWO_REGIONS}),
+            frozenset(WITHOUT_SAGEMAKER),
+            [],
+        ),
+        # Governance only: no core service selected.
+        (_OWASP_BOTH + _GRC, frozenset(), []),
+        (_OWASP_BOTH + _GRC, None, []),
+        (
+            _OWASP_BOTH + _GRC,
+            frozenset({"bedrock"}),
+            ["bedrock CSV for us-east-1", "bedrock CSV for us-west-2"],
+        ),
     ],
 )
-def test_missing_files_follow_the_main_reports_rule(specs, missing):
-    assert _run_files(*specs).missing_files() == missing
+def test_missing_files_follow_the_main_reports_rule(specs, selected, missing):
+    assert _run_files(*specs).missing_files(selected) == missing
 
 
 def test_group_runs_by_execution_id():
@@ -355,7 +405,7 @@ def test_read_complete_run_finds_missing_files_without_reading():
     s3 = FakeS3()
     s3.put(_key(report_name("bedrock", "run-1", "us-east-1")), "x", utc(1))
     runs, _ = group_runs(_source(s3).list_files())
-    assert read_complete_run(_source(s3), ACCOUNT, runs["run-1"]) == (
+    assert read_complete_run(_source(s3), ACCOUNT, runs["run-1"], ALL_CORE) == (
         None,
         "missing sagemaker CSV for us-east-1, agentcore CSV for us-east-1, "
         "agent-registry CSV for us-east-1",
@@ -395,7 +445,7 @@ def test_previous_run_is_the_latest_complete_run_before_the_current_one():
 def test_a_run_with_a_missing_csv_is_skipped_and_noted():
     s3 = FakeS3()
     put_run(s3, "run-a", utc(1))
-    put_run(s3, "run-b", utc(10))
+    put_run(s3, "run-b", utc(10), regions=TWO_REGIONS)
     del s3.objects[_key(report_name("agentcore", "run-b", "us-east-1"))]
     put_run(s3, "run-c", utc(27))
     result = _discover(s3)
@@ -443,7 +493,7 @@ def test_skipped_run_notes_are_capped():
     s3 = FakeS3()
     for day in range(1, 8):
         name = report_name("bedrock", f"run-{day}", "us-east-1")
-        s3.put(_key(name), findings_csv([make_finding()]), utc(day))
+        s3.put(_key(name), HEADER, utc(day))
     put_run(s3, "run-c", utc(27))
     result = _discover(s3)
     assert result.previous is None
@@ -459,15 +509,24 @@ def _put_record(s3, execution_id, body, saved_at=None):
     s3.put(_key(run_record_name(execution_id)), body, saved_at or utc(10))
 
 
-def _record(execution_id, succeeded, status="FAILED"):
-    return json.dumps(
-        {
-            "execution_id": execution_id,
-            "succeeded": succeeded,
-            "status": status,
-            "written_at": "2026-09-10T00:00:05Z",
+def _record(execution_id, succeeded, status="FAILED", selected=None):
+    record = {
+        "execution_id": execution_id,
+        "succeeded": succeeded,
+        "status": status,
+        "written_at": "2026-09-10T00:00:05Z",
+    }
+    if selected is not None:
+        record["selected_services"] = {
+            module: module in selected for module in CORE_MODULES
         }
-    )
+    return json.dumps(record)
+
+
+def _record_with_selection(selection):
+    record = json.loads(_record("run-b", True, "SUCCEEDED"))
+    record["selected_services"] = selection
+    return json.dumps(record).encode()
 
 
 def _three_runs(s3):
@@ -499,10 +558,11 @@ def test_a_run_recorded_as_succeeded_is_used():
 
 
 def test_a_run_recorded_as_succeeded_must_still_be_complete():
-    # The record says the run succeeded, but one of its CSVs has since gone.
+    # The record says the run succeeded with every service selected, but one
+    # of its CSVs has since gone.
     s3 = FakeS3()
     _three_runs(s3)
-    _put_record(s3, "run-b", _record("run-b", True, "SUCCEEDED"))
+    _put_record(s3, "run-b", _record("run-b", True, "SUCCEEDED", ALL_CORE))
     del s3.objects[_key(report_name("agentcore", "run-b", "us-east-1"))]
     result = _discover(s3)
     assert result.previous.execution_id == "run-a"
@@ -542,6 +602,16 @@ def test_the_recorded_status_is_named_when_there_is_one(fields, detail):
             id="succeeded is not true or false",
         ),
         pytest.param(json.dumps({"execution_id": "run-b"}).encode(), id="no succeeded"),
+        pytest.param(
+            _record_with_selection({"bedrock": True}), id="selection misses a service"
+        ),
+        pytest.param(
+            _record_with_selection(["bedrock"]), id="selection is not an object"
+        ),
+        pytest.param(
+            _record_with_selection({module: "true" for module in CORE_MODULES}),
+            id="selection is not true or false",
+        ),
     ],
 )
 def test_a_run_record_that_cant_be_read_rules_the_run_out(body):
@@ -603,12 +673,126 @@ def test_the_current_run_must_be_found(current, message):
 
 
 def test_an_incomplete_current_run_is_an_error():
+    # A selected service whose CSV is missing still makes the run incomplete.
     s3 = FakeS3()
     put_run(s3, "run-c", utc(27))
     del s3.objects[_key(report_name("bedrock", "run-c", "us-east-1"))]
     message = "the current run is incomplete (missing bedrock CSV for us-east-1)"
     with pytest.raises(DiscoveryError, match=re.escape(message)):
-        _discover(s3)
+        discover(_source(s3), ACCOUNT, "run-c", ALL_CORE)
+
+
+# --- service selection ---------------------------------------------------------------
+
+
+def test_a_deselected_service_is_not_required():
+    # The review's case: SageMaker turned off, so its CSVs aren't written.
+    s3 = FakeS3()
+    put_run(s3, "run-p", utc(3), regions=TWO_REGIONS, modules=WITHOUT_SAGEMAKER)
+    put_run(s3, "run-c", utc(27), regions=TWO_REGIONS, modules=WITHOUT_SAGEMAKER)
+    result = discover(_source(s3), ACCOUNT, "run-c", frozenset(WITHOUT_SAGEMAKER))
+    assert result.previous.execution_id == "run-p"
+    assert result.notes == ()
+    assert result.current.modules == result.previous.modules == set(WITHOUT_SAGEMAKER)
+    assert result.current.regions == set(TWO_REGIONS)
+
+
+def test_a_selected_service_with_no_csv_makes_the_current_run_incomplete():
+    s3 = FakeS3()
+    put_run(s3, "run-c", utc(27), regions=TWO_REGIONS, modules=WITHOUT_SAGEMAKER)
+    message = (
+        "the current run is incomplete (missing sagemaker CSV for us-east-1, "
+        "sagemaker CSV for us-west-2)"
+    )
+    with pytest.raises(DiscoveryError, match=re.escape(message)):
+        discover(_source(s3), ACCOUNT, "run-c", ALL_CORE)
+
+
+def test_governance_only_runs_are_compared():
+    # All four core services off; Responsible AI GRC and OWASP on.
+    s3 = FakeS3()
+    put_run(s3, "run-p", utc(3), regions=TWO_REGIONS, modules=GOVERNANCE_ONLY)
+    put_run(s3, "run-c", utc(27), regions=TWO_REGIONS, modules=GOVERNANCE_ONLY)
+    result = discover(_source(s3), ACCOUNT, "run-c", frozenset())
+    assert result.previous.execution_id == "run-p"
+    assert result.current.modules == set(GOVERNANCE_ONLY)
+    assert result.current.regions == set(TWO_REGIONS)
+
+
+@pytest.mark.parametrize(
+    "previous_modules, current_modules",
+    [
+        pytest.param(CORE_MODULES, WITHOUT_SAGEMAKER, id="selected, then deselected"),
+        pytest.param(WITHOUT_SAGEMAKER, CORE_MODULES, id="deselected, then selected"),
+    ],
+)
+def test_a_selection_change_between_runs_still_finds_the_previous_run(
+    previous_modules, current_modules
+):
+    s3 = FakeS3()
+    put_run(s3, "run-p", utc(3), regions=TWO_REGIONS, modules=previous_modules)
+    put_run(s3, "run-c", utc(27), regions=TWO_REGIONS, modules=current_modules)
+    result = discover(_source(s3), ACCOUNT, "run-c", frozenset(current_modules))
+    assert result.previous.execution_id == "run-p"
+    assert result.previous.modules == set(previous_modules)
+    assert result.current.modules == set(current_modules)
+
+
+def test_an_earlier_run_without_a_record_is_judged_by_its_files():
+    # Multi-account runs, and runs from before run records, list no selection:
+    # a service with no CSV is taken as not selected.
+    s3 = FakeS3()
+    put_run(s3, "run-a", utc(1))
+    put_run(s3, "run-b", utc(10), modules=WITHOUT_SAGEMAKER)
+    put_run(s3, "run-c", utc(27))
+    result = discover(_source(s3), ACCOUNT, "run-c", ALL_CORE)
+    assert (result.previous.execution_id, result.notes) == ("run-b", ())
+
+
+@pytest.mark.parametrize(
+    "recorded, previous, note",
+    [
+        pytest.param(frozenset(WITHOUT_SAGEMAKER), "run-b", None, id="deselected"),
+        pytest.param(
+            ALL_CORE,
+            "run-a",
+            "Skipped run run-b saved 2026-09-10T00:00:00Z: incomplete "
+            "(missing sagemaker CSV for us-east-1)",
+            id="selected",
+        ),
+    ],
+)
+def test_the_run_records_selection_decides_which_csvs_an_earlier_run_needs(
+    recorded, previous, note
+):
+    s3 = FakeS3()
+    put_run(s3, "run-a", utc(1))
+    put_run(s3, "run-b", utc(10), modules=WITHOUT_SAGEMAKER)
+    put_run(s3, "run-c", utc(27))
+    _put_record(s3, "run-b", _record("run-b", True, "SUCCEEDED", recorded))
+    result = _discover(s3)
+    assert result.previous.execution_id == previous
+    assert result.notes == (() if note is None else (note,))
+
+
+def test_recorded_selection():
+    flags = {module: module != "sagemaker" for module in CORE_MODULES}
+    assert recorded_selection(flags) == set(WITHOUT_SAGEMAKER)
+    assert recorded_selection(dict.fromkeys(CORE_MODULES, False)) == frozenset()
+    assert recorded_selection({**flags, "owasp": True}) is None
+    assert recorded_selection(None) is None
+
+
+def test_a_failed_runs_record_keeps_its_selection(tmp_path):
+    body = _record("run-b", False, "FAILED", frozenset(WITHOUT_SAGEMAKER))
+    (tmp_path / run_record_name("run-b")).write_text(body, encoding="utf-8")
+    record = read_run_record(
+        DirectorySource(tmp_path), run_record_name("run-b"), "run-b"
+    )
+    assert record.problem == (
+        "the assessment run did not succeed (Step Functions status FAILED)"
+    )
+    assert record.selected == set(WITHOUT_SAGEMAKER)
 
 
 def test_a_current_run_with_an_empty_csv_is_an_error():
@@ -734,6 +918,7 @@ def test_reading_back_gives_the_same_comparison_as_in_memory(regions):
 # --- the hand-written example folder -----------------------------------------------
 
 PREVIOUS_ID = "00000000-0000-4000-8000-000000000903"
+SKIPPED_ID = "00000000-0000-4000-8000-000000000915"
 CURRENT_ID = "00000000-0000-4000-8000-000000000927"
 
 
@@ -770,9 +955,14 @@ def test_example_folder_discovery():
         "2026-09-15T10:00:01Z: incomplete (missing agentcore CSV for us-east-1, "
         "agent-registry CSV for us-east-1)",
     )
-    # Only the two compared runs are read.
-    read_runs = {key.split("_security_report_")[1][:36] for key in s3.reads}
+    # Only the two compared runs' CSVs are read, plus the skipped run's record.
+    read_runs = {
+        key.split("_security_report_")[1][:36]
+        for key in s3.reads
+        if key.endswith(".csv")
+    }
     assert read_runs == {PREVIOUS_ID, CURRENT_ID}
+    assert f"{ACCOUNT}/{run_record_name(SKIPPED_ID)}" in s3.reads
 
 
 def test_example_folder_comparison():

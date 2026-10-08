@@ -9,11 +9,12 @@ when S3 saved their files; a run's time is its latest file's time.
 The previous run is the most recent usable run saved before the current one.
 A run is usable when:
 
-- its files are complete: each core service, and OWASP when present, has a CSV
-  with at least one row for every region the core CSV names show, and the
-  Responsible AI GRC CSV, when present, has at least one row. This follows the
-  main report's own check (``validate_assessment_artifacts`` in
-  generate_consolidated_report/app.py) but from the files alone: that check
+- its files are complete: each core service the run selected, and OWASP when
+  present, has a CSV with at least one row for every region the run's CSV
+  names show (its core CSVs, or its OWASP CSVs when no core service was
+  selected), and the Responsible AI GRC CSV, when present, has at least one
+  row. This follows the main report's own check (``validate_assessment_artifacts``
+  in generate_consolidated_report/app.py) but from the files alone: that check
   knows the regions the run was asked to scan and which options were on, and
   the files don't. A run that failed partway can still look complete from its
   files (review item F2);
@@ -21,6 +22,13 @@ A run is usable when:
   buildspec.yml writes ``assessment_history_run_<execution_id>.json`` after
   every run. A Step Functions execution only succeeds when the main report's
   check passes, because the report step fails the execution otherwise.
+
+Which core services a run selected comes from the caller for the current run
+(the ``ENABLE_*`` CodeBuild switches), from its run record when the record
+lists them, and otherwise from the core services it has CSVs for. In
+multi-account mode an account's files reach the central bucket only after
+buildspec.yml has found a CSV for each selected service, so a service with no
+CSV there wasn't selected.
 
 An older run with a CSV that can't be read is skipped too, and the next older
 run is tried (review item L3).
@@ -201,16 +209,25 @@ class RunFiles:
 
     @property
     def regions(self) -> frozenset[str] | None:
-        """Regions the run scanned (core CSV names), or None if unknown."""
+        """Regions the run scanned, or None if unknown: from the core CSV
+        names, or from the OWASP CSV names when the run has no core CSV."""
         regions = [file.region for file in self.files if file.module in CORE_MODULES]
+        if not regions:
+            regions = [file.region for file in self.files if file.module == "owasp"]
         if not regions or None in regions:
             return None
         return frozenset(regions)
 
-    def missing_files(self) -> list[str]:
-        """Required CSVs this run doesn't have, judged by file names."""
+    def missing_files(self, selected: frozenset[str] | None = None) -> list[str]:
+        """Required CSVs this run doesn't have, judged by file names.
+
+        ``selected`` is the core services the run was asked to assess. When it
+        isn't known, the core services the run has CSVs for are taken as
+        selected.
+        """
         present = {(file.module, file.region) for file in self.files}
-        required = list(CORE_MODULES)
+        chosen = self.modules if selected is None else selected
+        required = [module for module in CORE_MODULES if module in chosen]
         if "owasp" in self.modules:
             required.append("owasp")
         regions = self.regions
@@ -324,12 +341,21 @@ def run_records(files: Iterable[StoredFile]) -> dict[str, str]:
     return records
 
 
-def run_record_problem(
+@dataclass(frozen=True)
+class RunRecord:
+    """What a run record says: why it rules the run out as the previous run
+    (None if it says the run succeeded), and the core services the run
+    selected (None when the record doesn't list them)."""
+
+    problem: str | None
+    selected: frozenset[str] | None = None
+
+
+def read_run_record(
     source: S3Source | DirectorySource, name: str, execution_id: str
-) -> str | None:
-    """Why a run's record rules it out as the previous run, or None if it
-    says the run succeeded."""
-    unreadable = f"its run record {name} can't be read"
+) -> RunRecord:
+    """Read a run's record file."""
+    unreadable = RunRecord(f"its run record {name} can't be read")
     try:
         record = json.loads(source.read_bytes(name).decode("utf-8"))
     except ValueError:  # not UTF-8, or not JSON
@@ -340,25 +366,47 @@ def run_record_problem(
         or not isinstance(record.get("succeeded"), bool)
     ):
         return unreadable
+    selected = None
+    if "selected_services" in record:
+        selected = recorded_selection(record["selected_services"])
+        if selected is None:
+            return unreadable
     if record["succeeded"]:
-        return None
+        return RunRecord(None, selected)
     status = record.get("status")
     detail = (
         f" (Step Functions status {status})"
         if isinstance(status, str) and status
         else ""
     )
-    return f"the assessment run did not succeed{detail}"
+    return RunRecord(f"the assessment run did not succeed{detail}", selected)
+
+
+def recorded_selection(value: object) -> frozenset[str] | None:
+    """The core services a record's ``selected_services`` marks true, or None
+    unless it gives true or false for exactly the four core services."""
+    if (
+        not isinstance(value, dict)
+        or set(value) != set(CORE_MODULES)
+        or not all(isinstance(flag, bool) for flag in value.values())
+    ):
+        return None
+    return frozenset(module for module, flag in value.items() if flag)
 
 
 def read_complete_run(
-    source: S3Source | DirectorySource, account_id: str, run_files: RunFiles
+    source: S3Source | DirectorySource,
+    account_id: str,
+    run_files: RunFiles,
+    selected: frozenset[str] | None = None,
 ) -> tuple[Run | None, str]:
     """Return (run, "") if the run is complete, else (None, the reason).
 
-    Missing files are found from the listing without reading anything.
+    ``selected`` is the core services the run selected, when known (see
+    ``RunFiles.missing_files``). Missing files are found from the listing
+    without reading anything.
     """
-    missing = run_files.missing_files()
+    missing = run_files.missing_files(selected)
     if missing:
         return None, "missing " + ", ".join(missing)
     findings = []
@@ -403,13 +451,15 @@ def _usable_run(
 
     The run record is checked first, so a failed run's CSVs aren't read.
     """
-    record = records.get(run_files.execution_id)
-    if record is not None:
-        problem = run_record_problem(source, record, run_files.execution_id)
-        if problem is not None:
-            return None, problem
+    selected = None
+    record_name = records.get(run_files.execution_id)
+    if record_name is not None:
+        record = read_run_record(source, record_name, run_files.execution_id)
+        if record.problem is not None:
+            return None, record.problem
+        selected = record.selected
     try:
-        run, reason = read_complete_run(source, account_id, run_files)
+        run, reason = read_complete_run(source, account_id, run_files, selected)
     except InvalidFindingError as error:
         return None, f"unreadable ({error})"
     if run is None:
@@ -423,10 +473,14 @@ def _order_key(run_files: RunFiles) -> tuple[datetime, str]:
 
 
 def discover(
-    source: S3Source | DirectorySource, account_id: str, current_execution_id: str
+    source: S3Source | DirectorySource,
+    account_id: str,
+    current_execution_id: str,
+    selected: frozenset[str] | None = None,
 ) -> Discovery:
     """Read the current run and the most recent usable run saved before it.
 
+    ``selected`` is the core services the current run selected, when known.
     Raises DiscoveryError when the current run can't be used, and
     InvalidFindingError when one of its CSVs can't be read safely. An older
     run that can't be used or read is skipped with a note. Runs older than the
@@ -444,7 +498,7 @@ def discover(
         raise DiscoveryError(
             f"the current run's results were not found in {source.location}"
         )
-    current, reason = read_complete_run(source, account_id, current_files)
+    current, reason = read_complete_run(source, account_id, current_files, selected)
     if current is None:
         raise DiscoveryError(f"the current run is incomplete ({reason})")
 
