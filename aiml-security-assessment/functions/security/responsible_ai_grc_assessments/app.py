@@ -6066,13 +6066,13 @@ def check_penetration_testing_evidence() -> Dict[str, Any]:
                 "additional Regions, with cross-account "
                 "shared-VPC testing via AWS RAM). Open-source tools such as Garak or PyRIT and "
                 "manual red-teaming are complementary options. Verify current regional availability "
-                "in the AWS Security Agent documentation (Data protection page, Regions where "
-                "requests can originate) before relying on it.\n"
+                "in the service-availability note on the Resilience page of the AWS Security "
+                "Agent documentation before relying on it.\n"
                 "4. Document findings and remediation for regulatory examination, and tag tested "
                 "resources with a last-pentest-date for audit trail.\n"
                 "5. For DORA compliance, include GenAI in TLPT (Threat-Led Penetration Testing) scope."
             ),
-            reference="https://aws.amazon.com/security/penetration-testing/",
+            reference="https://docs.aws.amazon.com/securityagent/latest/userguide/resilience.html",
             severity="Informational",
             status="N/A",
             compliance_frameworks=COMPLIANCE_MAP["FS-54"],

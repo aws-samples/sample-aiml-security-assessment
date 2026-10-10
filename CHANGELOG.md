@@ -58,8 +58,9 @@ section.
   April 30, 2026, instead of describing it as upcoming. The AWS Security Agent
   text in the penetration-testing guidance and the FS-54 finding now notes
   that it is part of AWS Continuum, says its Regions have expanded since the
-  March 2026 launch, and points to the Security Agent documentation for the
-  current Regions.
+  March 2026 launch, and points to the service-availability note on the
+  Security Agent Resilience page for the current Regions. The FS-54 reference
+  link now goes to that page.
 
 ### Deployment impact
 
