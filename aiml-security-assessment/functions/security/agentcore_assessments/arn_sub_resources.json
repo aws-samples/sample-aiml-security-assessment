@@ -1,0 +1,714 @@
+{
+ "services": {
+  "access-analyzer": {
+   "analyzer/": "/"
+  },
+  "account": {
+   "account/o-": "/"
+  },
+  "acm": {
+   "acme-endpoint/": "/"
+  },
+  "agent-registry": {
+   "registry/": "/"
+  },
+  "aidevops": {
+   "agentspace/": "/"
+  },
+  "airflow": {
+   "role/": "/"
+  },
+  "amplify": {
+   "apps/": "/"
+  },
+  "amplifybackend": {
+   "/backend/": "/"
+  },
+  "amplifyuibuilder": {
+   "app/": "/"
+  },
+  "apigateway": {
+   "/apis/": "/",
+   "/domainnameaccessassociations/domainname/": "/",
+   "/domainnames/": "+/",
+   "/portalproducts/": "/",
+   "/restapis/": "/",
+   "/restapis/models/": "/",
+   "/usageplans/": "/"
+  },
+  "app-integrations": {
+   "application-association/": "/",
+   "data-integration-association/": "/",
+   "event-integration-association/": "/"
+  },
+  "appconfig": {
+   "application/": "/",
+   "extension/": "/"
+  },
+  "appfabric": {
+   "appbundle/": "/"
+  },
+  "application-signals": {
+   "instrumentationConfig/": "/"
+  },
+  "appmesh": {
+   "mesh/": "/"
+  },
+  "appmesh-preview": {
+   "mesh/": "/"
+  },
+  "apprunner": {
+   "autoscalingconfiguration/": "/",
+   "connection/": "/",
+   "observabilityconfiguration/": "/",
+   "service/": "/",
+   "vpcconnector/": "/",
+   "vpcingressconnection/": "/"
+  },
+  "appsync": {
+   "apis/": "/"
+  },
+  "aps": {
+   "anomalydetector/": "/",
+   "rulegroupsnamespace/": "/"
+  },
+  "artifact": {
+   "report/": ":"
+  },
+  "athena": {
+   "workgroup/": "/"
+  },
+  "auditmanager": {
+   "assessment/": "/"
+  },
+  "autoscaling": {
+   "autoScalingGroup:": ":",
+   "launchConfiguration:": ":"
+  },
+  "aws-marketplace": {
+   "": "/",
+   "DeploymentParameter:catalogs/": "/",
+   "catalog/": "/",
+   "verification-type/": "/"
+  },
+  "batch": {
+   "job-definition/": ":",
+   "job-queue/": "/"
+  },
+  "bedrock": {
+   "agent-alias/": "/",
+   "automated-reasoning-policy/": ":",
+   "flow/": "/",
+   "prompt/": ":"
+  },
+  "bedrock-agentcore": {
+   "harness/": "/",
+   "policy-engine/": "/",
+   "registry/": "/",
+   "runtime/": "/",
+   "token-vault/": "/",
+   "workload-identity-directory/": "/"
+  },
+  "braket": {
+   "device/": "/"
+  },
+  "budgets": {
+   "budget/": "/"
+  },
+  "cases": {
+   "domain/": "/"
+  },
+  "cassandra": {
+   "/keyspace/": "/"
+  },
+  "chatbot": {
+   "chat-configuration/": "/"
+  },
+  "chime": {
+   "app-instance/": "/"
+  },
+  "cleanrooms": {
+   "membership/": "/"
+  },
+  "cleanrooms-ml": {
+   "membership/": "/"
+  },
+  "clouddirectory": {
+   "directory/": "/",
+   "schema/published/": "/"
+  },
+  "cloudformation": {
+   "changeSet/": "/",
+   "stack/": "/",
+   "stackset/": ":"
+  },
+  "cloudwatch": {
+   "ingestion-endpoint/": "/"
+  },
+  "codeartifact": {
+   "package/": "/",
+   "repository/": "/"
+  },
+  "codebuild": {
+   "fleet/": ":",
+   "report/": ":"
+  },
+  "codecatalyst": {
+   "space/": "/"
+  },
+  "codedeploy": {
+   "deploymentgroup:": "/"
+  },
+  "codeguru-reviewer": {
+   "association:": ":"
+  },
+  "codepipeline": {
+   "": "/",
+   "actiontype:": "/"
+  },
+  "cognito-sync": {
+   "identitypool/": "/"
+  },
+  "comprehend": {
+   "flywheel/": "/"
+  },
+  "config": {
+   "aggregation-authorization/": "/",
+   "configuration-recorder/": "/",
+   "conformance-pack/": "/",
+   "connector/": "/",
+   "stored-query/": "/"
+  },
+  "connect": {
+   "instance/": "/",
+   "view/": ":"
+  },
+  "consoleapp": {
+   "device/": "/"
+  },
+  "dataexchange": {
+   "data-sets/": "/"
+  },
+  "datasync": {
+   "system/": "/",
+   "task/": "/"
+  },
+  "deadline": {
+   "farm/": "/"
+  },
+  "dsql": {
+   "cluster/": "/"
+  },
+  "dynamodb": {
+   "table/": "/"
+  },
+  "ecs": {
+   "container-instance/": "/",
+   "daemon-deployment/": "/",
+   "daemon-revision/": "/",
+   "daemon-task-definition/": ":",
+   "daemon/": "/",
+   "service-deployment/": "/",
+   "service-revision/": "/",
+   "service/": "/",
+   "task-definition/": ":",
+   "task-set/": "/",
+   "task/": "/"
+  },
+  "eks": {
+   "access-entry/": "/",
+   "addon/": "/",
+   "capability/": "/",
+   "fargateprofile/": "/",
+   "identityproviderconfig/": "/",
+   "nodegroup/": "/",
+   "podidentityassociation/": "/"
+  },
+  "elasticbeanstalk": {
+   "applicationversion/": "/",
+   "configurationtemplate/": "/",
+   "environment/": "/"
+  },
+  "elasticloadbalancing": {
+   "listener-rule/app/": "/",
+   "listener-rule/net/": "/",
+   "listener/app/": "/",
+   "listener/gwy/": "/",
+   "listener/net/": "/",
+   "loadbalancer/app/": "/",
+   "loadbalancer/gwy/": "/",
+   "loadbalancer/net/": "/",
+   "targetgroup/": "/",
+   "truststore/": "/"
+  },
+  "elasticmapreduce": {
+   "cluster/": "/"
+  },
+  "emr-containers": {
+   "/virtualclusters/": "/"
+  },
+  "emr-serverless": {
+   "/applications/": "/"
+  },
+  "entityresolution": {
+   "providerservice/": "/"
+  },
+  "events": {
+   "event-busv2/": "/",
+   "event-sourcev2/": "/",
+   "rule/": "/",
+   "subscriber/": "/"
+  },
+  "execute-api": {
+   "": "/",
+   "/domainnames/": "+"
+  },
+  "finspace": {
+   "kxEnvironment/": "/"
+  },
+  "fsx": {
+   "association/": "/",
+   "snapshot/": "/",
+   "storage-virtual-machine/": "/",
+   "volume/": "/"
+  },
+  "globalaccelerator": {
+   "accelerator/": "/"
+  },
+  "glue": {
+   "integrationresourceproperty/": "/",
+   "table/": "/",
+   "tableVersion/": "/",
+   "userDefinedFunction/": "/"
+  },
+  "greengrass": {
+   "/greengrass/definition/connectors/": "/",
+   "/greengrass/definition/cores/": "/",
+   "/greengrass/definition/devices/": "/",
+   "/greengrass/definition/functions/": "/",
+   "/greengrass/definition/loggers/": "/",
+   "/greengrass/definition/resources/": "/",
+   "/greengrass/definition/subscriptions/": "/",
+   "/greengrass/groups/": "/",
+   "/greengrass/things/": "/",
+   "components:": ":"
+  },
+  "groundstation": {
+   "config/": "/"
+  },
+  "guardduty": {
+   "detection-rule/custom/": "/",
+   "detector/": "/"
+  },
+  "health": {
+   "event/": "/"
+  },
+  "health-agent": {
+   "domain/": "/"
+  },
+  "honeycode": {
+   "screen-automation:workbook/": "/",
+   "screen:workbook/": "/",
+   "table:workbook/": "/"
+  },
+  "iam": {
+   "assumed-role/": "/",
+   "role-template/": "/"
+  },
+  "identity-sync": {
+   "target/": "/"
+  },
+  "imagebuilder": {
+   "component/": "/",
+   "container-recipe/": "/",
+   "image-recipe/": "/",
+   "image/": "/",
+   "workflow/": "/"
+  },
+  "inspector2": {
+   "owner/": "/"
+  },
+  "internetmonitor": {
+   "monitor/": "/"
+  },
+  "iot": {
+   "domainconfiguration/": "/",
+   "package/": "/",
+   "ruledestination/": "/"
+  },
+  "iotdeviceadvisor": {
+   "suiterun/": "/"
+  },
+  "iotsitewise": {
+   "workspace/": "/"
+  },
+  "iottwinmaker": {
+   "workspace/": "/"
+  },
+  "iq": {
+   "paymentRequest/": "/",
+   "paymentSchedule/": "/",
+   "proposal/": "/"
+  },
+  "kafka": {
+   "channel/": "/",
+   "cluster/": "/",
+   "configuration/": "/",
+   "group/": "/",
+   "replicator/": "/",
+   "topic/": "/",
+   "transactional-id/": "/",
+   "vpc-connection/": "/"
+  },
+  "kafkaconnect": {
+   "connector-operation/": "/",
+   "connector/": "/",
+   "custom-plugin/": "/",
+   "worker-configuration/": "/"
+  },
+  "kendra": {
+   "index/": "/"
+  },
+  "kinesis": {
+   "": "/"
+  },
+  "kinesisvideo": {
+   "channel/": "/",
+   "stream/": "/"
+  },
+  "lambda": {
+   "function:": ":",
+   "layer:": ":",
+   "web-function/": "/"
+  },
+  "lex": {
+   "bot-alias/": "/",
+   "bot-channel:": ":",
+   "bot:": ":",
+   "intent:": ":",
+   "slottype:": ":"
+  },
+  "logs": {
+   "log-group:": ":"
+  },
+  "lookoutequipment": {
+   "dataset/": "/",
+   "inference-scheduler/": "/",
+   "label-group/": "/",
+   "model/": "/"
+  },
+  "lookoutmetrics": {
+   "MetricSet/": "/"
+  },
+  "lookoutvision": {
+   "model/": "/"
+  },
+  "mapcredits": {
+   "": "/"
+  },
+  "mediaconnect": {
+   "bridge:": ":",
+   "entitlement:": ":",
+   "flow:": ":",
+   "gateway:": ":",
+   "output:": ":",
+   "reservation:": ":",
+   "source:": ":"
+  },
+  "medialive": {
+   "channelPlacementGroup:": "/",
+   "node:": "/"
+  },
+  "mediapackagev2": {
+   "channelGroup/": "/"
+  },
+  "mediastore": {
+   "container/": "/"
+  },
+  "mediatailor": {
+   "liveSource/": "/",
+   "program/": "/",
+   "vodSource/": "/"
+  },
+  "medical-imaging": {
+   "datastore/": "/"
+  },
+  "mgh": {
+   "progressUpdateStream/": "/"
+  },
+  "mobiletargeting": {
+   "apps/": "/",
+   "templates/": "/"
+  },
+  "mq": {
+   "broker:": ":"
+  },
+  "neptune-db": {
+   "": "/"
+  },
+  "network-security-manager": {
+   "deployment:": ":",
+   "policy:": ":",
+   "rule:": ":",
+   "scope:": ":",
+   "template:": ":"
+  },
+  "networkmanager": {
+   "connection/": "/",
+   "device/": "/",
+   "link/": "/",
+   "site/": "/"
+  },
+  "notifications": {
+   "configuration/": "/",
+   "managed-notification-configuration/category/": "/"
+  },
+  "nova-act": {
+   "workflow-definition/": "/"
+  },
+  "omics": {
+   "annotationStore/": "/",
+   "referenceStore/": "/",
+   "sequenceStore/": "/",
+   "workflow/": "/"
+  },
+  "one": {
+   "device-instance/": "/"
+  },
+  "opsworks": {
+   "stack/": "/"
+  },
+  "opsworks-cm": {
+   "server/": "/"
+  },
+  "organizations": {
+   "account/o-": "/",
+   "handshake/o-": "/",
+   "ou/o-": "/",
+   "policy/": "/",
+   "policy/o-": "/",
+   "resourcepolicy/o-": "/",
+   "root/o-": "/",
+   "transfer/o-": "/"
+  },
+  "partnercentral": {
+   "catalog/": "/"
+  },
+  "pca-connector-ad": {
+   "connector/": "/"
+  },
+  "pca-connector-scep": {
+   "connector/": "/"
+  },
+  "pcs": {
+   "cluster/": "/"
+  },
+  "pi": {
+   "metrics/": "/",
+   "perf-reports/": "/"
+  },
+  "private-networks": {
+   "device-identifier/": "/",
+   "network-resource/": "/",
+   "network-site/": "/",
+   "order/": "/"
+  },
+  "profile": {
+   "domains/": "/"
+  },
+  "proton": {
+   "environment-template/": ":",
+   "repository/": ":",
+   "service-template/": ":",
+   "service/": "/"
+  },
+  "qapps": {
+   "application/": "/"
+  },
+  "qbusiness": {
+   "application/": "/"
+  },
+  "qldb": {
+   "ledger/": "/",
+   "stream/": "/"
+  },
+  "quicksight": {
+   "automation-group/": "/",
+   "dashboard/": "/",
+   "dataset/": "/"
+  },
+  "rds": {
+   "cev:": "/",
+   "snapshot-tenant-database:": ":"
+  },
+  "rds-db": {
+   "dbuser:": "/"
+  },
+  "redshift": {
+   "datashare:": "/",
+   "dbgroup:": "/",
+   "dbname:": "/",
+   "dbuser:": "/",
+   "securitygroup:": "/",
+   "securitygroupingress:": "/",
+   "snapshot:": "/"
+  },
+  "refactor-spaces": {
+   "environment/": "/"
+  },
+  "rekognition": {
+   "project/": "/"
+  },
+  "resource-explorer-2": {
+   "managed-view/": "/",
+   "view/": "/"
+  },
+  "resource-groups": {
+   "group/": "/"
+  },
+  "robomaker": {
+   "deployment-fleet/": "/",
+   "robot-application/": "/",
+   "robot/": "/",
+   "simulation-application/": "/"
+  },
+  "route53-recovery-control": {
+   "controlpanel/": "/"
+  },
+  "rtbfabric": {
+   "gateway/": "/"
+  },
+  "s3": {
+   "": "/",
+   "accesspoint/": "/",
+   "async-request/mrap/": "/"
+  },
+  "s3-outposts": {
+   "outpost/": "/"
+  },
+  "s3files": {
+   "file-system/": "/"
+  },
+  "s3tables": {
+   "bucket/": "/"
+  },
+  "s3vectors": {
+   "bucket/": "/"
+  },
+  "sagemaker": {
+   "app/": "/",
+   "device-fleet/": "/",
+   "hub-content/": "/",
+   "image-version/": "/",
+   "job/": "/",
+   "model-card/": "/",
+   "monitoring-schedule/": "/",
+   "pipeline/": "/",
+   "space/": "/",
+   "user-profile/": "/"
+  },
+  "scheduler": {
+   "schedule/": "/"
+  },
+  "schemas": {
+   "schema/": "/"
+  },
+  "scn": {
+   "instance/": "/"
+  },
+  "sdb": {
+   "domain/": "/"
+  },
+  "securityhub": {
+   "product/": "/"
+  },
+  "servicequotas": {
+   "": "/"
+  },
+  "ses": {
+   "tenant/": "/"
+  },
+  "sms-voice": {
+   "sender-id/": "/"
+  },
+  "ssm": {
+   "automation-definition/": ":"
+  },
+  "ssm-contacts": {
+   "contactchannel/": "/",
+   "engagement/": "/",
+   "page/": "/"
+  },
+  "ssm-incidents": {
+   "incident-record/": "/"
+  },
+  "ssm-sap": {
+   "": "/"
+  },
+  "sso": {
+   "application/": "/",
+   "permissionSet/": "/",
+   "trustedTokenIssuer/": "/"
+  },
+  "states": {
+   "execution:": "/:",
+   "express:": "/:",
+   "mapRun:": "/",
+   "stateMachine:": ":"
+  },
+  "storagegateway": {
+   "gateway/": "/",
+   "share/": "/"
+  },
+  "textract": {
+   "/adapters/": "/"
+  },
+  "timestream": {
+   "database/": "/"
+  },
+  "transfer": {
+   "agreement/": "/",
+   "host-key/": "/",
+   "user/": "/"
+  },
+  "transform": {
+   "connector/": "/"
+  },
+  "transform-custom": {
+   "package/": "/"
+  },
+  "trustedadvisor": {
+   "checks/": "/"
+  },
+  "ts": {
+   "execution/": "/"
+  },
+  "vpc-lattice": {
+   "service/": "/"
+  },
+  "wafv2": {
+   "": "/"
+  },
+  "wisdom": {
+   "ai-agent/": "/",
+   "ai-guardrail/": "/",
+   "ai-prompt/": "/",
+   "association/": "/",
+   "content-association/": "/",
+   "content/": "/",
+   "message-template/": "/",
+   "quick-response/": "/",
+   "session/": "/"
+  },
+  "workmailmessageflow": {
+   "message/": "/"
+  },
+  "workspaces-web": {
+   "identityProvider/": "/"
+  },
+  "xray": {
+   "group/": "/"
+  }
+ },
+ "source": "https://servicereference.us-east-1.amazonaws.com/v1/service-list.json"
+}

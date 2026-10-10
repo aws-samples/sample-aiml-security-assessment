@@ -61,7 +61,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 
 - Monitor state machine executions in each account
 - Check Lambda function logs for errors
-- Verify Lambda has sufficient timeout. Most assessment Lambdas default to 10 minutes; Responsible AI GRC has its own timeout in the SAM templates
+- Verify Lambda has sufficient timeout. Most assessment Lambdas default to 10 minutes; the Bedrock assessment runs up to 15 minutes, the Lambda maximum, and Responsible AI GRC has its own timeout in the SAM templates
 - Verify AWS IAM permissions allow Lambda to access required services
 - In multi-region scans, review each region's Map state iteration. A single service branch can be marked incomplete while the state machine still generates a report for the remaining services and regions
 
@@ -549,6 +549,19 @@ then check the caching Lambda logs and confirm the execution-scoped object
 exists in the bucket. Correct the IAM or S3 error and rerun the complete
 assessment; do not reuse a cache from another execution.
 
+A cache that loaded can still be incomplete for some principals. The cache
+lists each role or user whose policy or permissions-boundary read failed under
+`principal_errors`, with the stage that failed and the error. A failed group
+policy read is listed under each member with stage `group_policy` and names the
+group and policy. A role or user deleted during the run (`NoSuchEntity`) is
+left out of the cache and is not listed. A control that judges every role or
+user reports those principals as not read and does not report `Passed` while
+any of them is listed. The finding's resolution points to the IAM Permission
+Caching Lambda logs, where each error shows whether it was access denied,
+throttling or a deletion. A cache written before
+`cache_schema_version` 2 has no `principal_errors`, and the finding says the
+per-principal read errors were not recorded.
+
 ### Monitor AWS Step Functions Executions
 
 1. Navigate to **AWS Step Functions** in the target account
@@ -642,7 +655,7 @@ A: Minimal ongoing costs:
 
 **Q: Can I customize which security checks are included?**
 
-A: All 94 core checks (40 Bedrock, 29 SageMaker AI, 17 AgentCore,
+A: All 111 core checks (57 Bedrock, 29 SageMaker AI, 17 AgentCore,
 and 8 AWS Agent Registry) and 38 Agentic AI Security checks run by default to
 provide comprehensive coverage. If `EnableResponsibleAIGRCAssessment` is
 enabled, the 64 optional Responsible AI GRC checks also run. If
