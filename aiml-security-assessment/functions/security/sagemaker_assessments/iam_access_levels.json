@@ -1,0 +1,1073 @@
+{
+ "services": {
+  "sagemaker": {
+   "action": {
+    "arns": [
+     "arn:*:sagemaker:*:*:action/*"
+    ],
+    "read": [
+     "DescribeAction",
+     "ListTags"
+    ],
+    "write": [
+     "AddAssociation",
+     "CreateAction",
+     "DeleteAction",
+     "DeleteAssociation",
+     "UpdateAction"
+    ]
+   },
+   "ai-benchmark-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:ai-benchmark-job/*"
+    ],
+    "read": [
+     "DescribeAIBenchmarkJob",
+     "ListTags"
+    ],
+    "write": [
+     "CreateAIBenchmarkJob",
+     "DeleteAIBenchmarkJob",
+     "StopAIBenchmarkJob"
+    ]
+   },
+   "ai-recommendation-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:ai-recommendation-job/*"
+    ],
+    "read": [
+     "DescribeAIRecommendationJob",
+     "ListTags"
+    ],
+    "write": [
+     "CreateAIRecommendationJob",
+     "DeleteAIRecommendationJob",
+     "StopAIRecommendationJob"
+    ]
+   },
+   "ai-workload-config": {
+    "arns": [
+     "arn:*:sagemaker:*:*:ai-workload-config/*"
+    ],
+    "read": [
+     "DescribeAIWorkloadConfig",
+     "ListTags"
+    ],
+    "write": [
+     "CreateAIWorkloadConfig",
+     "DeleteAIWorkloadConfig"
+    ]
+   },
+   "algorithm": {
+    "arns": [
+     "arn:*:sagemaker:*:*:algorithm/*"
+    ],
+    "read": [
+     "DescribeAlgorithm",
+     "ListTags"
+    ],
+    "write": [
+     "CreateAlgorithm",
+     "DeleteAlgorithm"
+    ]
+   },
+   "app": {
+    "arns": [
+     "arn:*:sagemaker:*:*:app/*/*/*/*"
+    ],
+    "read": [
+     "DescribeApp",
+     "ListTags"
+    ],
+    "write": [
+     "CreateApp",
+     "DeleteApp"
+    ]
+   },
+   "app-image-config": {
+    "arns": [
+     "arn:*:sagemaker:*:*:app-image-config/*"
+    ],
+    "read": [
+     "DescribeAppImageConfig",
+     "ListTags"
+    ],
+    "write": [
+     "CreateAppImageConfig",
+     "DeleteAppImageConfig",
+     "UpdateAppImageConfig"
+    ]
+   },
+   "artifact": {
+    "arns": [
+     "arn:*:sagemaker:*:*:artifact/*"
+    ],
+    "read": [
+     "DescribeArtifact",
+     "ListTags"
+    ],
+    "write": [
+     "AddAssociation",
+     "CreateArtifact",
+     "DeleteArtifact",
+     "DeleteAssociation",
+     "UpdateArtifact"
+    ]
+   },
+   "automl-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:automl-job/*"
+    ],
+    "read": [
+     "DescribeAutoMLJob",
+     "DescribeAutoMLJobV2",
+     "ListTags"
+    ],
+    "write": [
+     "CreateAutoMLJob",
+     "CreateAutoMLJobV2",
+     "StopAutoMLJob"
+    ]
+   },
+   "cluster": {
+    "arns": [
+     "arn:*:sagemaker:*:*:cluster/*"
+    ],
+    "read": [
+     "DescribeCluster",
+     "DescribeClusterEvent",
+     "DescribeClusterInference",
+     "DescribeClusterNode",
+     "ListClusterEvents",
+     "ListClusterNodes",
+     "ListTags"
+    ],
+    "write": [
+     "AttachClusterNodeNetworkInterface",
+     "AttachClusterNodeVolume",
+     "BatchAddClusterNodes",
+     "BatchDeleteClusterNodes",
+     "BatchRebootClusterNodes",
+     "BatchReplaceClusterNodes",
+     "CreateCluster",
+     "CreateClusterSchedulerConfig",
+     "CreateComputeQuota",
+     "DeleteCluster",
+     "DetachClusterNodeVolume",
+     "StartClusterHealthCheck",
+     "UpdateCluster",
+     "UpdateClusterInference",
+     "UpdateClusterSoftware"
+    ]
+   },
+   "cluster-scheduler-config": {
+    "arns": [
+     "arn:*:sagemaker:*:*:cluster-scheduler-config/*"
+    ],
+    "read": [
+     "DescribeClusterSchedulerConfig",
+     "ListTags"
+    ],
+    "write": [
+     "CreateClusterSchedulerConfig",
+     "DeleteClusterSchedulerConfig",
+     "UpdateClusterSchedulerConfig"
+    ]
+   },
+   "code-repository": {
+    "arns": [
+     "arn:*:sagemaker:*:*:code-repository/*"
+    ],
+    "read": [
+     "DescribeCodeRepository",
+     "ListTags"
+    ],
+    "write": [
+     "CreateCodeRepository",
+     "DeleteCodeRepository",
+     "UpdateCodeRepository"
+    ]
+   },
+   "compilation-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:compilation-job/*"
+    ],
+    "read": [
+     "DescribeCompilationJob",
+     "ListTags"
+    ],
+    "write": [
+     "CreateCompilationJob",
+     "DeleteCompilationJob",
+     "StopCompilationJob"
+    ]
+   },
+   "compute-quota": {
+    "arns": [
+     "arn:*:sagemaker:*:*:compute-quota/*"
+    ],
+    "read": [
+     "DescribeComputeQuota",
+     "ListTags"
+    ],
+    "write": [
+     "CreateComputeQuota",
+     "DeleteComputeQuota",
+     "UpdateComputeQuota"
+    ]
+   },
+   "context": {
+    "arns": [
+     "arn:*:sagemaker:*:*:context/*"
+    ],
+    "read": [
+     "DescribeContext",
+     "ListTags"
+    ],
+    "write": [
+     "AddAssociation",
+     "CreateContext",
+     "DeleteAssociation",
+     "DeleteContext",
+     "UpdateContext"
+    ]
+   },
+   "data-quality-job-definition": {
+    "arns": [
+     "arn:*:sagemaker:*:*:data-quality-job-definition/*"
+    ],
+    "read": [
+     "DescribeDataQualityJobDefinition",
+     "ListTags"
+    ],
+    "write": [
+     "CreateDataQualityJobDefinition",
+     "DeleteDataQualityJobDefinition"
+    ]
+   },
+   "device": {
+    "arns": [
+     "arn:*:sagemaker:*:*:device-fleet/*/device/*"
+    ],
+    "read": [
+     "DescribeDevice",
+     "GetDeployments",
+     "GetDeviceRegistration",
+     "ListTags"
+    ],
+    "write": [
+     "DeregisterDevices",
+     "RegisterDevices",
+     "SendHeartbeat",
+     "UpdateDevices"
+    ]
+   },
+   "device-fleet": {
+    "arns": [
+     "arn:*:sagemaker:*:*:device-fleet/*"
+    ],
+    "read": [
+     "DescribeDeviceFleet",
+     "GetDeviceFleetReport",
+     "ListTags"
+    ],
+    "write": [
+     "CreateDeviceFleet",
+     "DeleteDeviceFleet",
+     "UpdateDeviceFleet"
+    ]
+   },
+   "domain": {
+    "arns": [
+     "arn:*:sagemaker:*:*:domain/*"
+    ],
+    "read": [
+     "DescribeDomain",
+     "ListTags"
+    ],
+    "write": [
+     "CreateDomain",
+     "DeleteDomain",
+     "UpdateDomain"
+    ]
+   },
+   "edge-deployment-plan": {
+    "arns": [
+     "arn:*:sagemaker:*:*:edge-deployment/*"
+    ],
+    "read": [
+     "DescribeEdgeDeploymentPlan",
+     "ListTags"
+    ],
+    "write": [
+     "CreateEdgeDeploymentPlan",
+     "CreateEdgeDeploymentStage",
+     "DeleteEdgeDeploymentPlan",
+     "DeleteEdgeDeploymentStage",
+     "StartEdgeDeploymentStage",
+     "StopEdgeDeploymentStage"
+    ]
+   },
+   "edge-packaging-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:edge-packaging-job/*"
+    ],
+    "read": [
+     "DescribeEdgePackagingJob",
+     "ListTags"
+    ],
+    "write": [
+     "CreateEdgePackagingJob",
+     "StopEdgePackagingJob"
+    ]
+   },
+   "endpoint": {
+    "arns": [
+     "arn:*:sagemaker:*:*:endpoint/*"
+    ],
+    "read": [
+     "DescribeEndpoint",
+     "InvokeEndpoint",
+     "InvokeEndpointAsync",
+     "InvokeEndpointWithResponseStream",
+     "ListTags"
+    ],
+    "write": [
+     "CreateEndpoint",
+     "CreateInferenceComponent",
+     "DeleteEndpoint",
+     "UpdateEndpoint",
+     "UpdateEndpointWeightsAndCapacities"
+    ]
+   },
+   "endpoint-config": {
+    "arns": [
+     "arn:*:sagemaker:*:*:endpoint-config/*"
+    ],
+    "read": [
+     "DescribeEndpointConfig",
+     "ListTags"
+    ],
+    "write": [
+     "CreateEndpoint",
+     "CreateEndpointConfig",
+     "DeleteEndpointConfig",
+     "UpdateEndpoint"
+    ]
+   },
+   "experiment": {
+    "arns": [
+     "arn:*:sagemaker:*:*:experiment/*"
+    ],
+    "read": [
+     "DescribeExperiment",
+     "ListTags"
+    ],
+    "write": [
+     "AddAssociation",
+     "CreateExperiment",
+     "CreateTrial",
+     "DeleteAssociation",
+     "DeleteExperiment",
+     "UpdateExperiment"
+    ]
+   },
+   "experiment-trial": {
+    "arns": [
+     "arn:*:sagemaker:*:*:experiment-trial/*"
+    ],
+    "read": [
+     "DescribeTrial",
+     "ListTags"
+    ],
+    "write": [
+     "AssociateTrialComponent",
+     "CreateTrial",
+     "DeleteTrial",
+     "DisassociateTrialComponent",
+     "UpdateTrial"
+    ]
+   },
+   "experiment-trial-component": {
+    "arns": [
+     "arn:*:sagemaker:*:*:experiment-trial-component/*"
+    ],
+    "read": [
+     "BatchGetMetrics",
+     "DescribeTrialComponent",
+     "ListTags"
+    ],
+    "write": [
+     "AddAssociation",
+     "AssociateTrialComponent",
+     "BatchPutMetrics",
+     "CreateTrialComponent",
+     "DeleteAssociation",
+     "DeleteTrialComponent",
+     "DisassociateTrialComponent",
+     "UpdateTrialComponent"
+    ]
+   },
+   "feature-group": {
+    "arns": [
+     "arn:*:sagemaker:*:*:feature-group/*"
+    ],
+    "read": [
+     "BatchGetRecord",
+     "DescribeFeatureGroup",
+     "DescribeFeatureMetadata",
+     "GetRecord",
+     "ListRecords",
+     "ListTags"
+    ],
+    "write": [
+     "BatchWriteRecord",
+     "CreateFeatureGroup",
+     "DeleteFeatureGroup",
+     "DeleteRecord",
+     "PutRecord",
+     "UpdateFeatureGroup",
+     "UpdateFeatureMetadata"
+    ]
+   },
+   "flow-definition": {
+    "arns": [
+     "arn:*:sagemaker:*:*:flow-definition/*"
+    ],
+    "read": [
+     "DescribeFlowDefinition",
+     "ListTags"
+    ],
+    "write": [
+     "CreateFlowDefinition",
+     "DeleteFlowDefinition",
+     "StartHumanLoop"
+    ]
+   },
+   "hub": {
+    "arns": [
+     "arn:*:sagemaker:*:*:hub/*"
+    ],
+    "read": [
+     "CreateHubContentPresignedUrls",
+     "DescribeHub",
+     "DescribeHubContent",
+     "ListHubContentVersions",
+     "ListHubContents",
+     "ListTags"
+    ],
+    "write": [
+     "CreateHub",
+     "CreateHubContentReference",
+     "DeleteHub",
+     "DeleteHubContent",
+     "DeleteHubContentReference",
+     "DeployHubModel",
+     "ImportHubContent",
+     "TrainHubModel",
+     "UpdateHub",
+     "UpdateHubContent",
+     "UpdateHubContentReference"
+    ]
+   },
+   "hub-content": {
+    "arns": [
+     "arn:*:sagemaker:*:*:hub-content/*/*/*"
+    ],
+    "read": [
+     "CreateHubContentPresignedUrls",
+     "DescribeHubContent",
+     "ListHubContentVersions",
+     "ListTags"
+    ],
+    "write": [
+     "CreateHubContentReference",
+     "DeleteHubContent",
+     "DeleteHubContentReference",
+     "DeployHubModel",
+     "ImportHubContent",
+     "TrainHubModel",
+     "UpdateHubContent",
+     "UpdateHubContentReference"
+    ]
+   },
+   "human-loop": {
+    "arns": [
+     "arn:*:sagemaker:*:*:human-loop/*"
+    ],
+    "read": [
+     "DescribeHumanLoop"
+    ],
+    "write": [
+     "DeleteHumanLoop",
+     "StopHumanLoop"
+    ]
+   },
+   "human-task-ui": {
+    "arns": [
+     "arn:*:sagemaker:*:*:human-task-ui/*"
+    ],
+    "read": [
+     "DescribeHumanTaskUi",
+     "ListTags"
+    ],
+    "write": [
+     "CreateHumanTaskUi",
+     "DeleteHumanTaskUi"
+    ]
+   },
+   "hyper-parameter-tuning-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:hyper-parameter-tuning-job/*"
+    ],
+    "read": [
+     "DescribeHyperParameterTuningJob",
+     "ListTags",
+     "ListTrainingJobsForHyperParameterTuningJob"
+    ],
+    "write": [
+     "CreateHyperParameterTuningJob",
+     "DeleteHyperParameterTuningJob",
+     "StopHyperParameterTuningJob"
+    ]
+   },
+   "image": {
+    "arns": [
+     "arn:*:sagemaker:*:*:image/*"
+    ],
+    "read": [
+     "DescribeImage",
+     "ListAliases",
+     "ListImageVersions",
+     "ListTags"
+    ],
+    "write": [
+     "CreateImage",
+     "CreateImageVersion",
+     "DeleteImage",
+     "UpdateImage"
+    ]
+   },
+   "image-version": {
+    "arns": [
+     "arn:*:sagemaker:*:*:image-version/*/*"
+    ],
+    "read": [
+     "DescribeImageVersion",
+     "ListAliases"
+    ],
+    "write": [
+     "DeleteImageVersion",
+     "UpdateImageVersion"
+    ]
+   },
+   "inference-component": {
+    "arns": [
+     "arn:*:sagemaker:*:*:inference-component/*"
+    ],
+    "read": [
+     "DescribeInferenceComponent",
+     "InvokeEndpoint",
+     "InvokeEndpointWithResponseStream",
+     "ListTags"
+    ],
+    "write": [
+     "CreateInferenceComponent",
+     "DeleteInferenceComponent",
+     "UpdateInferenceComponent",
+     "UpdateInferenceComponentRuntimeConfig"
+    ]
+   },
+   "inference-experiment": {
+    "arns": [
+     "arn:*:sagemaker:*:*:inference-experiment/*"
+    ],
+    "read": [
+     "DescribeInferenceExperiment"
+    ],
+    "write": [
+     "CreateInferenceExperiment",
+     "DeleteInferenceExperiment",
+     "StartInferenceExperiment",
+     "StopInferenceExperiment",
+     "UpdateInferenceExperiment"
+    ]
+   },
+   "inference-recommendations-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:inference-recommendations-job/*"
+    ],
+    "read": [
+     "DescribeInferenceRecommendationsJob",
+     "GetScalingConfigurationRecommendation",
+     "ListTags"
+    ],
+    "write": [
+     "CreateInferenceRecommendationsJob",
+     "StopInferenceRecommendationsJob"
+    ]
+   },
+   "job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:job/*/*"
+    ],
+    "read": [
+     "DescribeJob",
+     "ListTags"
+    ],
+    "write": [
+     "CompleteRollout",
+     "CreateJob",
+     "DeleteJob",
+     "Sample",
+     "SampleWithResponseStream",
+     "StopJob",
+     "UpdateReward"
+    ]
+   },
+   "labeling-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:labeling-job/*"
+    ],
+    "read": [
+     "DescribeLabelingJob",
+     "ListTags"
+    ],
+    "write": [
+     "CreateLabelingJob",
+     "StopLabelingJob"
+    ]
+   },
+   "mlflow-app": {
+    "arns": [
+     "arn:*:sagemaker:*:*:mlflow-app/*"
+    ],
+    "read": [
+     "DescribeMlflowApp",
+     "ListTags"
+    ],
+    "write": [
+     "CallMlflowAppApi",
+     "CreateMlflowApp",
+     "CreatePresignedMlflowAppUrl",
+     "DeleteMlflowApp",
+     "UpdateMlflowApp"
+    ]
+   },
+   "mlflow-tracking-server": {
+    "arns": [
+     "arn:*:sagemaker:*:*:mlflow-tracking-server/*"
+    ],
+    "read": [
+     "DescribeMlflowTrackingServer",
+     "ListTags"
+    ],
+    "write": [
+     "CreateMlflowTrackingServer",
+     "CreatePresignedMlflowTrackingServerUrl",
+     "DeleteMlflowTrackingServer",
+     "StartMlflowTrackingServer",
+     "StopMlflowTrackingServer",
+     "UpdateMlflowTrackingServer"
+    ]
+   },
+   "model": {
+    "arns": [
+     "arn:*:sagemaker:*:*:model/*"
+    ],
+    "read": [
+     "DescribeModel",
+     "ListTags"
+    ],
+    "write": [
+     "CreateModel",
+     "DeleteModel"
+    ]
+   },
+   "model-bias-job-definition": {
+    "arns": [
+     "arn:*:sagemaker:*:*:model-bias-job-definition/*"
+    ],
+    "read": [
+     "DescribeModelBiasJobDefinition",
+     "ListTags"
+    ],
+    "write": [
+     "CreateModelBiasJobDefinition",
+     "DeleteModelBiasJobDefinition"
+    ]
+   },
+   "model-card": {
+    "arns": [
+     "arn:*:sagemaker:*:*:model-card/*"
+    ],
+    "read": [
+     "DescribeModelCard",
+     "ListModelCardExportJobs",
+     "ListModelCardVersions",
+     "ListTags"
+    ],
+    "write": [
+     "CreateModelCard",
+     "CreateModelCardExportJob",
+     "DeleteModelCard",
+     "UpdateModelCard"
+    ]
+   },
+   "model-explainability-job-definition": {
+    "arns": [
+     "arn:*:sagemaker:*:*:model-explainability-job-definition/*"
+    ],
+    "read": [
+     "DescribeModelExplainabilityJobDefinition",
+     "ListTags"
+    ],
+    "write": [
+     "CreateModelExplainabilityJobDefinition",
+     "DeleteModelExplainabilityJobDefinition"
+    ]
+   },
+   "model-package": {
+    "arns": [
+     "arn:*:sagemaker:*:*:model-package/*"
+    ],
+    "read": [
+     "AccessModelPackage",
+     "BatchDescribeModelPackage",
+     "DescribeModelPackage",
+     "ListModelPackages",
+     "ListTags"
+    ],
+    "write": [
+     "CreateModelPackage",
+     "DeleteModelPackage",
+     "UpdateModelPackage"
+    ]
+   },
+   "model-package-group": {
+    "arns": [
+     "arn:*:sagemaker:*:*:model-package-group/*"
+    ],
+    "read": [
+     "DescribeModelPackageGroup",
+     "GetModelPackageGroupPolicy",
+     "ListTags"
+    ],
+    "write": [
+     "CreateModelPackageGroup",
+     "DeleteModelPackageGroup",
+     "DeleteModelPackageGroupPolicy",
+     "PutModelPackageGroupPolicy"
+    ]
+   },
+   "model-quality-job-definition": {
+    "arns": [
+     "arn:*:sagemaker:*:*:model-quality-job-definition/*"
+    ],
+    "read": [
+     "DescribeModelQualityJobDefinition",
+     "ListTags"
+    ],
+    "write": [
+     "CreateModelQualityJobDefinition",
+     "DeleteModelQualityJobDefinition"
+    ]
+   },
+   "monitoring-schedule": {
+    "arns": [
+     "arn:*:sagemaker:*:*:monitoring-schedule/*"
+    ],
+    "read": [
+     "DescribeMonitoringSchedule",
+     "ListTags"
+    ],
+    "write": [
+     "CreateMonitoringSchedule",
+     "DeleteMonitoringSchedule",
+     "StartMonitoringSchedule",
+     "StopMonitoringSchedule",
+     "UpdateMonitoringAlert",
+     "UpdateMonitoringSchedule"
+    ]
+   },
+   "notebook-instance": {
+    "arns": [
+     "arn:*:sagemaker:*:*:notebook-instance/*"
+    ],
+    "read": [
+     "DescribeNotebookInstance",
+     "ListTags"
+    ],
+    "write": [
+     "CreateNotebookInstance",
+     "CreatePresignedNotebookInstanceUrl",
+     "DeleteNotebookInstance",
+     "StartNotebookInstance",
+     "StopNotebookInstance",
+     "UpdateNotebookInstance"
+    ]
+   },
+   "notebook-instance-lifecycle-config": {
+    "arns": [
+     "arn:*:sagemaker:*:*:notebook-instance-lifecycle-config/*"
+    ],
+    "read": [
+     "DescribeNotebookInstanceLifecycleConfig",
+     "ListTags"
+    ],
+    "write": [
+     "CreateNotebookInstanceLifecycleConfig",
+     "DeleteNotebookInstanceLifecycleConfig",
+     "UpdateNotebookInstanceLifecycleConfig"
+    ]
+   },
+   "optimization-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:optimization-job/*"
+    ],
+    "read": [
+     "DescribeOptimizationJob",
+     "ListTags"
+    ],
+    "write": [
+     "CreateOptimizationJob",
+     "DeleteOptimizationJob",
+     "StopOptimizationJob"
+    ]
+   },
+   "partner-app": {
+    "arns": [
+     "arn:*:sagemaker:*:*:partner-app/*"
+    ],
+    "read": [
+     "DescribePartnerApp",
+     "ListTags"
+    ],
+    "write": [
+     "CallPartnerAppApi",
+     "CreatePartnerApp",
+     "CreatePartnerAppPresignedUrl",
+     "DeletePartnerApp",
+     "UpdatePartnerApp"
+    ]
+   },
+   "pipeline": {
+    "arns": [
+     "arn:*:sagemaker:*:*:pipeline/*"
+    ],
+    "read": [
+     "DescribePipeline",
+     "ListPipelineExecutions",
+     "ListPipelineVersions",
+     "ListTags"
+    ],
+    "write": [
+     "CreatePipeline",
+     "DeletePipeline",
+     "StartPipelineExecution",
+     "UpdatePipeline",
+     "UpdatePipelineVersion"
+    ]
+   },
+   "pipeline-execution": {
+    "arns": [
+     "arn:*:sagemaker:*:*:pipeline/*/execution/*"
+    ],
+    "read": [
+     "DescribePipelineDefinitionForExecution",
+     "DescribePipelineExecution",
+     "ListPipelineExecutionSteps",
+     "ListPipelineParametersForExecution",
+     "ListTags"
+    ],
+    "write": [
+     "RetryPipelineExecution",
+     "SendPipelineExecutionStepFailure",
+     "SendPipelineExecutionStepSuccess",
+     "StopPipelineExecution",
+     "UpdatePipelineExecution"
+    ]
+   },
+   "processing-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:processing-job/*"
+    ],
+    "read": [
+     "DescribeProcessingJob",
+     "ListTags"
+    ],
+    "write": [
+     "CreateProcessingJob",
+     "DeleteProcessingJob",
+     "DisassociateTrialComponent",
+     "StopProcessingJob"
+    ]
+   },
+   "project": {
+    "arns": [
+     "arn:*:sagemaker:*:*:project/*"
+    ],
+    "read": [
+     "DescribeProject",
+     "ListTags"
+    ],
+    "write": [
+     "CreateProject",
+     "DeleteProject",
+     "UpdateProject"
+    ]
+   },
+   "reserved-capacity": {
+    "arns": [
+     "arn:*:sagemaker:*:*:reserved-capacity/*"
+    ],
+    "read": [
+     "DescribeReservedCapacity",
+     "ListTags",
+     "ListUltraServersByReservedCapacity"
+    ],
+    "write": [
+     "CreateCluster",
+     "CreateReservedCapacity",
+     "CreateTrainingJob",
+     "UpdateCluster"
+    ]
+   },
+   "shared-model": {
+    "arns": [
+     "arn:*:sagemaker:*:*:shared-model/*"
+    ],
+    "read": [
+     "DescribeSharedModel",
+     "ListSharedModelVersions"
+    ],
+    "write": [
+     "CreateSharedModel",
+     "UpdateSharedModel"
+    ]
+   },
+   "space": {
+    "arns": [
+     "arn:*:sagemaker:*:*:space/*/*"
+    ],
+    "read": [
+     "DescribeSpace",
+     "ListTags"
+    ],
+    "write": [
+     "CreateSpace",
+     "DeleteSpace",
+     "StartSession",
+     "UpdateSpace"
+    ]
+   },
+   "studio-lifecycle-config": {
+    "arns": [
+     "arn:*:sagemaker:*:*:studio-lifecycle-config/*"
+    ],
+    "read": [
+     "DescribeStudioLifecycleConfig",
+     "ListTags"
+    ],
+    "write": [
+     "CreateStudioLifecycleConfig",
+     "DeleteStudioLifecycleConfig"
+    ]
+   },
+   "training-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:training-job/*"
+    ],
+    "read": [
+     "BatchGetMetrics",
+     "DescribeTrainingJob",
+     "ListTags"
+    ],
+    "write": [
+     "BatchPutMetrics",
+     "CreateTrainingJob",
+     "DeleteTrainingJob",
+     "StopTrainingJob",
+     "UpdateTrainingJob"
+    ]
+   },
+   "training-plan": {
+    "arns": [
+     "arn:*:sagemaker:*:*:training-plan/*"
+    ],
+    "read": [
+     "DescribeTrainingPlan",
+     "DescribeTrainingPlanExtensionHistory",
+     "ListTags"
+    ],
+    "write": [
+     "CreateCluster",
+     "CreateTrainingJob",
+     "CreateTrainingPlan",
+     "UpdateCluster"
+    ]
+   },
+   "transform-job": {
+    "arns": [
+     "arn:*:sagemaker:*:*:transform-job/*"
+    ],
+    "read": [
+     "DescribeTransformJob",
+     "ListTags"
+    ],
+    "write": [
+     "CreateTransformJob",
+     "StopTransformJob"
+    ]
+   },
+   "user-profile": {
+    "arns": [
+     "arn:*:sagemaker:*:*:user-profile/*/*"
+    ],
+    "read": [
+     "DescribeUserProfile",
+     "ListTags"
+    ],
+    "write": [
+     "CreatePresignedDomainUrl",
+     "CreateUserProfile",
+     "DeleteUserProfile",
+     "UpdateUserProfile"
+    ]
+   },
+   "workforce": {
+    "arns": [
+     "arn:*:sagemaker:*:*:workforce/*"
+    ],
+    "read": [
+     "DescribeWorkforce"
+    ],
+    "write": [
+     "CreateWorkforce",
+     "DeleteWorkforce",
+     "UpdateWorkforce"
+    ]
+   },
+   "workteam": {
+    "arns": [
+     "arn:*:sagemaker:*:*:workteam/*"
+    ],
+    "read": [
+     "DescribeSubscribedWorkteam",
+     "DescribeWorkteam",
+     "ListLabelingJobsForWorkteam",
+     "ListTags"
+    ],
+    "write": [
+     "CreateWorkteam",
+     "DeleteWorkteam",
+     "UpdateWorkteam"
+    ]
+   }
+  }
+ },
+ "source": "https://servicereference.us-east-1.amazonaws.com/v1/<service>/<service>.json",
+ "versions": {
+  "sagemaker": "v1.4"
+ }
+}

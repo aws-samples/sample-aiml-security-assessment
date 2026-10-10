@@ -259,6 +259,7 @@ class TestOWASPMappings:
             },
             {
                 "Check_ID": "SM-11",
+                "Finding": "SageMaker Model Network Isolation Disabled",
                 "Finding_Details": "Model 'm' does not have network isolation enabled.",
                 "Severity": "High",
                 "Status": "Failed",
@@ -266,6 +267,7 @@ class TestOWASPMappings:
             },
             {
                 "Check_ID": "SM-22",
+                "Finding": "Model Approval Workflow - Approval Status",
                 "Finding_Details": "Manual approval workflow may not be enforced.",
                 "Severity": "Medium",
                 "Status": "Failed",
@@ -287,6 +289,41 @@ class TestOWASPMappings:
         assert all(
             row["Reference"].startswith("https://genai.owasp.org/") for row in rows
         )
+
+    @pytest.mark.parametrize(
+        ("check_id", "finding", "mapped"),
+        [
+            ("SM-11", "SageMaker Model Network Isolation Disabled", ["OW-03", "OW-10"]),
+            ("SM-11", "SageMaker Model Network Isolation Summary", ["OW-03", "OW-10"]),
+            ("SM-11", "AI Lambda Function Network Boundary", []),
+            ("SM-11", "SageMaker Endpoint Config Storage Encryption", []),
+            ("SM-11", "SageMaker Runtime Private Invoke Path", []),
+            ("SM-11", "SageMaker Check Incomplete", []),
+            ("SM-10", "SageMaker Notebook Not in VPC", ["OW-03"]),
+            ("SM-10", "SageMaker Studio Domain Network Boundary", []),
+            ("SM-22", "Model Approval Workflow Check", ["OW-04", "OW-09"]),
+            ("SM-22", "Deployed Model Registration", ["OW-04", "OW-09"]),
+            ("SM-22", "Model Registry Cross-Account Visibility", []),
+            ("SM-22", "Model Registry Lifecycle Stage", []),
+        ],
+    )
+    def test_only_rows_for_the_mapped_control_flow_into_owasp(
+        self, check_id, finding, mapped
+    ):
+        # Review #73 item 5: SM-10, SM-11 and SM-22 now emit rows for other
+        # controls under the same Check_ID; only the mapped control's rows map.
+        source_rows = [
+            {
+                "Check_ID": check_id,
+                "Finding": finding,
+                "Finding_Details": "details",
+                "Severity": "High",
+                "Status": "Failed",
+                "Region": "us-east-1",
+            }
+        ]
+        rows = owasp_app.build_owasp_mapping_findings(source_rows, region="us-east-1")
+        assert [row["Check_ID"] for row in rows] == mapped
 
     def test_new_core_controls_map_to_direct_owasp_analogues(self):
         expected_mappings = {

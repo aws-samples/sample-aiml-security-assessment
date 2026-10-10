@@ -120,8 +120,25 @@ Resources:
               - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-security-*"
               - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-sec-*"
             Condition:
-              ArnEquals:
-                iam:PolicyARN: !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+              ArnLike:
+                iam:PolicyARN:
+                  - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-security-*"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-sec-*"
+          - Sid: AssessmentManagedPolicyLifecycle
+            Effect: Allow
+            Action:
+              - iam:CreatePolicy
+              - iam:DeletePolicy
+              - iam:GetPolicy
+              - iam:GetPolicyVersion
+              - iam:ListPolicyVersions
+              - iam:CreatePolicyVersion
+              - iam:DeletePolicyVersion
+              - iam:ListEntitiesForPolicy
+            Resource:
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-security-*"
+              - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-sec-*"
           - Sid: PassAssessmentRolesOnlyToRuntimeServices
             Effect: Allow
             Action: iam:PassRole

@@ -34,6 +34,7 @@ Metadata:
           - AgentCoreTokenVaultId
           - ApprovedExternalAccountIds
           - ApprovedOrganizationIds
+          - EnableSageMakerArtifactObjectReads
     ParameterLabels:
       EnableBedrockAssessment:
         default: Amazon Bedrock assessment
@@ -62,7 +63,7 @@ Metadata:
       GitHubBranch:
         default: GitHub branch
       RequireBedrockZeroDataRetention:
-        default: Require Bedrock zero data retention
+        default: Require Bedrock zero data retention (deprecated, ignored)
       RequireMarketplaceEndpointCMK:
         default: Require Marketplace endpoint customer-managed keys
       RequireAgentCoreOnlineEvaluation:
@@ -77,6 +78,8 @@ Metadata:
         default: Approved Model Registry account IDs
       ApprovedOrganizationIds:
         default: Approved Model Registry organization IDs
+      EnableSageMakerArtifactObjectReads:
+        default: Read SageMaker model artifact object metadata
 
 Parameters:
   EnableBedrockAssessment:
@@ -194,7 +197,7 @@ Parameters:
     Type: String
     Default: "false"
     AllowedValues: ["true", "false"]
-    Description: Fail BR-37 when the Bedrock retention mode is default or inherit.
+    Description: Deprecated and ignored. BR-37 now judges the Bedrock retention mode at every setting. Kept so existing stacks still update.
 
   RequireMarketplaceEndpointCMK:
     Type: String
@@ -236,6 +239,12 @@ Parameters:
     Default: ""
     AllowedPattern: "^$|^o-[a-z0-9]{10,32}(,o-[a-z0-9]{10,32})*$"
     Description: Comma-separated AWS Organizations IDs approved for SageMaker Model Registry sharing.
+
+  EnableSageMakerArtifactObjectReads:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Let SM-43 call HeadObject on each single-object model artifact, which needs s3:GetObject on any object. When false, that leg is reported N/A.
 
 Conditions:
   CreateEmailNotification: !Not [!Equals [!Ref EmailAddress, ""]]
@@ -379,9 +388,25 @@ Resources:
                   - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-security-*'
                   - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-sec-*'
                 Condition:
-                  ArnEquals:
+                  ArnLike:
                     iam:PolicyARN:
-                      !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+                      - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+                      - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-security-*'
+                      - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-sec-*'
+              - Sid: IAMManagedPolicyLifecycle
+                Action:
+                  - iam:CreatePolicy
+                  - iam:DeletePolicy
+                  - iam:GetPolicy
+                  - iam:GetPolicyVersion
+                  - iam:ListPolicyVersions
+                  - iam:CreatePolicyVersion
+                  - iam:DeletePolicyVersion
+                  - iam:ListEntitiesForPolicy
+                Effect: Allow
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-security-*'
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/aiml-sec-*'
               - Sid: IAMPassRole
                 Action:
                   - iam:PassRole
@@ -560,6 +585,9 @@ Resources:
             Type: PLAINTEXT
           - Name: APPROVED_ORGANIZATION_IDS
             Value: !Ref ApprovedOrganizationIds
+            Type: PLAINTEXT
+          - Name: ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS
+            Value: !Ref EnableSageMakerArtifactObjectReads
             Type: PLAINTEXT
       Description: Run AIML Security single-account assessment
       ServiceRole: !GetAtt CodeBuildRole.Arn

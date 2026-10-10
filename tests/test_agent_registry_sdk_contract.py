@@ -9,7 +9,7 @@ import botocore.session
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-REQUIRED_SDK_VERSION = "1.43.85"
+REQUIRED_SDK_VERSION = "1.43.108"
 BOTOCORE_DATA_PATH = Path(botocore.__file__).resolve().parent / "data"
 
 
