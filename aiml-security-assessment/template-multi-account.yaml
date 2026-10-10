@@ -246,6 +246,7 @@ Resources:
                 - iam:ListAttachedRolePolicies
                 - iam:ListRolePolicies
                 - iam:GetRolePolicy
+                - iam:GetRole # PermissionsBoundary is on GetRole only
               Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*'
             - Sid: IAMUserPolicyRead
               Effect: Allow
@@ -253,7 +254,16 @@ Resources:
                 - iam:ListAttachedUserPolicies
                 - iam:ListUserPolicies
                 - iam:GetUserPolicy
+                - iam:ListGroupsForUser # group policies apply to members
+                - iam:GetUser # PermissionsBoundary is on GetUser only
               Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:user/*'
+            - Sid: IAMGroupPolicyRead
+              Effect: Allow
+              Action:
+                - iam:ListAttachedGroupPolicies
+                - iam:ListGroupPolicies
+                - iam:GetGroupPolicy
+              Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:group/*'
             - Sid: IAMManagedPolicyRead
               Effect: Allow
               Action:

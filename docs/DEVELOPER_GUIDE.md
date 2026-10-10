@@ -522,8 +522,8 @@ def check_new_service_security(permission_cache, region: str = ""):
 
 ```txt
 # requirements.txt
-boto3==1.43.85
-botocore==1.43.85
+boto3==1.43.108
+botocore==1.43.108
 ```
 
 1. **Create Schema File**:
