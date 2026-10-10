@@ -82,6 +82,11 @@ IGNORED_SOURCES = (
         "log message only",
     ),
     (
+        "agentcore_assessments/app.py",
+        "temporary passwords are valid for {days} days",
+        "a user pool's Cognito configuration, the same every run until changed",
+    ),
+    (
         "responsible_ai_grc_assessments/app.py",
         "{STALE_AFTER_DAYS} days",
         "fixed threshold, the same every run",

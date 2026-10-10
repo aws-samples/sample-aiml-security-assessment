@@ -102,6 +102,9 @@ def _render_policy_intrinsics(value, partition=_LARGEST_PARTITION):
         return template.replace("${AWS::Partition}", partition).replace(
             "${AWS::AccountId}", "123456789012"
         )
+    if set(value) == {"Fn::If"}:
+        # An opt-in statement renders as its granted branch, the larger case.
+        return _render_policy_intrinsics(value["Fn::If"][1], partition)
     if len(value) == 1 and next(iter(value)).startswith("Fn::"):
         # A realistic upper-bound placeholder for !GetAtt/!Ref policy values.
         return "x" * 128
@@ -393,6 +396,8 @@ _EXPECTED_ACTIONS = {
         "logs:DescribeLogStreams",
         "bedrock-agentcore:GetBrowser",
         "bedrock-agentcore:GetCodeInterpreter",
+        # Moved from the function's inline policy to stay inside its budget.
+        "organizations:ListTargetsForPolicy",
     },
     "SageMakerAssessmentReadsPolicy": {
         "ec2:DescribeManagedPrefixLists",
@@ -648,7 +653,6 @@ _EXPECTED_ACTIONS = {
         "organizations:ListAccounts",
         "organizations:ListPolicies",
         "organizations:ListParents",
-        "organizations:ListTargetsForPolicy",
         "route53resolver:GetFirewallConfig",
         "route53resolver:ListFirewallDomainLists",
         "route53resolver:ListFirewallDomains",
@@ -2271,6 +2275,40 @@ _AGENTCORE_MANAGED_GRANTS = [
         "s3:GetObject",
         json.dumps({"Fn::Sub": "${AIMLAssessmentBucket.Arn}/permissions_cache_*.json"}),
     ),
+    # Moved from the inline policy in the #74 review to keep it inside the
+    # 9,000-character budget; scope unchanged. AC-06 adds the RCP targets.
+    (
+        "Allow",
+        "organizations:ListTargetsForPolicy",
+        json.dumps(
+            [
+                {
+                    "Fn::Sub": (
+                        "arn:${AWS::Partition}:organizations::*:policy/o-*/"
+                        "service_control_policy/p-*"
+                    )
+                },
+                {
+                    "Fn::Sub": (
+                        "arn:${AWS::Partition}:organizations::aws:policy/"
+                        "service_control_policy/*"
+                    )
+                },
+                {
+                    "Fn::Sub": (
+                        "arn:${AWS::Partition}:organizations::*:policy/o-*/"
+                        "resource_control_policy/p-*"
+                    )
+                },
+                {
+                    "Fn::Sub": (
+                        "arn:${AWS::Partition}:organizations::aws:policy/"
+                        "resource_control_policy/*"
+                    )
+                },
+            ]
+        ),
+    ),
     # AC-49's transit gateway hop. The two Describe actions have no resource
     # type in the service authorization reference (2026-10-04);
     # SearchTransitGatewayRoutes takes transit-gateway-route-table.
@@ -2360,16 +2398,18 @@ def test_agentcore_managed_policy_holds_exactly_the_approved_grants(template):
     # patterns admit for the stack names this project deploys.
     assert "ManagedPolicyName" not in resource["Properties"]
     document = resource["Properties"]["PolicyDocument"]
-    assert all(
-        set(s) <= {"Sid", "Effect", "Action", "Resource"} for s in document["Statement"]
-    )
+    # Opt-in statements are judged as granted, so the approved set covers them.
+    statements = [
+        s["Fn::If"][1] if set(s) == {"Fn::If"} else s for s in document["Statement"]
+    ]
+    assert all(set(s) <= {"Sid", "Effect", "Action", "Resource"} for s in statements)
     grants = sorted(
         (
             statement["Effect"],
             action,
             json.dumps(statement["Resource"], sort_keys=True),
         )
-        for statement in document["Statement"]
+        for statement in statements
         for action in statement["Action"]
     )
     assert grants == sorted(_AGENTCORE_MANAGED_GRANTS)
@@ -2922,7 +2962,7 @@ def test_agentcore_observability_and_governance_reads_are_scoped_where_iam_allow
     scoped_reads = {
         "CloudTrailEventSelectorRead": (
             "cloudtrail:GetEventSelectors",
-            "cloudtrail:*:${AWS::AccountId}:trail/*",
+            "cloudtrail:*:*:trail/*",
         ),
         "AgentCoreIdentityInventory": (
             "bedrock-agentcore:ListWorkloadIdentities",
@@ -2967,6 +3007,19 @@ def test_agentcore_observability_and_governance_reads_are_scoped_where_iam_allow
         template, "AgentCoreSecurityAssessmentFunction", "CloudTrailEventSelectorRead"
     )
     assert "cloudtrail:GetTrailStatus" in trail_read
+    # A member account reads the organization trail, whose ARN carries the
+    # management account, so neither resource pins this account.
+    assert "cloudtrail:*:*:eventdatastore/*" in trail_read
+    assert "cloudtrail:*:${AWS::AccountId}:" not in trail_read
+    # AC-06 reads where each resource control policy is attached, AWS managed
+    # RCPFullAWSAccess included.
+    policy_targets = _statement_block(
+        template,
+        "AgentCoreAssessmentReadsPolicy",
+        "OrganizationsPolicyAttachmentRead",
+    )
+    assert "organizations::*:policy/o-*/resource_control_policy/p-*" in policy_targets
+    assert "organizations::aws:policy/resource_control_policy/*" in policy_targets
     identity = _statement_block(
         template, "AgentCoreSecurityAssessmentFunction", "AgentCoreIdentityInventory"
     )

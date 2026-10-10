@@ -36,6 +36,7 @@ Metadata:
           - RequireAgentRegistryManualApproval
           - RequireAgentRegistryCMK
           - AgentCoreTokenVaultId
+          - EnableAgentCoreArtifactContentReads
           - ApprovedExternalAccountIds
           - ApprovedOrganizationIds
           - EnableSageMakerArtifactObjectReads
@@ -86,6 +87,8 @@ Metadata:
         default: Require Agent Registry customer-managed keys
       AgentCoreTokenVaultId:
         default: AgentCore token vault ID
+      EnableAgentCoreArtifactContentReads:
+        default: Read AgentCore artifact contents
       ApprovedExternalAccountIds:
         default: Approved Model Registry account IDs
       ApprovedOrganizationIds:
@@ -282,6 +285,12 @@ Parameters:
     Type: String
     Default: default
     Description: Regional AgentCore Identity token vault ID assessed by AC-14.
+
+  EnableAgentCoreArtifactContentReads:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: "Read the contents AC-34 and AC-35 scan: each runtime's code archive and each gateway tool schema in S3 (s3:GetObject and s3:GetObjectVersion on any object) and each runtime's container image layers (ecr:BatchGetImage and ecr:GetDownloadUrlForLayer in this account). When false, the function holds neither grant and those legs report N/A."
 
   ApprovedExternalAccountIds:
     Type: String
@@ -680,6 +689,9 @@ Resources:
             Type: PLAINTEXT
           - Name: AGENTCORE_TOKEN_VAULT_ID
             Value: !Ref AgentCoreTokenVaultId
+            Type: PLAINTEXT
+          - Name: ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS
+            Value: !Ref EnableAgentCoreArtifactContentReads
             Type: PLAINTEXT
           - Name: APPROVED_EXTERNAL_ACCOUNT_IDS
             Value: !Ref ApprovedExternalAccountIds

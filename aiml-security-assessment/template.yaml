@@ -26,6 +26,7 @@ Metadata:
           - RequireAgentRegistryManualApproval
           - RequireAgentRegistryCMK
           - AgentCoreTokenVaultId
+          - EnableAgentCoreArtifactContentReads
           - ApprovedExternalAccountIds
           - ApprovedOrganizationIds
           - EnableSageMakerArtifactObjectReads
@@ -42,6 +43,8 @@ Metadata:
         default: AWS regions to scan
       MaxRegionConcurrency:
         default: Regional scan concurrency
+      EnableAgentCoreArtifactContentReads:
+        default: Read AgentCore artifact contents
 
 Parameters:
   EnableBedrockAssessment:
@@ -117,6 +120,11 @@ Parameters:
     Type: String
     Default: default
     Description: Regional AgentCore Identity token vault ID assessed by AC-14.
+  EnableAgentCoreArtifactContentReads:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: "Read the contents AC-34 and AC-35 scan: each runtime's code archive and each gateway tool schema in S3 (s3:GetObject and s3:GetObjectVersion on any object) and each runtime's container image layers (ecr:BatchGetImage and ecr:GetDownloadUrlForLayer in this account). When false, the function holds neither grant and those legs report N/A."
   ApprovedExternalAccountIds:
     Type: String
     Default: ""
@@ -136,6 +144,7 @@ Parameters:
 Conditions:
   SageMakerArtifactObjectReadsEnabled:
     !Equals [!Ref EnableSageMakerArtifactObjectReads, "true"]
+  AgentCoreArtifactContentReadsEnabled: !Equals [!Ref EnableAgentCoreArtifactContentReads, "true"]
 
 Resources:
   AIMLAssessmentStateMachine:
@@ -2019,33 +2028,42 @@ Resources:
             Action:
               - logs:ListTagsForResource # AC-41
             Resource: !Sub 'arn:${AWS::Partition}:logs:*:${AWS::AccountId}:log-group:*'
-          - Sid: RuntimeImageConfigRead
-            # AC-34 reads each runtime image's manifest and the URL of its
-            # configuration blob, in this account's registry.
-            Effect: Allow
-            Action:
-              - ecr:BatchGetImage # AC-34
-              - ecr:GetDownloadUrlForLayer # AC-34
-            Resource: !Sub 'arn:${AWS::Partition}:ecr:*:${AWS::AccountId}:repository/*'
+          # AC-34 reads each runtime image's manifest and the URL of its
+          # configuration blob and layers, in this account's registry. These
+          # read image contents, so they exist only when
+          # EnableAgentCoreArtifactContentReads is true.
+          - !If
+            - AgentCoreArtifactContentReadsEnabled
+            - Sid: RuntimeImageConfigRead
+              Effect: Allow
+              Action:
+                - ecr:BatchGetImage # AC-34
+                - ecr:GetDownloadUrlForLayer # AC-34
+              Resource: !Sub 'arn:${AWS::Partition}:ecr:*:${AWS::AccountId}:repository/*'
+            - !Ref AWS::NoValue
           - Sid: PermissionCacheRead
             Effect: Allow
             Action:
               - s3:GetObject
             Resource: !Sub '${AIMLAssessmentBucket.Arn}/permissions_cache_*.json'
-          - Sid: AgentRuntimeArtifactObjectRead
-            # AC-34 reads the code archive each runtime's agentRuntimeArtifact
-            # names, and AC-34 and AC-35 each tool schema a gateway target names
-            # in S3.
-            # Each is read by its exact key within a byte bound; no bucket is
-            # listed. The bucket is any the customer names, so the resource
-            # cannot be narrower. A code archive pinned by versionId is read
-            # with VersionId, which needs s3:GetObjectVersion (GetObject API
-            # reference, Permissions).
-            Effect: Allow
-            Action:
-              - s3:GetObject # AC-34, AC-35
-              - s3:GetObjectVersion # AC-34
-            Resource: !Sub 'arn:${AWS::Partition}:s3:::*/*'
+          # AC-34 reads the code archive each runtime's agentRuntimeArtifact
+          # names, and AC-34 and AC-35 each tool schema a gateway target names
+          # in S3.
+          # Each is read by its exact key within a byte bound; no bucket is
+          # listed. The bucket is any the customer names, so the resource
+          # cannot be narrower. A code archive pinned by versionId is read
+          # with VersionId, which needs s3:GetObjectVersion (GetObject API
+          # reference, Permissions). The grant reads object contents, so it
+          # exists only when EnableAgentCoreArtifactContentReads is true.
+          - !If
+            - AgentCoreArtifactContentReadsEnabled
+            - Sid: AgentRuntimeArtifactObjectRead
+              Effect: Allow
+              Action:
+                - s3:GetObject # AC-34, AC-35
+                - s3:GetObjectVersion # AC-34
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::*/*'
+            - !Ref AWS::NoValue
           - Sid: TransitGatewayEgressRead
             # AC-49 follows a hosting subnet's internet route through a transit
             # gateway: the VPC's attachment and the route table it is
@@ -2120,6 +2138,25 @@ Resources:
               - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:${AWS::AccountId}:browser-custom/*'
               - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:aws:code-interpreter/*'
               - !Sub 'arn:${AWS::Partition}:bedrock-agentcore:*:aws:browser/*'
+          # Moved here from the function's inline policy, which nears its
+          # 9000-character budget in aws-us-gov.
+          # AC-28 and AC-29 count an SCP only when it binds this account, so
+          # they walk this account's parents up to the root and read where
+          # each guarding policy is attached.
+          - Sid: OrganizationsPolicyAttachmentRead
+            Effect: Allow
+            Action:
+              - organizations:ListTargetsForPolicy # AC-06, AC-28, AC-29, AC-37
+            # AC-37 also reads where AWS managed FullAWSAccess is attached, to
+            # find a level whose policies allow no part of an action. That
+            # policy's ARN carries the account segment aws. AC-06 reads where
+            # each resource control policy is attached, AWS managed
+            # RCPFullAWSAccess included.
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:organizations::*:policy/o-*/service_control_policy/p-*'
+              - !Sub 'arn:${AWS::Partition}:organizations::aws:policy/service_control_policy/*'
+              - !Sub 'arn:${AWS::Partition}:organizations::*:policy/o-*/resource_control_policy/p-*' # AC-06
+              - !Sub 'arn:${AWS::Partition}:organizations::aws:policy/resource_control_policy/*' # AC-06
 
   AgentCoreSecurityAssessmentFunction:
     Type: AWS::Serverless::Function
@@ -2138,6 +2175,7 @@ Resources:
           TARGET_REGIONS: !Ref TargetRegions
           AGENTCORE_TOKEN_VAULT_ID: !Ref AgentCoreTokenVaultId
           REQUIRE_AGENTCORE_ONLINE_EVALUATION: !Ref RequireAgentCoreOnlineEvaluation
+          ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS: !Ref EnableAgentCoreArtifactContentReads
       Policies:
         - Statement:
             - Sid: AgentCoreReportWrite
@@ -2394,6 +2432,9 @@ Resources:
               Resource: !Sub 'arn:${AWS::Partition}:cognito-idp:*:${AWS::AccountId}:userpool/*'
             # AC-18 reads which trails select AgentCore resource types for data
             # events. GetEventSelectors is scoped to the trail resource type.
+            # ListTrails also returns an organization trail, whose ARN carries
+            # the management account, so the account segment stays open. These
+            # are reads, and the other account's trail still authorizes them.
             - Sid: CloudTrailEventSelectorRead
               Effect: Allow
               Action:
@@ -2404,8 +2445,8 @@ Resources:
                 # selectors on the eventdatastore resource type.
                 - cloudtrail:GetEventDataStore # AC-18
               Resource:
-                - !Sub 'arn:${AWS::Partition}:cloudtrail:*:${AWS::AccountId}:trail/*'
-                - !Sub 'arn:${AWS::Partition}:cloudtrail:*:${AWS::AccountId}:eventdatastore/*'
+                - !Sub 'arn:${AWS::Partition}:cloudtrail:*:*:trail/*'
+                - !Sub 'arn:${AWS::Partition}:cloudtrail:*:*:eventdatastore/*'
             # AC-20 reads masking configuration at both scopes: an account-wide
             # data-protection policy and a per-log-group one.
             - Sid: LogsDataProtectionPolicyRead
@@ -2446,19 +2487,6 @@ Resources:
               Resource:
                 - !Sub 'arn:${AWS::Partition}:organizations::*:policy/*/*/*'
                 - !Sub 'arn:${AWS::Partition}:organizations::aws:policy/*/*'
-            # AC-28 and AC-29 count an SCP only when it binds this account, so
-            # they walk this account's parents up to the root and read where
-            # each guarding policy is attached.
-            - Sid: OrganizationsPolicyAttachmentRead
-              Effect: Allow
-              Action:
-                - organizations:ListTargetsForPolicy # AC-28, AC-29, AC-37
-              # AC-37 also reads where AWS managed FullAWSAccess is attached, to
-              # find a level whose policies allow no part of an action. That
-              # policy's ARN carries the account segment aws.
-              Resource:
-                - !Sub 'arn:${AWS::Partition}:organizations::*:policy/o-*/service_control_policy/p-*'
-                - !Sub 'arn:${AWS::Partition}:organizations::aws:policy/service_control_policy/*'
             - Sid: OrganizationsParentRead
               Effect: Allow
               Action:

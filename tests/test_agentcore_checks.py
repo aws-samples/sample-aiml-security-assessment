@@ -56,6 +56,12 @@ sys.modules["agentcore_app"] = agentcore_app
 _spec.loader.exec_module(agentcore_app)
 
 
+@pytest.fixture(autouse=True)
+def _artifact_content_reads_enabled(monkeypatch):
+    # The content-scan tests judge what a read finds; the opt-out has its own.
+    monkeypatch.setenv("ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS", "true")
+
+
 @pytest.mark.parametrize(
     ("caller_identity", "expected_partition"),
     [
@@ -6511,6 +6517,34 @@ _REQUEST_INTERCEPTOR = [
 
 class TestAgenticGatewaySecurity:
     """Agentic AI Gateway security checks."""
+
+    @patch("agentcore_app.agentcore_client")
+    def test_a_transport_error_listing_gateways_is_incomplete_for_every_id(
+        self, mock_ac
+    ):
+        mock_ac.list_gateways.side_effect = EndpointConnectionError(
+            endpoint_url="https://bedrock-agentcore-control.us-east-1.amazonaws.com"
+        )
+
+        findings = agentcore_app.check_agentcore_gateway_agentic_security()
+
+        assert sorted(f["Check_ID"] for f in findings) == [
+            "AG-24",
+            "AG-25",
+            "AG-26",
+            "AG-27",
+            "AG-39",
+        ]
+        assert {(f["Status"], f["Severity"]) for f in findings} == {
+            ("N/A", "Informational")
+        }
+
+    def test_the_runner_entry_names_every_id_the_gateway_check_emits(self):
+        source = inspect.getsource(agentcore_app.lambda_handler)
+        assert (
+            '["AG-24", "AG-25", "AG-26", "AG-27", "AG-39"],\n'
+            '                "Agentic Gateway Security",'
+        ) in source
 
     @patch("agentcore_app.agentcore_client")
     def test_gateway_policy_controls_fail_when_not_enforced(self, mock_ac):
@@ -20823,6 +20857,26 @@ class TestAC34RuntimeCode:
         ]
         assert not [c for c in self.s3.method_calls if c[0].startswith("list")]
 
+    @pytest.mark.parametrize("setting", ["false", None])
+    def test_code_is_not_read_unless_the_deployment_opts_in(self, monkeypatch, setting):
+        if setting is None:
+            monkeypatch.delenv("ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS")
+        else:
+            monkeypatch.setenv("ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS", setting)
+        rows = self._run(
+            {"rt-b": "b.zip"},
+            {"code-bucket/b.zip": self._zip({"cfg.py": f"K = '{self._ACCESS_KEY}'"})},
+        )
+        assert [(r["Status"], r["Severity"]) for r in rows] == [
+            ("N/A", "Informational")
+        ]
+        assert (
+            f"s3://code-bucket/b.zip could not be read "
+            f"({agentcore_app.ARTIFACT_CONTENT_READS_DISABLED})"
+            in rows[0]["Finding_Details"]
+        )
+        self.s3.get_object.assert_not_called()
+
     def test_a_dotenv_file_holding_a_credential_fails(self):
         rows = self._run(
             {"rt-a": "a.zip", "rt-b": "b.zip"},
@@ -21327,6 +21381,37 @@ class TestAC34RuntimeImages:
             assert _SECRET_VALUE not in json.dumps(row)
             assert row["Check_ID"] == "AC-34"
             assert_finding_schema(row)
+
+    @patch("agentcore_app.urlopen")
+    @patch("agentcore_app.ecr_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_an_image_is_not_read_unless_the_deployment_opts_in(
+        self, mock_ac, mock_ecr, mock_open, monkeypatch
+    ):
+        monkeypatch.setenv("ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS", "false")
+        self._wire(
+            mock_ac,
+            mock_ecr,
+            mock_open,
+            {"rt-b": f"{self._URI}:bad"},
+            {"cfg-bad": self._config(env=[f"API_KEY={_SECRET_VALUE}"])},
+        )
+
+        rows = self._image_rows(
+            agentcore_app.check_agentcore_runtime_inline_credentials()
+        )
+
+        assert [(r["Status"], r["Severity"]) for r in rows] == [
+            ("N/A", "Informational")
+        ]
+        assert (
+            f"the configuration or layers of {self._URI}:bad could not be read "
+            f"({agentcore_app.ARTIFACT_CONTENT_READS_DISABLED})"
+            in rows[0]["Finding_Details"]
+        )
+        mock_ecr.batch_get_image.assert_not_called()
+        mock_ecr.get_download_url_for_layer.assert_not_called()
+        mock_open.assert_not_called()
 
     @patch("agentcore_app.urlopen")
     @patch("agentcore_app.ecr_client")
@@ -35938,8 +36023,12 @@ class TestAC49DnsEgressControl:
             for call in mock_r53.list_firewall_domains.call_args_list
         ] == ["rslvr-fdl-allowed", "rslvr-fdl-catchall"]
 
-    def _versioned(self, mock_ac, versions):
-        """Serve runtime rt-1 at latest version 3 and earlier versions by subnet."""
+    def _versioned(self, mock_ac, versions, unserved=()):
+        """Serve runtime rt-1 at latest version 3 and earlier versions by subnet.
+
+        Since the #74 review an endpoint serves each earlier version, as its
+        liveVersion or targetVersion; a version in `unserved` is only listed.
+        """
         mock_ac.list_agent_runtimes.return_value = {
             "agentRuntimes": [
                 {
@@ -35950,8 +36039,19 @@ class TestAC49DnsEgressControl:
             ]
         }
         if isinstance(versions, Exception):
-            mock_ac.list_agent_runtime_versions.side_effect = versions
+            mock_ac.list_agent_runtime_endpoints.side_effect = versions
         else:
+            served = [v for v in versions if v not in unserved]
+            mock_ac.list_agent_runtime_endpoints.return_value = {
+                "runtimeEndpoints": [
+                    {
+                        "name": f"ep-{number}",
+                        "liveVersion": "3",
+                        "targetVersion": number,
+                    }
+                    for number in served
+                ]
+            }
             mock_ac.list_agent_runtime_versions.return_value = {
                 "agentRuntimes": [
                     {"agentRuntimeId": "rt-1", "agentRuntimeVersion": number}
@@ -36008,9 +36108,35 @@ class TestAC49DnsEgressControl:
     @patch("agentcore_app.route53resolver_client")
     @patch("agentcore_app.ec2_client")
     @patch("agentcore_app.agentcore_client")
-    def test_unlisted_runtime_versions_are_na_naming_the_action(
+    def test_a_version_no_endpoint_serves_hosts_no_subnet(
         self, mock_ac, mock_ec2, mock_r53
     ):
+        inventory = self._wire(
+            mock_ac,
+            mock_ec2,
+            mock_r53,
+            subnet_vpcs={"subnet-a": "vpc-a", "subnet-b": "vpc-b"},
+            associations={"vpc-a": [self._association("group-1")]},
+            rules={"group-1": [self._rule("catchall", 100)]},
+        )
+        self._versioned(mock_ac, {"2": "subnet-b"}, unserved={"2"})
+
+        findings = agentcore_app.check_agentcore_dns_egress_control(inventory)
+
+        assert not [f for f in findings if "vpc-b" in f["Finding_Details"]]
+        assert {
+            call.kwargs.get("agentRuntimeVersion")
+            for call in mock_ac.get_agent_runtime.call_args_list
+        } == {None}
+
+    @patch("agentcore_app.route53resolver_client")
+    @patch("agentcore_app.ec2_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_unlisted_runtime_endpoints_are_na_naming_the_action(
+        self, mock_ac, mock_ec2, mock_r53
+    ):
+        # Changed in the #74 review: the served versions come from the
+        # endpoints, so their unread list names ListAgentRuntimeEndpoints.
         inventory = self._wire(
             mock_ac,
             mock_ec2,
@@ -36027,10 +36153,13 @@ class TestAC49DnsEgressControl:
         unread = [
             f
             for f in findings
-            if "bedrock-agentcore:ListAgentRuntimeVersions" in f["Resolution"]
+            if "bedrock-agentcore:ListAgentRuntimeEndpoints" in f["Resolution"]
         ]
         assert len(unread) == 1 and unread[0]["Status"] == "N/A"
-        assert "The earlier versions of Runtime 'rt-1'" in unread[0]["Finding_Details"]
+        assert (
+            "The versions the endpoints of Runtime 'rt-1' (rt-1) serve"
+            in unread[0]["Finding_Details"]
+        )
 
     @patch("agentcore_app.route53resolver_client")
     @patch("agentcore_app.ec2_client")
@@ -45137,7 +45266,9 @@ class TestAC42WholePopulation:
             f["Finding"] for f in findings
         ]
 
-    def test_the_handler_asks_for_the_writer_leg_on_the_primary_region_only(self):
+    def test_the_handler_leaves_the_writer_leg_to_the_primary_global_checks(self):
+        # Changed in the #74 review: the writers leg runs once before the
+        # availability gate, so the regional call no longer asks for it.
         source = textwrap.dedent(inspect.getsource(agentcore_app.lambda_handler))
         calls = [
             node
@@ -45146,8 +45277,39 @@ class TestAC42WholePopulation:
             and ast.unparse(node.func) == "check_agentcore_evaluation_pass_role_scope"
         ]
         assert len(calls) == 1
-        keywords = {kw.arg: ast.unparse(kw.value) for kw in calls[0].keywords}
-        assert keywords == {"assess_writers": "is_primary_region"}
+        assert calls[0].keywords == []
+
+    @patch("agentcore_app.agentcore_client")
+    def test_the_global_writer_leg_compares_with_this_regions_roles(self, mock_ac):
+        _online_evaluation_client(mock_ac)
+        cache = _v2_cache(
+            roles={"writer": _principal_with([self._WRITE, self._pass(resource="*")])}
+        )
+        findings = agentcore_app.check_agentcore_evaluation_writer_pass_role_scope(
+            cache
+        )
+        assert [f["Finding"] for f in findings] == [
+            "AgentCore Evaluation Writer Pass Role Unbounded"
+        ]
+        assert findings == [
+            f
+            for f in agentcore_app.check_agentcore_evaluation_pass_role_scope(
+                cache, assess_writers=True
+            )
+            if f["Finding"] == "AgentCore Evaluation Writer Pass Role Unbounded"
+        ]
+
+    def test_the_global_writer_leg_runs_without_an_agentcore_client(self):
+        cache = _v2_cache(
+            roles={"writer": _principal_with([self._WRITE, self._pass(resource="*")])}
+        )
+        with patch("agentcore_app.agentcore_client", None):
+            findings = agentcore_app.check_agentcore_evaluation_writer_pass_role_scope(
+                cache
+            )
+        assert [(f["Finding"], f["Status"]) for f in findings] == [
+            ("AgentCore Evaluation Writer Pass Role Unbounded", "Failed")
+        ]
 
 
 class TestAC42PassRoleReachAndPattern:
@@ -47508,7 +47670,10 @@ class TestAC45WholePopulation:
         assert [f["Status"] for f in findings] == ["Failed", "N/A"]
         assert "Command Shell" in findings[0]["Finding"]
 
-    def test_the_handler_asks_for_the_shell_leg_on_the_primary_region_only(self):
+    def test_the_handler_leaves_the_shell_leg_to_the_primary_global_checks(self):
+        # Changed in the #74 review: the account-wide shell rows run once
+        # before the availability gate, and the primary Region's regional call
+        # reads no alarm row of its own, since those rows read its alarm.
         source = textwrap.dedent(inspect.getsource(agentcore_app.lambda_handler))
         calls = [
             node
@@ -47518,7 +47683,22 @@ class TestAC45WholePopulation:
         ]
         assert len(calls) == 1
         keywords = {kw.arg: ast.unparse(kw.value) for kw in calls[0].keywords}
-        assert keywords == {"assess_shell": "is_primary_region"}
+        assert keywords == {"assess_shell_alarm": "not is_primary_region"}
+
+    @patch("agentcore_app._command_shell_region_alarm_rows")
+    @patch("agentcore_app._command_shell_findings")
+    def test_no_shell_row_is_read_when_neither_leg_is_asked(
+        self, account_rows, alarm_rows
+    ):
+        with patch("agentcore_app.agentcore_client", None):
+            findings = agentcore_app.check_agentcore_tool_execution_role_scope(
+                _v2_cache(roles={}), assess_shell_alarm=False
+            )
+        account_rows.assert_not_called()
+        alarm_rows.assert_not_called()
+        assert [f["Finding"] for f in findings] == [
+            "AgentCore Tool Execution Role Scope"
+        ]
 
 
 def _wire_runtime_roles(mock_ac, runtimes):
@@ -51063,7 +51243,7 @@ class TestNet01AgentCorePrivateBoundary:
         assert "requireServiceS3Endpoint false" in passed["Finding_Details"]
 
 
-def _wire_runtime_versions(mock_ac, runtimes, versions):
+def _wire_runtime_versions(mock_ac, runtimes, versions, served=None):
     """Stub the runtime reads from (summary, detail) plus ``versions``, which maps
     a runtime id to {version: detail} for the versions ListAgentRuntimeVersions
     returns. A version value that is an exception is raised by GetAgentRuntime,
@@ -51096,6 +51276,14 @@ def _wire_runtime_versions(mock_ac, runtimes, versions):
 
     mock_ac.list_agent_runtime_versions.side_effect = list_versions
     mock_ac.get_agent_runtime.side_effect = get_runtime
+    if served is not None:
+        # served maps a runtime id to the versions an endpoint serves.
+        mock_ac.list_agent_runtime_endpoints.side_effect = lambda agentRuntimeId, **_: {
+            "runtimeEndpoints": [
+                {"name": f"ep-{number}", "liveVersion": number}
+                for number in served.get(agentRuntimeId, [])
+            ]
+        }
 
 
 def _versioned_runtime(runtime_id, latest_version, **network_mode_config):
@@ -51118,9 +51306,9 @@ class TestAC01RuntimeVersionsAndRollout:
     GetAgentRuntime cannot find."""
 
     @staticmethod
-    def _run(mock_ac, mock_ec2, runtimes, versions):
+    def _run(mock_ac, mock_ec2, runtimes, versions, served=None):
         _net01_ec2(mock_ec2)
-        _wire_runtime_versions(mock_ac, runtimes, versions)
+        _wire_runtime_versions(mock_ac, runtimes, versions, served)
         _wire_tools(mock_ac)
         rows = extract_csv_data(agentcore_app.check_agentcore_vpc_configuration())
         for row in rows:
@@ -51142,6 +51330,8 @@ class TestAC01RuntimeVersionsAndRollout:
     def test_an_earlier_public_version_fails_while_the_latest_is_private(
         self, mock_ac, mock_ec2
     ):
+        # Changed in the #74 review: an endpoint serves version 1, which is
+        # what makes the earlier version's public network a High failure.
         rows = self._run(
             mock_ac,
             mock_ec2,
@@ -51158,16 +51348,68 @@ class TestAC01RuntimeVersionsAndRollout:
                     "1": _net01_runtime("rt-b", requireServiceS3Endpoint=False)[1]
                 },
             },
+            served={"rt-a": ["2", "1"]},
         )
         failed = [r for r in rows if r["Status"] == "Failed"]
         assert len(failed) == 1
         assert "'rt-a version 1' (rt-a)" in failed[0]["Finding_Details"]
+        assert failed[0]["Severity"] == "High"
         assert self._passed(rows) == []
         read_versions = sorted(
             (c.kwargs["agentRuntimeId"], c.kwargs.get("agentRuntimeVersion", "latest"))
             for c in mock_ac.get_agent_runtime.call_args_list
         )
         assert read_versions == [("rt-a", "1"), ("rt-a", "latest"), ("rt-b", "latest")]
+
+    @patch("agentcore_app.ec2_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_an_earlier_public_version_no_endpoint_serves_is_advisory(
+        self, mock_ac, mock_ec2
+    ):
+        rows = self._run(
+            mock_ac,
+            mock_ec2,
+            [_versioned_runtime("rt-a", "2", requireServiceS3Endpoint=False)],
+            {
+                "rt-a": {
+                    "1": _public_runtime_detail("rt-a"),
+                    "2": _net01_runtime("rt-a", requireServiceS3Endpoint=False)[1],
+                }
+            },
+            served={"rt-a": ["2"]},
+        )
+        assert not [r for r in rows if r["Status"] == "Failed"]
+        (advisory,) = [r for r in rows if "'rt-a version 1'" in r["Finding_Details"]]
+        assert (advisory["Status"], advisory["Severity"]) == ("N/A", "Informational")
+        assert advisory["Finding_Details"].endswith(
+            agentcore_app.AGENTCORE_UNSERVED_VERSION_NOTE
+        )
+        assert self._passed(rows) == []
+
+    @patch("agentcore_app.ec2_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_an_unlisted_endpoint_set_judges_every_version_as_served(
+        self, mock_ac, mock_ec2
+    ):
+        _wire_tools(mock_ac)
+        mock_ac.list_agent_runtime_endpoints.side_effect = _make_client_error(
+            "AccessDeniedException", "no"
+        )
+        rows = self._run(
+            mock_ac,
+            mock_ec2,
+            [_versioned_runtime("rt-a", "2", requireServiceS3Endpoint=False)],
+            {
+                "rt-a": {
+                    "1": _public_runtime_detail("rt-a"),
+                    "2": _net01_runtime("rt-a", requireServiceS3Endpoint=False)[1],
+                }
+            },
+        )
+        failed = [r for r in rows if r["Status"] == "Failed"]
+        assert ["'rt-a version 1' (rt-a)" in r["Finding_Details"] for r in failed] == [
+            True
+        ]
 
     @patch("agentcore_app.ec2_client")
     @patch("agentcore_app.agentcore_client")
@@ -51184,6 +51426,8 @@ class TestAC01RuntimeVersionsAndRollout:
                     "2": _net01_runtime("rt-a", requireServiceS3Endpoint=True)[1],
                 }
             },
+            # Since the #74 review the failure needs an endpoint serving it.
+            served={"rt-a": ["3", "2"]},
         )
         gateway = [
             r
@@ -52557,6 +52801,26 @@ class TestAC46CostAnomalyAlerting:
         _wire_runtimes(mock_ac, [])
         assert agentcore_app.check_agentcore_runtime_cost_alerting() == []
         mock_ce.get_anomaly_subscriptions.assert_not_called()
+
+    @patch("agentcore_app.ce_client")
+    def test_runtimes_in_another_assessed_region_are_judged_once(self, mock_ce):
+        other = MagicMock()
+        other.meta.region_name = "us-west-2"
+        _wire_runtimes(other, [_bounded_runtime("rt-w")])
+        mock_ce.get_anomaly_subscriptions.return_value = {
+            "AnomalySubscriptions": [self._subscription("a", [self._SERVICES])]
+        }
+        mock_ce.get_anomaly_monitors.side_effect = lambda MonitorArnList, **_: {
+            "AnomalyMonitors": [self._MONITORS[arn] for arn in MonitorArnList]
+        }
+        with (
+            patch("agentcore_app.agentcore_client", None),
+            patch.object(agentcore_app.boto3, "client", return_value=other),
+        ):
+            findings = agentcore_app.check_agentcore_runtime_cost_alerting(
+                ["us-west-2"]
+            )
+        assert [f["Status"] for f in findings] == ["Passed"]
 
     @patch("agentcore_app.ce_client", None)
     @patch("agentcore_app.agentcore_client")
@@ -59672,6 +59936,28 @@ class TestAC35PolicyInputGuards:
         )
         assert rows["gw-b"]["Status"] == "Passed"
 
+    def test_an_s3_tool_schema_is_not_read_unless_the_deployment_opts_in(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS", "false")
+        post = 'action == AgentCore::Action::"ledger___post"'
+        rows = self._run(
+            [
+                _input_forbid('when { context.input.memo == "x" }', action=post),
+                _input_forbid("when { context.input.amount > 500 }"),
+            ],
+            targets=self._s3_lambda_target("s3://schemas/ledger.json"),
+            s3_objects={"schemas/ledger.json": b"[]"},
+        )
+        assert rows["gw-a"]["Status"] == "N/A"
+        assert rows["gw-a"]["Severity"] == "Informational"
+        assert (
+            "its tool schema in S3 was not read "
+            f"({agentcore_app.ARTIFACT_CONTENT_READS_DISABLED})"
+            in rows["gw-a"]["Finding_Details"]
+        )
+        self.s3.get_object.assert_not_called()
+
     def test_an_s3_uri_naming_no_object_is_na(self):
         post = 'action == AgentCore::Action::"ledger___post"'
         rows = self._run(
@@ -60172,12 +60458,12 @@ class TestGatewayMetricAlarms:
 
 class TestGatewayWafUnreadFrontDoors:
     """AIR-FND-NET-04: the WAF rows judge AgentCore gateways only, because the
-    association reads that find other front doors were declined, so each row
-    names the front doors it leaves out and why."""
+    assessment role does not hold the association reads that find other front
+    doors, so each row that judged a gateway states that scope."""
 
     _SENTENCE = (
         "API Gateway APIs and Application Load Balancers that front an AI "
-        "workload are not read"
+        "workload are outside it"
     )
 
     @patch("agentcore_app.wafv2_client", None)
@@ -60205,24 +60491,34 @@ class TestGatewayWafUnreadFrontDoors:
 
         waf_rows = [f for f in findings if f["Check_ID"] in ("AG-27", "AG-39")]
         assert len(waf_rows) == 4
-        for finding in waf_rows:
+        judged = [f for f in waf_rows if f["Status"] in ("Passed", "Failed")]
+        unjudged = [f for f in waf_rows if f["Status"] == "N/A"]
+        assert judged and unjudged
+        for finding in judged:
             assert self._SENTENCE in finding["Finding_Details"]
-            assert "whose grant was declined" in finding["Finding_Details"]
+            assert "the assessment role does not hold" in finding["Finding_Details"]
+        for finding in waf_rows:
+            # A scope statement, not a claim about how the grant was decided.
+            assert "declined" not in finding["Finding_Details"]
             assert "ceiling" not in finding["Finding_Details"]
+        for finding in unjudged:
+            assert self._SENTENCE not in finding["Finding_Details"]
         assert all(
             self._SENTENCE not in f["Finding_Details"]
             for f in findings
             if f["Check_ID"] not in ("AG-27", "AG-39")
         )
 
-    def test_the_no_gateway_rows_name_them_too(self):
+    def test_the_no_gateway_rows_judge_nothing_and_state_no_scope(self):
         mock_ac = MagicMock()
         mock_ac.list_gateways.return_value = {"items": []}
         with patch("agentcore_app.agentcore_client", mock_ac):
             findings = agentcore_app.check_agentcore_gateway_agentic_security()
         waf_rows = [f for f in findings if f["Check_ID"] in ("AG-27", "AG-39")]
         assert len(waf_rows) == 2
-        assert all(self._SENTENCE in f["Finding_Details"] for f in waf_rows)
+        assert all(
+            f["Finding_Details"] == "No AgentCore Gateways found" for f in waf_rows
+        )
 
 
 class TestAC22MonitoringAccountControls:
@@ -60713,6 +61009,88 @@ class TestAC51FirewallManagerAndSrt:
         findings, mock_sh = self._srt(gateways=0)
         assert findings == []
         mock_sh.get_subscription_state.assert_not_called()
+
+    @staticmethod
+    def _other_region_client(gateways=0, probe_error=None):
+        client = MagicMock()
+        client.meta.region_name = "us-west-2"
+        if probe_error is not None:
+            client.list_agent_runtimes.side_effect = probe_error
+        client.list_gateways.return_value = {
+            "items": [{"gatewayId": f"gw-w{n}"} for n in range(gateways)]
+        }
+        return client
+
+    def test_one_row_judges_the_gateways_of_every_assessed_region(self):
+        mock_sh = MagicMock()
+        mock_sh.get_subscription_state.return_value = {"SubscriptionState": "ACTIVE"}
+        mock_sh.describe_subscription.return_value = {
+            "Subscription": {"ProactiveEngagementStatus": "ENABLED"}
+        }
+        mock_ac = MagicMock()
+        mock_ac.meta.region_name = "us-east-1"
+        mock_ac.list_gateways.return_value = {"items": []}
+        with (
+            patch("agentcore_app.agentcore_client", mock_ac),
+            patch("agentcore_app.shield_client", mock_sh),
+            patch.object(
+                agentcore_app.boto3,
+                "client",
+                return_value=self._other_region_client(gateways=2),
+            ),
+        ):
+            findings = agentcore_app.check_agentcore_shield_proactive_engagement(
+                ["us-west-2"]
+            )
+            assert agentcore_app.agentcore_client is mock_ac
+        assert [f["Status"] for f in findings] == ["Passed"]
+        assert (
+            "2 AgentCore gateway(s) in Region 'us-west-2'."
+            in findings[0]["Finding_Details"]
+        )
+
+    def test_a_primary_region_without_agentcore_reads_the_others(self):
+        mock_sh = MagicMock()
+        mock_sh.get_subscription_state.return_value = {"SubscriptionState": "ACTIVE"}
+        mock_sh.describe_subscription.return_value = {
+            "Subscription": {"ProactiveEngagementStatus": "DISABLED"}
+        }
+        with (
+            patch("agentcore_app.agentcore_client", None),
+            patch("agentcore_app.shield_client", mock_sh),
+            patch.object(
+                agentcore_app.boto3,
+                "client",
+                return_value=self._other_region_client(gateways=1),
+            ),
+        ):
+            findings = agentcore_app.check_agentcore_shield_proactive_engagement(
+                ["us-west-2"]
+            )
+        assert [f["Status"] for f in findings] == ["Failed"]
+        assert "in Region 'us-west-2'" in findings[0]["Finding_Details"]
+
+    def test_an_unread_region_holding_the_only_gateways_is_na(self):
+        mock_ac = MagicMock()
+        mock_ac.meta.region_name = "us-east-1"
+        mock_ac.list_gateways.return_value = {"items": []}
+        denied = _make_client_error("AccessDeniedException", "no")
+        with (
+            patch("agentcore_app.agentcore_client", mock_ac),
+            patch("agentcore_app.shield_client", MagicMock()),
+            patch.object(
+                agentcore_app.boto3,
+                "client",
+                return_value=self._other_region_client(probe_error=denied),
+            ),
+        ):
+            findings = agentcore_app.check_agentcore_shield_proactive_engagement(
+                ["us-west-2"]
+            )
+        assert [(f["Status"], f["Severity"]) for f in findings] == [
+            ("N/A", "Informational")
+        ]
+        assert "us-west-2 (AccessDenied" in findings[0]["Finding_Details"]
 
 
 @pytest.mark.usefixtures("nfw_alert_streams")
@@ -61466,8 +61844,13 @@ class TestAC51FrontDoorWebAcl:
         assert rows[("AC-51", "ENONE")]["Status"] == "Failed"
         assert rows[("AG-39", "ENONE")]["Status"] == "Failed"
         assert "has no web ACL" in rows[("AG-39", "ENONE")]["Finding_Details"]
-        for row in rows.values():
-            assert "whose grant was declined" in row["Finding_Details"]
+        for (check_id, _), row in rows.items():
+            if check_id == "AG-39":
+                assert (
+                    "which the assessment role does not hold" in row["Finding_Details"]
+                )
+            else:
+                assert "whose grant was declined" in row["Finding_Details"]
             assert_finding_schema(row)
 
     def test_the_body_limit_is_read_for_cloudfront_not_the_gateway(
@@ -61645,3 +62028,869 @@ class TestInvocationBudget:
         block = text[text.index("\n  AgentCoreSecurityAssessmentFunction:\n") :]
         timeout = re.search(r"\n      Timeout: (\d+)", block)
         assert int(timeout.group(1)) == agentcore_app.LAMBDA_TIMEOUT_SECONDS == 900
+
+
+_HANDLER_GLOBALS = (
+    "start_time",
+    "lambda_budget_seconds",
+    "iam_client",
+    "ec2_client",
+    "ecr_client",
+    "logs_client",
+    "cloudwatch_client",
+    "cloudtrail_client",
+    "oam_client",
+    "agentcore_client",
+    "kms_client",
+    "organizations_client",
+    "wafv2_client",
+    "route53resolver_client",
+    "cognito_client",
+    "events_client",
+    "bedrock_client",
+    "xray_client",
+    "ce_client",
+    "s3control_client",
+    "agentcore_data_client",
+    "network_firewall_client",
+    "inspector2_client",
+    "cloudfront_client",
+    "shield_client",
+    "apigateway_client",
+)
+
+
+def _handler_check_functions():
+    """Every check function the handler's runner lists name."""
+    source = textwrap.dedent(inspect.getsource(agentcore_app.lambda_handler))
+    return {
+        node.id
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Name)
+        and (
+            node.id.startswith("check_agentcore")
+            or node.id
+            in {
+                "check_stale_agentcore_access",
+                "check_browser_tool_recording",
+                "check_browser_recording_write_scp",
+                "_command_shell_findings",
+            }
+        )
+    }
+
+
+def _run_agentcore_handler(
+    region_index=0,
+    available=True,
+    rows=None,
+    side_effects=None,
+    context=None,
+):
+    """Run lambda_handler with every check stubbed; return (findings, stubs).
+
+    rows maps a check function name to the rows it returns; side_effects maps
+    one to a callable run in its place.
+    """
+    rows = rows or {}
+    side_effects = side_effects or {}
+    written = {}
+
+    def fake_client(service, **kwargs):
+        client = MagicMock()
+        client.meta.region_name = kwargs.get("region_name", "us-east-1")
+        if service == "bedrock-agentcore-control" and not available:
+            client.list_agent_runtimes.side_effect = EndpointConnectionError(
+                endpoint_url="https://bedrock-agentcore-control.example"
+            )
+        return client
+
+    stubs = {}
+    for name in _handler_check_functions():
+        stub = MagicMock(name=name)
+        if name in side_effects:
+            stub.side_effect = side_effects[name]
+        else:
+            stub.side_effect = lambda *a, _n=name, **k: [
+                dict(r) for r in rows.get(_n, [])
+            ]
+        stubs[name] = stub
+    saved = {name: getattr(agentcore_app, name) for name in _HANDLER_GLOBALS}
+
+    def capture(findings):
+        written["findings"] = [dict(f) for f in findings]
+        return "csv"
+
+    try:
+        with (
+            patch.multiple(agentcore_app, **stubs),
+            patch.object(agentcore_app.boto3, "client", side_effect=fake_client),
+            patch.object(
+                agentcore_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(agentcore_app, "write_to_s3", return_value="s3://b/k"),
+            patch.object(agentcore_app, "generate_csv_report", side_effect=capture),
+            patch.object(
+                agentcore_app,
+                "build_agentic_agentcore_security_findings",
+                return_value=[],
+            ),
+            patch.object(
+                agentcore_app,
+                "build_agentic_agentcore_unavailable_findings",
+                return_value=[],
+            ),
+        ):
+            agentcore_app.lambda_handler(
+                {
+                    "Region": "us-east-1" if region_index == 0 else "us-west-2",
+                    "RegionIndex": region_index,
+                    "TargetRegions": ["us-east-1", "us-west-2"],
+                    "Execution": {"Name": "exec-1"},
+                },
+                context,
+            )
+    finally:
+        for name, value in saved.items():
+            setattr(agentcore_app, name, value)
+    return written["findings"], stubs
+
+
+def _row(check_id, finding="Row", status="Failed"):
+    return {
+        "Check_ID": check_id,
+        "Finding": finding,
+        "Finding_Details": "details",
+        "Resolution": "resolution",
+        "Reference": "https://docs.aws.amazon.com/",
+        "Severity": "High",
+        "Status": status,
+    }
+
+
+_ACCOUNT_LEGS = {
+    "check_agentcore_evaluation_writer_pass_role_scope": "AC-42",
+    "_command_shell_findings": "AC-45",
+    "check_agentcore_runtime_cost_alerting": "AC-46",
+    "check_agentcore_execution_role_access_analyzer": "AC-48",
+    "check_agentcore_shield_proactive_engagement": "AC-51",
+}
+
+
+class TestAccountWideLegsRunOnceBeforeTheGate:
+    """#74 review item 7: account-wide legs run once, on the primary Region,
+    before the availability gate, labelled Global."""
+
+    def test_a_primary_region_without_agentcore_still_judges_them(self):
+        findings, stubs = _run_agentcore_handler(
+            available=False,
+            rows={name: [_row(check_id)] for name, check_id in _ACCOUNT_LEGS.items()},
+        )
+        judged = sorted(
+            (f["Check_ID"], f["Region"]) for f in findings if f["Finding"] == "Row"
+        )
+        assert judged == sorted(
+            (check_id, agentcore_app.GLOBAL_REGION_LABEL)
+            for check_id in _ACCOUNT_LEGS.values()
+        )
+        for name in _ACCOUNT_LEGS:
+            assert stubs[name].call_count == 1, name
+        stubs["check_agentcore_runtime_cost_alerting"].assert_called_once_with(
+            ["us-west-2"]
+        )
+        stubs["check_agentcore_shield_proactive_engagement"].assert_called_once_with(
+            ["us-west-2"]
+        )
+        stubs["check_agentcore_execution_role_access_analyzer"].assert_called_once_with(
+            {"items": [], "errors": [], "list_error": None},
+            ["us-east-1", "us-west-2"],
+            True,
+            "us-east-1",
+        )
+
+    def test_another_region_does_not_repeat_them(self):
+        _, stubs = _run_agentcore_handler(
+            region_index=1,
+            rows={name: [_row(check_id)] for name, check_id in _ACCOUNT_LEGS.items()},
+        )
+        for name in (
+            "check_agentcore_evaluation_writer_pass_role_scope",
+            "_command_shell_findings",
+            "check_agentcore_runtime_cost_alerting",
+            "check_agentcore_shield_proactive_engagement",
+        ):
+            stubs[name].assert_not_called()
+        # The analyzer's regional entry asks only about this Region, which
+        # gives no row when the state machine sends TargetRegions.
+        analyzer = stubs["check_agentcore_execution_role_access_analyzer"]
+        assert [c.args[2] for c in analyzer.call_args_list] == [False]
+        assert stubs["check_agentcore_tool_execution_role_scope"].call_args.kwargs == {
+            "assess_shell_alarm": True
+        }
+
+    def test_the_primary_regions_regional_calls_skip_the_global_legs(self):
+        _, stubs = _run_agentcore_handler()
+        assert stubs["check_agentcore_tool_execution_role_scope"].call_args.kwargs == {
+            "assess_shell_alarm": False
+        }
+        assert (
+            stubs["check_agentcore_evaluation_pass_role_scope"].call_args.kwargs == {}
+        )
+        assert stubs["check_agentcore_execution_role_access_analyzer"].call_count == 1
+
+
+def _handler_runner_entries(list_name):
+    """Return (check ids, runner name) for each literal entry of a handler list."""
+    source = textwrap.dedent(inspect.getsource(agentcore_app.lambda_handler))
+    entries = []
+    for node in ast.walk(ast.parse(source)):
+        if not (
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.List)
+            and any(
+                isinstance(target, ast.Name) and target.id == list_name
+                for target in node.targets
+            )
+        ):
+            continue
+        for element in node.value.elts:
+            if isinstance(element, ast.Tuple) and len(element.elts) == 3:
+                entries.append(
+                    (
+                        tuple(ast.literal_eval(element.elts[0])),
+                        ast.literal_eval(element.elts[1]),
+                    )
+                )
+    return entries
+
+
+def _expire_the_budget(*args, **kwargs):
+    agentcore_app.start_time = time.time() - 10 * agentcore_app.lambda_budget_seconds
+    return [_row("AC-51", finding="AgentCore Web ACL Anti-DDoS")]
+
+
+class TestTimeoutBackfillKeysOnTheLeg:
+    """#74 review item 4: a skipped leg of an id another leg already reported is
+    named on its own, keyed on (check id, leg)."""
+
+    def test_every_multi_leg_runner_entry_is_registered(self):
+        regional = _handler_runner_entries("checks")
+        other = _handler_runner_entries("global_checks") + _handler_runner_entries(
+            "account_legs"
+        )
+        entries_per_id = {}
+        for ids, _ in regional + other:
+            for check_id in ids:
+                entries_per_id[check_id] = entries_per_id.get(check_id, 0) + 1
+        expected = {
+            (check_id, f"AgentCore {name}")
+            for ids, name in regional
+            for check_id in ids
+            if entries_per_id[check_id] > 1
+        }
+        assert ("AC-51", "AgentCore Front Door Shield and WAF") in expected
+        assert set(agentcore_app.REGIONAL_AGENTCORE_LEGS) == expected
+        assert len(agentcore_app.REGIONAL_AGENTCORE_LEGS) == len(expected)
+
+    def test_the_ac_51_legs_skipped_after_the_first_are_each_named(self):
+        findings, stubs = _run_agentcore_handler(
+            side_effects={"check_agentcore_web_acl_anti_ddos": _expire_the_budget}
+        )
+        stubs["check_agentcore_front_door_shield"].assert_not_called()
+        ac51 = sorted(
+            (f["Finding"], f["Status"]) for f in findings if f["Check_ID"] == "AC-51"
+        )
+        assert ac51 == [
+            ("AgentCore Front Door Shield and WAF Incomplete", "N/A"),
+            ("AgentCore Gateway Firewall Manager Enrollment Incomplete", "N/A"),
+            ("AgentCore Web ACL Anti-DDoS", "Failed"),
+        ]
+        # A leg that ran is not backfilled though it gave no row, and an id
+        # with no row at all gets its id-level row only.
+        assert not [
+            f
+            for f in findings
+            if f["Finding"] == "AgentCore Runtime Session Limits Incomplete"
+        ]
+        assert [f["Finding"] for f in findings if f["Check_ID"] == "AC-52"] == [
+            "AgentCore Assessment Incomplete"
+        ]
+
+    def test_a_leg_that_ran_and_reported_nothing_is_not_backfilled(self):
+        reported = _row("AC-51", finding="AgentCore Web ACL Anti-DDoS")
+        names = [
+            f["Finding"]
+            for f in agentcore_app.build_agentcore_timeout_findings(
+                "us-east-1",
+                [reported],
+                {
+                    ("AC-51", "AgentCore Web ACL Anti-DDoS"),
+                    ("AC-51", "AgentCore Front Door Shield and WAF"),
+                },
+            )
+            if f["Check_ID"] == "AC-51"
+        ]
+        assert names == ["AgentCore Gateway Firewall Manager Enrollment Incomplete"]
+
+
+_PAST_DEADLINE = patch.object(
+    agentcore_app, "_inventory_deadline_passed", return_value=True
+)
+
+
+class TestSlowInventoriesStopAtTheDeadline:
+    """#74 review item 3: a slow inventory stops reading near the Lambda
+    deadline, keeps what it judged and names what it left unread."""
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac30_leaves_a_served_version_unread_and_says_so(self, mock_ac):
+        harness = TestAC30EndpointVersions()
+        with _PAST_DEADLINE:
+            findings = harness._run(
+                mock_ac,
+                [("rt-1", "3")],
+                {
+                    "rt-1": [
+                        harness._endpoint("DEFAULT", "3"),
+                        harness._endpoint("beta", "2"),
+                    ]
+                },
+                {("rt-1", "3"): harness._PINNED, ("rt-1", "2"): harness._OPEN},
+            )
+        assert [f["Status"] for f in findings] == ["Passed", "N/A"]
+        assert "version 2" in findings[1]["Finding_Details"]
+        assert "LambdaTimeoutApproaching" in findings[1]["Finding_Details"]
+        assert all(
+            "agentRuntimeVersion" not in c.kwargs
+            for c in mock_ac.get_agent_runtime.call_args_list
+        )
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac34_leaves_served_versions_unread_and_keeps_the_latest(self, mock_ac):
+        harness = TestAC34RuntimeServedVersions
+        harness._wire(
+            mock_ac,
+            harness._VERSIONS,
+            {
+                "rt-a": harness._ENDPOINTS,
+                "rt-b": [{"name": "DEFAULT", "liveVersion": "5"}],
+            },
+        )
+        with _PAST_DEADLINE:
+            rows = harness._rows(
+                agentcore_app.check_agentcore_runtime_inline_credentials()
+            )
+        assert [r["Status"] for r in rows] == ["Passed", "N/A", "N/A", "Passed"]
+        for row in rows[1:3]:
+            assert "LambdaTimeoutApproaching" in row["Finding_Details"]
+
+    def test_read_each_once_reads_nothing_past_the_deadline(self):
+        read = MagicMock()
+        with _PAST_DEADLINE:
+            outcomes = agentcore_app._read_each_once(read, ["a", "b", "a"])
+        read.assert_not_called()
+        assert sorted(outcomes) == ["a", "b"]
+        for outcome in outcomes.values():
+            assert type(outcome) is ValueError
+            assert str(outcome) == agentcore_app.DEADLINE_UNREAD
+
+    def test_the_code_leg_names_an_archive_left_unread(self):
+        with (
+            _PAST_DEADLINE,
+            patch.object(agentcore_app, "_code_archive_credentials") as scan,
+        ):
+            (row,) = agentcore_app._agentcore_runtime_code_credential_findings(
+                {"Runtime 'A' (rt-a)": {("code-bucket", "agent.zip", "")}}
+            )
+        scan.assert_not_called()
+        assert (row["Status"], row["Severity"]) == ("N/A", "Informational")
+        assert agentcore_app.DEADLINE_UNREAD in row["Finding_Details"]
+
+    @patch("agentcore_app.ec2_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_ac01_names_a_version_left_unread(self, mock_ac, mock_ec2):
+        with _PAST_DEADLINE:
+            rows = TestAC01RuntimeVersionsAndRollout._run(
+                mock_ac,
+                mock_ec2,
+                [_versioned_runtime("rt-a", "2", requireServiceS3Endpoint=False)],
+                {
+                    "rt-a": {
+                        "1": _public_runtime_detail("rt-a"),
+                        "2": _net01_runtime("rt-a", requireServiceS3Endpoint=False)[1],
+                    }
+                },
+                served={"rt-a": ["2", "1"]},
+            )
+        assert not [r for r in rows if r["Status"] == "Failed"]
+        (unread,) = [
+            r for r in rows if agentcore_app.DEADLINE_UNREAD in r["Finding_Details"]
+        ]
+        assert "Runtime 'rt-a version 1' (rt-a)" in unread["Finding_Details"]
+        assert (unread["Status"], unread["Severity"]) == ("N/A", "Informational")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_the_served_versions_helper_names_a_version_left_unread(self, mock_ac):
+        mock_ac.list_agent_runtime_endpoints.return_value = {
+            "runtimeEndpoints": [{"name": "old", "liveVersion": "1"}]
+        }
+        with _PAST_DEADLINE:
+            details, errors = agentcore_app._served_runtime_details(
+                "rt-a", "A", {"agentRuntimeVersion": "2"}
+            )
+        assert details == []
+        ((label, error, action),) = errors
+        assert label == "Runtime 'A' version 1 (rt-a)"
+        assert (
+            agentcore_app._assessment_error_label(error) == "LambdaTimeoutApproaching"
+        )
+        assert action == "bedrock-agentcore:GetAgentRuntime"
+        mock_ac.get_agent_runtime.assert_not_called()
+
+    def test_the_ac32_region_loop_stops_and_names_each_region(self):
+        with (
+            _PAST_DEADLINE,
+            patch.object(agentcore_app.boto3, "client") as client,
+        ):
+            issuers, unread, read_regions = agentcore_app._jwt_authorizer_issuers(
+                ["us-east-1", "us-west-2"]
+            )
+        client.assert_not_called()
+        assert (issuers, read_regions) == (set(), [])
+        assert unread == [
+            agentcore_app.DEADLINE_REGION_UNREAD.format(region=region)
+            for region in ("us-east-1", "us-west-2")
+        ]
+
+    def test_ac32_keeps_its_verdict_and_adds_an_incomplete_row(self):
+        test = TestAC32ApplicationNetworkAndIssuer
+        skipped = agentcore_app.DEADLINE_REGION_UNREAD.format(region="us-west-2")
+        with patch(
+            "agentcore_app._jwt_authorizer_issuers",
+            return_value=({"https://idp.example"}, [skipped], ["us-east-1"]),
+        ):
+            findings = agentcore_app.check_agentcore_inbound_jwt_issuer_conditions(
+                _v2_cache(
+                    roles={
+                        "full": test._role(
+                            _ac32_full_pin(
+                                {"StringEquals": {test._ISS: "https://idp.example"}}
+                            )
+                        )
+                    }
+                ),
+                ["us-east-1", "us-west-2"],
+            )
+        passed = [f for f in findings if f["Status"] == "Passed"]
+        assert len(passed) == 1 and "role full" in passed[0]["Finding_Details"]
+        (incomplete,) = [
+            f
+            for f in findings
+            if f["Finding"] == "AgentCore Inbound JWT Issuer Conditions Incomplete"
+        ]
+        assert (incomplete["Status"], incomplete["Severity"]) == (
+            "N/A",
+            "Informational",
+        )
+        assert "us-west-2" in incomplete["Finding_Details"]
+        for finding in findings:
+            assert_finding_schema(finding)
+
+    def test_the_ac33_region_loop_stops_and_names_each_region(self):
+        with (
+            _PAST_DEADLINE,
+            patch.object(agentcore_app.boto3, "client") as client,
+        ):
+            own, unread, jwt_runtimes, arns, read_regions = (
+                agentcore_app._workload_identities_by_role_in_regions(
+                    ["us-east-1", "us-west-2"]
+                )
+            )
+        client.assert_not_called()
+        assert (own, jwt_runtimes, arns, read_regions) == ({}, {}, {}, [])
+        # The AC-33 runtime legs hold each one at N/A, naming the Region.
+        assert [read for read in unread if "AgentRuntime" in read] == [
+            agentcore_app.DEADLINE_REGION_UNREAD.format(region=region)
+            for region in ("us-east-1", "us-west-2")
+        ]
+
+
+def _expire_after_full_access(*args, **kwargs):
+    agentcore_app.start_time = time.time() - 10 * agentcore_app.lambda_budget_seconds
+    return [_row("AC-02", finding="AgentCore IAM Full Access")]
+
+
+class TestTheGlobalChecksStopAtTheDeadline:
+    """#74 review item 3: the primary Region's global loop checks the deadline
+    and names every global leg it skipped."""
+
+    def test_each_skipped_global_leg_is_named_once_per_id(self):
+        findings, stubs = _run_agentcore_handler(
+            side_effects={
+                "check_agentcore_full_access_roles": _expire_after_full_access
+            }
+        )
+        stubs["check_stale_agentcore_access"].assert_not_called()
+        for name in _ACCOUNT_LEGS:
+            stubs[name].assert_not_called()
+        skipped = {
+            (f["Check_ID"], f["Finding"])
+            for f in findings
+            if f["Region"] == agentcore_app.GLOBAL_REGION_LABEL
+            and f["Finding"].endswith(" Incomplete")
+        }
+        assert ("AC-03", "AgentCore Stale Access Incomplete") in skipped
+        assert (
+            "AC-48",
+            "AgentCore Execution Role Access Analyzer Incomplete",
+        ) in skipped
+        assert ("AC-51", "AgentCore Shield Proactive Engagement Incomplete") in skipped
+        assert ("AC-02", "AgentCore IAM Full Access Incomplete") not in skipped
+        # global_checks has two literals; the one a read cache selects starts
+        # with the AC-02 entry, which ran here.
+        entries = _handler_runner_entries("global_checks")
+        first = entries.index((("AC-02",), "IAM Full Access"))
+        assert skipped == {
+            (check_id, f"AgentCore {name} Incomplete")
+            for ids, name in entries[first + 1 :]
+            + _handler_runner_entries("account_legs")
+            for check_id in ids
+        }
+        for row in findings:
+            if (row["Check_ID"], row["Finding"]) in skipped:
+                assert (row["Status"], row["Severity"]) == ("N/A", "Informational")
+        # The regional runner then stops at once and backfills its legs.
+        assert any(f["Finding"] == "AgentCore Assessment Incomplete" for f in findings)
+
+
+class _Context:
+    def __init__(self, remaining_ms):
+        self._remaining_ms = remaining_ms
+
+    def get_remaining_time_in_millis(self):
+        return self._remaining_ms
+
+
+class TestReportWatchdog:
+    """#74 review item 3: rows collected before a hang are written about 30 s
+    before the Lambda's hard timeout."""
+
+    def test_it_writes_the_collected_rows_and_the_backfill(self):
+        collected = [_row("AC-01", finding="AgentCore VPC Configuration Check")]
+        written = {}
+
+        def capture(findings):
+            written["findings"] = [dict(f) for f in findings]
+            return "csv"
+
+        with (
+            patch.object(agentcore_app, "write_to_s3", return_value="s3://b/k") as put,
+            patch.object(agentcore_app, "generate_csv_report", side_effect=capture),
+        ):
+            watchdog = agentcore_app._ReportWatchdog(
+                _Context(agentcore_app.WATCHDOG_MARGIN_SECONDS * 1000 + 50),
+                "exec-1",
+                "us-east-1",
+                collected,
+                set(),
+            )
+            watchdog._timer.join(5)
+        assert watchdog.written
+        put.assert_called_once_with(
+            "exec-1", "csv", agentcore_app.BUCKET_NAME, region="us-east-1"
+        )
+        rows = written["findings"]
+        assert rows[0]["Finding"] == "AgentCore VPC Configuration Check"
+        assert any(
+            f["Check_ID"] == "AC-04"
+            and f["Finding"] == "AgentCore Assessment Incomplete"
+            for f in rows
+        )
+        # The handler's own list is left as it was.
+        assert collected == [_row("AC-01", finding="AgentCore VPC Configuration Check")]
+
+    def test_a_handler_that_finishes_first_cancels_it(self):
+        with patch.object(agentcore_app, "write_to_s3") as put:
+            watchdog = agentcore_app._ReportWatchdog(
+                _Context(agentcore_app.WATCHDOG_MARGIN_SECONDS * 1000 + 100),
+                "exec-1",
+                "us-east-1",
+                [],
+                set(),
+            )
+            watchdog.finish()
+            watchdog._timer.join(5)
+            watchdog._write()
+        put.assert_not_called()
+        assert not watchdog.written
+
+    def test_no_timer_runs_without_a_context_or_a_budget(self):
+        assert agentcore_app._ReportWatchdog(None, "e", "r", [], set())._timer is None
+        assert (
+            agentcore_app._ReportWatchdog(_Context(1000), "e", "r", [], set())._timer
+            is None
+        )
+
+    def test_the_handler_starts_it_and_stops_it_before_writing(self):
+        context = _Context(600_000)
+        with patch.object(agentcore_app, "_ReportWatchdog") as watchdog_class:
+            _run_agentcore_handler(context=context)
+        args = watchdog_class.call_args.args
+        assert args[:3] == (context, "exec-1", "us-east-1")
+        assert isinstance(args[3], list) and isinstance(args[4], set)
+        assert watchdog_class.return_value.finish.call_count >= 1
+
+    def test_the_handler_stops_it_when_it_raises(self):
+        with (
+            patch.object(agentcore_app, "_ReportWatchdog") as watchdog_class,
+            patch.object(
+                agentcore_app,
+                "get_custom_browser_inventory",
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(RuntimeError),
+        ):
+            _run_agentcore_handler(context=_Context(600_000))
+        watchdog_class.return_value.finish.assert_called()
+
+
+_SERVED_ISSUER = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Served1"
+
+
+def _served_version_detail(version):
+    """A runtime version whose every judged field names the version."""
+    return {
+        "agentRuntimeId": "rt-1",
+        "agentRuntimeName": "One",
+        "agentRuntimeVersion": version,
+        "agentRuntimeArn": (
+            "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt-1"
+        ),
+        "roleArn": f"arn:aws:iam::123456789012:role/runtime-v{version}",
+        "agentRuntimeArtifact": {
+            "containerConfiguration": {
+                "containerUri": (
+                    "123456789012.dkr.ecr.us-east-1.amazonaws.com/"
+                    f"agent-v{version}:latest"
+                )
+            }
+        },
+        "networkConfiguration": {
+            "networkMode": "VPC",
+            "networkModeConfig": {
+                "subnets": [f"subnet-v{version}"],
+                "securityGroups": ["sg-1"],
+            },
+        },
+        "authorizerConfiguration": {
+            "customJWTAuthorizer": {
+                "discoveryUrl": f"{_SERVED_ISSUER}/.well-known/openid-configuration"
+            }
+        },
+        "lifecycleConfiguration": {
+            "idleRuntimeSessionTimeout": 900,
+            "maxLifetime": 28800,
+        },
+    }
+
+
+def _wire_served_versions(mock_ac, endpoints_error=None):
+    """Runtime rt-1 is at version 2; endpoint "legacy" still serves version 1."""
+    mock_ac.list_agent_runtimes.return_value = {
+        "agentRuntimes": [{"agentRuntimeId": "rt-1", "agentRuntimeName": "One"}]
+    }
+    mock_ac.get_agent_runtime.side_effect = lambda agentRuntimeId, **kw: (
+        _served_version_detail(kw.get("agentRuntimeVersion", "2"))
+    )
+    if endpoints_error is not None:
+        mock_ac.list_agent_runtime_endpoints.side_effect = endpoints_error
+    else:
+        mock_ac.list_agent_runtime_endpoints.return_value = {
+            "runtimeEndpoints": [
+                {"name": "DEFAULT", "liveVersion": "2"},
+                {"name": "legacy", "liveVersion": "1"},
+            ]
+        }
+
+
+def _read_versions(mock_ac):
+    return sorted(
+        c.kwargs.get("agentRuntimeVersion", "latest")
+        for c in mock_ac.get_agent_runtime.call_args_list
+    )
+
+
+class TestServedRuntimeVersions:
+    """#74 review item 6: the checks that judge a runtime's definition judge
+    the latest version and each version an endpoint serves."""
+
+    @patch("agentcore_app.agentcore_client")
+    def test_the_helper_reads_only_served_versions_other_than_the_latest(self, mock_ac):
+        _wire_served_versions(mock_ac)
+        mock_ac.list_agent_runtime_endpoints.return_value = {
+            "runtimeEndpoints": [
+                {"name": "DEFAULT", "liveVersion": "2"},
+                {"name": "canary", "liveVersion": "2", "targetVersion": "3"},
+                {"name": "legacy", "liveVersion": "1"},
+            ]
+        }
+        details, errors = agentcore_app._served_runtime_details(
+            "rt-1", "One", _served_version_detail("2")
+        )
+        assert errors == []
+        assert [label for label, _ in details] == [
+            "Runtime 'One' version 1 (rt-1)",
+            "Runtime 'One' version 3 (rt-1)",
+        ]
+        assert _read_versions(mock_ac) == ["1", "3"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_the_helper_returns_an_unlisted_endpoint_set_as_an_error(self, mock_ac):
+        _wire_served_versions(
+            mock_ac, _make_client_error("AccessDeniedException", "no")
+        )
+        details, errors = agentcore_app._served_runtime_details(
+            "rt-1", "One", _served_version_detail("2")
+        )
+        assert details == []
+        ((label, error, action),) = errors
+        assert "Runtime 'One' (rt-1)" in label
+        assert action == "bedrock-agentcore:ListAgentRuntimeEndpoints"
+        assert agentcore_app._assessment_error_label(error) == "AccessDeniedException"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac50_maps_a_served_versions_image(self, mock_ac):
+        _wire_served_versions(mock_ac)
+        images, unread = agentcore_app._agentcore_runtime_images()
+        assert unread == []
+        assert images["123456789012/us-east-1/agent-v1"] == ["'One' version 1 (rt-1)"]
+        assert "123456789012/us-east-1/agent-v2" in images
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac50_names_an_unlisted_endpoint_set(self, mock_ac):
+        _wire_served_versions(
+            mock_ac, _make_client_error("AccessDeniedException", "no")
+        )
+        images, unread = agentcore_app._agentcore_runtime_images()
+        assert list(images) == ["123456789012/us-east-1/agent-v2"]
+        assert len(unread) == 1 and "AccessDeniedException" in unread[0]
+
+    @patch("agentcore_app.ec2_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_ac08_resolves_a_served_versions_subnets(self, mock_ac, mock_ec2):
+        _wire_served_versions(mock_ac)
+        mock_ec2.describe_subnets.side_effect = lambda SubnetIds, **_: {
+            "Subnets": [{"SubnetId": s, "VpcId": "vpc-1"} for s in SubnetIds]
+        }
+        findings = agentcore_app._agentcore_runtime_vpc_endpoint_findings(
+            [{"agentRuntimeId": "rt-1", "agentRuntimeName": "One"}], []
+        )
+        details = " ".join(f["Finding_Details"] for f in findings)
+        assert "'One' version 1 (rt-1)" in details
+        assert "1" in _read_versions(mock_ac)
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac45_reads_a_served_versions_role(self, mock_ac):
+        _wire_served_versions(mock_ac)
+        details, errors = agentcore_app._agentcore_runtime_role_details()
+        assert errors == []
+        assert [label for label, _ in details] == [
+            "Runtime 'One' (rt-1)",
+            "Runtime 'One' version 1 (rt-1)",
+        ]
+        assert details[1][1]["roleArn"].endswith("runtime-v1")
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac45_returns_an_unlisted_endpoint_set_as_an_error(self, mock_ac):
+        _wire_served_versions(
+            mock_ac, _make_client_error("AccessDeniedException", "no")
+        )
+        details, errors = agentcore_app._agentcore_runtime_role_details()
+        assert [label for label, _ in details] == ["Runtime 'One' (rt-1)"]
+        assert [action for _, _, action in errors] == [
+            "bedrock-agentcore:ListAgentRuntimeEndpoints"
+        ]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac48_references_a_served_versions_role(self, mock_ac):
+        _wire_served_versions(mock_ac)
+        with patch.object(
+            agentcore_app,
+            "_agentcore_list_all",
+            side_effect=lambda operation, keys, **kwargs: (
+                mock_ac.list_agent_runtimes.return_value["agentRuntimes"]
+                if operation == "list_agent_runtimes"
+                else mock_ac.list_agent_runtime_endpoints.return_value[
+                    "runtimeEndpoints"
+                ]
+                if operation == "list_agent_runtime_endpoints"
+                else []
+            ),
+        ):
+            references, errors = agentcore_app._agentcore_execution_role_references(
+                {"items": [], "errors": [], "list_error": None}
+            )
+        runtimes = [r for r in references if r[0] == "runtime"]
+        assert ("runtime", "Runtime 'One' version 1 (rt-1)") in [
+            r[:2] for r in runtimes
+        ]
+        assert any(r[2].endswith("runtime-v1") for r in runtimes)
+        assert not [e for e in errors if "rt-1" in e[0]]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac49_hosts_a_served_versions_subnet(self, mock_ac):
+        _wire_served_versions(mock_ac)
+        subnets, errors = agentcore_app._agentcore_hosting_subnets()
+        assert errors == []
+        assert ("Runtime 'One' version 1 (rt-1)", "subnet-v1") in subnets
+
+    @patch("agentcore_app.cloudwatch_client", None)
+    @patch("agentcore_app.logs_client", None)
+    @patch("agentcore_app.agentcore_client")
+    def test_ac46_judges_a_served_versions_session_limits(self, mock_ac):
+        _wire_served_versions(mock_ac)
+        findings = agentcore_app.check_agentcore_runtime_session_limits()
+        assert any(
+            "Runtime 'One' version 1 (rt-1)" in f["Finding_Details"] for f in findings
+        )
+        assert "1" in _read_versions(mock_ac)
+
+    @patch("agentcore_app.cloudwatch_client", None)
+    @patch("agentcore_app.logs_client", None)
+    @patch("agentcore_app.agentcore_client")
+    def test_ac46_holds_an_unlisted_endpoint_set_at_na(self, mock_ac):
+        _wire_served_versions(
+            mock_ac, _make_client_error("AccessDeniedException", "no")
+        )
+        findings = agentcore_app.check_agentcore_runtime_session_limits()
+        (unread,) = [
+            f for f in findings if "ListAgentRuntimeEndpoints" in f["Resolution"]
+        ]
+        assert (unread["Status"], unread["Severity"]) == ("N/A", "Informational")
+
+    @patch("agentcore_app.cognito_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_ac52_reads_a_served_versions_issuer(self, mock_ac, mock_cognito):
+        _wire_served_versions(mock_ac)
+        mock_ac.list_gateways.return_value = {"items": []}
+        agentcore_app.check_agentcore_cognito_user_pool_authentication()
+        assert "1" in _read_versions(mock_ac)
+
+    @patch("agentcore_app.cognito_client")
+    @patch("agentcore_app.agentcore_client")
+    def test_ac52_holds_an_unlisted_endpoint_set_at_na(self, mock_ac, mock_cognito):
+        _wire_served_versions(
+            mock_ac, _make_client_error("AccessDeniedException", "no")
+        )
+        mock_ac.list_gateways.return_value = {"items": []}
+        findings = agentcore_app.check_agentcore_cognito_user_pool_authentication()
+        (unread,) = [
+            f
+            for f in findings
+            if "the versions the endpoints of Runtime 'One' (rt-1) serve"
+            in f["Finding_Details"]
+        ]
+        assert unread["Status"] == "N/A"
+        assert "AccessDeniedException" in unread["Finding_Details"]

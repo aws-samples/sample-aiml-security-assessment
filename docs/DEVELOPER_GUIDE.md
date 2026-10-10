@@ -924,7 +924,7 @@ The Agentic AI Security lens (AG-01 through AG-39) is **synthesized at runtime**
   - `bedrock_assessments/app.py` → `AGENTIC_BEDROCK_CHECK_MAPPINGS`
   - `agentcore_assessments/app.py` → `AGENTIC_AGENTCORE_CHECK_MAPPINGS`
   - `agent_registry_assessments/app.py` → `AGENTIC_AGENT_REGISTRY_CHECK_MAPPINGS`
-- Native checks (currently AG-24 through AG-27) are implemented directly inside the AgentCore assessment package because they require the `bedrock-agentcore-control` client.
+- Native checks (currently AG-24 through AG-27 and AG-39) are implemented directly inside the AgentCore assessment package because they require the `bedrock-agentcore-control` client.
 - When adding new AG checks, manually allocate numbers to avoid collisions across all three mapping dictionaries and the native checks. The current high-water mark for the catalog is AG-39.
 - The HTML report routes the lens through the `AG-` prefix as its dedicated Agentic AI assessment area. `COMPLIANCE_STANDARDS` is the separate registry for OWASP and future compliance standards.
 - Follow the same cross-file execution, artifact, and report checks as a new compliance standard (CloudFormation parameters are not required for the always-on Agentic lens, but any new native checks still need IAM grants in both SAM runtime templates).

@@ -32,6 +32,15 @@ section.
   `ENABLE_ASSESSMENT_HISTORY`. Set it to `false` to turn the report off. A
   CodeBuild project without the variable (a stack not yet updated) is treated
   as `true`.
+- Added the `EnableAgentCoreArtifactContentReads` deployment parameter
+  (default `false`) to both AWS SAM templates and both deployment templates,
+  passed to CodeBuild as `ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS`. Only when
+  it is `true` does the AgentCore role hold `s3:GetObject` and
+  `s3:GetObjectVersion` on `arn:${AWS::Partition}:s3:::*/*` and
+  `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer` on the account's
+  repositories, which `AC-34` needs to scan runtime code archives and
+  container image layers and `AC-35` needs to read S3 tool schemas. With the
+  default, those rows are informational `N/A` naming the parameter.
 - Added a sample changes report (`sample-reports/security_assessment_changes.html`
   and `.csv`, with `changes-overview.png`), built from the single-account
   sample by `sample-reports/scripts/build_changes_sample.py`; the screenshot
@@ -246,8 +255,19 @@ back `Passed` names what it could not read.
   are renamed or split in this release, so the first changes report after the
   upgrade lists the old rows as No longer reported and the new rows as New,
   even where the setting did not change. Later runs compare normally.
-- **Amazon Bedrock AgentCore.** Checks read every runtime version an endpoint
-  serves, not only the latest. `AC-01` and `AC-08` read prefix list entries
+- **Amazon Bedrock AgentCore.** Checks read the latest runtime version and
+  each version an endpoint serves as its `liveVersion` or `targetVersion`
+  (`AC-01`, `AC-08`, `AC-30`, `AC-34`, `AC-45`, `AC-46`, `AC-48`, `AC-49`,
+  `AC-50`, `AC-52`). An `AC-01` gap in an earlier version no endpoint serves is
+  an informational `N/A` advisory instead of a `High` failure, and `AC-49` no
+  longer counts the subnets of such a version. An endpoint list that cannot be
+  read is `N/A` naming `bedrock-agentcore:ListAgentRuntimeEndpoints`.
+  `AC-46` cost anomaly alerting and `AC-51` Shield Advanced proactive
+  engagement are judged once per run under `Global`, across every assessed
+  Region. The `AC-42` writer leg, the `AC-45` command shell leg and the
+  `AC-48` Access Analyzer leg run once on the primary Region, before the
+  availability check, so an account without AgentCore in that Region still
+  gets them. `AC-01` and `AC-08` read prefix list entries
   and require a `bedrock-agentcore` endpoint in each runtime's own VPC.
   `AC-06` judges who can read browser recordings. `AC-17` requires every
   endpoint's log group to be scored by online evaluation; with the default
@@ -260,7 +280,14 @@ back `Passed` names what it could not read.
 - **Agentic AI Security.** `AG-24` takes an `AUTHENTICATE_ONLY` gateway's
   verdict from `AG-25`. `AG-39` and `AC-51` credit a WAF filter only to a
   `Block` rule that no earlier `Allow` on the same attack class bypasses.
-  `AG-39` fails a gateway set to `FAIL_OPEN`.
+  `AG-39` fails a gateway set to `FAIL_OPEN`. The gateway WAF rows say which
+  front doors were not read only on rows that judged a gateway.
+- **Changes since last assessment.** The first run after this upgrade
+  rewrites the text of most `AC-*` rows and adds the `AC-18` to `AC-53` and
+  `AG-39` rows, so the changes report for that run lists many AgentCore rows
+  as New or No longer reported, and shows failed rows whose text changed as
+  Still open with "details changed". The run after it compares rows written
+  by the same code.
 - **Report wording.** `Passed` text names only what the check read, and
   `Finding_Details` names each unread leg instead of describing the whole
   control as satisfied.
@@ -323,6 +350,17 @@ back `Passed` names what it could not read.
   guard had skipped 19 checks, `AC-35` to `AC-53`, as `N/A` in an account with
   19 runtimes. `AC-34` reads three code archives or images at once and
   downloads an image that several tags name once.
+- The AgentCore assessment stops slow reads 90 seconds before the Lambda
+  timeout and reports what it read: the served-version reads, the `AC-34`
+  code and image reads, and the `AC-32` and `AC-33` reads of other Regions
+  each add an informational `N/A` row naming what was left unread. The
+  primary Region's account-wide checks stop at the same guard as the regional
+  ones and name each skipped leg. If a check still runs to 30 seconds before
+  the hard timeout, the rows collected so far are written.
+- A deadline-skipped leg of a check another leg already reported, such as the
+  later `AC-51` legs, is named as `N/A` instead of disappearing. `AG-39` is
+  backfilled with `AG-24` to `AG-27`, and a transport error listing gateways
+  makes each of them incomplete instead of ending the gateway check.
 
 ### Deployment impact
 
@@ -348,6 +386,16 @@ back `Passed` names what it could not read.
   `EnableAssessmentHistory` is `false`. With service selection, only the
   services selected in both runs are compared; a service selected in only one
   of them is listed as not compared.
+- **AgentCore artifact content reads:** To scan AgentCore code archives,
+  container image layers and S3 tool schemas, update
+  `deployment/aiml-security-single-account.yaml` for single-account
+  deployments or `deployment/2-aiml-security-codebuild.yaml` for multi-account
+  central infrastructure, set `EnableAgentCoreArtifactContentReads` to `true`,
+  then start CodeBuild. No member-role StackSet update is required. A stack
+  not yet updated deploys with the default `false`: the AgentCore role gets no
+  object or image layer read, and the `AC-34` code and image rows and the
+  `AC-35` S3 schema rows are `N/A`. Direct SAM users pass the parameter to
+  `template.yaml` or `template-multi-account.yaml`.
 
 These instructions assume the 2.0.0 prerequisites below are already applied.
 When upgrading from an earlier release, complete the 2.0.0 member-role and
@@ -413,10 +461,12 @@ change:
     that does not admit the role still denies it.
   - `s3:GetObject` on `arn:${AWS::Partition}:s3:::*/*` for the SageMaker AI
     (`SM-43`) and AgentCore (`AC-34`, `AC-35`, with `s3:GetObjectVersion`)
-    roles, because the buckets are named by the customer. The SageMaker AI
-    grant exists only when `EnableSageMakerArtifactObjectReads` is `true`
-    (default `false`). `SM-43` calls only `HeadObject`, but the grant also
-    permits reading object contents in any bucket whose policy admits the role.
+    roles, because the buckets are named by the customer. Each exists only
+    when its parameter is `true` (default `false`):
+    `EnableSageMakerArtifactObjectReads` for SageMaker AI and
+    `EnableAgentCoreArtifactContentReads` for AgentCore. `SM-43` calls only
+    `HeadObject`, but the grant also permits reading object contents in any
+    bucket whose policy admits the role.
   - The Bedrock role's new `s3:GetObject` is limited to invocation log keys and
     `.metadata.json` objects.
   - `BR-52` reads AWS Backup recovery points with
@@ -426,8 +476,10 @@ change:
     account's mantle `project/*` ARNs). `BR-47` and `BR-52` read each bucket's
     Region with `s3:GetBucketLocation` (on `arn:${AWS::Partition}:s3:::*`).
     All four are reads.
-  - `AC-34` downloads up to 512 MiB of container image layers per assessed
-    image through the existing `ecr:GetDownloadUrlForLayer` grant.
+  - With `EnableAgentCoreArtifactContentReads=true`, `AC-34` downloads up to
+    512 MiB of container image layers per assessed image through
+    `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer`, which the AgentCore
+    role holds only then.
   - `cloudwatch:DescribeAlarms` moves from the account's `alarm:*` ARNs to `*`
     on the Bedrock role, and the SageMaker AI and AgentCore roles gain it on
     `*`, because composite alarms are returned only to a `*` grant.
@@ -435,9 +487,13 @@ change:
     domain list reads, and the Network Firewall policy and rule group reads
     leave the account segment open, because those resources can be shared
     through AWS RAM.
-  - The SageMaker AI role's CloudTrail trail reads (`SM-09`) leave the account
+  - The SageMaker AI role's CloudTrail trail reads (`SM-09`) and the AgentCore
+    role's trail and event data store reads (`AC-18`, `AC-26`) leave the account
     segment open, because an organization trail's ARN names the management
-    account. The SageMaker AI and AgentCore roles' AWS Organizations reads
+    account. The AgentCore role's `organizations:ListTargetsForPolicy` also
+    covers resource control policies, AWS managed `RCPFullAWSAccess` included,
+    for `AC-06`, and sits in `AgentCoreAssessmentReadsPolicy`. The SageMaker AI
+    and AgentCore roles' AWS Organizations reads
     (`organizations:DescribePolicy`, `organizations:ListParents` and
     `organizations:ListTargetsForPolicy`) are scoped to organization ARNs,
     which name the management account too.

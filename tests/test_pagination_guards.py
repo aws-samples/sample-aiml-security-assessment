@@ -155,6 +155,13 @@ BOUNDED_DIRECT_CALLS = {
         "_jwt_authorizer_issuers",
         "list_agent_runtimes",
     ): ("maxResults", 1),
+    # AC-46 and AC-51 probe each other assessed Region before they list its
+    # runtimes or gateways in full, once, on the primary Region.
+    (
+        "agentcore_assessments/app.py",
+        "_agentcore_resources_in_regions",
+        "list_agent_runtimes",
+    ): ("maxResults", 1),
     (
         "responsible_ai_grc_assessments/app.py",
         "detect_finserv_regional_footprint",

@@ -286,3 +286,77 @@ def test_sagemaker_artifact_object_read_grant_exists_only_when_enabled(
         if "Fn::If" not in s and "s3:GetObject" in (s.get("Action") or [])
     ]
     assert [s["Sid"] for s in unconditional] == ["PermissionCacheRead"]
+
+
+def test_agentcore_artifact_content_reads_reach_every_deploy_path():
+    buildspec = (REPO_ROOT / "buildspec.yml").read_text(encoding="utf-8")
+    parameter_variable = "SAM_ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS_PARAMETER"
+
+    assert (
+        f'{parameter_variable}="ParameterKey=EnableAgentCoreArtifactContentReads,'
+        'ParameterValue=${ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS:-false}"' in buildspec
+    )
+    assert f"export {parameter_variable}" in buildspec
+    deploy_commands = [
+        line for line in buildspec.splitlines() if "sam deploy --template-file" in line
+    ]
+    assert len(deploy_commands) == 3
+    assert all(f'"${parameter_variable}"' in line for line in deploy_commands)
+
+    for template_name, project in (
+        ("deployment/aiml-security-single-account.yaml", "CodeBuild"),
+        ("deployment/2-aiml-security-codebuild.yaml", "MultiAccountCodeBuild"),
+    ):
+        with (REPO_ROOT / template_name).open(encoding="utf-8") as template_file:
+            template = yaml.load(template_file, Loader=CfnLoader)  # nosec B506
+        parameter = template["Parameters"]["EnableAgentCoreArtifactContentReads"]
+        assert parameter["Default"] == "false"
+        assert parameter["AllowedValues"] == ["true", "false"]
+        environment = template["Resources"][project]["Properties"]["Environment"][
+            "EnvironmentVariables"
+        ]
+        assert {
+            "Name": "ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS",
+            "Value": {"Fn::Ref": "EnableAgentCoreArtifactContentReads"},
+            "Type": "PLAINTEXT",
+        } in environment
+
+
+@pytest.mark.parametrize("template_path", TEMPLATE_PATHS, ids=lambda path: path.name)
+def test_agentcore_artifact_content_grants_exist_only_when_opted_in(template_path):
+    with template_path.open(encoding="utf-8") as template_file:
+        template = yaml.load(template_file, Loader=CfnLoader)  # nosec B506
+
+    parameter = template["Parameters"]["EnableAgentCoreArtifactContentReads"]
+    assert parameter["Default"] == "false"
+    assert template["Conditions"]["AgentCoreArtifactContentReadsEnabled"] == {
+        "Fn::Equals": [{"Fn::Ref": "EnableAgentCoreArtifactContentReads"}, "true"]
+    }
+    statements = template["Resources"]["AgentCoreAssessmentReadsPolicy"]["Properties"][
+        "PolicyDocument"
+    ]["Statement"]
+    conditional = {}
+    for statement in statements:
+        if "Fn::If" in statement:
+            condition, granted, otherwise = statement["Fn::If"]
+            assert condition == "AgentCoreArtifactContentReadsEnabled"
+            assert otherwise == {"Fn::Ref": "AWS::NoValue"}
+            conditional[granted["Sid"]] = set(granted["Action"])
+    assert conditional == {
+        "RuntimeImageConfigRead": {"ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"},
+        "AgentRuntimeArtifactObjectRead": {"s3:GetObject", "s3:GetObjectVersion"},
+    }
+    # No unconditional statement reads object or image contents. The image
+    # digest read AC-50 needs stays unconditional.
+    unconditional = [statement for statement in statements if "Fn::If" not in statement]
+    actions = {action for statement in unconditional for action in statement["Action"]}
+    assert not actions & {
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "s3:GetObjectVersion",
+    }
+    assert "ecr:DescribeImages" in actions
+    assert all(
+        statement["Resource"] != {"Fn::Sub": "arn:${AWS::Partition}:s3:::*/*"}
+        for statement in unconditional
+    )

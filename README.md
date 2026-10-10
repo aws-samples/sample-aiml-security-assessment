@@ -323,6 +323,7 @@ enforced by default.
 | `RequireMarketplaceEndpointCMK` | `true` | BR-40 | When `true`, a Bedrock Marketplace model endpoint without a customer-managed KMS key fails. BR-40 uses `kms:DescribeKey` and requires `KeyManager=CUSTOMER`; AWS-managed keys do not pass. When `false`, a missing or AWS-managed key is reported as an informational `N/A` hardening advisory. |
 | `RequireAgentCoreOnlineEvaluation` | `false` | AC-17 | When `true`, a region with no AgentCore runtime fails unless a running online evaluation configuration exists. When `false`, that region is informational. Every runtime is judged either way. |
 | `RequireAgentRegistryCMK` | `false` | AR-05 | When `true`, registries using the default AWS owned encryption key fail. When `false`, AWS owned key encryption is reported as an informational hardening advisory; registries with a customer-managed KMS key pass. |
+| `EnableAgentCoreArtifactContentReads` | `false` | AC-34, AC-35 | When `true`, the AgentCore function holds `s3:GetObject` and `s3:GetObjectVersion` on `arn:${AWS::Partition}:s3:::*/*` and `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer` on the account's repositories, and scans runtime code archives, container image layers and S3 tool schemas. When `false`, those grants are not created and each content row is an informational `N/A` naming this parameter. `ecr:DescribeImages` is granted either way. |
 | `AgentCoreTokenVaultId` | `default` | AC-14 | Names a regional AgentCore Identity token vault whose customer-managed KMS encryption is assessed, beside every vault a credential provider ARN names. |
 | `ApprovedExternalAccountIds` | Empty | SM-30 | Comma-separated 12-digit AWS account IDs approved to receive SageMaker Model Registry access. Accounts outside the configured boundary fail. |
 | `ApprovedOrganizationIds` | Empty | SM-30 | Comma-separated AWS Organizations IDs approved to receive SageMaker Model Registry access. Organizations outside the configured boundary fail. |
@@ -697,7 +698,7 @@ The deployment uses multiple IAM roles with different trust and permission bound
 
   None of the three can be turned off with a deployment parameter. To withhold one, remove it from the SAM template before deploying. The checks that need it then report `N/A`.
 
-  The SM-43 grant, `s3:GetObject` on every object, is different: it exists only when the `EnableSageMakerArtifactObjectReads` deployment parameter is `true` (default `false`).
+  Two content-reading grant sets are opt-in instead. The SM-43 grant, `s3:GetObject` on every object, exists only when `EnableSageMakerArtifactObjectReads` is `true`, and the AgentCore role reads object and image contents (AC-34, AC-35) only when `EnableAgentCoreArtifactContentReads` is `true`. Both default to `false`; see [Optional Security Policy Baselines](#optional-security-policy-baselines).
 
 If you need to reduce scope, review the role policies in:
 

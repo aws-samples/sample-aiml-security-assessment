@@ -363,6 +363,8 @@ def _assessment_error_label(error: Exception) -> str:
             return code
     if isinstance(error, EndpointConnectionError):
         return "EndpointConnectionError"
+    if type(error) is ValueError and str(error) == DEADLINE_UNREAD:
+        return "LambdaTimeoutApproaching"
     return type(error).__name__
 
 
@@ -554,18 +556,77 @@ REGIONAL_AGENTCORE_CHECK_IDS = (
     "AC-53",
 )
 
-# A regional leg of a check id that is otherwise global. The id is reported by
-# the primary region's global run, so the backfill keys these legs on the
-# finding name as well as the id.
-REGIONAL_AGENTCORE_LEGS = (("AC-02", "AgentCore Payments Retrieval Role Trust"),)
+# Each regional runner entry whose check id another runner entry, regional or
+# global, also reports, named "AgentCore <runner name>". One leg's rows carry
+# the id, so a skipped leg would hide behind them; the backfill keys these on
+# (check id, leg) instead of the id alone.
+REGIONAL_AGENTCORE_LEGS = (
+    ("AC-02", "AgentCore Payments Retrieval Role Trust"),
+    ("AC-01", "AgentCore VPC Configuration"),
+    ("AC-06", "AgentCore Browser Tool Recording"),
+    ("AC-06", "AgentCore Browser Recording Write SCP"),
+    ("AC-22", "AgentCore Telemetry Sink Scope"),
+    ("AC-22", "AgentCore Monitoring Account Controls"),
+    ("AG-27", "AgentCore Agentic Gateway Security"),
+    ("AG-39", "AgentCore Agentic Gateway Security"),
+    ("AC-24", "AgentCore Gateway Rate Limiting"),
+    ("AC-24", "AgentCore Gateway Metric Alarms"),
+    ("AG-27", "AgentCore Gateway Metric Alarms"),
+    ("AC-25", "AgentCore Gateway Target Authorization"),
+    ("AC-25", "AgentCore Gateway Role Scope"),
+    ("AC-26", "AgentCore Log Retention and Key Scope"),
+    ("AC-26", "AgentCore Trail Log File Validation"),
+    ("AC-26", "AgentCore Log Archive Forwarding"),
+    ("AC-26", "AgentCore Trail Bucket Object Lock"),
+    ("AC-35", "AgentCore Policy Tool Scope"),
+    ("AC-35", "AgentCore Policy Input Guard"),
+    ("AC-38", "AgentCore Policy Session Binding"),
+    ("AC-38", "AgentCore Policy Session Prerequisites"),
+    ("AC-41", "AgentCore Evaluation Result Protection"),
+    ("AC-41", "AgentCore Evaluation Key Protection"),
+    ("AC-41", "AgentCore Evaluation Personal Data"),
+    ("AC-42", "AgentCore Evaluation Pass Role Scope"),
+    ("AC-45", "AgentCore Tool Execution Role Scope"),
+    ("AC-46", "AgentCore Runtime Session Limits"),
+    ("AC-48", "AgentCore Execution Role Trust And Sharing"),
+    ("AC-48", "AgentCore Execution Role Access Analyzer"),
+    ("AC-49", "AgentCore DNS Egress Control"),
+    ("AC-49", "AgentCore Network Firewall Egress"),
+    ("AC-50", "AgentCore ECR Enhanced Scanning"),
+    ("AC-50", "AgentCore Image Scan Coverage And Gate"),
+    ("AC-50", "AgentCore Runtime Image Inspector Coverage"),
+    ("AC-51", "AgentCore Web ACL Anti-DDoS"),
+    ("AC-51", "AgentCore Front Door Shield and WAF"),
+    ("AG-39", "AgentCore Front Door Shield and WAF"),
+    ("AC-51", "AgentCore Gateway Firewall Manager Enrollment"),
+    ("AC-53", "AgentCore Inter-Agent Anomaly Alarms"),
+    ("AC-53", "AgentCore Agent Log Scheduled Queries"),
+)
 
 
 def _missing_regional_leg_findings(
-    findings: List[Dict[str, Any]], region: str, reason: str, resolution: str
+    findings: List[Dict[str, Any]],
+    region: str,
+    reason: str,
+    resolution: str,
+    id_level_ids: Iterable[str] = (),
+    completed_legs: Optional[Set[Tuple[str, str]]] = None,
 ) -> List[Dict[str, Any]]:
-    """Return an N/A row for each regional leg that produced no finding."""
+    """Return an N/A row for each registered leg that did not run.
+
+    A leg in completed_legs ran, and one whose rows start with its name
+    reported. A leg of an id in id_level_ids that has no row at all is left to
+    the id's own backfill row, so it is not named twice.
+    """
+    completed_legs = completed_legs or set()
+    reported_ids = {finding.get("Check_ID") for finding in findings}
+    id_level_ids = set(id_level_ids)
     missing = []
     for check_id, leg_name in REGIONAL_AGENTCORE_LEGS:
+        if (check_id, leg_name) in completed_legs:
+            continue
+        if check_id in id_level_ids and check_id not in reported_ids:
+            continue
         if any(
             finding.get("Check_ID") == check_id
             and str(finding.get("Finding", "")).startswith(leg_name)
@@ -1694,6 +1755,93 @@ def _paginate_aws_list(
     return items
 
 
+# Slow inventories stop reading this long before the Lambda budget ends, ahead
+# of check_timeout's 60 s, so the runner still writes what they collected.
+INVENTORY_DEADLINE_MARGIN_SECONDS = 90
+DEADLINE_UNREAD = "the Lambda timeout was approaching, so it was not read"
+DEADLINE_REGION_UNREAD = (
+    "bedrock-agentcore:ListAgentRuntimes in {region} (LambdaTimeoutApproaching)"
+)
+
+
+def _inventory_deadline_passed() -> bool:
+    """Whether a slow inventory should stop reading and report what it has."""
+    if start_time is None:
+        return False
+    return (
+        time.time() - start_time
+        >= lambda_budget_seconds - INVENTORY_DEADLINE_MARGIN_SECONDS
+    )
+
+
+def _runtime_served_versions(runtime_id: str) -> Dict[str, List[str]]:
+    """Map each version an endpoint of the runtime serves to the endpoints.
+
+    An endpoint serves its liveVersion, and its targetVersion while an update
+    rolls out. Raises BotoCoreError or ClientError when the endpoints cannot be
+    listed.
+    """
+    served: Dict[str, List[str]] = {}
+    for endpoint in _agentcore_list_all(
+        "list_agent_runtime_endpoints", ["runtimeEndpoints"], agentRuntimeId=runtime_id
+    ):
+        name = str(endpoint.get("name") or endpoint.get("id") or "unnamed")
+        for field in ("liveVersion", "targetVersion"):
+            version = endpoint.get(field)
+            if version and name not in served.setdefault(str(version), []):
+                served[str(version)].append(name)
+    return served
+
+
+def _served_runtime_details(
+    runtime_id: str, name: str, latest: Dict[str, Any]
+) -> Tuple[List[Tuple[str, Dict[str, Any]]], List[Tuple[str, Exception, str]]]:
+    """Read each version other than the latest one that an endpoint serves.
+
+    GetAgentRuntime without a version reads the latest one, and an endpoint can
+    serve an earlier version, so a check that judges a runtime's definition
+    judges these too. Returns (label, detail) per version read and
+    (label, error, IAM action) per read that failed, the endpoint list
+    included. A version left unread at the Lambda deadline is an error too.
+    """
+    details: List[Tuple[str, Dict[str, Any]]] = []
+    errors: List[Tuple[str, Exception, str]] = []
+    label = f"Runtime '{name}' ({runtime_id})"
+    try:
+        served = _runtime_served_versions(runtime_id)
+    except (BotoCoreError, ClientError) as error:
+        logger.warning(f"Could not list endpoints of runtime {runtime_id}: {error}")
+        return details, [
+            (
+                f"The versions the endpoints of {label} serve",
+                error,
+                "bedrock-agentcore:ListAgentRuntimeEndpoints",
+            )
+        ]
+    latest_version = str(latest.get("agentRuntimeVersion") or "")
+    for version in sorted(v for v in served if v != latest_version):
+        version_label = f"Runtime '{name}' version {version} ({runtime_id})"
+        if _inventory_deadline_passed():
+            errors.append(
+                (
+                    version_label,
+                    ValueError(DEADLINE_UNREAD),
+                    "bedrock-agentcore:GetAgentRuntime",
+                )
+            )
+            continue
+        try:
+            detail = agentcore_client.get_agent_runtime(
+                agentRuntimeId=runtime_id, agentRuntimeVersion=version
+            )
+        except (BotoCoreError, ClientError) as error:
+            logger.warning(f"Could not read runtime {runtime_id} {version}: {error}")
+            errors.append((version_label, error, "bedrock-agentcore:GetAgentRuntime"))
+            continue
+        details.append((version_label, detail if isinstance(detail, dict) else {}))
+    return details, errors
+
+
 def get_custom_browser_inventory() -> Dict[str, Any]:
     """List custom browsers once and isolate per-browser detail failures."""
     inventory = {"items": [], "errors": [], "list_error": None}
@@ -1879,15 +2027,23 @@ def build_agentic_agentcore_unavailable_findings(
 
 
 def build_agentcore_timeout_findings(
-    region: str, existing_findings: List[Dict[str, Any]]
+    region: str,
+    existing_findings: List[Dict[str, Any]],
+    completed_legs: Optional[Set[Tuple[str, str]]] = None,
 ) -> List[Dict[str, Any]]:
-    """Create N/A AC-* and native AG-* rows skipped near the deadline."""
+    """Create N/A AC-* and native AG-* rows skipped near the deadline.
+
+    completed_legs holds the (check id, "AgentCore <runner name>") pairs whose
+    runner entry ran, so a skipped leg of an id another leg reported is named.
+    """
     existing_check_ids = {finding.get("Check_ID") for finding in existing_findings}
     timeout_findings = _missing_regional_leg_findings(
         existing_findings,
         region,
         "the Lambda timeout was approaching",
         "Re-run the assessment to complete the skipped AgentCore checks.",
+        (*REGIONAL_AGENTCORE_CHECK_IDS, *NATIVE_AGENTIC_AGENTCORE_CHECK_NAMES),
+        completed_legs,
     )
 
     for check_id in REGIONAL_AGENTCORE_CHECK_IDS:
@@ -1962,10 +2118,12 @@ def build_agentic_agentcore_timeout_findings(
 
 
 def prepare_agentcore_timeout_report_findings(
-    findings: List[Dict[str, Any]], region: str
+    findings: List[Dict[str, Any]],
+    region: str,
+    completed_legs: Optional[Set[Tuple[str, str]]] = None,
 ) -> None:
     """Backfill deadline-skipped checks and synthesize their Agentic AI rows."""
-    findings.extend(build_agentcore_timeout_findings(region, findings))
+    findings.extend(build_agentcore_timeout_findings(region, findings, completed_legs))
     for finding in findings:
         if not finding.get("Region"):
             finding["Region"] = region
@@ -1974,6 +2132,99 @@ def prepare_agentcore_timeout_report_findings(
     for finding in findings:
         if not finding.get("Region"):
             finding["Region"] = region
+
+
+def _skipped_global_leg_findings(
+    entries: List[Tuple[List[str], str, Any]],
+) -> List[Dict[str, Any]]:
+    """Name each account-wide leg the deadline left unrun, once per check id."""
+    return [
+        create_finding(
+            check_id=check_id,
+            finding_name=f"AgentCore {check_name} Incomplete",
+            finding_details=(
+                f"The AgentCore {check_name} leg of {check_id} could not be "
+                "assessed because the Lambda timeout was approaching."
+            ),
+            resolution="Re-run the assessment to complete the skipped AgentCore checks.",
+            reference=AGENTCORE_STARTER_TOOLKIT_URL,
+            severity=SeverityEnum.INFORMATIONAL,
+            status=StatusEnum.NA,
+            region=GLOBAL_REGION_LABEL,
+        )
+        for check_ids, check_name, _ in entries
+        for check_id in check_ids
+    ]
+
+
+# The watchdog writes what the handler has collected this long before the
+# Lambda's hard timeout, so a check that hangs past check_timeout's stop does
+# not lose the rows already gathered.
+WATCHDOG_MARGIN_SECONDS = 30
+
+
+class _ReportWatchdog:
+    """Write the collected rows shortly before the Lambda's hard timeout.
+
+    The handler calls finish() before its own write. A write the watchdog has
+    begun completes first, so the handler's fuller report replaces it.
+    """
+
+    def __init__(
+        self,
+        context: Any,
+        execution_id: str,
+        region: str,
+        findings: List[Dict[str, Any]],
+        completed_legs: Set[Tuple[str, str]],
+    ) -> None:
+        self._execution_id = execution_id
+        self._region = region
+        self._findings = findings
+        self._completed_legs = completed_legs
+        self._lock = threading.Lock()
+        self._done = False
+        self.written = False
+        self._timer: Optional[threading.Timer] = None
+        if context is None:
+            return
+        delay = context.get_remaining_time_in_millis() / 1000 - WATCHDOG_MARGIN_SECONDS
+        if delay <= 0:
+            return
+        self._timer = threading.Timer(delay, self._write)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def _write(self) -> None:
+        with self._lock:
+            if self._done:
+                return
+            try:
+                logger.error(
+                    "Lambda hard timeout approaching; writing the AgentCore rows "
+                    "collected so far"
+                )
+                snapshot = [dict(finding) for finding in list(self._findings)]
+                prepare_agentcore_timeout_report_findings(
+                    snapshot, self._region, set(self._completed_legs)
+                )
+                write_to_s3(
+                    self._execution_id,
+                    generate_csv_report(snapshot),
+                    BUCKET_NAME,
+                    region=self._region,
+                )
+                self.written = True
+            except Exception as error:
+                logger.error(
+                    f"The timeout watchdog could not write the report: {error}"
+                )
+
+    def finish(self) -> None:
+        if self._timer is not None:
+            self._timer.cancel()
+        with self._lock:
+            self._done = True
 
 
 def prepare_agentcore_runtime_incomplete_report_findings(
@@ -1994,6 +2245,7 @@ def prepare_agentcore_runtime_incomplete_report_findings(
             "the AgentCore Runtime availability probe returned credential or "
             f"authentication error {error_code}",
             resolution,
+            (*AGENTCORE_RUNTIME_CHECK_IDS, *NATIVE_AGENTIC_AGENTCORE_CHECK_NAMES),
         )
     )
 
@@ -3009,6 +3261,22 @@ def _agentcore_egress_findings(
     return findings
 
 
+AGENTCORE_UNSERVED_VERSION_NOTE = (
+    " No endpoint serves this version as its liveVersion or targetVersion, so "
+    "it runs no session today; the gap is advisory until an endpoint is "
+    "updated to it."
+)
+
+
+def _hold_unserved_version_rows(rows: List[Dict[str, Any]]) -> None:
+    """Hold each failed row of a version no endpoint serves at advisory N/A."""
+    for row in rows:
+        if row.get("Status") == StatusEnum.FAILED.value:
+            row["Status"] = StatusEnum.NA.value
+            row["Severity"] = SeverityEnum.INFORMATIONAL.value
+            row["Finding_Details"] += AGENTCORE_UNSERVED_VERSION_NOTE
+
+
 def check_agentcore_vpc_configuration(
     browser_inventory: Dict[str, Any] = None,
     permission_cache: Optional[Dict[str, Any]] = None,
@@ -3124,14 +3392,62 @@ def check_agentcore_vpc_configuration(
                 earlier_versions = sum(
                     1 for _, version in runtime_targets if version is not None
                 )
+                # An earlier version no endpoint serves runs no session, so a
+                # gap in it is advisory. When the endpoints cannot be listed,
+                # every version is judged as served.
+                unserved: Dict[str, Set[str]] = {}
+                for runtime_id in dict.fromkeys(
+                    runtime.get("agentRuntimeId", "unknown")
+                    for runtime, version in runtime_targets
+                    if version is not None
+                ):
+                    try:
+                        served = _runtime_served_versions(runtime_id)
+                    except (BotoCoreError, ClientError) as e:
+                        logger.warning(
+                            f"Error listing endpoints of runtime {runtime_id}: {e}"
+                        )
+                        continue
+                    unserved[runtime_id] = {
+                        str(version)
+                        for runtime, version in runtime_targets
+                        if version is not None
+                        and runtime.get("agentRuntimeId", "unknown") == runtime_id
+                        and str(version) not in served
+                    }
 
+                advisory_from: Optional[int] = None
                 for runtime, version in runtime_targets:
+                    if advisory_from is not None:
+                        _hold_unserved_version_rows(findings[advisory_from:])
+                        advisory_from = None
                     runtime_id = runtime.get("agentRuntimeId", "unknown")
                     runtime_name = runtime.get("agentRuntimeName", runtime_id)
                     version_kwargs = {}
                     if version is not None:
                         runtime_name = f"{runtime_name} version {version}"
                         version_kwargs["agentRuntimeVersion"] = version
+                        if version in unserved.get(runtime_id, ()):
+                            advisory_from = len(findings)
+                        if _inventory_deadline_passed():
+                            findings.append(
+                                create_finding(
+                                    check_id="AC-01",
+                                    finding_name="AgentCore Runtime VPC Configuration",
+                                    finding_details=(
+                                        f"Runtime '{runtime_name}' ({runtime_id}): "
+                                        f"{DEADLINE_UNREAD}."
+                                    ),
+                                    resolution=(
+                                        "Re-run the assessment to complete the "
+                                        "skipped AgentCore checks."
+                                    ),
+                                    reference=AGENTCORE_VPC_REFERENCE_URL,
+                                    severity=SeverityEnum.INFORMATIONAL,
+                                    status=StatusEnum.NA,
+                                )
+                            )
+                            continue
 
                     # Get detailed runtime info
                     try:
@@ -3158,17 +3474,20 @@ def check_agentcore_vpc_configuration(
                             # security groups of networkModeConfig, so the egress
                             # leg below judges what they permit outbound. PUBLIC
                             # runtimes are already reported above and carry no
-                            # security group to read.
-                            egress_targets.append(
-                                (
-                                    f"Runtime '{runtime_name}' ({runtime_id})",
-                                    network_mode,
-                                    (network_config.get("networkModeConfig") or {}).get(
-                                        "securityGroups"
+                            # security group to read. A version no endpoint
+                            # serves sends no traffic.
+                            if advisory_from is None:
+                                egress_targets.append(
+                                    (
+                                        f"Runtime '{runtime_name}' ({runtime_id})",
+                                        network_mode,
+                                        (
+                                            network_config.get("networkModeConfig")
+                                            or {}
+                                        ).get("securityGroups")
+                                        or [],
                                     )
-                                    or [],
                                 )
-                            )
 
                             # AIR-FND-NET-01: a runtime created before the
                             # 2026-05-05 rollout keeps a service-managed S3
@@ -3437,6 +3756,9 @@ def check_agentcore_vpc_configuration(
                                 status=StatusEnum.NA,
                             )
                         )
+
+                if advisory_from is not None:
+                    _hold_unserved_version_rows(findings[advisory_from:])
 
         except ClientError as e:
             if e.response["Error"]["Code"] == "ResourceNotFoundException":
@@ -6276,23 +6598,40 @@ def _agentcore_runtime_images(
         except ClientError as error:
             unread.append(f"runtime {label}: {_assessment_error_label(error)}")
             continue
-        uri = (
-            ((detail.get("agentRuntimeArtifact") or {}).get("containerConfiguration"))
-            or {}
-        ).get("containerUri")
-        if not uri:
-            continue
-        match = ECR_IMAGE_URI_PATTERN.match(uri)
-        if not match:
-            unread.append(
-                f"runtime {label}: its image {uri} is not an Amazon ECR image URI"
-            )
-            continue
-        images.setdefault("/".join(match.groups()), []).append(label)
-        if references is not None:
-            references.setdefault("/".join(match.groups()), []).append(
-                (label, uri[match.end() :])
-            )
+        served, served_errors = _served_runtime_details(
+            runtime_id, runtime.get("agentRuntimeName", runtime_id), detail
+        )
+        unread.extend(
+            f"{what}: {_assessment_error_label(error)}"
+            for what, error, _ in served_errors
+        )
+        targets = [(label, detail)] + [
+            (version_label.removeprefix("Runtime "), version_detail)
+            for version_label, version_detail in served
+        ]
+        for target_label, target in targets:
+            uri = (
+                (
+                    (target.get("agentRuntimeArtifact") or {}).get(
+                        "containerConfiguration"
+                    )
+                )
+                or {}
+            ).get("containerUri")
+            if not uri:
+                continue
+            match = ECR_IMAGE_URI_PATTERN.match(uri)
+            if not match:
+                unread.append(
+                    f"runtime {target_label}: its image {uri} is not an Amazon "
+                    "ECR image URI"
+                )
+                continue
+            images.setdefault("/".join(match.groups()), []).append(target_label)
+            if references is not None:
+                references.setdefault("/".join(match.groups()), []).append(
+                    (target_label, uri[match.end() :])
+                )
     return images, unread
 
 
@@ -11926,18 +12265,27 @@ def _agentcore_runtime_vpc_endpoint_findings(
                     ),
                 )
             )
-        network = detail.get("networkConfiguration") or {}
-        if network.get("networkMode") != "VPC":
-            continue
-        subnets = [
-            subnet
-            for subnet in (network.get("networkModeConfig") or {}).get("subnets") or []
-            if isinstance(subnet, str) and subnet
-        ]
-        if not subnets:
-            unresolved.append(f"{label}: VPC mode with no subnets reported")
-            continue
-        runtime_subnets.append((label, subnets))
+        served, served_errors = _served_runtime_details(
+            runtime_id, runtime.get("agentRuntimeName") or runtime_id, detail
+        )
+        unresolved.extend(
+            f"{what}: {_assessment_error_label(error)} on {action}"
+            for what, error, action in served_errors
+        )
+        for target_label, target in [(label, detail)] + served:
+            network = target.get("networkConfiguration") or {}
+            if network.get("networkMode") != "VPC":
+                continue
+            subnets = [
+                subnet
+                for subnet in (network.get("networkModeConfig") or {}).get("subnets")
+                or []
+                if isinstance(subnet, str) and subnet
+            ]
+            if not subnets:
+                unresolved.append(f"{target_label}: VPC mode with no subnets reported")
+                continue
+            runtime_subnets.append((target_label, subnets))
 
     subnet_vpcs: Dict[str, str] = {}
     if runtime_subnets:
@@ -23911,10 +24259,12 @@ def check_agentcore_runtime_inbound_authorization() -> List[Dict[str, Any]]:
         )
         for version in others:
             try:
+                if _inventory_deadline_passed():
+                    raise ValueError(DEADLINE_UNREAD)
                 version_details = agentcore_client.get_agent_runtime(
                     agentRuntimeId=runtime_id, agentRuntimeVersion=version
                 )
-            except (BotoCoreError, ClientError) as error:
+            except (BotoCoreError, ClientError, ValueError) as error:
                 findings.append(
                     create_finding(
                         check_id="AC-30",
@@ -24379,6 +24729,9 @@ def _jwt_authorizer_issuers(
             return issuers, ["the AgentCore client is not available"], []
         clients.append((agentcore_client.meta.region_name, agentcore_client))
     for region in regions or []:
+        if _inventory_deadline_passed():
+            unread.append(DEADLINE_REGION_UNREAD.format(region=region))
+            continue
         try:
             client = boto3.client(
                 "bedrock-agentcore-control", config=boto3_config, region_name=region
@@ -24405,6 +24758,9 @@ def _jwt_authorizer_issuers(
     held = agentcore_client
     try:
         for region, client in clients:
+            if _inventory_deadline_passed():
+                unread.append(DEADLINE_REGION_UNREAD.format(region=region))
+                continue
             agentcore_client = client
             for list_method, keys, id_key, get_method, get_param, action in (
                 (
@@ -24698,6 +25054,30 @@ def check_agentcore_inbound_jwt_issuer_conditions(
                         region=GLOBAL_REGION_LABEL,
                     )
                 )
+            skipped = [
+                read for read in issuer_unread if "LambdaTimeoutApproaching" in read
+            ]
+            if skipped:
+                findings.append(
+                    create_finding(
+                        check_id="AC-32",
+                        finding_name="AgentCore Inbound JWT Issuer Conditions Incomplete",
+                        finding_details=(
+                            "The Lambda timeout was approaching, so the runtime "
+                            "and gateway JWT authorizers of these Regions were "
+                            f"not read: {', '.join(skipped)}. The rows above "
+                            "judge the Regions read."
+                        ),
+                        resolution=(
+                            "Re-run the assessment to complete the skipped "
+                            "AgentCore checks."
+                        ),
+                        reference=AGENTCORE_IAM_CONDITION_KEY_REFERENCE_URL,
+                        severity=SeverityEnum.INFORMATIONAL,
+                        status=StatusEnum.NA,
+                        region=GLOBAL_REGION_LABEL,
+                    )
+                )
 
         if (
             not unpinned
@@ -24965,6 +25345,9 @@ def _workload_identities_by_role_in_regions(
     held = agentcore_client
     try:
         for region in regions:
+            if _inventory_deadline_passed():
+                unread.append(DEADLINE_REGION_UNREAD.format(region=region))
+                continue
             try:
                 client = boto3.client(
                     "bedrock-agentcore-control", config=boto3_config, region_name=region
@@ -25844,6 +26227,19 @@ ECR_IMAGE_LAYER_TIMEOUT_SECONDS = 30
 # reads overlap that wait. Reading a code archive can hold twice its 64 MiB
 # bound, so three at once hold at most 384 MiB of the function's 1024 MB.
 AC34_PARALLEL_READS = 3
+# Why AC-34 and AC-35 read no code archive, tool schema or image layer when the
+# deployment did not opt in: the function then holds no grant to read them.
+ARTIFACT_CONTENT_READS_DISABLED = (
+    "EnableAgentCoreArtifactContentReads is false, so the assessment holds no "
+    "grant to read artifact contents; set it to true to read them"
+)
+
+
+def _artifact_content_reads_enabled() -> bool:
+    """Whether the deployment opted in to reading code, schemas and images."""
+    return (
+        os.environ.get("ENABLE_AGENTCORE_ARTIFACT_CONTENT_READS", "").lower() == "true"
+    )
 
 
 def _value_is_a_credential_literal(value: str) -> bool:
@@ -26384,10 +26780,12 @@ def _agentcore_runtime_credential_findings(
                 f"{', '.join(sorted(served[version]))},"
             )
             try:
+                if _inventory_deadline_passed():
+                    raise ValueError(DEADLINE_UNREAD)
                 version_details = agentcore_client.get_agent_runtime(
                     agentRuntimeId=runtime_id, agentRuntimeVersion=version
                 )
-            except (BotoCoreError, ClientError) as error:
+            except (BotoCoreError, ClientError, ValueError) as error:
                 findings.append(unread_finding(version_label, error))
                 unread_versions.setdefault(label, []).append(
                     f"version {version}, served by endpoint(s) "
@@ -26415,6 +26813,8 @@ def _read_s3_object_bounded(
     BotoCoreError or ValueError, so a caller never treats an unread object as
     clean.
     """
+    if not _artifact_content_reads_enabled():
+        raise ValueError(ARTIFACT_CONTENT_READS_DISABLED)
     request: Dict[str, str] = {"Bucket": bucket, "Key": key}
     if version_id:
         request["VersionId"] = version_id
@@ -26566,6 +26966,8 @@ def _read_each_once(read: Callable[[Any], Any], keys: Iterable[Any]) -> Dict[Any
     unique = list(dict.fromkeys(keys))
 
     def attempt(key: Any) -> Any:
+        if _inventory_deadline_passed():
+            return ValueError(DEADLINE_UNREAD)
         try:
             return read(key)
         except Exception as error:
@@ -26777,6 +27179,8 @@ def _image_config_credentials(
     image digest already read, so an image that several tags, versions or
     runtimes name is downloaded once.
     """
+    if not _artifact_content_reads_enabled():
+        raise ValueError(ARTIFACT_CONTENT_READS_DISABLED)
     client = _ecr_client_for(region_name)
     image_id = (
         {"imageDigest": reference[1:]}
@@ -33626,6 +34030,85 @@ def _evaluation_pass_role_grants(
     return grants, unreadable
 
 
+def _evaluation_writer_findings(
+    role_permissions: Dict[str, Any],
+    user_permissions: Dict[str, Any],
+    own_role_names: List[str],
+) -> List[Dict[str, Any]]:
+    """AC-42's writers leg: who can write an online configuration and pass a
+    role wider than one, whether or not a configuration exists yet."""
+    writer_gaps = [
+        *_writer_pass_role_gaps(
+            role_permissions,
+            "role",
+            EVALUATION_CONFIG_WRITE_ACTIONS,
+            role_names=role_permissions,
+            own_role_names=own_role_names,
+        ),
+        *_writer_pass_role_gaps(
+            user_permissions,
+            "user",
+            EVALUATION_CONFIG_WRITE_ACTIONS,
+            role_names=role_permissions,
+            own_role_names=own_role_names,
+        ),
+    ]
+    if not writer_gaps:
+        return []
+    return [
+        create_finding(
+            check_id="AC-42",
+            finding_name="AgentCore Evaluation Writer Pass Role Unbounded",
+            finding_details=(
+                "The following principals can create or update an online "
+                "evaluation configuration and hold an iam:PassRole grant whose "
+                "condition does not exclude AgentCore and that misses the guard "
+                "named beside it, whether or not a configuration exists today; "
+                "a role reached by name is compared with the execution roles "
+                "online evaluation configurations in this region name: "
+                f"{'; '.join(sorted(writer_gaps))}. {IAM_CACHE_SCP_NOTE}"
+            ),
+            resolution=(
+                "Scope iam:PassRole to the evaluation execution role's own ARN, "
+                "or to a role-name pattern that reaches no other role, and add "
+                "an iam:PassedToService condition naming "
+                f"{AGENTCORE_SERVICE_PRINCIPAL}."
+            ),
+            reference=IAM_PASS_ROLE_REFERENCE_URL,
+            severity=SeverityEnum.HIGH,
+            status=StatusEnum.FAILED,
+            region=GLOBAL_REGION_LABEL,
+        )
+    ]
+
+
+def check_agentcore_evaluation_writer_pass_role_scope(
+    permission_cache: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """AC-42's writers leg, run once on the primary Region.
+
+    The IAM cache is the same in every Region, so the handler runs this before
+    the availability gate: a primary Region without AgentCore still judges
+    the writers. A role reached by name is compared with the execution roles
+    this Region's online configurations name, and with none when AgentCore is
+    not available here.
+    """
+    own_role_names: List[str] = []
+    if agentcore_client is not None:
+        details, _ = _online_evaluation_details()
+        own_role_names = [
+            str(detail["evaluationExecutionRoleArn"]).rsplit("/", 1)[-1]
+            for _, detail in details
+            if detail.get("evaluationExecutionRoleArn")
+        ]
+    cache = permission_cache if isinstance(permission_cache, dict) else {}
+    return _evaluation_writer_findings(
+        cache.get("role_permissions") or {},
+        cache.get("user_permissions") or {},
+        own_role_names,
+    )
+
+
 def check_agentcore_evaluation_pass_role_scope(
     permission_cache: Dict[str, Any],
     assess_writers: bool = False,
@@ -33700,51 +34183,12 @@ def check_agentcore_evaluation_pass_role_scope(
             if detail.get("evaluationExecutionRoleArn")
         }
     )
-    own_role_names = [arn.rsplit("/", 1)[-1] for arn in role_arns]
-    writer_gaps = (
-        [
-            *_writer_pass_role_gaps(
+    if assess_writers:
+        findings.extend(
+            _evaluation_writer_findings(
                 role_permissions,
-                "role",
-                EVALUATION_CONFIG_WRITE_ACTIONS,
-                role_names=role_permissions,
-                own_role_names=own_role_names,
-            ),
-            *_writer_pass_role_gaps(
                 user_permissions,
-                "user",
-                EVALUATION_CONFIG_WRITE_ACTIONS,
-                role_names=role_permissions,
-                own_role_names=own_role_names,
-            ),
-        ]
-        if assess_writers
-        else []
-    )
-    if writer_gaps:
-        findings.append(
-            create_finding(
-                check_id="AC-42",
-                finding_name="AgentCore Evaluation Writer Pass Role Unbounded",
-                finding_details=(
-                    "The following principals can create or update an online "
-                    "evaluation configuration and hold an iam:PassRole grant whose "
-                    "condition does not exclude AgentCore and that misses the guard "
-                    "named beside it, whether or not a configuration exists today; "
-                    "a role reached by name is compared with the execution roles "
-                    "online evaluation configurations in this region name: "
-                    f"{'; '.join(sorted(writer_gaps))}. {IAM_CACHE_SCP_NOTE}"
-                ),
-                resolution=(
-                    "Scope iam:PassRole to the evaluation execution role's own ARN, "
-                    "or to a role-name pattern that reaches no other role, and add "
-                    "an iam:PassedToService condition naming "
-                    f"{AGENTCORE_SERVICE_PRINCIPAL}."
-                ),
-                reference=IAM_PASS_ROLE_REFERENCE_URL,
-                severity=SeverityEnum.HIGH,
-                status=StatusEnum.FAILED,
-                region=GLOBAL_REGION_LABEL,
+                [arn.rsplit("/", 1)[-1] for arn in role_arns],
             )
         )
 
@@ -35625,7 +36069,13 @@ def _agentcore_runtime_role_details() -> Tuple[
             logger.warning(f"Could not read runtime {runtime_id}: {error}")
             errors.append((label, error, "bedrock-agentcore:GetAgentRuntime"))
             continue
-        details.append((label, detail if isinstance(detail, dict) else {}))
+        detail = detail if isinstance(detail, dict) else {}
+        details.append((label, detail))
+        served, served_errors = _served_runtime_details(
+            runtime_id, runtime.get("agentRuntimeName") or runtime_id, detail
+        )
+        details.extend(served)
+        errors.extend(served_errors)
     return details, errors
 
 
@@ -35633,6 +36083,7 @@ def check_agentcore_tool_execution_role_scope(
     permission_cache: Dict[str, Any],
     browser_inventory: Dict[str, Any] = None,
     assess_shell: bool = False,
+    assess_shell_alarm: bool = True,
 ) -> List[Dict[str, Any]]:
     """AC-45: Judge the execution role a code interpreter, browser or runtime uses.
 
@@ -35650,7 +36101,10 @@ def check_agentcore_tool_execution_role_scope(
     shell inside a runtime session, which reaches the runtime's own role. In
     every other region holding a runtime, it reads only whether an alarm there
     counts shell connections, since filters and alarms are regional. The
-    trust policy and the reuse of a tool role across resources are AC-48's.
+    handler runs the account-wide rows before the availability gate instead and
+    clears assess_shell_alarm on the primary Region, whose alarm those rows
+    read. The trust policy and the reuse of a tool role across resources are
+    AC-48's.
 
     Each runtime's own roleArn is judged by the same rules, because the agent's
     code runs with it and the model steers what that code calls. AC-02 reads the
@@ -35666,7 +36120,11 @@ def check_agentcore_tool_execution_role_scope(
     shell_rows = (
         _command_shell_findings(permission_cache)
         if assess_shell
-        else _command_shell_region_alarm_rows(permission_cache)
+        else (
+            _command_shell_region_alarm_rows(permission_cache)
+            if assess_shell_alarm
+            else []
+        )
     )
     if agentcore_client is None:
         return shell_rows + [
@@ -36535,33 +36993,46 @@ def check_agentcore_runtime_session_limits() -> List[Dict[str, Any]]:
 
     capacity_providers: Dict[str, Any] = {}
     findings = []
+
+    def unread_limits(label: str, error: Exception, action: str) -> None:
+        findings.append(
+            create_finding(
+                check_id="AC-46",
+                finding_name="AgentCore Runtime Session Limits",
+                finding_details=(
+                    f"{label} session limits could not be read: "
+                    f"{_assessment_error_label(error)}."
+                ),
+                resolution=f"Grant {action} on this runtime and retry.",
+                reference=AGENTCORE_RUNTIME_LIFECYCLE_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+
+    # The latest version and each version an endpoint serves are judged.
+    targets: List[Tuple[str, str, Dict[str, Any]]] = []
     for runtime in runtimes:
         runtime_id = runtime.get("agentRuntimeId", "unknown")
         runtime_name = runtime.get("agentRuntimeName", runtime_id)
         label = f"Runtime '{runtime_name}' ({runtime_id})"
-
         try:
             detail = agentcore_client.get_agent_runtime(agentRuntimeId=runtime_id)
         except Exception as error:
-            findings.append(
-                create_finding(
-                    check_id="AC-46",
-                    finding_name="AgentCore Runtime Session Limits",
-                    finding_details=(
-                        f"{label} session limits could not be read: "
-                        f"{_assessment_error_label(error)}."
-                    ),
-                    resolution=(
-                        "Grant bedrock-agentcore:GetAgentRuntime on this runtime "
-                        "and retry."
-                    ),
-                    reference=AGENTCORE_RUNTIME_LIFECYCLE_REFERENCE_URL,
-                    severity=SeverityEnum.INFORMATIONAL,
-                    status=StatusEnum.NA,
-                )
-            )
+            unread_limits(label, error, "bedrock-agentcore:GetAgentRuntime")
             continue
+        targets.append((runtime_id, label, detail))
+        served, served_errors = _served_runtime_details(
+            runtime_id, runtime_name, detail
+        )
+        targets.extend(
+            (runtime_id, version_label, version_detail)
+            for version_label, version_detail in served
+        )
+        for what, error, action in served_errors:
+            unread_limits(what, error, action)
 
+    for runtime_id, label, detail in targets:
         problems: List[str] = []
         fixes: List[str] = []
         unread: List[str] = []
@@ -36810,18 +37281,79 @@ def check_agentcore_runtime_session_limits() -> List[Dict[str, Any]]:
     return findings
 
 
-def check_agentcore_runtime_cost_alerting() -> List[Dict[str, Any]]:
-    """AC-46: Judge the account's cost anomaly alerting when runtimes run here.
+def _agentcore_resources_in_regions(
+    other_regions: Optional[List[str]], operation: str, keys: List[str]
+) -> Tuple[Dict[str, List[Dict[str, Any]]], List[str]]:
+    """List one AgentCore resource family here and in each of `other_regions`.
 
-    The session limits check reports an unavailable client or an unlistable
-    region, so this returns nothing in either case.
+    Returns the resources by Region and each Region not read, with why. A
+    Region where AgentCore has no endpoint, or that the account has not opted
+    into, holds no resource and is skipped, as the handler skips it.
     """
-    if agentcore_client is None:
-        return []
+    global agentcore_client
+    found: Dict[str, List[Dict[str, Any]]] = {}
+    unread: List[str] = []
+    held = agentcore_client
+    clients = [(held.meta.region_name, held)] if held is not None else []
     try:
-        runtimes = _agentcore_list_all("list_agent_runtimes", ["agentRuntimes"])
-    except (BotoCoreError, ClientError):
-        return []
+        for region in other_regions or []:
+            if any(region == known for known, _ in clients):
+                continue
+            try:
+                client = boto3.client(
+                    "bedrock-agentcore-control", config=boto3_config, region_name=region
+                )
+                client.list_agent_runtimes(maxResults=1)
+            except EndpointConnectionError:
+                continue
+            except ClientError as error:
+                if (
+                    error.response.get("Error", {}).get("Code", "")
+                    in REGION_UNAVAILABLE_ERROR_CODES
+                ):
+                    continue
+                unread.append(f"{region} ({_assessment_error_label(error)})")
+                continue
+            except Exception as error:
+                unread.append(f"{region} ({_assessment_error_label(error)})")
+                continue
+            clients.append((region, client))
+        for region, client in clients:
+            agentcore_client = client
+            try:
+                items = _agentcore_list_all(operation, keys)
+            except (AttributeError, BotoCoreError, ClientError) as error:
+                unread.append(f"{region} ({_assessment_error_label(error)})")
+                continue
+            if items:
+                found[region] = items
+    finally:
+        agentcore_client = held
+    return found, unread
+
+
+def _regions_text(regions: Iterable[str]) -> str:
+    """Name one Region as "Region 'r'" and several as "Regions 'a', 'b'"."""
+    names = sorted(regions)
+    return f"Region{'s' if len(names) > 1 else ''} " + ", ".join(
+        f"'{name}'" for name in names
+    )
+
+
+def check_agentcore_runtime_cost_alerting(
+    other_regions: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """AC-46: Judge the account's cost anomaly alerting when runtimes run.
+
+    Cost alerting is account-wide, so the handler runs this once, on the
+    primary Region, over the runtimes here and in `other_regions`. The session
+    limits check reports an unavailable client or an unlistable region, so a
+    Region not read adds no row of its own here.
+    """
+    by_region, _ = _agentcore_resources_in_regions(
+        other_regions, "list_agent_runtimes", ["agentRuntimes"]
+    )
+    runtimes = [runtime for items in by_region.values() for runtime in items]
     if not runtimes:
         return []
     accounts = {
@@ -37855,6 +38387,12 @@ def _agentcore_execution_role_references(
             errors.append((label, error, "bedrock-agentcore:GetAgentRuntime"))
             continue
         references.append(("runtime", label, detail.get("roleArn") or ""))
+        served, served_errors = _served_runtime_details(runtime_id, name, detail)
+        references.extend(
+            ("runtime", version_label, version_detail.get("roleArn") or "")
+            for version_label, version_detail in served
+        )
+        errors.extend(served_errors)
 
     try:
         gateways = _agentcore_list_all("list_gateways", ["items", "gateways"])
@@ -37978,6 +38516,7 @@ def check_agentcore_execution_role_access_analyzer(
     browser_inventory: Dict[str, Any] = None,
     target_regions: Optional[List[str]] = None,
     is_primary_region: bool = True,
+    region: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """AC-48: Require an unused access analyzer over the AgentCore execution roles.
 
@@ -37990,14 +38529,16 @@ def check_agentcore_execution_role_access_analyzer(
     by resource tag is not judged, because the roles' tags are not read.
 
     The primary Region reads every assessed Region; the others give no row.
+    The handler runs it before the availability gate, passing `region`, so a
+    primary Region without AgentCore still reads the others.
     An organization analyzer lives in the delegated administrator account and
     is not listed in a member account, so an account in an organization with
     no analyzer of its own is Not Applicable, and only an account outside any
     organization fails.
     """
-    if agentcore_client is None or (
-        target_regions is not None and not is_primary_region
-    ):
+    if target_regions is not None and not is_primary_region:
+        return []
+    if agentcore_client is None and target_regions is None:
         return []
 
     def finding(details, resolution, severity, status):
@@ -38011,10 +38552,14 @@ def check_agentcore_execution_role_access_analyzer(
             status=status,
         )
 
-    region = agentcore_client.meta.region_name
+    region = region or agentcore_client.meta.region_name
     regions = [region] + [r for r in target_regions or [] if r and r != region]
     try:
-        references, errors = _agentcore_execution_role_references(browser_inventory)
+        references, errors = (
+            _agentcore_execution_role_references(browser_inventory)
+            if agentcore_client is not None
+            else ([], [])
+        )
     except Exception as error:
         return [
             _incomplete_check_finding(
@@ -38647,8 +39192,8 @@ def _agentcore_hosting_subnets(
     theirs under networkConfiguration.vpcConfig.subnets. Bedrock's own VpcConfig
     spelling, subnetIds, belongs to neither API and is not read here.
     GetAgentRuntime without a version reads the latest one, and an endpoint can
-    serve an earlier version, so every version ListAgentRuntimeVersions returns
-    is read as well.
+    serve an earlier version, so each version an endpoint serves is read as
+    well. A version no endpoint serves runs nowhere and hosts no subnet.
     """
     subnets: List[Tuple[str, str]] = []
     errors: List[Tuple[str, Exception, str]] = []
@@ -38676,54 +39221,14 @@ def _agentcore_hosting_subnets(
             logger.warning(f"Could not read runtime {runtime_id}: {error}")
             errors.append((label, error, "bedrock-agentcore:GetAgentRuntime"))
             continue
-        network = detail.get("networkConfiguration") or {}
-        for subnet_id in (network.get("networkModeConfig") or {}).get("subnets") or []:
-            subnets.append((label, subnet_id))
-        try:
-            versions = _agentcore_list_all(
-                "list_agent_runtime_versions",
-                ["agentRuntimes"],
-                agentRuntimeId=runtime_id,
-            )
-        except Exception as error:
-            logger.warning(f"Could not list versions of runtime {runtime_id}: {error}")
-            errors.append(
-                (
-                    f"The earlier versions of {label}",
-                    error,
-                    "bedrock-agentcore:ListAgentRuntimeVersions",
-                )
-            )
-            continue
-        latest = runtime.get("agentRuntimeVersion") or detail.get("agentRuntimeVersion")
-        earlier = sorted(
-            {
-                number
-                for number in (
-                    (version or {}).get("agentRuntimeVersion") for version in versions
-                )
-                if isinstance(number, str) and number and number != latest
-            }
-        )
-        for number in earlier:
-            version_label = f"Runtime '{name}' version {number} ({runtime_id})"
-            try:
-                version_detail = agentcore_client.get_agent_runtime(
-                    agentRuntimeId=runtime_id, agentRuntimeVersion=number
-                )
-            except Exception as error:
-                logger.warning(
-                    f"Could not read runtime {runtime_id} version {number}: {error}"
-                )
-                errors.append(
-                    (version_label, error, "bedrock-agentcore:GetAgentRuntime")
-                )
-                continue
-            network = version_detail.get("networkConfiguration") or {}
+        served, served_errors = _served_runtime_details(runtime_id, name, detail)
+        errors.extend(served_errors)
+        for target_label, target in [(label, detail)] + served:
+            network = target.get("networkConfiguration") or {}
             for subnet_id in (network.get("networkModeConfig") or {}).get(
                 "subnets"
             ) or []:
-                subnets.append((version_label, subnet_id))
+                subnets.append((target_label, subnet_id))
 
     try:
         tool_details, tool_errors = _agentcore_tool_details(browser_inventory)
@@ -42205,10 +42710,12 @@ def _front_door_web_acl_findings(
         )
 
     def rules(details, resolution, severity, status):
+        if status in (StatusEnum.PASSED, StatusEnum.FAILED):
+            details = f"{details} {GATEWAY_WAF_UNREAD_FRONT_DOORS}"
         return create_finding(
             check_id="AG-39",
             finding_name=AGENTCORE_FRONT_DOOR_WAF_FINDING,
-            finding_details=f"{details} {GATEWAY_WAF_UNREAD_FRONT_DOORS}",
+            finding_details=details,
             resolution=resolution,
             reference=WAF_RULE_ACTION_REFERENCE_URL,
             severity=severity,
@@ -42287,10 +42794,7 @@ def _front_door_web_acl_findings(
             acl_label, web_acl_id, web_acl, None, WAF_CLOUDFRONT_RESOURCE_TYPE
         ):
             row["Finding"] = AGENTCORE_FRONT_DOOR_WAF_FINDING
-            row["Finding_Details"] = (
-                f"{row['Finding_Details']} {GATEWAY_WAF_UNREAD_FRONT_DOORS}"
-            )
-            findings.append(row)
+            findings.extend(_with_unread_front_doors([row]))
     return findings
 
 
@@ -42624,16 +43128,20 @@ def check_agentcore_gateway_firewall_manager() -> List[Dict[str, Any]]:
     return findings
 
 
-def check_agentcore_shield_proactive_engagement() -> List[Dict[str, Any]]:
+def check_agentcore_shield_proactive_engagement(
+    other_regions: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     """AC-51: Require SRT proactive engagement where Shield Advanced is active.
 
     AIR-FND-NET-08 asks to register for Shield Response Team proactive
     engagement. It is a setting of a Shield Advanced subscription, so an
     account whose subscription is not ACTIVE is informational N/A, as in the
-    AgentCore Front Door Shield Protection row. The row is emitted only in a
-    Region that holds an AgentCore gateway. With the subscription ACTIVE,
+    AgentCore Front Door Shield Protection row. The row is emitted only when
+    an assessed Region holds an AgentCore gateway. With the subscription ACTIVE,
     DescribeSubscription's ProactiveEngagementStatus must be ENABLED; PENDING
-    and DISABLED fail.
+    and DISABLED fail. The setting is account-wide, so the handler runs this
+    once, on the primary Region, over the gateways here and in
+    `other_regions`.
     """
 
     def finding(details, resolution, severity, status):
@@ -42647,24 +43155,27 @@ def check_agentcore_shield_proactive_engagement() -> List[Dict[str, Any]]:
             status=status,
         )
 
-    if agentcore_client is None:
-        return []
-    try:
-        gateways = _agentcore_list_all("list_gateways", ["items", "gateways"])
-    except (AttributeError, BotoCoreError, ClientError) as error:
-        return [
-            _incomplete_check_finding(
-                check_id="AC-51",
-                finding_name=AGENTCORE_SRT_ENGAGEMENT_FINDING,
-                error=error,
-                reference=SRT_PROACTIVE_ENGAGEMENT_REFERENCE_URL,
-            )
-        ]
+    by_region, unread = _agentcore_resources_in_regions(
+        other_regions, "list_gateways", ["items", "gateways"]
+    )
+    gateways = [gateway for items in by_region.values() for gateway in items]
     if not gateways:
+        if unread:
+            return [
+                finding(
+                    "Whether this account holds an AgentCore gateway was not "
+                    f"read in {'; '.join(unread)}, so SRT proactive engagement "
+                    "was not judged.",
+                    "Grant bedrock-agentcore:ListGateways, then rerun the assessment.",
+                    SeverityEnum.INFORMATIONAL,
+                    StatusEnum.NA,
+                )
+            ]
         return []
     scope = (
-        f"This account holds {len(gateways)} AgentCore gateway(s) in Region "
-        f"'{agentcore_client.meta.region_name}'."
+        f"This account holds {len(gateways)} AgentCore gateway(s) in "
+        f"{_regions_text(by_region)}."
+        + (f" Gateways were not listed in {'; '.join(unread)}." if unread else "")
     )
     if shield_client is None:
         return [
@@ -43004,12 +43515,29 @@ def check_agentcore_cognito_user_pool_authentication() -> List[Dict[str, Any]]:
                 )
             )
             continue
-        url = (
-            (detail.get("authorizerConfiguration") or {}).get("customJWTAuthorizer")
-            or {}
-        ).get("discoveryUrl")
-        if url:
-            discovery_urls.append((url, label))
+        served, served_errors = _served_runtime_details(
+            runtime_id, runtime.get("agentRuntimeName", runtime_id), detail
+        )
+        for what, error, _ in served_errors:
+            findings.append(
+                finding(
+                    f"Could not read which issuer {what[0].lower()}{what[1:]} "
+                    f"accepts tokens from: {_assessment_error_label(error)}.",
+                    could_not_assess,
+                    SeverityEnum.INFORMATIONAL,
+                    StatusEnum.NA,
+                )
+            )
+        for target_label, target in [(label, detail)] + [
+            (f"{version_label[0].lower()}{version_label[1:]}", version_detail)
+            for version_label, version_detail in served
+        ]:
+            url = (
+                (target.get("authorizerConfiguration") or {}).get("customJWTAuthorizer")
+                or {}
+            ).get("discoveryUrl")
+            if url:
+                discovery_urls.append((url, target_label))
 
     pools: Dict[str, Dict[str, Any]] = {}
     other_issuers = 0
@@ -43752,22 +44280,26 @@ def _gateway_jwt_authorization_finding(
 
 
 # NET-04 asks for request filtering on every AI front door. The ones that are
-# not AgentCore gateways are found through their web ACL associations, and that
-# grant was declined, so each gateway WAF row says what it leaves out.
+# not AgentCore gateways are found through their web ACL associations, which
+# this assessment does not read, so each row that judges a gateway's WAF says
+# what its scope leaves out.
 GATEWAY_WAF_UNREAD_FRONT_DOORS = (
-    "API Gateway APIs and Application Load Balancers that front an AI workload "
-    "are not read: finding them and their web ACLs takes the AWS WAF association "
-    "reads wafv2:ListWebACLs and wafv2:ListResourcesForWebACL, whose grant was "
-    "declined for this assessment. A CloudFront distribution is judged where an "
-    "origin is an AgentCore gateway, in the AgentCore Front Door WAF Rule "
-    "Coverage row."
+    "This assessment's scope is AgentCore gateways and the CloudFront "
+    "distributions whose origin is a gateway, judged in the AgentCore Front Door "
+    "WAF Rule Coverage row. API Gateway APIs and Application Load Balancers that "
+    "front an AI workload are outside it: finding them and their web ACLs takes "
+    "the AWS WAF association reads wafv2:ListWebACLs and "
+    "wafv2:ListResourcesForWebACL, which the assessment role does not hold."
 )
 
 
 def _with_unread_front_doors(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Append the unread front doors to each AG-27 and AG-39 row."""
+    """Append the scope statement to each AG-27 and AG-39 row that judged a gateway."""
     for finding in findings:
-        if finding.get("Check_ID") in ("AG-27", "AG-39"):
+        if finding.get("Check_ID") in ("AG-27", "AG-39") and finding.get("Status") in (
+            StatusEnum.PASSED.value,
+            StatusEnum.FAILED.value,
+        ):
             finding["Finding_Details"] = (
                 f"{finding['Finding_Details']} {GATEWAY_WAF_UNREAD_FRONT_DOORS}"
             )
@@ -43806,73 +44338,69 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                     status=StatusEnum.NA,
                 )
             )
-        return _with_unread_front_doors(findings)
+        return findings
 
     gateway_check_ids = ["AG-24", "AG-25", "AG-26", "AG-27", "AG-39"]
 
     try:
         gateways = _agentcore_list_all("list_gateways", ["items", "gateways"])
-    except (AttributeError, ClientError) as error:
-        return _with_unread_front_doors(
-            _incomplete_check_findings(
-                gateway_check_ids,
-                "Agentic AI Gateway Security Controls",
-                error,
-                "",
-                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
-            )
+    except (AttributeError, BotoCoreError, ClientError) as error:
+        return _incomplete_check_findings(
+            gateway_check_ids,
+            "Agentic AI Gateway Security Controls",
+            error,
+            "",
+            reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
         )
 
     if not gateways:
-        return _with_unread_front_doors(
-            [
-                create_finding(
-                    check_id="AG-24",
-                    finding_name="Agentic AI Gateway Inbound Authorization",
-                    finding_details="No AgentCore Gateways found",
-                    resolution="No action required",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
-                    severity=SeverityEnum.INFORMATIONAL,
-                    status=StatusEnum.NA,
-                ),
-                create_finding(
-                    check_id="AG-25",
-                    finding_name="Agentic AI Gateway Tool Policy Enforcement",
-                    finding_details="No AgentCore Gateways found",
-                    resolution="No action required",
-                    reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
-                    severity=SeverityEnum.INFORMATIONAL,
-                    status=StatusEnum.NA,
-                ),
-                create_finding(
-                    check_id="AG-26",
-                    finding_name="Agentic AI Gateway Error Detail Exposure",
-                    finding_details="No AgentCore Gateways found",
-                    resolution="No action required",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
-                    severity=SeverityEnum.INFORMATIONAL,
-                    status=StatusEnum.NA,
-                ),
-                create_finding(
-                    check_id="AG-27",
-                    finding_name="Agentic AI Gateway WAF Protection",
-                    finding_details="No AgentCore Gateways found",
-                    resolution="No action required",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
-                    severity=SeverityEnum.INFORMATIONAL,
-                    status=StatusEnum.NA,
-                ),
-                create_finding(
-                    check_id="AG-39",
-                    finding_name="Agentic AI Gateway WAF Rule Coverage",
-                    finding_details="No AgentCore Gateways found",
-                    resolution="No action required",
-                    reference=WAF_RULE_ACTION_REFERENCE_URL,
-                    severity=SeverityEnum.INFORMATIONAL,
-                    status=StatusEnum.NA,
-                ),
-            ]
-        )
+        return [
+            create_finding(
+                check_id="AG-24",
+                finding_name="Agentic AI Gateway Inbound Authorization",
+                finding_details="No AgentCore Gateways found",
+                resolution="No action required",
+                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            ),
+            create_finding(
+                check_id="AG-25",
+                finding_name="Agentic AI Gateway Tool Policy Enforcement",
+                finding_details="No AgentCore Gateways found",
+                resolution="No action required",
+                reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            ),
+            create_finding(
+                check_id="AG-26",
+                finding_name="Agentic AI Gateway Error Detail Exposure",
+                finding_details="No AgentCore Gateways found",
+                resolution="No action required",
+                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            ),
+            create_finding(
+                check_id="AG-27",
+                finding_name="Agentic AI Gateway WAF Protection",
+                finding_details="No AgentCore Gateways found",
+                resolution="No action required",
+                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            ),
+            create_finding(
+                check_id="AG-39",
+                finding_name="Agentic AI Gateway WAF Rule Coverage",
+                finding_details="No AgentCore Gateways found",
+                resolution="No action required",
+                reference=WAF_RULE_ACTION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            ),
+        ]
 
     for gateway in gateways:
         gateway_id = gateway.get("gatewayId", "unknown")
@@ -44390,6 +44918,7 @@ def lambda_handler(event, context):
     global agentcore_data_client, network_firewall_client, inspector2_client
     global cloudfront_client, shield_client, apigateway_client
     start_time = time.time()
+    watchdog: Optional[_ReportWatchdog] = None
     lambda_budget_seconds = (
         context.get_remaining_time_in_millis() / 1000
         if context is not None
@@ -44484,6 +45013,10 @@ def lambda_handler(event, context):
 
         # Collect all findings
         all_findings = []
+        completed_legs: Set[Tuple[str, str]] = set()
+        watchdog = _ReportWatchdog(
+            context, execution_id, region, all_findings, completed_legs
+        )
 
         # Retrieve permission cache (shared/global IAM data)
         permission_cache_error = None
@@ -44493,6 +45026,111 @@ def lambda_handler(event, context):
             logger.warning(f"Failed to retrieve permission cache: {e}")
             permission_cache = None
             permission_cache_error = e
+
+        # AWS Agent Registry has its own Lambda, report artifact, and timeout
+        # budget. AgentCore proceeds directly to its Runtime availability probe.
+        deadline_reached = False
+        # Reset per-invocation so a warm container cannot leak a previous
+        # region's client if creation below fails.
+        agentcore_client = None
+        runtime_probe_auth_error_code = None
+        try:
+            agentcore_client = boto3.client(
+                "bedrock-agentcore-control", config=boto3_config, region_name=region
+            )
+        except Exception as e:
+            # The client could not even be constructed (e.g. the SDK in this
+            # runtime does not know the service). This is the one case where the
+            # region genuinely cannot be assessed.
+            logger.warning(
+                f"Failed to initialize bedrock-agentcore-control client: {e}"
+            )
+            agentcore_client = None
+
+        if agentcore_client is not None:
+            # Test service availability with a lightweight call
+            try:
+                agentcore_client.list_agent_runtimes(maxResults=1)
+                logger.info("Successfully initialized bedrock-agentcore-control client")
+            except EndpointConnectionError:
+                logger.info(
+                    f"AgentCore service not available in region {region}, skipping"
+                )
+                agentcore_client = None
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "")
+                if error_code in REGION_UNAVAILABLE_ERROR_CODES:
+                    logger.info(
+                        f"AgentCore not accessible in region {region} ({error_code}), skipping"
+                    )
+                    agentcore_client = None
+                elif error_code in AUTHENTICATION_ERROR_CODES:
+                    runtime_probe_auth_error_code = error_code
+                    logger.warning(
+                        "AgentCore Runtime availability probe returned credential "
+                        f"or authentication error {error_code}; writing an "
+                        "incomplete assessment"
+                    )
+                else:
+                    # Service is reachable but returned another API error (e.g. access
+                    # denied) — proceed; individual checks handle their own errors.
+                    logger.info(
+                        f"AgentCore client initialized (probe returned {error_code})"
+                    )
+            except Exception as e:
+                # An unexpected probe failure (e.g. a boto3/botocore SDK param or
+                # operation mismatch such as ParamValidationError/AttributeError)
+                # says nothing about regional availability. Treating it as "not
+                # available" would silently skip every AgentCore check and emit a
+                # false N/A report, so keep the client and let the individual
+                # checks surface their own errors instead.
+                logger.warning(
+                    f"AgentCore availability probe raised an unexpected error, "
+                    f"proceeding with checks: {e}"
+                )
+
+        # The account-wide legs below read this Region's AgentCore client when
+        # AgentCore is available here, so the probe runs before them.
+        browser_inventory = (
+            get_custom_browser_inventory()
+            if runtime_probe_auth_error_code is None
+            else {"items": [], "errors": [], "list_error": None}
+        )
+        other_regions = [r for r in target_regions or [] if r and r != region]
+        # Account-wide legs of regional checks. They run here, before the
+        # availability gate, so a primary Region without AgentCore still judges
+        # them, and only here, so no other Region repeats the verdict.
+        account_legs = [
+            (
+                ["AC-42"],
+                "Evaluation Writer Pass Role Scope",
+                lambda: check_agentcore_evaluation_writer_pass_role_scope(
+                    permission_cache
+                ),
+            ),
+            (
+                ["AC-45"],
+                "Runtime Command Shell Access",
+                lambda: _command_shell_findings(permission_cache),
+            ),
+            (
+                ["AC-46"],
+                "Runtime Cost Anomaly Alerting",
+                lambda: check_agentcore_runtime_cost_alerting(other_regions),
+            ),
+            (
+                ["AC-48"],
+                "Execution Role Access Analyzer",
+                lambda: check_agentcore_execution_role_access_analyzer(
+                    browser_inventory, target_regions, True, region
+                ),
+            ),
+            (
+                ["AC-51"],
+                "Shield Proactive Engagement",
+                lambda: check_agentcore_shield_proactive_engagement(other_regions),
+            ),
+        ]
 
         # Run global IAM-only checks once (on the primary region) so the same role
         # violations are not reported once per scanned region. These run before the
@@ -44569,6 +45207,7 @@ def lambda_handler(event, context):
                         "Log Tamper Guardrail",
                         lambda: check_agentcore_log_tamper_scp(target_regions),
                     ),
+                    *account_legs,
                 ]
             else:
                 global_checks = [
@@ -44667,8 +45306,18 @@ def lambda_handler(event, context):
                         "Log Tamper Guardrail",
                         lambda: check_agentcore_log_tamper_scp(target_regions),
                     ),
+                    *account_legs,
                 ]
-            for check_ids, check_name, check_func in global_checks:
+            for index, (check_ids, check_name, check_func) in enumerate(global_checks):
+                if not check_timeout():
+                    logger.error(
+                        f"Timeout approaching, skipping global checks from {check_name}"
+                    )
+                    deadline_reached = True
+                    all_findings.extend(
+                        _skipped_global_leg_findings(global_checks[index:])
+                    )
+                    break
                 try:
                     logger.info(f"Running global check: {check_name}")
                     global_findings = check_func()
@@ -44685,68 +45334,6 @@ def lambda_handler(event, context):
                             GLOBAL_REGION_LABEL,
                         )
                     )
-
-        # AWS Agent Registry has its own Lambda, report artifact, and timeout
-        # budget. AgentCore proceeds directly to its Runtime availability probe.
-        deadline_reached = False
-        # Reset per-invocation so a warm container cannot leak a previous
-        # region's client if creation below fails.
-        agentcore_client = None
-        runtime_probe_auth_error_code = None
-        try:
-            agentcore_client = boto3.client(
-                "bedrock-agentcore-control", config=boto3_config, region_name=region
-            )
-        except Exception as e:
-            # The client could not even be constructed (e.g. the SDK in this
-            # runtime does not know the service). This is the one case where the
-            # region genuinely cannot be assessed.
-            logger.warning(
-                f"Failed to initialize bedrock-agentcore-control client: {e}"
-            )
-            agentcore_client = None
-
-        if agentcore_client is not None:
-            # Test service availability with a lightweight call
-            try:
-                agentcore_client.list_agent_runtimes(maxResults=1)
-                logger.info("Successfully initialized bedrock-agentcore-control client")
-            except EndpointConnectionError:
-                logger.info(
-                    f"AgentCore service not available in region {region}, skipping"
-                )
-                agentcore_client = None
-            except ClientError as e:
-                error_code = e.response.get("Error", {}).get("Code", "")
-                if error_code in REGION_UNAVAILABLE_ERROR_CODES:
-                    logger.info(
-                        f"AgentCore not accessible in region {region} ({error_code}), skipping"
-                    )
-                    agentcore_client = None
-                elif error_code in AUTHENTICATION_ERROR_CODES:
-                    runtime_probe_auth_error_code = error_code
-                    logger.warning(
-                        "AgentCore Runtime availability probe returned credential "
-                        f"or authentication error {error_code}; writing an "
-                        "incomplete assessment"
-                    )
-                else:
-                    # Service is reachable but returned another API error (e.g. access
-                    # denied) — proceed; individual checks handle their own errors.
-                    logger.info(
-                        f"AgentCore client initialized (probe returned {error_code})"
-                    )
-            except Exception as e:
-                # An unexpected probe failure (e.g. a boto3/botocore SDK param or
-                # operation mismatch such as ParamValidationError/AttributeError)
-                # says nothing about regional availability. Treating it as "not
-                # available" would silently skip every AgentCore check and emit a
-                # false N/A report, so keep the client and let the individual
-                # checks surface their own errors instead.
-                logger.warning(
-                    f"AgentCore availability probe raised an unexpected error, "
-                    f"proceeding with checks: {e}"
-                )
 
         if runtime_probe_auth_error_code is not None:
             all_findings.append(
@@ -44774,6 +45361,7 @@ def lambda_handler(event, context):
                 region,
                 runtime_probe_auth_error_code,
             )
+            watchdog.finish()
             csv_content = generate_csv_report(all_findings)
             s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
             return {
@@ -44815,6 +45403,7 @@ def lambda_handler(event, context):
             for finding in all_findings:
                 if not finding.get("Region"):
                     finding["Region"] = region
+            watchdog.finish()
             csv_content = generate_csv_report(all_findings)
             s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
             return {
@@ -44830,8 +45419,6 @@ def lambda_handler(event, context):
         logger.info(
             f"Starting AgentCore security assessment for execution: {execution_id}"
         )
-
-        browser_inventory = get_custom_browser_inventory()
 
         # Execute regional assessment checks (IAM-only checks AC-02/AC-03 and the
         # global service-linked role check AC-09 are run separately, once, on the
@@ -44925,7 +45512,7 @@ def lambda_handler(event, context):
                 lambda: check_agentcore_monitoring_account_controls(permission_cache),
             ),
             (
-                ["AG-24", "AG-25", "AG-26", "AG-27"],
+                ["AG-24", "AG-25", "AG-26", "AG-27", "AG-39"],
                 "Agentic Gateway Security",
                 check_agentcore_gateway_agentic_security,
             ),
@@ -45037,9 +45624,7 @@ def lambda_handler(event, context):
             (
                 ["AC-42"],
                 "Evaluation Pass Role Scope",
-                lambda: check_agentcore_evaluation_pass_role_scope(
-                    permission_cache, assess_writers=is_primary_region
-                ),
+                lambda: check_agentcore_evaluation_pass_role_scope(permission_cache),
             ),
             (
                 ["AC-43"],
@@ -45057,18 +45642,13 @@ def lambda_handler(event, context):
                 lambda: check_agentcore_tool_execution_role_scope(
                     permission_cache,
                     browser_inventory,
-                    assess_shell=is_primary_region,
+                    assess_shell_alarm=not is_primary_region,
                 ),
             ),
             (
                 ["AC-46"],
                 "Runtime Session Limits",
                 check_agentcore_runtime_session_limits,
-            ),
-            (
-                ["AC-46"],
-                "Runtime Cost Anomaly Alerting",
-                check_agentcore_runtime_cost_alerting,
             ),
             (
                 ["AC-41"],
@@ -45094,11 +45674,18 @@ def lambda_handler(event, context):
                     browser_inventory, target_regions, is_primary_region
                 ),
             ),
+            # The primary Region judges the analyzer before the gate; another
+            # Region judges only itself, when the state machine sends no
+            # TargetRegions.
             (
                 ["AC-48"],
                 "Execution Role Access Analyzer",
-                lambda: check_agentcore_execution_role_access_analyzer(
-                    browser_inventory, target_regions, is_primary_region
+                lambda: (
+                    []
+                    if is_primary_region
+                    else check_agentcore_execution_role_access_analyzer(
+                        browser_inventory, target_regions, is_primary_region
+                    )
                 ),
             ),
             (
@@ -45142,11 +45729,6 @@ def lambda_handler(event, context):
                 check_agentcore_gateway_firewall_manager,
             ),
             (
-                ["AC-51"],
-                "Shield Proactive Engagement",
-                check_agentcore_shield_proactive_engagement,
-            ),
-            (
                 ["AC-52"],
                 "Cognito User Pool Authentication",
                 check_agentcore_cognito_user_pool_authentication,
@@ -45171,6 +45753,9 @@ def lambda_handler(event, context):
                 deadline_reached = True
                 break
 
+            completed_legs.update(
+                (check_id, f"AgentCore {check_name}") for check_id in check_ids
+            )
             try:
                 logger.info(f"Running check: {check_name}")
                 check_start = time.time()
@@ -45199,7 +45784,9 @@ def lambda_handler(event, context):
                 "AgentCore regional checks stopped near the Lambda timeout; "
                 "backfilling skipped controls as N/A"
             )
-            prepare_agentcore_timeout_report_findings(all_findings, region)
+            prepare_agentcore_timeout_report_findings(
+                all_findings, region, completed_legs
+            )
         else:
             # Inject region into all findings that don't have it set
             for finding in all_findings:
@@ -45213,6 +45800,7 @@ def lambda_handler(event, context):
                     finding["Region"] = region
 
         # Generate CSV report
+        watchdog.finish()
         logger.info(f"Generating CSV report with {len(all_findings)} total findings")
         csv_content = generate_csv_report(all_findings)
 
@@ -45259,3 +45847,7 @@ def lambda_handler(event, context):
     except Exception as e:
         logger.error(f"Fatal error in lambda_handler: {e}", exc_info=True)
         raise
+    finally:
+        # A timer left running would fire in a later, thawed invocation.
+        if watchdog is not None:
+            watchdog.finish()
