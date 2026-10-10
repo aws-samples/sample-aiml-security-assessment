@@ -336,6 +336,25 @@ def test_legacy_finserv_input_fail_state_name_fits_the_step_functions_limit():
     assert len(LEGACY_INPUT_FAIL_STATE) <= 80
 
 
+def test_agentcore_payload_carries_every_resolved_region(asl_parsed):
+    """AC-48 and AC-26 compare Regions at RegionIndex 0, so the AgentCore
+    Lambda must receive the Region list the Map iterates over."""
+    scan_regions = asl_parsed["States"]["Scan Regions"]
+    branches = scan_regions["ItemProcessor"]["States"]["Run Security Assessments"][
+        "Branches"
+    ]
+    matches = [b for b in branches if "AgentCore Security Assessment" in b["States"]]
+    assert len(matches) == 1
+    payload = matches[0]["States"]["AgentCore Security Assessment"]["Parameters"][
+        "Payload"
+    ]
+
+    assert scan_regions["ItemsPath"] == "$.ResolvedRegions.regions"
+    assert scan_regions["ItemSelector"]["OriginalInput.$"] == "$"
+    assert payload["TargetRegions.$"] == "$.OriginalInput.ResolvedRegions.regions"
+    assert payload["RegionIndex.$"] == "$.RegionIndex"
+
+
 # ---------------------------------------------------------------------------
 # CloudFormation identities: renaming the logical ID or FunctionName forces a
 # Lambda replacement, changing ARNs, permissions, logs, and rollback behavior.

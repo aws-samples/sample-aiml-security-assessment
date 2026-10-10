@@ -71,7 +71,7 @@ additional compatibility syntax.
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 94 core security checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus 38 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 160 core security checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus 39 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
 
 The current deployment is validated only in the standard AWS commercial
 partition (`aws`). Partition-aware implementation details must not be treated
@@ -140,9 +140,9 @@ sample-aiml-security-assessment/
 ├── CLAUDE.md                         # Compatibility shim that loads AGENTS.md
 ├── aiml-security-assessment/
 │   ├── functions/security/
-│   │   ├── bedrock_assessments/      # Bedrock security checks (40)
-│   │   ├── sagemaker_assessments/    # SageMaker checks (29; SM-29 reserved)
-│   │   ├── agentcore_assessments/    # AgentCore security checks (17)
+│   │   ├── bedrock_assessments/      # Bedrock security checks (57)
+│   │   ├── sagemaker_assessments/    # SageMaker checks (42; SM-29 reserved)
+│   │   ├── agentcore_assessments/    # AgentCore security checks (53)
 │   │   ├── agent_registry_assessments/  # AWS Agent Registry checks (8)
 │   │   ├── responsible_ai_grc_assessments/  # Optional Responsible AI GRC checks (64)
 │   │   ├── owasp_assessments/        # Optional OWASP Top 10 for LLM checks (12)
@@ -346,7 +346,7 @@ selection, and single-/multi-account reporting.
 
 ## Assessment Structure
 
-The framework includes **94 core security checks** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus **38 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableResponsibleAIGRCAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **160 core security checks** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus **39 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableResponsibleAIGRCAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
@@ -405,7 +405,7 @@ environment variable, and every `sam deploy` path in `buildspec.yml`.
 
 | CloudFormation parameter | Lambda environment variable | Check |
 | --- | --- | --- |
-| `RequireBedrockZeroDataRetention` | `REQUIRE_BEDROCK_ZERO_DATA_RETENTION` | BR-37 |
+| `RequireBedrockZeroDataRetention` | `REQUIRE_BEDROCK_ZERO_DATA_RETENTION` | None. Deprecated: still accepted and forwarded so existing stacks update, but not read. BR-37 judges the retention mode at every setting. |
 | `RequireMarketplaceEndpointCMK` | `REQUIRE_MARKETPLACE_ENDPOINT_CMK` | BR-40 |
 | `RequireAgentCoreOnlineEvaluation` | `REQUIRE_AGENTCORE_ONLINE_EVALUATION` | AC-17 |
 | `RequireAgentRegistryManualApproval` | `REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL` | AR-03 |
@@ -413,10 +413,12 @@ environment variable, and every `sam deploy` path in `buildspec.yml`.
 | `AgentCoreTokenVaultId` | `AGENTCORE_TOKEN_VAULT_ID` | AC-14 |
 | `ApprovedExternalAccountIds` | `AIML_APPROVED_EXTERNAL_ACCOUNT_IDS` | SM-30 |
 | `ApprovedOrganizationIds` | `AIML_APPROVED_ORG_IDS` | SM-30 |
+| `EnableSageMakerArtifactObjectReads` | `ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS` | SM-43 |
 
 The top-level deployment templates expose the approved-account and
 approved-organization values to CodeBuild as `APPROVED_EXTERNAL_ACCOUNT_IDS`
-and `APPROVED_ORGANIZATION_IDS`; `buildspec.yml` then maps them to the SAM
+and `APPROVED_ORGANIZATION_IDS`, and `EnableSageMakerArtifactObjectReads` as
+`ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS`; `buildspec.yml` then maps them to the SAM
 parameters shown above. Add or rename a baseline only when all layers and the
 public deployment documentation are updated together.
 
@@ -522,8 +524,8 @@ def check_new_service_security(permission_cache, region: str = ""):
 
 ```txt
 # requirements.txt
-boto3==1.43.85
-botocore==1.43.85
+boto3==1.43.108
+botocore==1.43.108
 ```
 
 1. **Create Schema File**:
@@ -817,7 +819,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 
 ### Current Status
 
-- **AI/ML Assessment**: 94 core checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, 38 always-on Agentic AI Security checks, plus 64 optional Responsible AI GRC checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
+- **AI/ML Assessment**: 160 core checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, 39 always-on Agentic AI Security checks, plus 64 optional Responsible AI GRC checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
 
 ### Potential Additions
 
@@ -916,14 +918,14 @@ the same check):
 
 ## Extending or Adding Lenses
 
-The Agentic AI Security lens (AG-01 through AG-38) is **synthesized at runtime**, not produced by a separate scanner. It re-uses findings from the core Bedrock, AgentCore, and AWS Agent Registry assessments plus a small number of native gateway checks.
+The Agentic AI Security lens (AG-01 through AG-39) is **synthesized at runtime**, not produced by a separate scanner. It re-uses findings from the core Bedrock, AgentCore, and AWS Agent Registry assessments plus a small number of native gateway checks.
 
 - Mapping dictionaries live in three places:
   - `bedrock_assessments/app.py` → `AGENTIC_BEDROCK_CHECK_MAPPINGS`
   - `agentcore_assessments/app.py` → `AGENTIC_AGENTCORE_CHECK_MAPPINGS`
   - `agent_registry_assessments/app.py` → `AGENTIC_AGENT_REGISTRY_CHECK_MAPPINGS`
-- Native checks (currently AG-24 through AG-27) are implemented directly inside the AgentCore assessment package because they require the `bedrock-agentcore-control` client.
-- When adding new AG checks, manually allocate numbers to avoid collisions across all three mapping dictionaries and the native checks. The current high-water mark for the catalog is AG-38.
+- Native checks (currently AG-24 through AG-27 and AG-39) are implemented directly inside the AgentCore assessment package because they require the `bedrock-agentcore-control` client.
+- When adding new AG checks, manually allocate numbers to avoid collisions across all three mapping dictionaries and the native checks. The current high-water mark for the catalog is AG-39.
 - The HTML report routes the lens through the `AG-` prefix as its dedicated Agentic AI assessment area. `COMPLIANCE_STANDARDS` is the separate registry for OWASP and future compliance standards.
 - Follow the same cross-file execution, artifact, and report checks as a new compliance standard (CloudFormation parameters are not required for the always-on Agentic lens, but any new native checks still need IAM grants in both SAM runtime templates).
 - Update `docs/SECURITY_CHECKS.md` and run the full mapping-drift, test-coverage, and gate checklist before merging.

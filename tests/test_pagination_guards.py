@@ -29,8 +29,25 @@ NON_PAGEABLE_CALLS = {
         "list_tags_for_resource",
     ),
     (
+        "bedrock_assessments/app.py",
+        "check_bedrock_resource_owner_tag",
+        "list_tags_for_resource",
+    ),
+    (
         "responsible_ai_grc_assessments/app.py",
         "check_model_inventory_tagging",
+        "list_tags_for_resource",
+    ),
+    # AC-41: bedrock-agentcore-control and logs ListTagsForResource take only
+    # resourceArn and return only tags.
+    (
+        "agentcore_assessments/app.py",
+        "read_tags",
+        "list_tags_for_resource",
+    ),
+    (
+        "agentcore_assessments/app.py",
+        "check_agentcore_evaluation_personal_data",
         "list_tags_for_resource",
     ),
     (
@@ -60,6 +77,13 @@ BOUNDED_DIRECT_CALLS = {
         "detect_bedrock_regional_footprint",
         "list_guardrails",
     ): ("maxResults", 1),
+    # A member account probes whether it is a delegated administrator for
+    # policy management; the result of the read decides, not its content.
+    (
+        "bedrock_assessments/app.py",
+        "_organization_policy_context",
+        "list_policies",
+    ): ("MaxResults", 1),
     (
         "bedrock_assessments/app.py",
         "detect_bedrock_regional_footprint",
@@ -108,6 +132,34 @@ BOUNDED_DIRECT_CALLS = {
     (
         "agentcore_assessments/app.py",
         "lambda_handler",
+        "list_agent_runtimes",
+    ): ("maxResults", 1),
+    # AC-48 probes each other Region with the handler's availability call
+    # before it lists that Region's resources in full.
+    (
+        "agentcore_assessments/app.py",
+        "_agentcore_other_region_role_references",
+        "list_agent_runtimes",
+    ): ("maxResults", 1),
+    # AC-33 probes each assessed Region the same way before it reads that
+    # Region's runtimes and gateways in full.
+    (
+        "agentcore_assessments/app.py",
+        "_workload_identities_by_role_in_regions",
+        "list_agent_runtimes",
+    ): ("maxResults", 1),
+    # AC-32 probes each assessed Region before it reads the issuers that
+    # Region's runtime and gateway authorizers trust.
+    (
+        "agentcore_assessments/app.py",
+        "_jwt_authorizer_issuers",
+        "list_agent_runtimes",
+    ): ("maxResults", 1),
+    # AC-46 and AC-51 probe each other assessed Region before they list its
+    # runtimes or gateways in full, once, on the primary Region.
+    (
+        "agentcore_assessments/app.py",
+        "_agentcore_resources_in_regions",
         "list_agent_runtimes",
     ): ("maxResults", 1),
     (
