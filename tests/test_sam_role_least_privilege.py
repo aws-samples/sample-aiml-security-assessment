@@ -338,6 +338,7 @@ _EXPECTED_ACTIONS = {
         "organizations:ListRoots",
         "organizations:ListTargetsForPolicy",
         "rds:DescribeDBClusters",
+        "s3:GetBucketLocation",
         "s3:GetBucketObjectLockConfiguration",
         "s3:GetBucketPolicy",
         "s3:GetBucketVersioning",
