@@ -281,9 +281,14 @@ back `Passed` names what it could not read.
   a Network Firewall leg and reads transit gateway routes.
 - **AWS Agent Registry and Agentic AI Security.** `AR-01` reads users and group
   policies beside roles, and fails a wildcard `agent-registry` action on a
-  wildcard resource. `AR-03` fails every registry with auto-approval rules.
-  `AR-10` evaluates the EventBridge content matchers on `source` and
-  `detail-type` and credits a rule only with a delivering target. `AG-24` takes
+  resource wildcard that reaches beyond one named registry; `registry/<id>/*`
+  stays bounded. `AR-03` fails every registry with auto-approval rules.
+  `AR-09` reports a principal only when its publish and approve grants cover
+  overlapping resources, and stops reading the `bedrock-agentcore` namespace
+  on 30 October 2026. `AR-10` evaluates the EventBridge content matchers on
+  `source` and `detail-type`, reads each top-level `$or` alternative, and
+  credits a rule only with a delivering target. On a Lambda deadline it still
+  reports the rules it read. `AG-24` takes
   an `AUTHENTICATE_ONLY` gateway's verdict from `AG-25`. `AG-39` and `AC-51`
   credit a WAF filter only to a `Block` rule that no earlier `Allow` on the
   same attack class bypasses. `AG-39` fails a gateway set to `FAIL_OPEN`.
@@ -370,6 +375,17 @@ back `Passed` names what it could not read.
   later `AC-51` legs, is named as `N/A` instead of disappearing. `AG-39` is
   backfilled with `AG-24` to `AG-27`, and a transport error listing gateways
   makes each of them incomplete instead of ending the gateway check.
+
+### Removed
+
+- The `RequireAgentRegistryManualApproval` deployment parameter and the
+  `REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL` Lambda environment variable.
+  `AR-03` now fails every registry with auto-approval rules, which the
+  parameter used to gate. This is a breaking change for stack updates: an
+  `update-stack` that still passes the parameter fails, including one that
+  sets `UsePreviousValue=true` for it or reads it from a saved parameter file,
+  so drop it before updating. Direct AWS SAM users drop it from their
+  parameter overrides for the same reason.
 
 ### Deployment impact
 

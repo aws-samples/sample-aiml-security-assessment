@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from fnmatch import fnmatchcase
 from io import StringIO
 from typing import Any, Dict, Iterable, List, Optional
@@ -33,9 +33,9 @@ REGISTRY_PAGE_SIZE = 100
 RECORD_INVENTORY_LIMIT = 1000
 REGISTRY_IAM_NAMESPACE = "agent-registry"
 # Both namespaces grant the Registry actions. Support for the public-preview
-# `bedrock-agentcore` spelling ends on 30 October 2026, so until then a question
-# about who holds a Registry authority has to read the policy in both namespaces
-# or a preview-era grant answers it as absent.
+# `bedrock-agentcore` spelling ends on REGISTRY_PREVIEW_EVENT_SOURCE_END, so until
+# then a question about who holds a Registry authority has to read the policy in
+# both namespaces or a preview-era grant answers it as absent.
 REGISTRY_IAM_NAMESPACES = (REGISTRY_IAM_NAMESPACE, "bedrock-agentcore")
 REGISTRY_PUBLISH_ACTIONS = (
     "CreateRegistryRecord",
@@ -126,10 +126,12 @@ REVIEW_PIPELINE_LABEL = (
     "a Lambda function, SNS topic, SQS queue or Step Functions state machine"
 )
 REGISTRY_EVENT_SOURCE = "aws.agent-registry"
-# The public-preview event source. It stops publishing on the date below, so a
-# rule that matches only this source routes nothing after it.
+# The public-preview event source and IAM namespace. Both stop working on the
+# date below, so a rule that matches only this source routes nothing after it
+# and a `bedrock-agentcore` grant no longer reaches a Registry action.
 REGISTRY_PREVIEW_EVENT_SOURCE = "aws.bedrock-agentcore"
-REGISTRY_PREVIEW_EVENT_SOURCE_END = "30 October 2026"
+REGISTRY_PREVIEW_EVENT_SOURCE_END = date(2026, 10, 30)
+REGISTRY_PREVIEW_EVENT_SOURCE_END_LABEL = "30 October 2026"
 # The record transitions that carry an approval decision. AR-03 and AR-09 assert
 # how the approval workflow is configured and who may decide; routing these three
 # is what makes the decisions observable.
@@ -430,20 +432,39 @@ def _boundary_unread(permission_cache: Dict[str, Any]) -> set:
     }
 
 
+def _has_wildcard(value: str) -> bool:
+    return "*" in value or "?" in value
+
+
 def _resource_unbounded(statement: Dict[str, Any]) -> bool:
     """Whether an Allow's resource scope is left open: every resource, a
-    wildcard in any segment of a Resource ARN, or a NotResource.
+    Resource ARN with a wildcard before the end of its registry id, or a
+    NotResource.
 
     A registry id is service-generated, twelve to sixteen letters and digits,
     so a wildcard in it cannot select registries by name, and one in the
-    Region or account segment reaches every registry there.
+    Region or account segment reaches every registry there. A wildcard after a
+    concrete partition, service, Region, account and registry id, such as
+    `registry/<id>/record/*`, stays inside that one registry.
     """
     if "NotResource" in statement:
         return True
-    return any(
-        "*" in resource or "?" in resource
-        for resource in _as_list(statement.get("Resource", []))
-    )
+    for resource in _as_list(statement.get("Resource", [])):
+        if not _has_wildcard(resource):
+            continue
+        parts = resource.split(":", 5)
+        if len(parts) != 6 or any(_has_wildcard(part) for part in parts[:5]):
+            return True
+        resource_type, _, rest = parts[5].partition("/")
+        registry_id, separator, _ = rest.partition("/")
+        if (
+            resource_type != "registry"
+            or not registry_id
+            or not separator
+            or _has_wildcard(registry_id)
+        ):
+            return True
+    return False
 
 
 def _has_registry_access(permissions: Dict[str, Any], wildcard_only: bool) -> bool:
@@ -743,7 +764,7 @@ def check_agent_registry_full_access(
             create_finding(
                 "AR-01",
                 "AWS Agent Registry IAM Wildcard Permissions",
-                "The following principals have wildcard or allow-except AWS Agent Registry permissions on every resource, on a resource ARN with a wildcard in any segment, or on a NotResource: "
+                "The following principals have wildcard or allow-except AWS Agent Registry permissions on every resource, on a resource ARN with a wildcard that reaches beyond one named registry, or on a NotResource: "
                 + ", ".join(sorted(wildcard))
                 + ". "
                 + SCP_NOT_EVALUATED_NOTE,
@@ -767,7 +788,8 @@ def check_agent_registry_full_access(
                 f"None of the {len(identities)} cached roles and users has an "
                 "AWS Agent Registry full-access policy, a wildcard or allow-except "
                 "Registry grant on every resource, on a resource ARN with a "
-                "wildcard in any segment or on a NotResource, or a grant that "
+                "wildcard that reaches beyond one named registry or on a "
+                "NotResource, or a grant that "
                 "merges Registry read and write actions on one resource type.",
                 "No action required",
                 IAM_FULL_ACCESS_REFERENCE_URL,
@@ -1007,9 +1029,20 @@ def check_agent_registry_stale_access(
     )
 
 
+def _preview_support_ended() -> bool:
+    """Whether the public-preview source and namespace have stopped working."""
+    return datetime.now(timezone.utc).date() >= REGISTRY_PREVIEW_EVENT_SOURCE_END
+
+
 def _qualified_registry_actions(local_name: str) -> tuple[str, ...]:
-    """Both namespace spellings of one Registry action, as IAM publishes them."""
-    return tuple(f"{namespace}:{local_name}" for namespace in REGISTRY_IAM_NAMESPACES)
+    """The namespace spellings of one Registry action that IAM still honours:
+    both until the preview namespace is retired, then `agent-registry` alone."""
+    namespaces = (
+        (REGISTRY_IAM_NAMESPACE,)
+        if _preview_support_ended()
+        else REGISTRY_IAM_NAMESPACES
+    )
+    return tuple(f"{namespace}:{local_name}" for namespace in namespaces)
 
 
 def _statement_denies_registry_action(statement: Dict[str, Any], action: str) -> bool:
@@ -1055,19 +1088,108 @@ def _registry_authority_actions(permissions: Dict[str, Any]) -> tuple[set, set]:
     return allowed, allowed - _granted_actions(permissions, watched)
 
 
+def _globs_intersect(first: str, second: str) -> bool:
+    """Whether some string matches both IAM resource patterns, where `*` is any
+    run of characters, `?` is one character, and both cross ARN segments."""
+    seen = set()
+    stack = [(0, 0)]
+    while stack:
+        i, j = stack.pop()
+        if (i, j) in seen:
+            continue
+        seen.add((i, j))
+        if i == len(first) and j == len(second):
+            return True
+        if i < len(first) and first[i] == "*":
+            stack.append((i + 1, j))
+            if j < len(second):
+                stack.append((i, j + 1))
+        if j < len(second) and second[j] == "*":
+            stack.append((i, j + 1))
+            if i < len(first):
+                stack.append((i + 1, j))
+        if (
+            i < len(first)
+            and j < len(second)
+            and "*" not in (first[i], second[j])
+            and (first[i] == second[j] or "?" in (first[i], second[j]))
+        ):
+            stack.append((i + 1, j + 1))
+    return False
+
+
+def _allow_scopes(
+    permissions: Dict[str, Any], action: str
+) -> List[tuple[List[str], bool]]:
+    """The resource patterns and whether a Condition applies, for each Allow
+    that grants ``action``.
+
+    A NotResource Allow, or one naming no Resource, is read as every resource.
+    The service segment of a Registry ARN is read in one namespace, because the
+    preview spelling names the same registries.
+    """
+    scopes = []
+    for policy in _identity_policies(permissions):
+        for statement in _policy_statements(policy):
+            if statement.get("Effect") != "Allow" or not _statement_matches(
+                statement, action
+            ):
+                continue
+            resources = (
+                ["*"]
+                if "NotResource" in statement
+                else _as_list(statement.get("Resource")) or ["*"]
+            )
+            normalized = []
+            for resource in resources:
+                parts = resource.split(":", 5)
+                if len(parts) == 6 and parts[2] in REGISTRY_IAM_NAMESPACES:
+                    parts[2] = REGISTRY_IAM_NAMESPACE
+                normalized.append(":".join(parts))
+            scopes.append((normalized, bool(statement.get("Condition"))))
+    return scopes
+
+
 def _registry_approval_collisions(
     permissions_by_name: Dict[str, Any], principal_kind: str
 ) -> List[str]:
-    """Return each principal that can publish a record and approve it as well."""
+    """Return each principal that can publish a record and approve it as well.
+
+    A publish Allow and an approval Allow collide only when their resource
+    scopes overlap, so a curator of one registry who publishes to another is
+    not reported. A wildcard overlaps every resource it can match. Conditions
+    are not evaluated; a collision resting on a conditioned Allow says so.
+    """
     approval_actions = set(_qualified_registry_actions(REGISTRY_APPROVAL_ACTION))
     labels = []
     for principal_name, permissions in permissions_by_name.items():
         allowed, denied = _registry_authority_actions(permissions)
         effective = allowed - denied
-        publishes = sorted(effective - approval_actions)
-        if publishes and effective & approval_actions:
+        approve_scopes = [
+            scope
+            for action in sorted(effective & approval_actions)
+            for scope in _allow_scopes(permissions, action)
+        ]
+        publishes = []
+        conditioned = False
+        for action in sorted(effective - approval_actions):
+            pairs = [
+                (publish, approve)
+                for publish in _allow_scopes(permissions, action)
+                for approve in approve_scopes
+                if any(_globs_intersect(p, a) for p in publish[0] for a in approve[0])
+            ]
+            if pairs:
+                publishes.append(action)
+                conditioned = conditioned or any(p[1] or a[1] for p, a in pairs)
+        if publishes:
             labels.append(
                 f"{principal_kind} '{principal_name}' ({', '.join(publishes)})"
+                + (
+                    " under an IAM condition this check does not evaluate"
+                    if conditioned
+                    else ""
+                )
             )
     return sorted(labels)
 
@@ -1114,7 +1236,7 @@ def check_agent_registry_approval_separation(
                 "AR-09",
                 finding,
                 SCP_NOT_EVALUATED_NOTE
-                + " The following principals can both publish an AWS Agent Registry record and approve it: "
+                + " The following principals can both publish an AWS Agent Registry record and approve it, on resource scopes that overlap: "
                 + ", ".join(collisions),
                 f"Split the publisher and curator personas: leave {REGISTRY_IAM_NAMESPACE}:{REGISTRY_APPROVAL_ACTION} to the curator and remove it from principals that create, update, or submit records.",
                 APPROVAL_SEPARATION_REFERENCE_URL,
@@ -1127,7 +1249,7 @@ def check_agent_registry_approval_separation(
             create_finding(
                 "AR-09",
                 finding,
-                f"None of the {len(roles) + len(users)} cached IAM identities hold both AWS Agent Registry record-publication and record-approval permissions.",
+                f"None of the {len(roles) + len(users)} cached IAM identities hold AWS Agent Registry record-publication and record-approval permissions on resource scopes that overlap.",
                 "No action required",
                 APPROVAL_SEPARATION_REFERENCE_URL,
                 SeverityEnum.HIGH,
@@ -1954,10 +2076,10 @@ def _classify_event_pattern(rule: Dict[str, Any]) -> Dict[str, Any]:
     `kind` is `other` when the rule cannot receive Registry events, `registry`
     when it matches the GA source, `preview` when it matches only the
     discontinued public-preview source, and `unreadable` when the pattern is not
-    a JSON object, uses `$or`, or carries a matcher this check does not evaluate
-    on the source or the detail type. Prefix, suffix, wildcard, equals-ignore-case
-    and anything-but matchers are evaluated against the known source and detail
-    type values.
+    a JSON object, has a top-level `$or` branch this check cannot decide, or
+    carries a matcher this check does not evaluate on the source or the detail
+    type. Prefix, suffix, wildcard, equals-ignore-case and anything-but matchers
+    are evaluated against the known source and detail type values.
     """
     raw_pattern = rule.get("EventPattern")
     if not raw_pattern:
@@ -1971,11 +2093,54 @@ def _classify_event_pattern(rule: Dict[str, Any]) -> Dict[str, Any]:
             "kind": "unreadable",
             "reason": "its event pattern is not a JSON object",
         }
-    if "$or" in pattern:
+    return _classify_pattern(pattern, rule)
+
+
+def _classify_or_pattern(
+    pattern: Dict[str, Any], rule: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Classify a top-level `$or` as each branch merged with the sibling keys.
+
+    The rule is `other` when no branch can receive Registry events and
+    `unreadable` when any branch cannot be decided. Otherwise it takes the
+    detail types and narrowing fields of every branch of its kind, so one
+    narrowed branch keeps the whole rule from being credited.
+    """
+    branches = pattern["$or"]
+    siblings = {key: value for key, value in pattern.items() if key != "$or"}
+    if not isinstance(branches, list) or not branches:
         return {
             "kind": "unreadable",
-            "reason": "its event pattern combines alternatives with $or",
+            "reason": "its $or is not a list of alternatives",
         }
+    results = []
+    for branch in branches:
+        if not isinstance(branch, dict) or set(branch) & set(siblings):
+            return {
+                "kind": "unreadable",
+                "reason": "an $or alternative is not an object or repeats a field outside the $or",
+            }
+        results.append(_classify_pattern({**siblings, **branch}, rule))
+    for result in results:
+        if result["kind"] == "unreadable":
+            return result
+    kind = next(
+        (k for k in ("registry", "preview") if any(r["kind"] == k for r in results)),
+        "other",
+    )
+    if kind == "other":
+        return {"kind": "other"}
+    same_kind = [result for result in results if result["kind"] == kind]
+    return {
+        "kind": kind,
+        "detail_types": set().union(*(r["detail_types"] for r in same_kind)),
+        "narrowed_by": sorted(set().union(*(r["narrowed_by"] for r in same_kind))),
+    }
+
+
+def _classify_pattern(pattern: Dict[str, Any], rule: Dict[str, Any]) -> Dict[str, Any]:
+    if "$or" in pattern:
+        return _classify_or_pattern(pattern, rule)
     sources = _event_pattern_reach(
         pattern, "source", (REGISTRY_EVENT_SOURCE, REGISTRY_PREVIEW_EVENT_SOURCE)
     )
@@ -2003,6 +2168,10 @@ def _classify_event_pattern(rule: Dict[str, Any]) -> Dict[str, Any]:
             "reason": "a content filter decides which detail types it matches",
         }
     detail_types = None if reach is None else reach[0]
+    # A pattern with no source filter matches the GA source, but one whose
+    # detail-type filter reaches no Registry type still receives no Registry event.
+    if reach is not None and not reach[0] and not reach[1]:
+        return {"kind": "other"}
     if (
         not matches_ga
         and detail_types is not None
@@ -2236,16 +2405,6 @@ def _event_rule_inventory_start(
                 _error_resolution(error, "events:ListRules"),
             )
         ]
-    if rule_inventory.get("timed_out"):
-        return [
-            _na(
-                "AR-10",
-                f"{finding} Incomplete",
-                f"Assessment stopped before reading every rule on the {REGISTRY_EVENT_BUS_NAME} event bus and the event buses it forwards Registry events to, because the Lambda timeout was approaching.",
-                EVENT_ROUTING_REFERENCE_URL,
-                "Re-run the assessment to complete the event rule inventory.",
-            )
-        ]
     return None
 
 
@@ -2357,6 +2516,9 @@ def _forwarded_routing(
                 )
             )
             continue
+        if rule_inventory.get("timed_out"):
+            # The sweep may have stopped before this bus's delivering rule.
+            continue
         result["findings"].append(
             create_finding(
                 "AR-10",
@@ -2395,6 +2557,18 @@ def check_agent_registry_lifecycle_event_routing(
 
     scope = _registry_scope_label(inventory)
     findings: List[Dict[str, Any]] = []
+    if rule_inventory.get("timed_out"):
+        # The rules already read are still judged; only the overall verdict,
+        # which needs every rule, is withheld.
+        findings.append(
+            _na(
+                "AR-10",
+                f"{finding} Incomplete",
+                f"Assessment stopped before reading every rule on the {REGISTRY_EVENT_BUS_NAME} event bus and the event buses it forwards Registry events to, because the Lambda timeout was approaching. The rules read before then are reported below.",
+                EVENT_ROUTING_REFERENCE_URL,
+                "Re-run the assessment to complete the event rule inventory.",
+            )
+        )
     routing_labels: List[str] = []
     covered: set = set()
     unseen: set = set()
@@ -2432,12 +2606,18 @@ def check_agent_registry_lifecycle_event_routing(
             )
             continue
         if classification["kind"] == "preview":
+            if _preview_support_ended():
+                details = f"EventBridge rule '{name}' matches only the discontinued public-preview event source '{REGISTRY_PREVIEW_EVENT_SOURCE}', which stopped publishing on {REGISTRY_PREVIEW_EVENT_SOURCE_END_LABEL}, so it no longer routes lifecycle events for {scope}."
+                resolution = f"Change the rule's event pattern to match source '{REGISTRY_EVENT_SOURCE}'."
+            else:
+                details = f"EventBridge rule '{name}' matches only the discontinued public-preview event source '{REGISTRY_PREVIEW_EVENT_SOURCE}', which stops publishing on {REGISTRY_PREVIEW_EVENT_SOURCE_END_LABEL}, so it will stop routing lifecycle events for {scope}."
+                resolution = f"Change the rule's event pattern to match source '{REGISTRY_EVENT_SOURCE}' before {REGISTRY_PREVIEW_EVENT_SOURCE_END_LABEL}."
             findings.append(
                 create_finding(
                     "AR-10",
                     finding,
-                    f"EventBridge rule '{name}' matches only the discontinued public-preview event source '{REGISTRY_PREVIEW_EVENT_SOURCE}', which stops publishing on {REGISTRY_PREVIEW_EVENT_SOURCE_END}, so it will stop routing lifecycle events for {scope}.",
-                    f"Change the rule's event pattern to match source '{REGISTRY_EVENT_SOURCE}' before {REGISTRY_PREVIEW_EVENT_SOURCE_END}.",
+                    details,
+                    resolution,
                     EVENT_ROUTING_REFERENCE_URL,
                     SeverityEnum.MEDIUM,
                     StatusEnum.FAILED,
@@ -2464,7 +2644,7 @@ def check_agent_registry_lifecycle_event_routing(
                     "AR-10",
                     finding,
                     f"EventBridge rule '{name}' matches the lifecycle events of {scope} but has no targets, so every matched state change is discarded.",
-                    "Add a target to the rule, such as an SNS topic, a Lambda function, or a CloudWatch Logs group.",
+                    f"Add {REVIEW_PIPELINE_LABEL} as a target of the rule.",
                     EVENT_ROUTING_REFERENCE_URL,
                     SeverityEnum.MEDIUM,
                     StatusEnum.FAILED,
@@ -2514,6 +2694,8 @@ def check_agent_registry_lifecycle_event_routing(
         routing_labels.append(f"'{name}' ({pipelines} target(s))")
         covered.update(classification["detail_types"])
 
+    if rule_inventory.get("timed_out"):
+        return findings
     # A transition forwarded to a bus this check cannot read is neither covered
     # nor missing; the forwarding rule's N/A row carries it.
     missing = [
@@ -2543,7 +2725,7 @@ def check_agent_registry_lifecycle_event_routing(
                 "AR-10",
                 finding,
                 details,
-                f"Create an enabled rule on the {REGISTRY_EVENT_BUS_NAME} event bus matching source '{REGISTRY_EVENT_SOURCE}' and detail types {', '.join(REGISTRY_APPROVAL_DETAIL_TYPES)}, with a target that records or reviews them.",
+                f"Create an enabled rule on the {REGISTRY_EVENT_BUS_NAME} event bus matching source '{REGISTRY_EVENT_SOURCE}' and detail types {', '.join(REGISTRY_APPROVAL_DETAIL_TYPES)}, with {REVIEW_PIPELINE_LABEL} as a target.",
                 EVENT_ROUTING_REFERENCE_URL,
                 SeverityEnum.MEDIUM,
                 StatusEnum.FAILED,

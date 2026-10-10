@@ -31,6 +31,28 @@ _SPEC = importlib.util.spec_from_file_location(
 agent_registry_app = importlib.util.module_from_spec(_SPEC)
 sys.modules["agent_registry_app"] = agent_registry_app
 _SPEC.loader.exec_module(agent_registry_app)
+_PREVIEW_SUPPORT_ENDED = agent_registry_app._preview_support_ended
+
+
+@pytest.fixture(autouse=True)
+def _before_preview_end(monkeypatch):
+    """Pin the preview-support verdict, so a test does not change outcome on
+    REGISTRY_PREVIEW_EVENT_SOURCE_END. The tests of that date patch the clock."""
+    monkeypatch.setattr(agent_registry_app, "_preview_support_ended", lambda: False)
+
+
+def _freeze_clock(monkeypatch, when):
+    """Restore the real preview-support verdict and read it at ``when``."""
+
+    class _FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return when if tz is None else when.astimezone(tz)
+
+    monkeypatch.setattr(
+        agent_registry_app, "_preview_support_ended", _PREVIEW_SUPPORT_ENDED
+    )
+    monkeypatch.setattr(agent_registry_app, "datetime", _FrozenDatetime)
 
 
 @pytest.mark.parametrize(
@@ -374,7 +396,10 @@ def test_ar01_a_wildcard_grant_on_a_partial_wildcard_resource_is_not_bounded(sco
     ]
     assert "registry-browser" in findings[0]["Finding_Details"]
     assert "registry-reader" not in findings[0]["Finding_Details"]
-    assert "a wildcard in any segment" in findings[0]["Finding_Details"]
+    assert (
+        "a wildcard that reaches beyond one named registry"
+        in findings[0]["Finding_Details"]
+    )
 
 
 @pytest.mark.parametrize(
@@ -401,7 +426,7 @@ def test_ar01_a_named_resource_or_an_explicit_action_stays_passed(statement):
 
     assert [f["Status"] for f in findings] == ["Passed"]
     assert (
-        "a resource ARN with a wildcard in any segment"
+        "a resource ARN with a wildcard that reaches beyond one named registry"
         in (findings[0]["Finding_Details"])
     )
 
@@ -1551,7 +1576,7 @@ def test_ar10_preview_only_source_is_reported_not_accepted_as_coverage():
         in findings[0]["Finding_Details"]
     )
     assert (
-        agent_registry_app.REGISTRY_PREVIEW_EVENT_SOURCE_END
+        agent_registry_app.REGISTRY_PREVIEW_EVENT_SOURCE_END_LABEL
         in findings[0]["Finding_Details"]
     )
     assert "route none of them to a target" in findings[1]["Finding_Details"]
@@ -1575,7 +1600,7 @@ def test_ar10_preview_source_rule_for_other_agentcore_events_is_not_a_registry_r
     assert [f["Status"] for f in findings] == ["Failed"]
     assert "None of the 1 rule(s)" in findings[0]["Finding_Details"]
     assert (
-        agent_registry_app.REGISTRY_PREVIEW_EVENT_SOURCE_END
+        agent_registry_app.REGISTRY_PREVIEW_EVENT_SOURCE_END_LABEL
         not in (findings[0]["Finding_Details"])
     )
     assert client.target_calls == []
@@ -1599,7 +1624,7 @@ def test_ar10_preview_source_rule_naming_an_approval_type_is_still_stale():
     )
     assert [f["Status"] for f in findings] == ["Failed", "Failed"]
     assert (
-        agent_registry_app.REGISTRY_PREVIEW_EVENT_SOURCE_END
+        agent_registry_app.REGISTRY_PREVIEW_EVENT_SOURCE_END_LABEL
         in findings[0]["Finding_Details"]
     )
 
@@ -1734,11 +1759,17 @@ def test_ar10_partial_detail_type_coverage_names_the_missing_transitions():
         (
             {
                 "$or": [
-                    {"source": [agent_registry_app.REGISTRY_EVENT_SOURCE]},
-                    {"detail-type": ["Other"]},
+                    {"source": ["aws.s3"]},
+                    {"source": [{"prefix": "aws.", "suffix": "-registry"}]},
                 ]
             },
-            "$or",
+            "which event sources",
+        ),
+        ({"$or": {"source": ["aws.s3"]}}, "not a list of alternatives"),
+        ({"$or": []}, "not a list of alternatives"),
+        (
+            {"source": ["aws.s3"], "$or": [{"source": ["aws.agent-registry"]}]},
+            "repeats a field outside the $or",
         ),
         # Matcher shapes the check does not evaluate stand in for any matcher
         # EventBridge adds later.
@@ -1887,7 +1918,7 @@ def test_ar10_an_unreadable_rule_holds_back_the_failed_a_clean_miss_would_earn()
     findings, _ = _routing_findings(
         [
             _rule("pending-only", _approval_pattern(detail_types=approval_types[:1])),
-            _rule("opaque-rule", {"$or": [{"source": ["aws.agent-registry"]}]}),
+            _rule("opaque-rule", {"$or": [{"source": [{"regex": "aws\\..*"}]}]}),
             _rule("s3-events", {"source": ["aws.s3"]}),
         ],
         targets={"pending-only": 1},
@@ -1899,7 +1930,7 @@ def test_ar10_an_unreadable_rule_holds_back_the_failed_a_clean_miss_would_earn()
 def test_ar10_an_unreadable_rule_does_not_hold_back_a_proven_pass():
     findings, _ = _routing_findings(
         [
-            _rule("opaque-rule", {"$or": [{"source": ["aws.agent-registry"]}]}),
+            _rule("opaque-rule", {"$or": [{"source": [{"regex": "aws\\..*"}]}]}),
             _rule("all-registry-events", _approval_pattern()),
         ],
         targets={"all-registry-events": 1},
@@ -2632,3 +2663,442 @@ def test_ar10_a_forwarded_bus_with_only_a_log_target_is_not_credited():
         "Functions state machine, so no forwarded state change reaches a review "
         "pipeline." in findings[0]["Finding_Details"]
     )
+
+
+# ===================================================================
+# AR-10: a pattern with no source filter is a Registry rule only when its
+# detail types reach a Registry type
+# ===================================================================
+_EC2_DETAIL_TYPE = {"detail-type": ["EC2 Instance State-change Notification"]}
+
+
+@pytest.mark.parametrize(
+    ("state", "target_arns"),
+    [
+        ("DISABLED", [_SNS_TARGET]),
+        ("ENABLED", []),
+        ("ENABLED", ["arn:aws:lambda:us-east-1:123456789012:function:ec2-handler"]),
+    ],
+    ids=["disabled", "no-targets", "lambda-target"],
+)
+def test_ar10_a_no_source_rule_for_other_detail_types_is_not_a_registry_rule(
+    state, target_arns
+):
+    findings, client = _routing_findings(
+        [
+            _rule("ec2-rule", _EC2_DETAIL_TYPE, state=state),
+            _rule("registry-approvals", _approval_pattern()),
+        ],
+        target_arns={"ec2-rule": target_arns, "registry-approvals": [_SNS_TARGET]},
+    )
+    assert [f["Status"] for f in findings] == ["Passed"]
+    assert "ec2-rule" not in findings[0]["Finding_Details"]
+    assert client.target_calls == ["registry-approvals"]
+
+
+def test_ar10_a_ga_source_rule_for_other_detail_types_is_not_a_registry_rule():
+    findings, client = _routing_findings(
+        [
+            _rule(
+                "wrong-types",
+                {
+                    "source": [agent_registry_app.REGISTRY_EVENT_SOURCE],
+                    **_EC2_DETAIL_TYPE,
+                },
+                state="DISABLED",
+            )
+        ],
+    )
+    assert [f["Status"] for f in findings] == ["Failed"]
+    assert "None of the 1 rule(s)" in findings[0]["Finding_Details"]
+    assert client.target_calls == []
+
+
+# ===================================================================
+# AR-10: each top-level $or branch is classified with the sibling fields
+# ===================================================================
+def test_ar10_an_or_rule_that_reaches_no_registry_source_is_another_rule():
+    findings, client = _routing_findings(
+        [_rule("ec2-or-s3", {"$or": [{"source": ["aws.ec2"]}, {"source": ["aws.s3"]}]})]
+    )
+    assert [f["Status"] for f in findings] == ["Failed"]
+    assert "None of the 1 rule(s)" in findings[0]["Finding_Details"]
+    assert client.target_calls == []
+
+
+def test_ar10_an_or_branch_reaching_the_registry_source_is_credited():
+    findings, client = _routing_findings(
+        [
+            _rule(
+                "or-approvals",
+                {
+                    "detail-type": list(
+                        agent_registry_app.REGISTRY_APPROVAL_DETAIL_TYPES
+                    ),
+                    "$or": [
+                        {"source": ["aws.s3"]},
+                        {"source": [agent_registry_app.REGISTRY_EVENT_SOURCE]},
+                    ],
+                },
+            )
+        ],
+        target_arns={"or-approvals": [_SNS_TARGET]},
+    )
+    assert [f["Status"] for f in findings] == ["Passed"]
+    assert "'or-approvals' (1 target(s))" in findings[0]["Finding_Details"]
+    assert client.target_calls == ["or-approvals"]
+
+
+def test_ar10_an_or_merges_detail_types_and_narrowing_across_branches():
+    approval_types = list(agent_registry_app.REGISTRY_APPROVAL_DETAIL_TYPES)
+    classification = agent_registry_app._classify_event_pattern(
+        _rule(
+            "or-split",
+            {
+                "source": [agent_registry_app.REGISTRY_EVENT_SOURCE],
+                "$or": [
+                    {"detail-type": approval_types[:1]},
+                    {
+                        "detail-type": approval_types[1:],
+                        "detail": {"registryId": ["r1"]},
+                    },
+                    {"detail-type": ["EC2 Instance State-change Notification"]},
+                ],
+            },
+        )
+    )
+    assert classification == {
+        "kind": "registry",
+        "detail_types": set(approval_types),
+        "narrowed_by": ["detail"],
+    }
+
+
+def test_ar10_a_disabled_or_rule_with_no_registry_branch_is_not_reported():
+    findings, client = _routing_findings(
+        [
+            _rule(
+                "paused-or",
+                {"$or": [{"source": ["aws.ec2"]}, _EC2_DETAIL_TYPE]},
+                state="DISABLED",
+            ),
+            _rule("registry-approvals", _approval_pattern()),
+        ],
+        targets={"registry-approvals": 1},
+    )
+    assert [f["Status"] for f in findings] == ["Passed"]
+    assert client.target_calls == ["registry-approvals"]
+
+
+# ===================================================================
+# AR-10: a timed-out sweep still reports the rules it read
+# ===================================================================
+def test_ar10_timeout_still_reports_the_rules_already_read():
+    client = _events_client(
+        [
+            _rule("paused-rule", _approval_pattern(), state="DISABLED"),
+            _rule("discarding-rule", _approval_pattern()),
+            _rule("reviewed", _approval_pattern()),
+        ],
+        target_arns={"paused-rule": [_SNS_TARGET], "reviewed": [_SNS_TARGET]},
+    )
+    with patch.object(agent_registry_app, "events_client", client):
+        rule_inventory = agent_registry_app.get_registry_event_rule_inventory()
+    rule_inventory["timed_out"] = True
+    findings = agent_registry_app.check_agent_registry_lifecycle_event_routing(
+        _ready_registry_inventory(), rule_inventory
+    )
+    # The overall verdict, Passed here, needs every rule and is withheld.
+    assert [(f["Status"], f["Finding"]) for f in findings] == [
+        ("N/A", "AWS Agent Registry Lifecycle Event Routing Incomplete"),
+        ("Failed", "AWS Agent Registry Lifecycle Event Routing"),
+        ("Failed", "AWS Agent Registry Lifecycle Event Routing"),
+    ]
+    assert "Lambda timeout" in findings[0]["Finding_Details"]
+    assert "'paused-rule'" in findings[1]["Finding_Details"]
+    assert "is DISABLED" in findings[1]["Finding_Details"]
+    assert "'discarding-rule'" in findings[2]["Finding_Details"]
+    assert "has no targets" in findings[2]["Finding_Details"]
+
+
+def test_ar10_timeout_does_not_fail_a_forward_to_an_unread_bus():
+    # audit-bus holds a delivering rule, but the deadline arrives before it is read.
+    forward, arns = _forward()
+    client = _events_client(
+        [forward],
+        target_arns={**arns, "audit-approvals": [_SNS_TARGET]},
+        bus_rules={
+            "audit-bus": [
+                _rule("audit-approvals", _approval_pattern(), bus="audit-bus")
+            ]
+        },
+    )
+    timeouts = iter([True, False])
+    with (
+        patch.object(agent_registry_app, "events_client", client),
+        patch.object(
+            agent_registry_app, "check_timeout", side_effect=lambda: next(timeouts)
+        ),
+    ):
+        rule_inventory = agent_registry_app.get_registry_event_rule_inventory()
+    findings = agent_registry_app.check_agent_registry_lifecycle_event_routing(
+        _ready_registry_inventory(), rule_inventory
+    )
+    assert rule_inventory["timed_out"] is True
+    assert [f["Status"] for f in findings] == ["N/A"]
+    assert "Lambda timeout" in findings[0]["Finding_Details"]
+
+
+# ===================================================================
+# AR-10: both resolutions name the targets the predicate credits
+# ===================================================================
+def test_ar10_resolutions_name_the_review_pipelines_the_check_credits():
+    findings, _ = _routing_findings(
+        [_rule("discarding-rule", _approval_pattern())],
+        targets={"discarding-rule": 0},
+    )
+    assert [f["Status"] for f in findings] == ["Failed", "Failed"]
+    for finding in findings:
+        assert agent_registry_app.REVIEW_PIPELINE_LABEL in finding["Resolution"]
+        assert "CloudWatch Logs" not in finding["Resolution"]
+
+
+# ===================================================================
+# Preview source and namespace end on REGISTRY_PREVIEW_EVENT_SOURCE_END
+# ===================================================================
+_BEFORE_PREVIEW_END = datetime(2026, 10, 29, 23, 59, tzinfo=timezone.utc)
+_AFTER_PREVIEW_END = datetime(2026, 10, 30, 0, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    ("when", "ended"), [(_BEFORE_PREVIEW_END, False), (_AFTER_PREVIEW_END, True)]
+)
+def test_preview_support_ends_on_the_published_date(monkeypatch, when, ended):
+    _freeze_clock(monkeypatch, when)
+    assert agent_registry_app._preview_support_ended() is ended
+
+
+@pytest.mark.parametrize(
+    ("when", "status"),
+    [(_BEFORE_PREVIEW_END, "Failed"), (_AFTER_PREVIEW_END, "Passed")],
+)
+def test_ar09_stops_reading_the_preview_namespace_after_it_ends(
+    monkeypatch, when, status
+):
+    _freeze_clock(monkeypatch, when)
+    finding = _separation_finding(_separation_cache([_allow(["bedrock-agentcore:*"])]))
+    assert finding["Status"] == status
+
+
+def test_ar09_after_the_preview_end_still_reads_the_ga_namespace(monkeypatch):
+    _freeze_clock(monkeypatch, _AFTER_PREVIEW_END)
+    finding = _separation_finding(_separation_cache([_allow(["*"])]))
+    assert finding["Status"] == "Failed"
+    assert _listed_publish_actions(finding) == sorted(
+        f"agent-registry:{action}" for action in _PUBLISH_ACTIONS
+    )
+
+
+@pytest.mark.parametrize(
+    ("when", "details", "resolution"),
+    [
+        (
+            _BEFORE_PREVIEW_END,
+            "which stops publishing on 30 October 2026, so it will stop routing",
+            "'aws.agent-registry' before 30 October 2026.",
+        ),
+        (
+            _AFTER_PREVIEW_END,
+            "which stopped publishing on 30 October 2026, so it no longer routes",
+            "'aws.agent-registry'.",
+        ),
+    ],
+    ids=["before", "after"],
+)
+def test_ar10_preview_rule_text_follows_the_clock(
+    monkeypatch, when, details, resolution
+):
+    _freeze_clock(monkeypatch, when)
+    findings, _ = _routing_findings(
+        [
+            _rule(
+                "preview-rule",
+                _approval_pattern(
+                    source=[agent_registry_app.REGISTRY_PREVIEW_EVENT_SOURCE]
+                ),
+            )
+        ],
+        targets={"preview-rule": 1},
+    )
+    assert details in findings[0]["Finding_Details"]
+    assert findings[0]["Resolution"].endswith(resolution)
+
+
+# ===================================================================
+# AR-09: a collision needs the publish and approve scopes to overlap
+# ===================================================================
+_REGISTRY_A = "arn:aws:agent-registry:us-east-1:123456789012:registry/aaaaaaaaaaaa"
+_REGISTRY_B = "arn:aws:agent-registry:us-east-1:123456789012:registry/bbbbbbbbbbbb"
+
+
+def test_ar09_publish_on_one_registry_and_approve_on_another_is_not_a_collision():
+    finding = _separation_finding(
+        _separation_cache(
+            [
+                _allow("agent-registry:CreateRegistryRecord", f"{_REGISTRY_A}/*"),
+                _allow(f"agent-registry:{_APPROVAL_ACTION}", f"{_REGISTRY_B}/*"),
+            ]
+        )
+    )
+    assert finding["Status"] == "Passed"
+    assert "resource scopes that overlap" in finding["Finding_Details"]
+
+
+@pytest.mark.parametrize(
+    ("publish", "approve"),
+    [
+        (f"{_REGISTRY_A}/*", f"{_REGISTRY_A}/*"),
+        (f"{_REGISTRY_A}/*", f"{_REGISTRY_A}/record/rec1234"),
+        (f"{_REGISTRY_A}/*", "*"),
+        (
+            f"{_REGISTRY_A}/*",
+            "arn:aws:agent-registry:*:123456789012:registry/*",
+        ),
+        (
+            "arn:aws:agent-registry:us-east-1:*:registry/aaaaaaaaaaaa/*",
+            "arn:aws:agent-registry:*:123456789012:registry/aaaaaaaaaaaa/record/*",
+        ),
+        (
+            f"{_REGISTRY_A}/*",
+            "arn:aws:bedrock-agentcore:us-east-1:123456789012:registry/aaaaaaaaaaaa/*",
+        ),
+    ],
+    ids=[
+        "same",
+        "record-in-registry",
+        "any",
+        "any-registry",
+        "two-wildcards",
+        "preview-arn",
+    ],
+)
+def test_ar09_overlapping_publish_and_approve_scopes_collide(publish, approve):
+    finding = _separation_finding(
+        _separation_cache(
+            [
+                _allow("agent-registry:CreateRegistryRecord", publish),
+                _allow(
+                    [
+                        f"agent-registry:{_APPROVAL_ACTION}",
+                        f"bedrock-agentcore:{_APPROVAL_ACTION}",
+                    ],
+                    approve,
+                ),
+            ]
+        )
+    )
+    assert finding["Status"] == "Failed"
+    assert _listed_publish_actions(finding) == ["agent-registry:CreateRegistryRecord"]
+
+
+def test_ar09_a_not_resource_approval_overlaps_every_publish_scope():
+    finding = _separation_finding(
+        _separation_cache(
+            [
+                _allow("agent-registry:CreateRegistryRecord", f"{_REGISTRY_A}/*"),
+                {
+                    "Effect": "Allow",
+                    "Action": f"agent-registry:{_APPROVAL_ACTION}",
+                    "NotResource": f"{_REGISTRY_A}/*",
+                },
+            ]
+        )
+    )
+    assert finding["Status"] == "Failed"
+
+
+def test_ar09_names_a_collision_that_rests_on_a_conditioned_allow():
+    conditioned = _allow(f"agent-registry:{_APPROVAL_ACTION}")
+    conditioned["Condition"] = {"StringEquals": {"aws:RequestedRegion": "us-east-1"}}
+    finding = _separation_finding(
+        _separation_cache([_allow("agent-registry:CreateRegistryRecord"), conditioned])
+    )
+    assert finding["Status"] == "Failed"
+    assert finding["Finding_Details"].endswith(
+        "role 'publisher' (agent-registry:CreateRegistryRecord) under an IAM "
+        "condition this check does not evaluate"
+    )
+
+
+def test_ar09_names_only_the_publish_actions_whose_scope_overlaps():
+    finding = _separation_finding(
+        _separation_cache(
+            [
+                _allow("agent-registry:CreateRegistryRecord", f"{_REGISTRY_A}/*"),
+                _allow("agent-registry:UpdateRegistryRecord", f"{_REGISTRY_B}/*"),
+                _allow(f"agent-registry:{_APPROVAL_ACTION}", f"{_REGISTRY_B}/*"),
+            ]
+        )
+    )
+    assert finding["Status"] == "Failed"
+    assert _listed_publish_actions(finding) == ["agent-registry:UpdateRegistryRecord"]
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "expected"),
+    [
+        ("a*c", "abc", True),
+        ("a*", "*c", True),
+        ("a?c", "abc", True),
+        ("a*b", "a*c", False),
+        ("abc", "abd", False),
+        ("*", "", True),
+        ("?", "", False),
+    ],
+)
+def test_ar09_resource_pattern_intersection(first, second, expected):
+    assert agent_registry_app._globs_intersect(first, second) is expected
+    assert agent_registry_app._globs_intersect(second, first) is expected
+
+
+# ===================================================================
+# AR-01: a wildcard inside one named registry is bounded
+# ===================================================================
+@pytest.mark.parametrize(
+    "resource",
+    [
+        "arn:aws:agent-registry:us-east-1:123456789012:registry/abcdef123456/record/*",
+        "arn:aws:agent-registry:us-east-1:123456789012:registry/abcdef123456/*",
+    ],
+)
+def test_ar01_a_wildcard_after_a_named_registry_is_bounded(resource):
+    findings = agent_registry_app.check_agent_registry_full_access(
+        _ar01_two_role_cache(
+            {"Effect": "Allow", "Action": "agent-registry:Get*", "Resource": resource}
+        )
+    )
+    assert [(f["Finding"], f["Status"]) for f in findings] == [
+        ("AWS Agent Registry IAM Full Access Check", "Passed")
+    ]
+
+
+@pytest.mark.parametrize(
+    "resource",
+    [
+        "arn:aws:agent-registry:us-east-1:123456789012:registry/abcdef*/record/*",
+        "arn:*:agent-registry:us-east-1:123456789012:registry/abcdef123456/*",
+        "arn:aws:*:us-east-1:123456789012:registry/abcdef123456/*",
+        "arn:aws:agent-registry:us-east-1:123456789012:registry/*/record/*",
+        "arn:aws:agent-registry:us-east-1:123456789012:*/abcdef123456/*",
+    ],
+    ids=["registry-id", "partition", "service", "registry-id-segment", "resource-type"],
+)
+def test_ar01_a_wildcard_before_the_end_of_the_registry_id_is_unbounded(resource):
+    findings = agent_registry_app.check_agent_registry_full_access(
+        _ar01_two_role_cache(
+            {"Effect": "Allow", "Action": "agent-registry:Get*", "Resource": resource}
+        )
+    )
+    assert [(f["Finding"], f["Status"]) for f in findings] == [
+        ("AWS Agent Registry IAM Wildcard Permissions", "Failed")
+    ]

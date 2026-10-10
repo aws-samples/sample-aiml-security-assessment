@@ -269,9 +269,9 @@ class TestAR01PrincipalErrors:
         assert finding["Finding_Details"] == (
             "None of the 1 cached roles and users has an AWS Agent Registry "
             "full-access policy, a wildcard or allow-except Registry grant on every "
-            "resource, on a resource ARN with a wildcard in any segment or on a "
-            "NotResource, or a grant that merges Registry read and write actions on "
-            "one resource type."
+            "resource, on a resource ARN with a wildcard that reaches beyond one "
+            "named registry or on a NotResource, or a grant that merges Registry "
+            "read and write actions on one resource type."
         )
 
 

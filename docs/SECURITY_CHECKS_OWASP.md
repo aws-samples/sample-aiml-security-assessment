@@ -80,11 +80,11 @@ recent catalog expansions. Twelve have direct OWASP mappings. The remaining
 - `AG-28` through `AG-32` are synthesized from BR/AC source findings. Mapping
   them again would duplicate source evidence for `AG-28` through `AG-31` and
   would bypass the deliberate `AC-17` non-mapping for `AG-32`.
-- `AR-01` through `AR-08` assess AWS Agent Registry IAM access and governance.
-  `AG-33` through `AG-38` synthesize related evidence. None directly proves an
-  OWASP LLM01–LLM10 control, so Registry CSVs are intentionally not read by the
-  OWASP Lambda and all fourteen Registry-derived controls are excluded from
-  OWASP mapping.
+- `AR-01` through `AR-10` assess AWS Agent Registry IAM access, governance and
+  lifecycle event routing. `AG-33` through `AG-38` synthesize related evidence.
+  None directly proves an OWASP LLM01–LLM10 control, so Registry CSVs are
+  intentionally not read by the OWASP Lambda and all sixteen Registry-derived
+  controls are excluded from OWASP mapping.
 
 ### Source rows filtered by finding name
 
