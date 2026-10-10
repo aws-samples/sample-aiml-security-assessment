@@ -2,8 +2,8 @@ pytest>=7.4.0
 pytest-cov>=4.1.0
 pytest-mock>=3.11.0
 moto[all]>=4.2.0
-boto3==1.43.85
-botocore==1.43.85
+boto3==1.43.108
+botocore==1.43.108
 # Upper bound matches the Lambda runtime requirement
 # (responsible_ai_grc_assessments/requirements.txt), so tests cannot pass
 # against a pydantic major the deployed function forbids.

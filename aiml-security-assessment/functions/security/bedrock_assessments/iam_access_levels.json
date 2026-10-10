@@ -1,0 +1,1045 @@
+{
+ "services": {
+  "bedrock": {
+   "advanced-prompt-optimization-job": {
+    "arns": [
+     "arn:*:bedrock:*:*:advanced-prompt-optimization-job/*"
+    ],
+    "read": [
+     "GetAdvancedPromptOptimizationJob",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "BatchDeleteAdvancedPromptOptimizationJob",
+     "StopAdvancedPromptOptimizationJob"
+    ]
+   },
+   "agent": {
+    "arns": [
+     "arn:*:bedrock:*:*:agent/*"
+    ],
+    "read": [
+     "GetAgent",
+     "GetAgentActionGroup",
+     "GetAgentCollaborator",
+     "GetAgentKnowledgeBase",
+     "GetAgentVersion",
+     "ListAgentActionGroups",
+     "ListAgentAliases",
+     "ListAgentCollaborators",
+     "ListAgentKnowledgeBases",
+     "ListAgentVersions",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "AssociateAgentCollaborator",
+     "AssociateAgentKnowledgeBase",
+     "CreateAgentActionGroup",
+     "CreateAgentAlias",
+     "DeleteAgent",
+     "DeleteAgentActionGroup",
+     "DeleteAgentVersion",
+     "DisassociateAgentCollaborator",
+     "DisassociateAgentKnowledgeBase",
+     "PrepareAgent",
+     "UpdateAgent",
+     "UpdateAgentActionGroup",
+     "UpdateAgentCollaborator",
+     "UpdateAgentKnowledgeBase"
+    ]
+   },
+   "agent-alias": {
+    "arns": [
+     "arn:*:bedrock:*:*:agent-alias/*/*"
+    ],
+    "read": [
+     "GetAgentAlias",
+     "GetAgentMemory",
+     "InvokeAgent",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteAgentAlias",
+     "DeleteAgentMemory",
+     "UpdateAgentAlias"
+    ]
+   },
+   "application-inference-profile": {
+    "arns": [
+     "arn:*:bedrock:*:*:application-inference-profile/*"
+    ],
+    "read": [
+     "GetInferenceProfile",
+     "InvokeModel",
+     "InvokeModelWithResponseStream",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateAdvancedPromptOptimizationJob",
+     "CreateInferenceProfile",
+     "CreatePromptRouter",
+     "DeleteInferenceProfile"
+    ]
+   },
+   "automated-reasoning-policy": {
+    "arns": [
+     "arn:*:bedrock:*:*:automated-reasoning-policy/*"
+    ],
+    "read": [
+     "ExportAutomatedReasoningPolicyVersion",
+     "GetAutomatedReasoningPolicy",
+     "GetAutomatedReasoningPolicyAnnotations",
+     "GetAutomatedReasoningPolicyBuildWorkflow",
+     "GetAutomatedReasoningPolicyBuildWorkflowResultAssets",
+     "GetAutomatedReasoningPolicyNextScenario",
+     "GetAutomatedReasoningPolicyTestCase",
+     "GetAutomatedReasoningPolicyTestResult",
+     "InvokeAutomatedReasoningPolicy",
+     "ListAutomatedReasoningPolicies",
+     "ListAutomatedReasoningPolicyBuildWorkflows",
+     "ListAutomatedReasoningPolicyTestCases",
+     "ListAutomatedReasoningPolicyTestResults",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CancelAutomatedReasoningPolicyBuildWorkflow",
+     "CreateAutomatedReasoningPolicyTestCase",
+     "CreateAutomatedReasoningPolicyVersion",
+     "CreateGuardrail",
+     "DeleteAutomatedReasoningPolicy",
+     "DeleteAutomatedReasoningPolicyBuildWorkflow",
+     "DeleteAutomatedReasoningPolicyTestCase",
+     "StartAutomatedReasoningPolicyBuildWorkflow",
+     "StartAutomatedReasoningPolicyTestWorkflow",
+     "UpdateAutomatedReasoningPolicy",
+     "UpdateAutomatedReasoningPolicyAnnotations",
+     "UpdateAutomatedReasoningPolicyTestCase",
+     "UpdateGuardrail"
+    ]
+   },
+   "automated-reasoning-policy-version": {
+    "arns": [
+     "arn:*:bedrock:*:*:automated-reasoning-policy/*:*"
+    ],
+    "read": [
+     "ExportAutomatedReasoningPolicyVersion",
+     "GetAutomatedReasoningPolicy",
+     "InvokeAutomatedReasoningPolicy",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateGuardrail",
+     "DeleteAutomatedReasoningPolicy",
+     "UpdateGuardrail"
+    ]
+   },
+   "bedrock-marketplace-model-endpoint": {
+    "arns": [
+     "arn:*:bedrock:*:*:marketplace/model-endpoint/all-access"
+    ],
+    "read": [
+     "GetMarketplaceModelEndpoint",
+     "InvokeModel",
+     "InvokeModelWithResponseStream"
+    ],
+    "write": [
+     "DeleteMarketplaceModelEndpoint",
+     "DeregisterMarketplaceModelEndpoint",
+     "RegisterMarketplaceModelEndpoint",
+     "UpdateMarketplaceModelEndpoint"
+    ]
+   },
+   "blueprint": {
+    "arns": [
+     "arn:*:bedrock:*:*:blueprint/*"
+    ],
+    "read": [
+     "GetBlueprint",
+     "ListDataAutomationProjects",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CopyBlueprintStage",
+     "CreateBlueprintVersion",
+     "CreateDataAutomationProject",
+     "DeleteBlueprint",
+     "InvokeBlueprintOptimizationAsync",
+     "InvokeDataAutomation",
+     "InvokeDataAutomationAsync",
+     "UpdateBlueprint",
+     "UpdateDataAutomationProject"
+    ]
+   },
+   "custom-model": {
+    "arns": [
+     "arn:*:bedrock:*:*:custom-model/*"
+    ],
+    "read": [
+     "GetCustomModel",
+     "GetResourcePolicy",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateCustomModelDeployment",
+     "CreateEvaluationJob",
+     "CreateModelCopyJob",
+     "CreateModelCustomizationJob",
+     "CreateModelEvaluationJob",
+     "CreateModelInvocationJob",
+     "CreateProvisionedModelThroughput",
+     "DeleteCustomModel",
+     "DeleteResourcePolicy",
+     "PutResourcePolicy",
+     "UpdateCustomModelDeployment",
+     "UpdateProvisionedModelThroughput"
+    ]
+   },
+   "custom-model-deployment": {
+    "arns": [
+     "arn:*:bedrock:*:*:custom-model-deployment/*"
+    ],
+    "read": [
+     "GetCustomModelDeployment",
+     "InvokeModel",
+     "InvokeModelWithResponseStream",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteCustomModelDeployment",
+     "UpdateCustomModelDeployment"
+    ]
+   },
+   "data-automation-library": {
+    "arns": [
+     "arn:*:bedrock:*:*:data-automation-library/*"
+    ],
+    "read": [
+     "GetDataAutomationLibrary",
+     "GetDataAutomationLibraryEntity",
+     "GetDataAutomationLibraryIngestionJob",
+     "ListDataAutomationLibraryEntities",
+     "ListDataAutomationLibraryIngestionJobs",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateDataAutomationProject",
+     "DeleteDataAutomationLibrary",
+     "InvokeDataAutomationLibraryIngestionJob",
+     "UpdateDataAutomationLibrary"
+    ]
+   },
+   "data-automation-project": {
+    "arns": [
+     "arn:*:bedrock:*:*:data-automation-project/*"
+    ],
+    "read": [
+     "GetDataAutomationProject",
+     "ListBlueprints",
+     "ListDataAutomationLibraries",
+     "ListDataAutomationProjects",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteDataAutomationProject",
+     "InvokeDataAutomation",
+     "InvokeDataAutomationAsync",
+     "UpdateDataAutomationProject"
+    ]
+   },
+   "default-prompt-router": {
+    "arns": [
+     "arn:*:bedrock:*:*:default-prompt-router/*"
+    ],
+    "read": [
+     "GetPromptRouter",
+     "InvokeModel",
+     "InvokeModelWithResponseStream"
+    ],
+    "write": [
+     "CreateEvaluationJob"
+    ]
+   },
+   "evaluation-job": {
+    "arns": [
+     "arn:*:bedrock:*:*:evaluation-job/*"
+    ],
+    "read": [
+     "GetEvaluationJob",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "BatchDeleteEvaluationJob",
+     "StopEvaluationJob"
+    ]
+   },
+   "flow": {
+    "arns": [
+     "arn:*:bedrock:*:*:flow/*"
+    ],
+    "read": [
+     "GetExecutionFlowSnapshot",
+     "GetFlow",
+     "GetFlowExecution",
+     "GetFlowVersion",
+     "ListFlowAliases",
+     "ListFlowExecutionEvents",
+     "ListFlowExecutions",
+     "ListFlowVersions",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateFlowAlias",
+     "CreateFlowVersion",
+     "DeleteFlow",
+     "DeleteFlowVersion",
+     "PrepareFlow",
+     "StartFlowExecution",
+     "StopFlowExecution",
+     "UpdateFlow"
+    ]
+   },
+   "flow-alias": {
+    "arns": [
+     "arn:*:bedrock:*:*:flow/*/alias/*"
+    ],
+    "read": [
+     "GetExecutionFlowSnapshot",
+     "GetFlowAlias",
+     "GetFlowExecution",
+     "InvokeFlow",
+     "ListFlowExecutionEvents",
+     "ListFlowExecutions",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteFlowAlias",
+     "StartFlowExecution",
+     "StopFlowExecution",
+     "UpdateFlowAlias"
+    ]
+   },
+   "flow-execution": {
+    "arns": [
+     "arn:*:bedrock:*:*:flow/*/alias/*/execution/*"
+    ],
+    "read": [
+     "GetExecutionFlowSnapshot",
+     "GetFlowExecution",
+     "ListFlowExecutionEvents"
+    ],
+    "write": [
+     "StopFlowExecution"
+    ]
+   },
+   "foundation-model": {
+    "arns": [
+     "arn:*:bedrock:*::foundation-model/*"
+    ],
+    "read": [
+     "CountTokens",
+     "DetectGeneratedContent",
+     "GetFoundationModel",
+     "InvokeModel",
+     "InvokeModelWithResponseStream"
+    ],
+    "write": [
+     "CreateAdvancedPromptOptimizationJob",
+     "CreateEvaluationJob",
+     "CreateInferenceProfile",
+     "CreateModelCustomizationJob",
+     "CreateModelEvaluationJob",
+     "CreateModelInvocationJob",
+     "CreatePromptRouter",
+     "CreateProvisionedModelThroughput",
+     "UpdateProvisionedModelThroughput"
+    ]
+   },
+   "guardrail": {
+    "arns": [
+     "arn:*:bedrock:*:*:guardrail/*"
+    ],
+    "read": [
+     "ApplyGuardrail",
+     "GetGuardrail",
+     "GetResourcePolicy",
+     "ListGuardrails",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateGuardrailVersion",
+     "DeleteGuardrail",
+     "DeleteResourcePolicy",
+     "PutResourcePolicy",
+     "UpdateGuardrail"
+    ]
+   },
+   "guardrail-profile": {
+    "arns": [
+     "arn:*:bedrock:*:*:guardrail-profile/*"
+    ],
+    "read": [
+     "ApplyGuardrail",
+     "GetResourcePolicy"
+    ],
+    "write": [
+     "CreateGuardrail",
+     "DeleteResourcePolicy",
+     "PutResourcePolicy",
+     "UpdateGuardrail"
+    ]
+   },
+   "imported-model": {
+    "arns": [
+     "arn:*:bedrock:*:*:imported-model/*"
+    ],
+    "read": [
+     "GetImportedModel",
+     "InvokeModel",
+     "InvokeModelWithResponseStream",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteImportedModel"
+    ]
+   },
+   "inference-profile": {
+    "arns": [
+     "arn:*:bedrock:*:*:inference-profile/*"
+    ],
+    "read": [
+     "GetInferenceProfile",
+     "InvokeModel",
+     "InvokeModelWithResponseStream"
+    ],
+    "write": [
+     "CreateAdvancedPromptOptimizationJob",
+     "CreateInferenceProfile",
+     "CreatePromptRouter"
+    ]
+   },
+   "knowledge-base": {
+    "arns": [
+     "arn:*:bedrock:*:*:knowledge-base/*"
+    ],
+    "read": [
+     "GetAgentKnowledgeBase",
+     "GetDataSource",
+     "GetIngestionJob",
+     "GetKnowledgeBase",
+     "GetKnowledgeBaseDocuments",
+     "GetResourcePolicy",
+     "ListDataSources",
+     "ListIngestionJobs",
+     "ListKnowledgeBaseDocuments",
+     "ListTagsForResource",
+     "Retrieve"
+    ],
+    "write": [
+     "AllowVendedLogDeliveryForResource",
+     "AssociateAgentKnowledgeBase",
+     "CreateDataSource",
+     "DeleteDataSource",
+     "DeleteKnowledgeBase",
+     "DeleteKnowledgeBaseDocuments",
+     "DeleteResourcePolicy",
+     "DisassociateAgentKnowledgeBase",
+     "IngestKnowledgeBaseDocuments",
+     "PutResourcePolicy",
+     "StartIngestionJob",
+     "StopIngestionJob",
+     "UpdateAgentKnowledgeBase",
+     "UpdateDataSource",
+     "UpdateKnowledgeBase"
+    ]
+   },
+   "model-customization-job": {
+    "arns": [
+     "arn:*:bedrock:*:*:model-customization-job/*"
+    ],
+    "read": [
+     "GetModelCustomizationJob",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "StopModelCustomizationJob"
+    ]
+   },
+   "model-invocation-job": {
+    "arns": [
+     "arn:*:bedrock:*:*:model-invocation-job/*"
+    ],
+    "read": [
+     "GetModelInvocationJob",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateModelInvocationJob",
+     "StopModelInvocationJob"
+    ]
+   },
+   "project": {
+    "arns": [
+     "arn:*:bedrock:*:*:project/*"
+    ],
+    "read": [
+     "GetInvoke",
+     "InvokeModel"
+    ],
+    "write": [
+     "CancelInvoke",
+     "DeleteInvoke"
+    ]
+   },
+   "prompt": {
+    "arns": [
+     "arn:*:bedrock:*:*:prompt/*"
+    ],
+    "read": [
+     "GetPrompt",
+     "ListPrompts",
+     "ListTagsForResource",
+     "RenderPrompt"
+    ],
+    "write": [
+     "CreatePromptVersion",
+     "DeletePrompt",
+     "UpdatePrompt"
+    ]
+   },
+   "prompt-router": {
+    "arns": [
+     "arn:*:bedrock:*:*:prompt-router/*"
+    ],
+    "read": [
+     "GetPromptRouter",
+     "InvokeModel",
+     "InvokeModelWithResponseStream",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateEvaluationJob",
+     "DeletePromptRouter"
+    ]
+   },
+   "prompt-version": {
+    "arns": [
+     "arn:*:bedrock:*:*:prompt/*:*"
+    ],
+    "read": [
+     "GetPrompt",
+     "ListTagsForResource",
+     "RenderPrompt"
+    ],
+    "write": [
+     "DeletePrompt"
+    ]
+   },
+   "provisioned-model": {
+    "arns": [
+     "arn:*:bedrock:*:*:provisioned-model/*"
+    ],
+    "read": [
+     "GetProvisionedModelThroughput",
+     "InvokeModel",
+     "InvokeModelWithResponseStream",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteProvisionedModelThroughput",
+     "UpdateProvisionedModelThroughput"
+    ]
+   },
+   "session": {
+    "arns": [
+     "arn:*:bedrock:*:*:session/*"
+    ],
+    "read": [
+     "GetInvocationStep",
+     "GetSession",
+     "ListInvocationSteps",
+     "ListInvocations",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateInvocation",
+     "DeleteSession",
+     "EndSession",
+     "PutInvocationStep",
+     "UpdateSession"
+    ]
+   }
+  },
+  "dynamodb": {
+   "backup": {
+    "arns": [
+     "arn:*:dynamodb:*:*:table/*/backup/*"
+    ],
+    "read": [
+     "DescribeBackup"
+    ],
+    "write": [
+     "DeleteBackup",
+     "RestoreTableFromBackup"
+    ]
+   },
+   "global-table": {
+    "arns": [
+     "arn:*:dynamodb::*:global-table/*"
+    ],
+    "read": [
+     "DescribeGlobalTable",
+     "DescribeGlobalTableSettings"
+    ],
+    "write": [
+     "CreateGlobalTable",
+     "UpdateGlobalTable",
+     "UpdateGlobalTableSettings",
+     "UpdateGlobalTableVersion"
+    ]
+   },
+   "index": {
+    "arns": [
+     "arn:*:dynamodb:*:*:table/*/index/*"
+    ],
+    "read": [
+     "DescribeContributorInsights",
+     "PartiQLSelect",
+     "Query",
+     "Scan",
+     "SearchVectors"
+    ],
+    "write": [
+     "UpdateContributorInsights"
+    ]
+   },
+   "stream": {
+    "arns": [
+     "arn:*:dynamodb:*:*:table/*/stream/*"
+    ],
+    "read": [
+     "DescribeStream",
+     "GetRecords",
+     "GetResourcePolicy",
+     "GetShardIterator",
+     "ListTagsOfResource"
+    ],
+    "write": [
+     "DeleteResourcePolicy",
+     "PutResourcePolicy"
+    ]
+   },
+   "table": {
+    "arns": [
+     "arn:*:dynamodb:*:*:table/*"
+    ],
+    "read": [
+     "BatchGetItem",
+     "ConditionCheckItem",
+     "DescribeContinuousBackups",
+     "DescribeContributorInsights",
+     "DescribeKinesisStreamingDestination",
+     "DescribeTable",
+     "DescribeTableReplicaAutoScaling",
+     "DescribeTimeToLive",
+     "GetItem",
+     "GetResourcePolicy",
+     "ListExports",
+     "ListImports",
+     "ListTagsOfResource",
+     "PartiQLSelect",
+     "Query",
+     "ReadDataForReplication",
+     "Scan",
+     "SearchVectors"
+    ],
+    "write": [
+     "AssociateTableReplica",
+     "BatchWriteItem",
+     "CreateBackup",
+     "CreateGlobalTable",
+     "CreateGlobalTableWitness",
+     "CreateTable",
+     "CreateTableReplica",
+     "DeleteGlobalTableWitness",
+     "DeleteItem",
+     "DeleteResourcePolicy",
+     "DeleteTable",
+     "DeleteTableReplica",
+     "DisableKinesisStreamingDestination",
+     "EnableKinesisStreamingDestination",
+     "ExportTableToPointInTime",
+     "ImportTable",
+     "PartiQLDelete",
+     "PartiQLInsert",
+     "PartiQLUpdate",
+     "PutItem",
+     "PutResourcePolicy",
+     "ReplicateSettings",
+     "RestoreTableFromAwsBackup",
+     "RestoreTableFromBackup",
+     "RestoreTableToPointInTime",
+     "StartAwsBackupJob",
+     "UpdateContinuousBackups",
+     "UpdateContributorInsights",
+     "UpdateGlobalTable",
+     "UpdateGlobalTableSettings",
+     "UpdateGlobalTableVersion",
+     "UpdateItem",
+     "UpdateKinesisStreamingDestination",
+     "UpdateTable",
+     "UpdateTableReplicaAutoScaling",
+     "UpdateTimeToLive",
+     "WriteDataForReplication"
+    ]
+   }
+  },
+  "s3": {
+   "accessgrant": {
+    "arns": [
+     "arn:*:s3:*:*:access-grants/default/grant/*"
+    ],
+    "read": [
+     "GetAccessGrant",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateAccessGrant",
+     "DeleteAccessGrant"
+    ]
+   },
+   "accessgrantsinstance": {
+    "arns": [
+     "arn:*:s3:*:*:access-grants/default"
+    ],
+    "read": [
+     "GetAccessGrantsInstance",
+     "GetAccessGrantsInstanceForPrefix",
+     "GetAccessGrantsInstanceResourcePolicy",
+     "GetDataAccess",
+     "ListAccessGrants",
+     "ListAccessGrantsLocations",
+     "ListCallerAccessGrants",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "AssociateAccessGrantsIdentityCenter",
+     "CreateAccessGrantsInstance",
+     "DeleteAccessGrantsInstance",
+     "DeleteAccessGrantsInstanceResourcePolicy",
+     "DissociateAccessGrantsIdentityCenter",
+     "PutAccessGrantsInstanceResourcePolicy"
+    ]
+   },
+   "accessgrantslocation": {
+    "arns": [
+     "arn:*:s3:*:*:access-grants/default/location/*"
+    ],
+    "read": [
+     "GetAccessGrantsLocation",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateAccessGrantsLocation",
+     "DeleteAccessGrantsLocation",
+     "UpdateAccessGrantsLocation"
+    ]
+   },
+   "accesspoint": {
+    "arns": [
+     "arn:*:s3:*:*:accesspoint/*"
+    ],
+    "read": [
+     "GetAccessPointPolicy",
+     "GetAccessPointPolicyStatus",
+     "GetBucketAcl",
+     "GetBucketCORS",
+     "GetBucketLocation",
+     "GetBucketNotification",
+     "GetBucketPolicy",
+     "ListBucket",
+     "ListBucketVersions",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateAccessPoint",
+     "DeleteAccessPoint",
+     "DeleteAccessPointPolicy",
+     "PutAccessPointPolicy"
+    ]
+   },
+   "accesspointobject": {
+    "arns": [
+     "arn:*:s3:*:*:accesspoint/*/object/*"
+    ],
+    "read": [
+     "GetObject",
+     "GetObjectAcl",
+     "GetObjectAnnotation",
+     "GetObjectAttributes",
+     "GetObjectLegalHold",
+     "GetObjectRetention",
+     "GetObjectTagging",
+     "GetObjectVersion",
+     "GetObjectVersionAcl",
+     "GetObjectVersionAnnotation",
+     "GetObjectVersionAttributes",
+     "GetObjectVersionTagging",
+     "ListMultipartUploadParts",
+     "ListObjectAnnotations",
+     "ListObjectVersionAnnotations"
+    ],
+    "write": [
+     "AbortMultipartUpload",
+     "BypassGovernanceRetention",
+     "DeleteObject",
+     "DeleteObjectAnnotation",
+     "DeleteObjectVersion",
+     "DeleteObjectVersionAnnotation",
+     "PutObject",
+     "PutObjectAcl",
+     "PutObjectAnnotation",
+     "PutObjectLegalHold",
+     "PutObjectRetention",
+     "PutObjectVersionAcl",
+     "PutObjectVersionAnnotation",
+     "RestoreObject",
+     "UpdateObjectEncryption"
+    ]
+   },
+   "bucket": {
+    "arns": [
+     "arn:*:s3:::*"
+    ],
+    "read": [
+     "AllowVendedLogDeliveryForResource",
+     "GetAccelerateConfiguration",
+     "GetAnalyticsConfiguration",
+     "GetBucketAbac",
+     "GetBucketAcl",
+     "GetBucketCORS",
+     "GetBucketLocation",
+     "GetBucketLogging",
+     "GetBucketMetadataTableConfiguration",
+     "GetBucketNotification",
+     "GetBucketObjectLockConfiguration",
+     "GetBucketOwnershipControls",
+     "GetBucketPolicy",
+     "GetBucketPolicyStatus",
+     "GetBucketPublicAccessBlock",
+     "GetBucketRequestPayment",
+     "GetBucketTagging",
+     "GetBucketVersioning",
+     "GetBucketWebsite",
+     "GetEncryptionConfiguration",
+     "GetIntelligentTieringConfiguration",
+     "GetInventoryConfiguration",
+     "GetLifecycleConfiguration",
+     "GetMetricsConfiguration",
+     "GetReplicationConfiguration",
+     "ListBucket",
+     "ListBucketMultipartUploads",
+     "ListBucketVersions",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateBucket",
+     "CreateBucketMetadataTableConfiguration",
+     "DeleteBucket",
+     "DeleteBucketMetadataTableConfiguration",
+     "DeleteBucketPolicy",
+     "DeleteBucketWebsite",
+     "PauseReplication",
+     "PutAccelerateConfiguration",
+     "PutAnalyticsConfiguration",
+     "PutBucketAbac",
+     "PutBucketAcl",
+     "PutBucketCORS",
+     "PutBucketLogging",
+     "PutBucketNotification",
+     "PutBucketObjectLockConfiguration",
+     "PutBucketOwnershipControls",
+     "PutBucketPolicy",
+     "PutBucketPublicAccessBlock",
+     "PutBucketRequestPayment",
+     "PutBucketVersioning",
+     "PutBucketWebsite",
+     "PutEncryptionConfiguration",
+     "PutIntelligentTieringConfiguration",
+     "PutInventoryConfiguration",
+     "PutLifecycleConfiguration",
+     "PutMetricsConfiguration",
+     "PutReplicationConfiguration",
+     "UpdateBucketMetadataAnnotationTableConfiguration",
+     "UpdateBucketMetadataInventoryTableConfiguration",
+     "UpdateBucketMetadataJournalTableConfiguration"
+    ]
+   },
+   "job": {
+    "arns": [
+     "arn:*:s3:*:*:job/*"
+    ],
+    "read": [
+     "DescribeJob",
+     "GetJobTagging"
+    ],
+    "write": [
+     "UpdateJobPriority",
+     "UpdateJobStatus"
+    ]
+   },
+   "multiregionaccesspoint": {
+    "arns": [
+     "arn:*:s3::*:accesspoint/*"
+    ],
+    "read": [
+     "GetMultiRegionAccessPoint",
+     "GetMultiRegionAccessPointPolicy",
+     "GetMultiRegionAccessPointPolicyStatus",
+     "GetMultiRegionAccessPointRoutes"
+    ],
+    "write": [
+     "CreateMultiRegionAccessPoint",
+     "DeleteMultiRegionAccessPoint",
+     "PutMultiRegionAccessPointPolicy",
+     "SubmitMultiRegionAccessPointRoutes"
+    ]
+   },
+   "object": {
+    "arns": [
+     "arn:*:s3:::*/*"
+    ],
+    "read": [
+     "GetObject",
+     "GetObjectAcl",
+     "GetObjectAnnotation",
+     "GetObjectAttributes",
+     "GetObjectLegalHold",
+     "GetObjectRetention",
+     "GetObjectTagging",
+     "GetObjectTorrent",
+     "GetObjectVersion",
+     "GetObjectVersionAcl",
+     "GetObjectVersionAnnotation",
+     "GetObjectVersionAnnotationForReplication",
+     "GetObjectVersionAttributes",
+     "GetObjectVersionForReplication",
+     "GetObjectVersionTagging",
+     "GetObjectVersionTorrent",
+     "ListMultipartUploadParts",
+     "ListObjectAnnotations",
+     "ListObjectVersionAnnotations"
+    ],
+    "write": [
+     "AbortMultipartUpload",
+     "BypassGovernanceRetention",
+     "DeleteObject",
+     "DeleteObjectAnnotation",
+     "DeleteObjectVersion",
+     "DeleteObjectVersionAnnotation",
+     "InitiateReplication",
+     "ObjectOwnerOverrideToBucketOwner",
+     "PutObject",
+     "PutObjectAcl",
+     "PutObjectAnnotation",
+     "PutObjectLegalHold",
+     "PutObjectRetention",
+     "PutObjectVersionAcl",
+     "PutObjectVersionAnnotation",
+     "ReplicateDelete",
+     "ReplicateObject",
+     "ReplicateObjectAnnotation",
+     "RestoreObject",
+     "UpdateObjectEncryption"
+    ]
+   },
+   "objectlambdaaccesspoint": {
+    "arns": [
+     "arn:*:s3-object-lambda:*:*:accesspoint/*"
+    ],
+    "read": [
+     "GetAccessPointConfigurationForObjectLambda",
+     "GetAccessPointForObjectLambda",
+     "GetAccessPointPolicyForObjectLambda",
+     "GetAccessPointPolicyStatusForObjectLambda"
+    ],
+    "write": [
+     "CreateAccessPointForObjectLambda",
+     "DeleteAccessPointForObjectLambda",
+     "DeleteAccessPointPolicyForObjectLambda",
+     "PutAccessPointConfigurationForObjectLambda",
+     "PutAccessPointPolicyForObjectLambda"
+    ]
+   },
+   "storagelensconfiguration": {
+    "arns": [
+     "arn:*:s3:*:*:storage-lens/*"
+    ],
+    "read": [
+     "GetStorageLensConfiguration",
+     "GetStorageLensConfigurationTagging",
+     "GetStorageLensDashboard"
+    ],
+    "write": [
+     "DeleteStorageLensConfiguration"
+    ]
+   },
+   "storagelensgroup": {
+    "arns": [
+     "arn:*:s3:*:*:storage-lens-group/*"
+    ],
+    "read": [
+     "GetStorageLensGroup",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "DeleteStorageLensGroup",
+     "UpdateStorageLensGroup"
+    ]
+   }
+  },
+  "s3vectors": {
+   "Index": {
+    "arns": [
+     "arn:*:s3vectors:*:*:bucket/*/index/*"
+    ],
+    "read": [
+     "GetIndex",
+     "GetVectors",
+     "ListTagsForResource",
+     "ListVectors",
+     "QueryVectors"
+    ],
+    "write": [
+     "CreateIndex",
+     "DeleteIndex",
+     "DeleteVectors",
+     "PutVectors"
+    ]
+   },
+   "VectorBucket": {
+    "arns": [
+     "arn:*:s3vectors:*:*:bucket/*"
+    ],
+    "read": [
+     "GetVectorBucket",
+     "GetVectorBucketPolicy",
+     "ListIndexes",
+     "ListTagsForResource"
+    ],
+    "write": [
+     "CreateVectorBucket",
+     "DeleteVectorBucket",
+     "DeleteVectorBucketPolicy",
+     "PutVectorBucketPolicy"
+    ]
+   }
+  }
+ },
+ "source": "https://servicereference.us-east-1.amazonaws.com/v1/<service>/<service>.json",
+ "versions": {
+  "bedrock": "v1.4",
+  "dynamodb": "v1.4",
+  "s3": "v1.4",
+  "s3vectors": "v1.4"
+ }
+}
