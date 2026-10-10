@@ -551,9 +551,14 @@ assessment; do not reuse a cache from another execution.
 
 A cache that loaded can still be incomplete for some principals. The cache
 lists each role or user whose policy or permissions-boundary read failed under
-`principal_errors`, with the stage that failed and the error. A control that
-judges every role or user reports those principals as not read and does not
-report `Passed` while any of them is listed. A cache written before
+`principal_errors`, with the stage that failed and the error. A failed group
+policy read is listed under each member with stage `group_policy` and names the
+group and policy. A role or user deleted during the run (`NoSuchEntity`) is
+left out of the cache and is not listed. A control that judges every role or
+user reports those principals as not read and does not report `Passed` while
+any of them is listed. The finding's resolution points to the IAM Permission
+Caching Lambda logs, where each error shows whether it was access denied,
+throttling or a deletion. A cache written before
 `cache_schema_version` 2 has no `principal_errors`, and the finding says the
 per-principal read errors were not recorded.
 

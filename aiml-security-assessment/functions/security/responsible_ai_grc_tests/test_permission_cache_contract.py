@@ -71,6 +71,11 @@ class TestFS22PrincipalErrors:
             "1 role(s) could not be fully read from the IAM permissions cache, so "
             "their grants are unknown: 'broken'." in row["Finding_Details"]
         )
+        assert row["Resolution"] == (
+            "Review the IAM Permission Caching Lambda logs for the listed roles "
+            "(access denied, throttling or deletion), correct the cause, and rerun "
+            "the assessment."
+        )
 
     def test_a_failed_row_still_names_the_unread_roles_and_scps(self):
         cache = _cache(
@@ -194,6 +199,11 @@ class TestFS07CacheContract:
             in row["Finding_Details"]
         )
         assert "Reviewed 1 of 2 agent(s)" in row["Finding_Details"]
+        assert row["Resolution"] == (
+            "Review the IAM Permission Caching Lambda logs for the listed roles "
+            "(access denied, throttling or deletion) and the bedrock:GetAgent error "
+            "for the listed agents, correct the cause, and rerun the assessment."
+        )
 
     @patch("finserv_app.boto3.client")
     def test_an_agent_role_missing_from_the_cache_is_unread(self, mock_client):

@@ -42,9 +42,12 @@ section.
 - **IAM permissions cache.** The cache (schema version 2) records each user's
   group policies and each role's and user's permissions boundary, and lists
   under `principal_errors` every principal whose policy or boundary read
-  failed. `FS-07` and `FS-22` report such a principal as not read instead of
-  clean, and do not report `Passed` while one is listed. A boundary that
-  removes an action now removes it from the grant those checks judge.
+  failed. A failed read of one group policy keeps the user's other group
+  policies. A role or user deleted during the run is left out of the cache
+  instead of being listed. `FS-07` and `FS-22` report a listed principal as not
+  read instead of clean, and do not report `Passed` while one is listed. A
+  boundary that removes an action now removes it from the grant those checks
+  judge. Each managed policy is now fetched once per run.
 - Pinned `boto3` and `botocore` 1.43.108 in every function's
   `requirements.txt` and in `tests/requirements.txt`.
 
@@ -92,14 +95,14 @@ central infrastructure updates first. Then apply this feature's parameters
 and rerun CodeBuild to deploy the assessment/report changes. No additional
 IAM permissions are introduced by service selection.
 
-**IAM permissions cache.** A CodeBuild run deploys both AWS SAM templates
-(`aiml-security-assessment/template.yaml` and
-`aiml-security-assessment/template-multi-account.yaml`). The IAM permissions
-cache role gains `iam:GetRole` on the account's roles, `iam:GetUser` and
-`iam:ListGroupsForUser` on its users, and an `IAMGroupPolicyRead` statement
-(`iam:ListAttachedGroupPolicies`, `iam:ListGroupPolicies` and
-`iam:GetGroupPolicy`) on its groups. Every new action is a read. No member-role
-StackSet or central infrastructure update is required.
+**IAM permissions cache.** Rerun CodeBuild; it redeploys the SAM template for
+your mode with the new IAM read grants. Direct SAM users must redeploy the
+template they use. No StackSet or central infrastructure update is required.
+The IAM permissions cache role gains `iam:GetRole` on the account's roles,
+`iam:GetUser` and `iam:ListGroupsForUser` on its users, and an
+`IAMGroupPolicyRead` statement (`iam:ListAttachedGroupPolicies`,
+`iam:ListGroupPolicies` and `iam:GetGroupPolicy`) on its groups. Every new
+action is a read.
 
 ## 2.0.0 - 2026-09-18
 

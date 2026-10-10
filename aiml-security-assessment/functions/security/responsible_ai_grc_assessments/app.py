@@ -1748,9 +1748,10 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
                         "rest could not be assessed. " + " ".join(notes)
                     ),
                     resolution=(
-                        "Grant the IAM Permission Caching task read access to the "
-                        "listed roles (or bedrock:GetAgent for the listed agents), "
-                        "then rerun the assessment."
+                        "Review the IAM Permission Caching Lambda logs for the "
+                        "listed roles (access denied, throttling or deletion) and "
+                        "the bedrock:GetAgent error for the listed agents, correct "
+                        "the cause, and rerun the assessment."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-permissions.html",
                     severity="Informational",
@@ -3077,8 +3078,9 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                         "that were read. " + " ".join(notes)
                     ),
                     resolution=(
-                        "Grant the IAM Permission Caching task read access to the "
-                        "listed roles, then rerun the assessment."
+                        "Review the IAM Permission Caching Lambda logs for the "
+                        "listed roles (access denied, throttling or deletion), "
+                        "correct the cause, and rerun the assessment."
                     ),
                     reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html",
                     severity="Informational",
