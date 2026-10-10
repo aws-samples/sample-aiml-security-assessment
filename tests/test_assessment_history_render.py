@@ -145,7 +145,10 @@ def test_a_missing_template_is_a_render_error(tmp_path):
 
 
 FAKE_TEMPLATE = """
-COMPLIANCE_STANDARDS = [{"slug": "owasp", "name": "OWASP", "icon": "<i></i>"}]
+COMPLIANCE_STANDARDS = [
+    {"slug": "owasp", "name": "OWASP", "icon": "<i></i>"},
+    {"slug": "aisf", "name": "AISF", "icon": "<i></i>"},
+]
 RESPONSIBLE_AI_GRC_LABEL = "GRC"
 RESPONSIBLE_AI_GRC_NAV_HEADING = "By Governance Framework"
 AGENT_REGISTRY_ICON = AGENTIC_ICON = RESPONSIBLE_AI_GRC_ICON = ""

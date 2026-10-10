@@ -3746,7 +3746,7 @@ class TestRequirementVersionPins:
     repository-wide pin bump followed by the SDK contract and assessment tests.
     """
 
-    REQUIRED_SDK_VERSION = "1.43.85"
+    REQUIRED_SDK_VERSION = "1.43.108"
 
     @staticmethod
     def _load_requirements() -> str:

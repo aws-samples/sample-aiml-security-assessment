@@ -1,7 +1,9 @@
 from enum import Enum
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field, field_validator
 import re
+
+from aisf_compliance_agentcore import aisf_frameworks
 
 
 class SeverityEnum(str, Enum):
@@ -37,6 +39,18 @@ class Finding(BaseModel):
     Status: StatusEnum = Field(..., description="Current status of the finding")
     Region: str = Field(
         default="", description="AWS region where the finding was identified"
+    )
+    Compliance_Frameworks: str = Field(
+        default="",
+        description=(
+            "Pipe-separated AISF control ids this check contributes to (e.g. "
+            "'AISF AIR-ACR-RT-09'). A '(partial)' qualifier means the check "
+            "asserts less than the control requires; '(1 of N checks)' means the "
+            "control is asserted by this check together with N-1 others. A tag is "
+            "a traceability reference to the AI Security Framework, not a "
+            "statement that the control passed: the Status column carries the "
+            "verdict."
+        ),
     )
 
     @field_validator("Check_ID")
@@ -84,6 +98,7 @@ def create_finding(
     severity: SeverityEnum,
     status: StatusEnum,
     region: str = "",
+    compliance_frameworks: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Create a validated finding object
@@ -97,6 +112,10 @@ def create_finding(
         severity: Severity level
         status: Current status
         region: AWS region where the finding was identified
+        compliance_frameworks: AISF control tags. Left as None, the tags are
+            looked up from the check id, so the several hundred existing call
+            sites need no edit. Pass "" to emit an untagged row deliberately;
+            None and "" have to be distinguishable for that reason.
 
     Returns:
         Dict[str, Any]: Validated finding as dictionary
@@ -113,5 +132,10 @@ def create_finding(
         Severity=severity,
         Status=status,
         Region=region,
+        Compliance_Frameworks=(
+            aisf_frameworks(check_id)
+            if compliance_frameworks is None
+            else compliance_frameworks
+        ),
     )
     return dict(finding.model_dump())  # Convert to regular dictionary

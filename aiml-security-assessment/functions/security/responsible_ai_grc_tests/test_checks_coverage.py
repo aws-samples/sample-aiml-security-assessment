@@ -70,7 +70,7 @@ class TestFS01ShieldClientError:
 class TestFS07AgentBoundariesNewPaths:
     @patch("finserv_app.boto3.client")
     def test_get_agent_client_error_skips_agent(self, mock_client):
-        """Lines 532-534: get_agent raises ClientError → agent is skipped gracefully."""
+        """get_agent raises ClientError → the agent is unread, so no Passed."""
         c = MagicMock()
         c.list_agents.return_value = {
             "agentSummaries": [{"agentId": "a1", "agentName": "EncryptedAgent"}]
@@ -80,9 +80,15 @@ class TestFS07AgentBoundariesNewPaths:
         result = app.check_bedrock_agent_action_boundaries(
             {"role_permissions": {}, "user_permissions": {}}
         )
-        _assert_structure(result)
-        # Should PASS (no issues found, agent was skipped)
-        assert result["status"] == "PASS"
+        assert "check_name" in result
+        assert result["status"] == "N/A"
+        row = result["csv_data"][0]
+        assert row["Status"] == "N/A"
+        assert row["Finding"] == "Agent Action Boundary Check Incomplete"
+        assert (
+            "agent 'EncryptedAgent' (GetAgent failed: AccessDeniedException)"
+            in row["Finding_Details"]
+        )
 
     @patch("finserv_app.boto3.client")
     def test_agent_no_role_arn_skipped(self, mock_client):

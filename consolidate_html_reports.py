@@ -31,6 +31,7 @@ sys.path.insert(
     ),
 )
 
+from aisf_mappings import derive_aisf_findings
 from report_template import (
     COMPLIANCE_STANDARDS,
     core_service_selection,
@@ -256,6 +257,35 @@ def consolidate_html_reports():
                 except Exception as e:
                     print(f"Error parsing CSV file {csv_file}: {str(e)}")
                     continue
+
+    # AISF is a derived standard: no CSV carries an AISF-* row, so restate the
+    # verdicts gathered above under AISF control ids once every account has been
+    # read. derive_aisf_findings accepts either key casing, which matters here
+    # because the rows built above are lowercase-keyed while the Lambda hands it
+    # CSV-cased rows. Derived rows run through the same seen_findings key, so
+    # overlapping account CSVs cannot double-count an AISF control.
+    derived_aisf_findings = derive_aisf_findings(all_findings, selected_services)
+    for finding in derived_aisf_findings:
+        service = finding["_service"]
+        dedup_key = (
+            finding["Account_ID"],
+            service,
+            finding["Check_ID"],
+            finding["Region"],
+            finding["Finding_Details"],
+        )
+        if dedup_key in seen_findings:
+            continue
+        seen_findings.add(dedup_key)
+        all_findings.append(finding)
+        service_findings[service].append(finding)
+        status = finding["Status"].lower()
+        if status == "passed":
+            service_stats[service]["passed"] += 1
+        elif status == "failed":
+            service_stats[service]["failed"] += 1
+        elif status == "n/a":
+            service_stats[service]["na"] += 1
 
     if all_findings or (account_ids and not any(selected_services.values())):
         timestamp_display = datetime.now().strftime("%B %d, %Y %H:%M:%S UTC")

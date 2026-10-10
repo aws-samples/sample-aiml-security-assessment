@@ -96,6 +96,7 @@ def load_parts(path: Path = TEMPLATE_PATH) -> PageParts:
             standard["slug"]: standard for standard in module.COMPLIANCE_STANDARDS
         }
         owasp = standards["owasp"]
+        aisf = standards["aisf"]
         area_labels = {
             # The main report's Assessment Area filter names.
             "bedrock": "Bedrock",
@@ -105,12 +106,14 @@ def load_parts(path: Path = TEMPLATE_PATH) -> PageParts:
             "agentic": "Agentic AI Security",
             "responsible-ai-grc": module.RESPONSIBLE_AI_GRC_LABEL,
             "owasp": owasp["name"],
+            "aisf": aisf["name"],
         }
         borrowed_icons = {
             "agent-registry": module.AGENT_REGISTRY_ICON,
             "agentic": module.AGENTIC_ICON,
             "responsible-ai-grc": module.RESPONSIBLE_AI_GRC_ICON,
             "owasp": owasp["icon"],
+            "aisf": aisf["icon"],
         }
         grc_heading = module.RESPONSIBLE_AI_GRC_NAV_HEADING
         helpers = (module._escape_text, module._escape_attr, module._safe_https_url)
@@ -151,7 +154,7 @@ def load_parts(path: Path = TEMPLATE_PATH) -> PageParts:
             ("By Service", "", CORE_AREAS),
             ("By Lens", "lens-nav", ("agentic",)),
             (grc_heading, "governance-nav", ("responsible-ai-grc",)),
-            ("By Compliance Standard", "compliance-nav", ("owasp",)),
+            ("By Compliance Standard", "compliance-nav", ("owasp", "aisf")),
         ),
         escape_text=helpers[0],
         escape_attr=helpers[1],
