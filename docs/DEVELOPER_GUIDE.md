@@ -413,10 +413,12 @@ environment variable, and every `sam deploy` path in `buildspec.yml`.
 | `AgentCoreTokenVaultId` | `AGENTCORE_TOKEN_VAULT_ID` | AC-14 |
 | `ApprovedExternalAccountIds` | `AIML_APPROVED_EXTERNAL_ACCOUNT_IDS` | SM-30 |
 | `ApprovedOrganizationIds` | `AIML_APPROVED_ORG_IDS` | SM-30 |
+| `EnableSageMakerArtifactObjectReads` | `ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS` | SM-43 |
 
 The top-level deployment templates expose the approved-account and
 approved-organization values to CodeBuild as `APPROVED_EXTERNAL_ACCOUNT_IDS`
-and `APPROVED_ORGANIZATION_IDS`; `buildspec.yml` then maps them to the SAM
+and `APPROVED_ORGANIZATION_IDS`, and `EnableSageMakerArtifactObjectReads` as
+`ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS`; `buildspec.yml` then maps them to the SAM
 parameters shown above. Add or rename a baseline only when all layers and the
 public deployment documentation are updated together.
 

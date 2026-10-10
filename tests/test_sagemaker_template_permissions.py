@@ -181,6 +181,13 @@ def test_model_artifact_object_read_is_get_object_on_objects_only():
         artifact = next(s for s in holding if s.split()[0] == "ModelArtifactObjectRead")
         assert re.findall(r"- ([a-z0-9-]+:[A-Za-z*]+)", artifact) == ["s3:GetObject"]
         assert "Resource: !Sub 'arn:${AWS::Partition}:s3:::*/*'" in artifact
+        # The grant sits inside the opt-in condition, so it is absent by default.
+        assert "- !Ref AWS::NoValue" in artifact
+        text = template_path.read_text(encoding="utf-8")
+        assert (
+            "- !If\n              - SageMakerArtifactObjectReadsEnabled\n"
+            "              - Sid: ModelArtifactObjectRead\n"
+        ) in text
         cache = next(s for s in holding if s.split()[0] == "PermissionCacheRead")
         assert "permissions_cache_*.json" in cache
 

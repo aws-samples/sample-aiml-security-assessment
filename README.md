@@ -327,6 +327,7 @@ enforced by default.
 | `AgentCoreTokenVaultId` | `default` | AC-14 | Selects the regional AgentCore Identity token vault whose customer-managed KMS encryption is assessed. |
 | `ApprovedExternalAccountIds` | Empty | SM-30 | Comma-separated 12-digit AWS account IDs approved to receive SageMaker Model Registry access. Accounts outside the configured boundary fail. |
 | `ApprovedOrganizationIds` | Empty | SM-30 | Comma-separated AWS Organizations IDs approved to receive SageMaker Model Registry access. Organizations outside the configured boundary fail. |
+| `EnableSageMakerArtifactObjectReads` | `false` | SM-43 | When `true`, the SageMaker Lambda role gets `s3:GetObject` on every object (`arn:<partition>:s3:::*/*`) so SM-43 can call `HeadObject` on each single-object model artifact and compare its current `ETag` and own encryption. That grant also allows downloading any object the bucket policy does not deny. When `false`, the grant is absent and the per-object leg is an informational `N/A` row naming this parameter. |
 
 For the approved-account and approved-organization lists, do not include spaces.
 Leaving both lists empty means SM-30 still detects public access, but external
@@ -696,6 +697,8 @@ The deployment uses multiple IAM roles with different trust and permission bound
   - `s3:GetObject` on `*/*AWSLogs/<account>/BedrockModelInvocationLogs/*` (BR-04, BR-27, BR-34) reads the same invocation log records from an S3-only destination, and BR-04 reads object replication status. The records it reads hold prompts and completions, so this grant can read them, even though the findings report only request IDs, scores and status. `s3:GetObject` on `*/*.metadata.json` (BR-46) reads knowledge base metadata sidecar files.
 
   None of the three can be turned off with a deployment parameter. To withhold one, remove it from the SAM template before deploying. The checks that need it then report `N/A`.
+
+  The SM-43 grant, `s3:GetObject` on every object, is different: it exists only when the `EnableSageMakerArtifactObjectReads` deployment parameter is `true` (default `false`).
 
 If you need to reduce scope, review the role policies in:
 

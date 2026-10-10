@@ -44,6 +44,10 @@ EXPECTED_ENV_OWNERS = {
         "AgentRegistrySecurityAssessmentFunction",
         "RequireAgentRegistryCMK",
     ),
+    "ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS": (
+        "SagemakerSecurityAssessmentFunction",
+        "EnableSageMakerArtifactObjectReads",
+    ),
 }
 CLEARABLE_SAM_PARAMETERS = {
     "SAM_TARGET_REGIONS_PARAMETER": "TargetRegions",
@@ -217,3 +221,68 @@ def test_agent_registry_cmk_baseline_reaches_every_deploy_path():
         assert "RequireAgentRegistryCMK:" in template
         assert "Name: REQUIRE_AGENT_REGISTRY_CMK" in template
         assert "Value: !Ref RequireAgentRegistryCMK" in template
+
+
+def test_sagemaker_artifact_object_reads_reach_every_deploy_path():
+    buildspec = (REPO_ROOT / "buildspec.yml").read_text(encoding="utf-8")
+    parameter_variable = "SAM_ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS_PARAMETER"
+
+    assert (
+        f'{parameter_variable}="ParameterKey=EnableSageMakerArtifactObjectReads,'
+        'ParameterValue=${ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS:-false}"' in buildspec
+    )
+    assert f"export {parameter_variable}" in buildspec
+    deploy_commands = [
+        line for line in buildspec.splitlines() if "sam deploy --template-file" in line
+    ]
+    assert len(deploy_commands) == 3
+    assert all(f'"${parameter_variable}"' in line for line in deploy_commands)
+
+    for template_name in (
+        "deployment/aiml-security-single-account.yaml",
+        "deployment/2-aiml-security-codebuild.yaml",
+    ):
+        with (REPO_ROOT / template_name).open(encoding="utf-8") as template_file:
+            template = yaml.load(template_file, Loader=CfnLoader)  # nosec B506
+        parameter = template["Parameters"]["EnableSageMakerArtifactObjectReads"]
+        assert parameter["Default"] == "false"
+        assert parameter["AllowedValues"] == ["true", "false"]
+        text = (REPO_ROOT / template_name).read_text(encoding="utf-8")
+        assert "Name: ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS" in text
+        assert "Value: !Ref EnableSageMakerArtifactObjectReads" in text
+
+
+@pytest.mark.parametrize("template_path", TEMPLATE_PATHS, ids=lambda path: path.name)
+def test_sagemaker_artifact_object_read_grant_exists_only_when_enabled(
+    template_path,
+):
+    with template_path.open(encoding="utf-8") as template_file:
+        template = yaml.load(template_file, Loader=CfnLoader)  # nosec B506
+
+    parameter = template["Parameters"]["EnableSageMakerArtifactObjectReads"]
+    assert parameter["Default"] == "false"
+    assert parameter["AllowedValues"] == ["true", "false"]
+    assert template["Conditions"]["SageMakerArtifactObjectReadsEnabled"] == {
+        "Fn::Equals": [{"Fn::Ref": "EnableSageMakerArtifactObjectReads"}, "true"]
+    }
+    statements = [
+        statement
+        for policy in template["Resources"]["SagemakerSecurityAssessmentFunction"][
+            "Properties"
+        ]["Policies"]
+        for statement in policy.get("Statement", [])
+    ]
+    conditional = [s for s in statements if "Fn::If" in s]
+    assert len(conditional) == 1
+    condition, granted, otherwise = conditional[0]["Fn::If"]
+    assert condition == "SageMakerArtifactObjectReadsEnabled"
+    assert granted["Sid"] == "ModelArtifactObjectRead"
+    assert granted["Action"] == ["s3:GetObject"]
+    assert otherwise == {"Fn::Ref": "AWS::NoValue"}
+    # No unconditional statement grants s3:GetObject beyond the permissions cache.
+    unconditional = [
+        s
+        for s in statements
+        if "Fn::If" not in s and "s3:GetObject" in (s.get("Action") or [])
+    ]
+    assert [s["Sid"] for s in unconditional] == ["PermissionCacheRead"]

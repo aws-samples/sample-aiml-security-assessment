@@ -49,6 +49,8 @@ VOLATILE_PATTERNS = (
                 "responsible_ai_grc_assessments/app.py",
                 "last completed ingestion {age_days} days ago",
             ),
+            # SM-40 secret rotation age
+            ("sagemaker_assessments/app.py", "last rotated {int(age_days)} days ago"),
         ),
     ),
     VolatilePattern(
@@ -102,6 +104,36 @@ IGNORED_SOURCES = (
     (
         "bedrock_assessments/app.py",
         "of at most {BEDROCK_API_KEY_MAX_AGE_DAYS} days, then delete ",
+        "fixed threshold, the same every run",
+    ),
+    (
+        "sagemaker_assessments/app.py",
+        'f"{GUARDDUTY_REVIEW_WINDOW_DAYS} days; findings created more recently are "',
+        "fixed threshold, the same every run",
+    ),
+    (
+        "sagemaker_assessments/app.py",
+        'f"{GUARDDUTY_REVIEW_WINDOW_DAYS} days after they were created, so "',
+        "fixed threshold, the same every run",
+    ),
+    (
+        "sagemaker_assessments/app.py",
+        'f"Workflow.Status NEW more than {GUARDDUTY_REVIEW_WINDOW_DAYS} days after "',
+        "fixed threshold, the same every run",
+    ),
+    (
+        "sagemaker_assessments/app.py",
+        'f"{IOT_AUDIT_FINDING_WINDOW_DAYS} days"',
+        "fixed threshold, the same every run",
+    ),
+    (
+        "sagemaker_assessments/app.py",
+        'else f"the last {IOT_AUDIT_FINDING_WINDOW_DAYS} days hold "',
+        "fixed threshold, the same every run",
+    ),
+    (
+        "sagemaker_assessments/app.py",
+        'f"{interval:g} days, longer than {SECRET_ROTATION_MAX_DAYS} days, "',
         "fixed threshold, the same every run",
     ),
 )

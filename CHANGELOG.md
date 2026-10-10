@@ -119,6 +119,13 @@ section.
     an expected value is stored, never that it was compared at load time.
     Weights fetched by container startup code and models served from ECS, EKS
     or EC2 are not read.
+- Added the `EnableSageMakerArtifactObjectReads` deployment parameter (default
+  `false`) to both AWS SAM templates and both deployment templates, passed to
+  CodeBuild as `ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS`. `SM-43` calls
+  `HeadObject` on each model artifact object only when it is `true`, because
+  that call needs `s3:GetObject` on every object. While it is `false` the
+  SageMaker AI role has no object-read grant, and the per-object leg is an
+  `N/A` Informational row naming the parameter.
 
 ### Changed
 
@@ -191,6 +198,36 @@ back `Passed` names what it could not read.
   runtimes, EKS Fargate profiles and node counts, MicroVMs, and the egress of
   every VPC a SageMaker workload runs in. `SM-40` fails a rotation gap over 90
   days. `SM-43` fails an artifact bucket under an AWS managed key.
+- **SageMaker AI assessment run.**
+  - A check that stops on an unexpected error writes one `N/A`
+    `SageMaker Check Incomplete` row for its check ID, and the other checks
+    still run and write the CSV.
+  - The Lambda stops starting checks 120 seconds before its 900-second
+    timeout. Each check that did not start is one `N/A`
+    `SageMaker Check Not Assessed (Timeout)` row per check ID and Region; rows
+    collected before the deadline are still reported.
+  - A service or API not offered in a Region (an endpoint connection error,
+    `UnknownEndpoint` or an opt-in error code) is a note on the row, not an
+    unread inventory. Access denied is still reported as not read.
+  - `SM-04` and `SM-35` fail a Region where Security Hub is not enabled
+    (`InvalidAccessException`), where they used to report `N/A`.
+  - The service control policies are read once per run and shared by `SM-34`,
+    `SM-39`, `SM-09`, `SM-42` and `SM-11`. `SM-42` runs once, on the primary
+    Region, with rows tagged `Global`, where it used to run in every Region.
+  - `SM-32`'s row for a rule with no current evaluation is `Informational`,
+    down from `Medium`.
+  - A resource-wide grant in the caller's partition (for example `aws-us-gov`)
+    is read as broad, and `[` in a resource ARN is literal.
+  - The handler returns `report_url` and `row_count` in its response body,
+    not the findings.
+- **OWASP mapping by finding name.** `SM-10`, `SM-11` and `SM-22` rows map into
+  OW rows only when their `Finding` names the mapped control. Rows these checks
+  added for other controls no longer reach OW-03, OW-04, OW-09 or OW-10. See
+  `docs/SECURITY_CHECKS_OWASP.md`.
+- **Changes report churn for rewritten SageMaker AI checks.** Many `SM-` rows
+  are renamed or split in this release, so the first changes report after the
+  upgrade lists the old rows as No longer reported and the new rows as New,
+  even where the setting did not change. Later runs compare normally.
 - **Report wording.** `Passed` text names only what the check read, and
   `Finding_Details` names each unread leg instead of describing the whole
   control as satisfied.
@@ -232,7 +269,8 @@ back `Passed` names what it could not read.
   the raw exception text.
 - The Bedrock assessment Lambda's timeout is 900 seconds, the Lambda maximum,
   up from 600, so its per-read deadline stops 60 seconds before 900 instead of
-  before 600.
+  before 600. The SageMaker AI assessment Lambda's timeout is also 900 seconds,
+  up from 600.
 - `SM-35`'s Detective membership read and `SM-38`'s event data store listing
   stop when a service returns the same `NextToken` twice.
 - `SM-23` reports a Region with no InService endpoint as `N/A`, where it used to
@@ -319,9 +357,10 @@ change:
     role can read and apply a guardrail another account shares or the
     organization enforces.
   - `s3:GetObject` on `arn:${AWS::Partition}:s3:::*/*` for the SageMaker AI
-    role (`SM-43`), because the buckets are named by the customer. `SM-43`
-    calls only `HeadObject`, but the grant also permits reading object contents
-    in any bucket whose policy admits the role.
+    role (`SM-43`), because the buckets are named by the customer. It is
+    granted only when `EnableSageMakerArtifactObjectReads` is `true` (default
+    `false`). `SM-43` calls only `HeadObject`, but the grant also permits
+    reading object contents in any bucket whose policy admits the role.
   - The Bedrock role's new `s3:GetObject` is limited to invocation log keys and
     `.metadata.json` objects.
   - `BR-52` reads AWS Backup recovery points with
@@ -355,9 +394,17 @@ change:
 label. Updating the deployment templates for that is optional; the CodeBuild
 run above deploys the SAM template change.
 
-**Lambda timeouts.** The AWS SAM templates raise the Bedrock assessment
-function's `Timeout` to 900. A CodeBuild run of this revision deploys it. No
-IAM permission changes.
+**Lambda timeouts.** The AWS SAM templates raise the Bedrock and SageMaker AI
+assessment functions' `Timeout` to 900. A CodeBuild run of this revision
+deploys it. No IAM permission changes.
+
+**SageMaker AI artifact object reads.** A CodeBuild run of this revision
+deploys the SageMaker AI role without `s3:GetObject`, because
+`EnableSageMakerArtifactObjectReads` defaults to `false`. To keep the per-object
+`SM-43` leg, update `deployment/aiml-security-single-account.yaml` (single
+account) or `deployment/2-aiml-security-codebuild.yaml` (multi-account central
+infrastructure) with the parameter set to `true`, then run CodeBuild. Both
+AWS SAM templates changed. No member-role StackSet update is required.
 
 ## 2.0.0 - 2026-09-18
 

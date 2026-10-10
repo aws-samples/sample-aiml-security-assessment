@@ -61,7 +61,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 
 - Monitor state machine executions in each account
 - Check Lambda function logs for errors
-- Verify Lambda has sufficient timeout. Most assessment Lambdas default to 10 minutes; the Bedrock assessment runs up to 15 minutes, the Lambda maximum, and Responsible AI GRC has its own timeout in the SAM templates
+- Verify Lambda has sufficient timeout. Most assessment Lambdas default to 10 minutes; the Bedrock and SageMaker assessments run up to 15 minutes, the Lambda maximum, and Responsible AI GRC has its own timeout in the SAM templates. A SageMaker run that reaches its deadline still writes its CSV, with a `SageMaker Check Not Assessed (Timeout)` row for each check ID it did not reach
 - Verify AWS IAM permissions allow Lambda to access required services
 - In multi-region scans, review each region's Map state iteration. A single service branch can be marked incomplete while the state machine still generates a report for the remaining services and regions
 

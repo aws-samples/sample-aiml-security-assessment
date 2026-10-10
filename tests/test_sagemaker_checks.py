@@ -62,6 +62,18 @@ def test_caller_identity_partition_handles_incomplete_arns(
     )
 
 
+def _fake_kms_key_arn(n, account="111122223333", region="us-east-1"):
+    """A KMS key ARN whose key ID is plainly synthetic."""
+    return f"arn:aws:kms:{region}:{account}:key/{n:08d}-0000-4000-8000-000000000000"
+
+
+SM_OUTPUT_KEY = _fake_kms_key_arn(1)
+SM_VOLUME_KEY = _fake_kms_key_arn(2)
+SM_CUSTOMER_KEY = _fake_kms_key_arn(3)
+SM_AWS_MANAGED_KEY = _fake_kms_key_arn(4)
+SM_UNREAD_KEY = _fake_kms_key_arn(5, account="444455556666")
+
+
 def assert_could_not_assess_finding(finding):
     assert finding["Status"] == "N/A"
     assert finding["Severity"] == "Informational"
@@ -437,11 +449,47 @@ class TestSM04SecurityHubRouting:
     @patch("sagemaker_app.boto3.client")
     def test_read_failure_is_incomplete_not_failed_or_passed(self, mock_client):
         rows = self._rows(
-            mock_client, error=_make_client_error("InvalidAccessException")
+            mock_client, error=_make_client_error("AccessDeniedException")
         )
         assert rows[1]["Status"] == "N/A"
         assert rows[1]["Finding"].endswith("Incomplete")
         assert "ListEnabledProductsForImport" in rows[1]["Finding_Details"]
+        assert rows[3]["Finding"].endswith("Incomplete")
+
+    @patch("sagemaker_app.boto3.client")
+    def test_security_hub_not_enabled_is_a_configuration_gap(self, mock_client):
+        rows = self._rows(
+            mock_client,
+            error=_make_client_error(
+                "InvalidAccessException",
+                "Account 111122223333 is not subscribed to AWS Security Hub",
+            ),
+        )
+        routing, review = rows[1], rows[3]
+        assert routing["Finding"] == sagemaker_app.GUARDDUTY_ROUTING_FINDING
+        assert (routing["Status"], routing["Severity"]) == ("Failed", "Medium")
+        assert "Security Hub is not enabled" in routing["Finding_Details"]
+        assert routing["Resolution"].startswith("Enable Security Hub in this region")
+        assert review["Finding"] == sagemaker_app.GUARDDUTY_REVIEW_FINDING
+        assert review["Status"] == "N/A"
+        assert "does not import GuardDuty findings" in review["Finding_Details"]
+
+    @pytest.mark.parametrize("code", [None, "UnknownEndpoint"])
+    @patch("sagemaker_app.boto3.client")
+    def test_security_hub_unavailable_in_region_is_not_assessed(
+        self, mock_client, code
+    ):
+        error = (
+            EndpointConnectionError(endpoint_url="https://securityhub.example")
+            if code is None
+            else _make_client_error(code)
+        )
+        rows = self._rows(mock_client, error=error)
+        routing = rows[1]
+        assert routing["Finding"] == sagemaker_app.GUARDDUTY_ROUTING_FINDING
+        assert (routing["Status"], routing["Severity"]) == ("N/A", "Informational")
+        assert "not available in this region" in routing["Finding_Details"]
+        assert not rows[3]["Finding"].endswith("Incomplete")
 
     GUARDDUTY_PATTERN = (
         '{"source": ["aws.guardduty"], "detail-type": ["GuardDuty Finding"]}'
@@ -3100,6 +3148,15 @@ def _sagemaker_event(region="us-east-1", region_index=0):
     }
 
 
+def _handler_run_call(name):
+    """The handler's run(...) call for one check, whitespace collapsed."""
+    source = open(os.path.join(_sm_dir, "app.py"), encoding="utf-8").read()
+    handler = " ".join(source[source.index("def lambda_handler") :].split())
+    call_at = handler.index(f" {name},")
+    call = handler[handler.rindex("run(", 0, call_at) : handler.index(")", call_at)]
+    return call.strip()
+
+
 class TestSageMakerHandlerMultiRegion:
     """lambda_handler primary-region gating (SM-02) + availability probe (SM-00)."""
 
@@ -3254,6 +3311,184 @@ class TestSageMakerHandlerMultiRegion:
         # Reachable => no SM-00, and many regional checks ran.
         assert "SM-00" not in check_ids
         assert len(check_ids) > 3
+
+
+def _handler_checks():
+    """(check ID, function name) of every check the handler runs, in order."""
+    import re
+
+    source = open(os.path.join(_sm_dir, "app.py"), encoding="utf-8").read()
+    handler = source[source.index("def lambda_handler") :]
+    return re.findall(r'(?:run\(|\()\s*"(SM-\d\d)",\s*(check_\w+)', handler)
+
+
+class TestSageMakerHandlerIsolationAndDeadline:
+    """Review #73 items 2, 4, 7 and 8: the handler around its checks."""
+
+    SCP = {"items": [], "errors": [], "list_error": None}
+
+    def _run(self, region_index=0, raising=(), on_call=None, context=None):
+        calls = {}
+        stubs = {}
+
+        for check_id, name in _handler_checks():
+
+            def stub(*args, _name=name, _id=check_id, **kwargs):
+                calls.setdefault(_name, []).append(kwargs)
+                if on_call:
+                    on_call(_name)
+                if _name in raising:
+                    raise RuntimeError(f"injected failure in {_name}")
+                return {
+                    "csv_data": [
+                        {"Check_ID": _id, "Finding": _name, "Status": "Passed"}
+                    ]
+                }
+
+            stub.__name__ = name
+            stubs[name] = stub
+        captured = {}
+
+        def fake_csv(findings):
+            captured["rows"] = [r for f in findings for r in f.get("csv_data", [])]
+            return "csv"
+
+        probe = MagicMock()
+        probe.list_notebook_instances.return_value = {"NotebookInstances": []}
+        scp_reader = MagicMock(return_value=self.SCP)
+        with (
+            patch("sagemaker_app.boto3.client", return_value=probe),
+            patch.multiple(sagemaker_app, **stubs),
+            patch.object(
+                sagemaker_app,
+                "get_permissions_cache",
+                return_value={"role_permissions": {}, "user_permissions": {}},
+            ),
+            patch.object(sagemaker_app, "get_sagemaker_scp_inventory", scp_reader),
+            patch.object(sagemaker_app, "get_guardduty_detector_inventory"),
+            patch.object(sagemaker_app, "get_hyperpod_cluster_inventory"),
+            patch.object(sagemaker_app, "list_model_package_group_summaries"),
+            patch.object(sagemaker_app, "generate_csv_report", side_effect=fake_csv),
+            patch.object(
+                sagemaker_app, "write_to_s3", return_value="s3://b/r.csv"
+            ) as write,
+            patch.object(sagemaker_app, "_DEADLINE", None),
+        ):
+            response = sagemaker_app.lambda_handler(
+                _sagemaker_event(region="us-west-2", region_index=region_index),
+                context,
+            )
+        return response, captured["rows"], calls, scp_reader, write
+
+    def test_one_failing_check_is_one_incomplete_row_and_the_csv_is_written(self):
+        failing = (
+            "check_ai_api_method_authorization",
+            "check_ai_lambda_network_boundary",
+            "check_workload_network_segmentation",
+        )
+        response, rows, calls, _, write = self._run(raising=failing)
+        write.assert_called_once()
+        assert response["statusCode"] == 200
+        incomplete = [
+            r for r in rows if r["Finding"] == sagemaker_app.CHECK_INCOMPLETE_FINDING
+        ]
+        assert [(r["Check_ID"], r["Region"]) for r in incomplete] == [
+            ("SM-11", "us-west-2"),
+            ("SM-02", "us-west-2"),
+            ("SM-39", "us-west-2"),
+        ]
+        for row, name in zip(incomplete, (failing[1], failing[0], failing[2])):
+            assert name in row["Finding_Details"]
+            assert (row["Status"], row["Severity"]) == ("N/A", "Informational")
+            assert "RuntimeError" in row["Finding_Details"]
+        # Every check after the failures still ran.
+        assert "check_sagemaker_runtime_endpoint_policy" in calls
+        assert len(calls) == len(_handler_checks())
+
+    def test_the_deadline_stops_new_checks_and_keeps_collected_rows(self):
+        def trip(name):
+            if name == "check_sagemaker_data_protection":
+                sagemaker_app._DEADLINE = 0.0
+
+        response, rows, calls, _, write = self._run(on_call=trip)
+        write.assert_called_once()
+        assert "check_sagemaker_data_protection" in calls
+        assert "check_guardduty_enabled" not in calls
+        collected = [r for r in rows if r["Status"] == "Passed"]
+        assert collected[-1]["Finding"] == "check_sagemaker_data_protection"
+        timeouts = [
+            r for r in rows if r["Finding"] == sagemaker_app.CHECK_TIMEOUT_FINDING
+        ]
+        ids = [r["Check_ID"] for r in timeouts]
+        assert len(ids) == len(set(ids))
+        assert "SM-04" in ids and "SM-39" in ids and "SM-03" not in ids
+        sm39 = next(r for r in timeouts if r["Check_ID"] == "SM-39")
+        assert sm39["Finding_Details"].startswith("Timeout, not assessed")
+        for name in (
+            "check_eks_vpc_cni_network_policy",
+            "check_workload_network_segmentation",
+            "check_workload_egress_control",
+        ):
+            assert name in sm39["Finding_Details"]
+        assert {(r["Status"], r["Severity"]) for r in timeouts} == {
+            ("N/A", "Informational")
+        }
+        assert response["body"]["row_count"] == len(rows)
+
+    def test_the_deadline_comes_from_the_invocation_context(self):
+        context = MagicMock()
+        context.get_remaining_time_in_millis.return_value = (
+            sagemaker_app.DEADLINE_MARGIN_SECONDS - 1
+        ) * 1000
+        _, rows, calls, _, write = self._run(context=context)
+        write.assert_called_once()
+        assert calls == {}
+        assert {r["Finding"] for r in rows} == {sagemaker_app.CHECK_TIMEOUT_FINDING}
+        assert ("SM-42", "Global") in {(r["Check_ID"], r["Region"]) for r in rows}
+
+    def test_the_response_carries_the_report_and_row_count_not_the_findings(self):
+        response, rows, _, _, _ = self._run()
+        assert response["body"] == {
+            "message": "Security checks completed successfully",
+            "report_url": "s3://b/r.csv",
+            "row_count": len(rows),
+        }
+
+    GUARDRAILS = (
+        "check_sagemaker_creation_guardrails",
+        "check_lambda_vpc_creation_guardrails",
+        "check_lambda_network_connector_guardrails",
+        "check_sagemaker_notebook_access_guardrails",
+        "check_sagemaker_batch_creation_guardrails",
+    )
+
+    def test_the_primary_region_reads_service_control_policies_once(self):
+        _, rows, calls, scp_reader, _ = self._run(region_index=0)
+        scp_reader.assert_called_once_with()
+        for name in self.GUARDRAILS:
+            assert calls[name] == [
+                {
+                    "region": "Global",
+                    "scp_inventory": self.SCP,
+                    "permission_cache": {
+                        "role_permissions": {},
+                        "user_permissions": {},
+                    },
+                }
+            ]
+        model_isolation = calls["check_sagemaker_model_network_isolation"]
+        assert model_isolation[0]["scp_inventory"] is self.SCP
+        sm42 = [r for r in rows if r["Check_ID"] == "SM-42"]
+        assert len(sm42) == 1
+
+    def test_other_regions_run_no_account_global_guardrail(self):
+        _, rows, calls, scp_reader, _ = self._run(region_index=1)
+        scp_reader.assert_not_called()
+        for name in self.GUARDRAILS:
+            assert name not in calls
+        assert "SM-42" not in {r["Check_ID"] for r in rows}
+        model_isolation = calls["check_sagemaker_model_network_isolation"]
+        assert model_isolation[0]["scp_inventory"] is None
 
 
 # ===================================================================
@@ -3810,10 +4045,7 @@ class TestSM11AIWorkloadsByGrant:
         )
 
     def test_the_handler_passes_the_cache(self):
-        source = open(os.path.join(_sm_dir, "app.py"), encoding="utf-8").read()
-        handler = source[source.index("def lambda_handler") :]
-        call_at = handler.index("check_ai_lambda_network_boundary(")
-        call = handler[call_at : handler.index(")", call_at)]
+        call = _handler_run_call("check_ai_lambda_network_boundary")
         assert "permission_cache=permission_cache" in call
 
 
@@ -4505,15 +4737,15 @@ class TestSM03TrainingVolumeEncryption:
             mock_client,
             {
                 "encrypted-job": {
-                    "OutputDataConfig": {"KmsKeyId": "arn:aws:kms:::key/out"},
+                    "OutputDataConfig": {"KmsKeyId": SM_OUTPUT_KEY},
                     "EnableInterContainerTrafficEncryption": True,
                     "ResourceConfig": {
-                        "VolumeKmsKeyId": "arn:aws:kms:::key/vol",
+                        "VolumeKmsKeyId": SM_VOLUME_KEY,
                         "InstanceType": "ml.m5.large",
                     },
                 },
                 "plain-job": {
-                    "OutputDataConfig": {"KmsKeyId": "arn:aws:kms:::key/out"},
+                    "OutputDataConfig": {"KmsKeyId": SM_OUTPUT_KEY},
                     "EnableInterContainerTrafficEncryption": True,
                     "ResourceConfig": {"InstanceType": "ml.m5.large"},
                 },
@@ -4534,7 +4766,7 @@ class TestSM03TrainingVolumeEncryption:
         assert "ResourceConfig.VolumeKmsKeyId" in failed[0]["Finding_Details"]
         assert len(passed) == 1
         assert "encrypted-job" in passed[0]["Finding_Details"]
-        assert "arn:aws:kms:::key/vol" in passed[0]["Finding_Details"]
+        assert SM_VOLUME_KEY in passed[0]["Finding_Details"]
         for f in volume_rows:
             assert_finding_schema(f)
 
@@ -4548,7 +4780,7 @@ class TestSM03TrainingVolumeEncryption:
             mock_client,
             {
                 "plain-job": {
-                    "OutputDataConfig": {"KmsKeyId": "arn:aws:kms:::key/out"},
+                    "OutputDataConfig": {"KmsKeyId": SM_OUTPUT_KEY},
                     "EnableInterContainerTrafficEncryption": True,
                     "ResourceConfig": {"InstanceType": "ml.m5.large"},
                 }
@@ -9648,6 +9880,35 @@ class TestSM35RegionalAdministrator:
         assert [r["Status"] for r in rows] == ["N/A"]
         assert "AWS Security Hub" in rows[0]["Finding_Details"]
 
+    def test_security_hub_not_enabled_is_a_configuration_gap(self):
+        rows = self._run(
+            self.TOOLING,
+            _make_client_error(
+                "InvalidAccessException",
+                "Account 123456789012 is not subscribed to AWS Security Hub",
+            ),
+            self.TOOLING,
+        )
+        assert [r["Status"] for r in rows] == ["Failed"]
+        assert (
+            "AWS Security Hub is not enabled for this account in this Region"
+            in rows[0]["Finding_Details"]
+        )
+
+    def test_a_service_unavailable_in_the_region_is_a_note_not_unread(self):
+        rows = self._run(
+            self.TOOLING,
+            self.TOOLING,
+            self.TOOLING,
+            detective=EndpointConnectionError(
+                endpoint_url="https://api.detective.us-west-2.amazonaws.com"
+            ),
+        )
+        assert [r["Status"] for r in rows] == ["Passed"]
+        details = rows[0]["Finding_Details"]
+        assert "Amazon Detective is not available in us-west-2" in details
+        assert "Amazon Detective (" not in details
+
 
 class TestSM35DelegatedAdminConsolidation:
     """AIR-FND-ACC-09: every security service shares one tooling account."""
@@ -12625,7 +12886,7 @@ class TestSM38RuntimeCoverageAndLambdaTier:
     def test_one_function_missing_from_inspector_coverage_fails(self):
         functions = [
             {"FunctionName": "ok"},
-            {"FunctionName": "enc", "KMSKeyArn": "arn:aws:kms:us-east-1:1:key/k"},
+            {"FunctionName": "enc", "KMSKeyArn": SM_CUSTOMER_KEY},
         ]
         tier = self._named(
             self._run(
@@ -16727,29 +16988,22 @@ class TestFoundationCheckHandlerWiring:
         assert "SM-35" not in {r["Check_ID"] for r in rows}
 
     def test_regional_checks_are_called_with_the_shared_detector_inventory(self):
-        source = open(os.path.join(_sm_dir, "app.py"), encoding="utf-8").read()
-        handler = source[source.index("def lambda_handler") :]
         for name in (
             "check_security_hub_ai_standard",
             "check_eks_vpc_cni_network_policy",
             "check_secrets_manager_rotation",
         ):
-            assert f"{name}(region)" in handler or f"{name}(region=region)" in handler
+            assert _handler_run_call(name).endswith(f"{name}, region=region")
         # SM-41 judges each role alias's IAM role from the permissions cache.
-        assert (
-            "check_iot_device_scoped_policies(\n"
-            "                region=region, permission_cache=permission_cache\n"
-            "            )" in handler
+        assert _handler_run_call("check_iot_device_scoped_policies").endswith(
+            "region=region, permission_cache=permission_cache,"
         )
         for name in (
             "check_guardduty_lambda_network_logs",
             "check_guardduty_runtime_monitoring",
         ):
-            call_at = handler.index(name)
-            assert (
-                "detector_inventory=guardduty_inventory"
-                in handler[call_at : call_at + 200]
-            )
+            call = _handler_run_call(name)
+            assert "detector_inventory=guardduty_inventory" in call
 
 
 # ===================================================================
@@ -17817,7 +18071,7 @@ class TestSM11EndpointConfigKms:
             {"a": _ISOLATED_VPC_MODEL},
             endpoints={"ep-keyed": "cfg-keyed", "ep-bare": "cfg-bare"},
             configs={
-                "cfg-keyed": _config(["a"], kms="arn:aws:kms:us-east-1:1:key/k"),
+                "cfg-keyed": _config(["a"], kms=SM_CUSTOMER_KEY),
                 "cfg-bare": _config(["a"]),
             },
         )
@@ -18185,9 +18439,8 @@ class TestSM02RuntimeVpcEndpointPolicy:
         assert "UnauthorizedOperation" in rows[0]["Finding_Details"]
 
     def test_handler_calls_the_policy_leg_per_region(self):
-        source = open(os.path.join(_sm_dir, "app.py"), encoding="utf-8").read()
-        handler = source[source.index("def lambda_handler") :]
-        assert "check_sagemaker_runtime_endpoint_policy(region=region)" in handler
+        call = _handler_run_call("check_sagemaker_runtime_endpoint_policy")
+        assert call.endswith("check_sagemaker_runtime_endpoint_policy, region=region")
 
 
 def _invoke_allow(condition=None, resource="*"):
@@ -18470,12 +18723,9 @@ class TestSM11InvokeSourceNetwork:
         assert "Role 'Open'" in source[0]["Finding_Details"]
 
     def test_handler_passes_the_cache(self):
-        source = open(os.path.join(_sm_dir, "app.py"), encoding="utf-8").read()
-        handler = source[source.index("def lambda_handler") :]
-        assert (
-            "check_sagemaker_model_network_isolation(\n"
-            "            region=region, permission_cache=permission_cache"
-        ) in handler
+        call = _handler_run_call("check_sagemaker_model_network_isolation")
+        assert "region=region, permission_cache=permission_cache" in call
+        assert "scp_inventory=scp_inventory" in call
 
 
 class TestRound9SM11InvokeSourceScp:
@@ -20726,6 +20976,39 @@ class TestSM09ExecutionRolePrivilege:
             }
             assert sagemaker_app._broad_role_grant(permissions) is None
 
+    @staticmethod
+    def _partial_wildcard_on(resource, partition="aws"):
+        permissions = {
+            "attached_policies": [
+                {
+                    "name": "p",
+                    "arn": f"arn:{partition}:iam::123456789012:policy/p",
+                    "document": {
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "sagemaker:Create*",
+                                "Resource": resource,
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+        return sagemaker_app._broad_role_grant(permissions, partition)
+
+    def test_every_resource_in_the_callers_partition_is_broad(self):
+        gov = "arn:aws-us-gov:sagemaker:*:*:*"
+        assert "on every resource" in self._partial_wildcard_on(gov, "aws-us-gov")
+        assert self._partial_wildcard_on(gov) is None
+
+    def test_a_bracket_in_a_resource_is_literal_not_a_character_class(self):
+        # IAM globs have no [...] class; fnmatch read "[a-z]" as one.
+        assert self._partial_wildcard_on("arn:aws:sagemaker:*:*:[a-z]*") is None
+        assert "on every resource" in self._partial_wildcard_on(
+            "arn:aws:sagemaker:*:*:*"
+        )
+
     def test_boundary_that_caps_sagemaker_passes(self):
         cache = _environment_cache(
             {
@@ -21541,6 +21824,7 @@ class TestSM32UnevaluatedRules:
             self.RULES,
         )
         assert [r["Status"] for r in rows] == ["N/A"]
+        assert rows[0]["Severity"] == "Informational"
         assert "sm-notebook-kms" in rows[0]["Finding_Details"]
 
     def test_rule_with_no_compliance_entry_withholds_passed(self):
@@ -22707,14 +22991,20 @@ class TestSM42BatchCreationGuardrails:
         assert rows[0]["Status"] == "N/A"
         assert "were not assessed" in rows[0]["Finding_Details"]
 
-    def test_the_handler_runs_it_per_region(self):
+    def test_the_handler_runs_it_once_globally(self):
+        # Review #73 item 8: SCPs are organization-wide, so SM-42 is one
+        # Global verdict on the primary Region, not one per Region.
         source = open(os.path.join(_sm_dir, "app.py"), encoding="utf-8").read()
         handler = source[source.index("def lambda_handler") :]
-        call_at = handler.index("check_sagemaker_batch_creation_guardrails(")
-        call = handler[call_at : handler.index(")", call_at)]
-        assert "region=region" in call
-        assert "permission_cache=permission_cache" in call
-        assert call_at > handler.index("check_sagemaker_transform_job_encryption(")
+        assert handler.count("check_sagemaker_batch_creation_guardrails") == 1
+        call_at = handler.index("check_sagemaker_batch_creation_guardrails")
+        assert handler.index("if is_primary_region:") < call_at
+        assert call_at < handler.index("# Verify SageMaker is available")
+        loop = handler[handler.rindex("for check_id, check in", 0, call_at) :]
+        loop = " ".join(loop[: loop.index("# Delegated administration")].split())
+        assert "region=GLOBAL_REGION_LABEL" in loop
+        assert "scp_inventory=scp_inventory" in loop
+        assert "permission_cache=permission_cache" in loop
 
 
 def _hyperpod_inventory(groups):
@@ -23023,11 +23313,13 @@ def _sm43_rows(
     permission_cache=_SM43_DEFAULT_CACHE,
     instances=None,
     profiles=None,
+    object_reads=True,
 ):
     """
     Run SM-43 over mocked SageMaker, ECR, S3, KMS, EC2 and IAM clients.
 
-    endpoints maps a name to {"models": [...], "status": ..., "components":
+    object_reads sets ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS, and None leaves
+    it unset. endpoints maps a name to {"models": [...], "status": ..., "components":
     [variant names]}. Every other map is keyed by resource name, and an
     Exception value is raised by the matching call. listings maps a prefix URI
     to its pages of keys; an unlisted prefix holds one object. Models and
@@ -23186,7 +23478,7 @@ def _sm43_rows(
                     {
                         "ApplyServerSideEncryptionByDefault": {
                             "SSEAlgorithm": "aws:kms",
-                            "KMSMasterKeyID": "arn:aws:kms:us-east-1:1:key/k",
+                            "KMSMasterKeyID": SM_CUSTOMER_KEY,
                         }
                     }
                 ]
@@ -23208,7 +23500,7 @@ def _sm43_rows(
             {
                 "ETag": '"p-e"',
                 "ServerSideEncryption": "aws:kms",
-                "SSEKMSKeyId": "arn:aws:kms:us-east-1:1:key/k",
+                "SSEKMSKeyId": SM_CUSTOMER_KEY,
             },
         )
         if isinstance(value, Exception):
@@ -23286,7 +23578,15 @@ def _sm43_rows(
         "ec2": ec2,
         "iam": iam,
     }
-    with patch("sagemaker_app.boto3.client") as mock_client:
+    with (
+        patch("sagemaker_app.boto3.client") as mock_client,
+        patch.dict(
+            os.environ,
+            {"ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS": str(object_reads).lower()},
+        ),
+    ):
+        if object_reads is None:
+            del os.environ["ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS"]
         mock_client.side_effect = lambda service, **_: clients[service]
         return _rows(
             sagemaker_app.check_sagemaker_model_artifact_integrity(
@@ -23311,6 +23611,31 @@ class TestSM43ModelArtifactIntegrity:
         assert "an expected value is recorded" in rows[0]["Finding_Details"]
         assert "load time is not returned" in rows[0]["Finding_Details"]
         assert "on ECS, EKS or EC2" in rows[0]["Finding_Details"]
+
+    @pytest.mark.parametrize("object_reads", [False, None])
+    def test_object_reads_off_skips_head_object_and_names_the_parameter(
+        self, object_reads
+    ):
+        # Off by default: s3:GetObject is not granted, so HeadObject is never
+        # called and one N/A row says the per-object leg did not run. The
+        # other legs still pass the endpoints.
+        rows = _sm43_rows(object_reads=object_reads)
+        assert _sm43_rows.head_calls == []
+        assert _sm43_statuses(rows) == ["N/A", "Passed"]
+        off = rows[0]
+        assert off["Check_ID"] == "SM-43"
+        assert off["Severity"] == "Informational"
+        assert off["Finding_Details"].startswith(
+            "The per-object leg is off: the EnableSageMakerArtifactObjectReads "
+            "deployment parameter is false, so HeadObject was not called on 1 "
+            "model artifact object(s)"
+        )
+        assert "EnableSageMakerArtifactObjectReads" in off["Resolution"]
+
+    def test_object_reads_on_reads_each_object(self):
+        rows = _sm43_rows(object_reads=True)
+        assert _sm43_rows.head_calls == ["s3://artifacts/m/model.safetensors"]
+        assert _sm43_statuses(rows) == ["Passed"]
 
     def test_only_the_second_endpoint_fails_when_its_model_has_a_bare_url(self):
         rows = _sm43_rows(
@@ -23444,7 +23769,7 @@ class TestSM43ModelArtifactIntegrity:
             models={
                 "m-1": {
                     "PrimaryContainer": _sm43_container(
-                        image=_sm43_image(account="763104351884")
+                        image=_sm43_image(account="444455556666")
                     )
                 }
             },
@@ -23452,7 +23777,7 @@ class TestSM43ModelArtifactIntegrity:
         )
         assert _sm43_statuses(rows) == ["N/A"]
         assert (
-            "image repository serve in account 763104351884 was not read "
+            "image repository serve in account 444455556666 was not read "
             "(ecr:DescribeRepositories: AccessDeniedException)"
         ) in rows[0]["Finding_Details"]
 
@@ -23595,9 +23920,7 @@ class TestSM43ModelArtifactIntegrity:
             }
         }
 
-    def _object(
-        self, etag='"e-1"', algorithm="aws:kms", key="arn:aws:kms:us-east-1:1:key/k"
-    ):
+    def _object(self, etag='"e-1"', algorithm="aws:kms", key=SM_CUSTOMER_KEY):
         head = {"ETag": etag, "ServerSideEncryption": algorithm}
         if key:
             head["SSEKMSKeyId"] = key
@@ -23702,10 +24025,10 @@ class TestSM43ModelArtifactIntegrity:
                 {
                     "ETag": '"e-1"',
                     "ServerSideEncryption": "aws:kms",
-                    "SSEKMSKeyId": "arn:aws:kms:us-east-1:1:key/aws-owned",
+                    "SSEKMSKeyId": SM_AWS_MANAGED_KEY,
                 },
                 "object s3://artifacts/m/model.tar.gz is encrypted under "
-                "arn:aws:kms:us-east-1:1:key/aws-owned, an AWS managed key",
+                f"{SM_AWS_MANAGED_KEY}, an AWS managed key",
             ),
         ],
     )
@@ -23717,7 +24040,7 @@ class TestSM43ModelArtifactIntegrity:
             models={"m-1": self._object_source()},
             objects={"s3://artifacts/m/model.tar.gz": head},
             keys={
-                "arn:aws:kms:us-east-1:1:key/aws-owned": {
+                SM_AWS_MANAGED_KEY: {
                     "KeyManager": "AWS",
                     "KeyState": "Enabled",
                 }
@@ -23806,19 +24129,13 @@ class TestSM43ModelArtifactIntegrity:
         rows = _sm43_rows(
             endpoints={"ep-1": {"models": ["m-1"]}},
             models={"m-1": self._object_source()},
-            objects={
-                "s3://artifacts/m/model.tar.gz": self._object(
-                    key="arn:aws:kms:us-east-1:2:key/x"
-                )
-            },
-            keys={
-                "arn:aws:kms:us-east-1:2:key/x": _sm43_error("AccessDeniedException")
-            },
+            objects={"s3://artifacts/m/model.tar.gz": self._object(key=SM_UNREAD_KEY)},
+            keys={SM_UNREAD_KEY: _sm43_error("AccessDeniedException")},
         )
         assert _sm43_statuses(rows) == ["N/A"]
         assert (
             "object s3://artifacts/m/model.tar.gz key was not read "
-            "(kms:DescribeKey on arn:aws:kms:us-east-1:2:key/x: AccessDeniedException)"
+            f"(kms:DescribeKey on {SM_UNREAD_KEY}: AccessDeniedException)"
         ) in rows[0]["Finding_Details"]
 
     def test_a_model_package_container_with_model_data_etag_passes(self):
@@ -23893,9 +24210,9 @@ class TestSM43ModelArtifactIntegrity:
                 {},
             ),
             (
-                "arn:aws:kms:us-east-1:111122223333:key/aws-owned",
+                SM_AWS_MANAGED_KEY,
                 {
-                    "arn:aws:kms:us-east-1:111122223333:key/aws-owned": {
+                    SM_AWS_MANAGED_KEY: {
                         "KeyManager": "AWS",
                         "KeyState": "Enabled",
                     }
@@ -24384,13 +24701,8 @@ class TestSM43ModelArtifactIntegrity:
             assert_finding_schema(row)
 
     def test_the_handler_runs_sm43(self):
-        source = open(os.path.join(_sm_dir, "app.py")).read()
-        handler = source[source.index("def lambda_handler") :]
-        assert (
-            "check_sagemaker_model_artifact_integrity(\n"
-            "                region=region, permission_cache=permission_cache\n"
-            "            )"
-        ) in handler
+        call = _handler_run_call("check_sagemaker_model_artifact_integrity")
+        assert call.endswith("region=region, permission_cache=permission_cache,")
 
 
 def _sm43_prefix_model(uri="s3://artifacts/m/", etag="e-1", channel=None):
@@ -24957,13 +25269,14 @@ class TestSM39LambdaVpcGuardrail:
     def test_the_handler_runs_it_once_globally(self):
         source = open(os.path.join(_sm_dir, "app.py"), encoding="utf-8").read()
         handler = source[source.index("def lambda_handler") :]
-        assert handler.count("check_lambda_vpc_creation_guardrails(") == 1
-        call_at = handler.index("check_lambda_vpc_creation_guardrails(")
-        call = handler[call_at : handler.index(")", call_at)]
-        assert "region=GLOBAL_REGION_LABEL" in call
-        assert "permission_cache=permission_cache" in call
+        assert handler.count("check_lambda_vpc_creation_guardrails") == 1
+        call_at = handler.index("check_lambda_vpc_creation_guardrails")
+        loop = handler[handler.rindex("for check_id, check in", 0, call_at) :]
+        loop = " ".join(loop[: loop.index("# Delegated administration")].split())
+        assert "region=GLOBAL_REGION_LABEL" in loop
+        assert "permission_cache=permission_cache" in loop
         assert handler.index("if is_primary_region:") < call_at
-        assert call_at < handler.index("check_sagemaker_notebook_access_guardrails(")
+        assert call_at < handler.index("check_sagemaker_notebook_access_guardrails")
 
     def test_sm34_keeps_its_sagemaker_subject(self):
         inventory = {"items": [], "errors": [], "list_error": "AccessDeniedException"}
@@ -25103,11 +25416,12 @@ class TestSM39LambdaConnectorGuardrail:
     def test_the_handler_runs_it_once_globally(self):
         source = open(os.path.join(_sm_dir, "app.py"), encoding="utf-8").read()
         handler = source[source.index("def lambda_handler") :]
-        assert handler.count("check_lambda_network_connector_guardrails(") == 1
-        call_at = handler.index("check_lambda_network_connector_guardrails(")
-        call = handler[call_at : handler.index(")", call_at)]
-        assert "region=GLOBAL_REGION_LABEL" in call
-        assert "permission_cache=permission_cache" in call
+        assert handler.count("check_lambda_network_connector_guardrails") == 1
+        call_at = handler.index("check_lambda_network_connector_guardrails")
+        loop = handler[handler.rindex("for check_id, check in", 0, call_at) :]
+        loop = " ".join(loop[: loop.index("# Delegated administration")].split())
+        assert "region=GLOBAL_REGION_LABEL" in loop
+        assert "permission_cache=permission_cache" in loop
         assert handler.index("if is_primary_region:") < call_at
 
 
@@ -25801,7 +26115,7 @@ class TestSM39WorkloadEgress:
                 raise AssertionError(f"unexpected boto3 client: {service}")
             return client
 
-        def references(region):
+        def references(region, notes=None):
             return named, list(errors.get("named", []))
 
         with (
@@ -25849,11 +26163,8 @@ class TestSM39WorkloadEgress:
         return self._rows(rows, "Agent Workload Network Firewall Egress")
 
     def test_the_handler_runs_it_per_region(self):
-        source = open(os.path.join(_sm_dir, "app.py"), encoding="utf-8").read()
-        handler = source[source.index("def lambda_handler") :]
-        assert "all_findings.append(check_workload_egress_control(region=region))" in (
-            handler
-        )
+        call = _handler_run_call("check_workload_egress_control")
+        assert call.endswith("check_workload_egress_control, region=region")
 
     def test_no_vpc_workload_reports_both_legs_not_applicable(self):
         rows = self._run(functions=[{"FunctionName": "outside"}])
@@ -30180,3 +30491,147 @@ class TestSM31CaptureModes:
         passed = next(r for r in rows if r["Status"] == "Passed")
         assert "1 of 2 endpoint(s)" in passed["Finding_Details"]
         assert "'a'" not in passed["Finding_Details"]
+
+
+# ===================================================================
+# Review #73 item 3: a service not offered in the Region is an empty
+# population with a note, not an unread one; access denied stays unread.
+# ===================================================================
+
+
+def _unavailable(kind):
+    if kind == "endpoint":
+        return EndpointConnectionError(endpoint_url="https://service.example")
+    return ClientError({"Error": {"Code": kind, "Message": kind}}, "List")
+
+
+class TestServiceAvailabilityClassifier:
+    @pytest.mark.parametrize("kind", ["endpoint", "UnknownEndpoint", "OptInRequired"])
+    def test_unavailable_errors_are_classified(self, kind):
+        assert sagemaker_app._is_service_unavailable(_unavailable(kind))
+
+    @pytest.mark.parametrize(
+        "kind", ["AccessDeniedException", "ThrottlingException", "ValidationException"]
+    )
+    def test_denied_and_other_errors_are_not_unavailable(self, kind):
+        assert not sagemaker_app._is_service_unavailable(_unavailable(kind))
+        assert not sagemaker_app._is_service_unavailable(RuntimeError(kind))
+
+    def test_security_hub_not_enabled_is_matched_on_code_or_message(self):
+        assert sagemaker_app._is_security_hub_not_enabled(
+            _unavailable("InvalidAccessException")
+        )
+        assert not sagemaker_app._is_security_hub_not_enabled(
+            _unavailable("AccessDeniedException")
+        )
+        assert not sagemaker_app._is_security_hub_not_enabled({"Administrator": {}})
+
+    def test_notes_are_appended_once_to_every_row(self):
+        rows = [{"Finding_Details": "a."}, {"Finding_Details": "b."}]
+        sagemaker_app._with_notes(rows, ["n1.", "n1.", "n2."])
+        assert [r["Finding_Details"] for r in rows] == ["a. n1. n2.", "b. n1. n2."]
+
+    @staticmethod
+    def _paging_clients(errors):
+        def factory(service, **_):
+            client = MagicMock()
+            error = errors.get(service)
+
+            def paginator(name):
+                pager = MagicMock()
+                if error is not None:
+                    pager.paginate.side_effect = error
+                else:
+                    pager.paginate.return_value = []
+                return pager
+
+            client.get_paginator.side_effect = paginator
+            return client
+
+        return patch("sagemaker_app.boto3.client", side_effect=factory)
+
+    @pytest.mark.parametrize("kind", ["endpoint", "UnknownEndpoint"])
+    def test_ai_lambda_references_unavailable_services_are_notes(self, kind):
+        notes = []
+        with self._paging_clients(
+            {
+                "bedrock-agent": _unavailable(kind),
+                "bedrock-agentcore-control": _unavailable(kind),
+            }
+        ):
+            named, unread = sagemaker_app._ai_lambda_references("us-east-1", notes)
+        assert (named, unread) == ({}, [])
+        assert len(notes) == 2
+        assert "Amazon Bedrock Agents API is not available in us-east-1" in notes[0]
+        assert "AgentCore control API is not available in us-east-1" in notes[1]
+
+    def test_ai_lambda_references_denied_is_unread(self):
+        notes = []
+        denied = _unavailable("AccessDeniedException")
+        with self._paging_clients(
+            {"bedrock-agent": denied, "bedrock-agentcore-control": denied}
+        ):
+            _, unread = sagemaker_app._ai_lambda_references("us-east-1", notes)
+        assert notes == []
+        assert unread == [
+            "bedrock:ListAgents (AccessDeniedException)",
+            "bedrock-agentcore:ListGateways (AccessDeniedException)",
+        ]
+
+    @pytest.mark.parametrize(
+        ("helper", "service", "empty"),
+        [
+            ("_microvm_networks", "lambda-microvms", ([], {}, [])),
+            ("_microvm_image_versions", "lambda-microvms", ([], [])),
+            ("_agentcore_runtime_subnets", "bedrock-agentcore-control", ({}, [])),
+        ],
+    )
+    def test_unavailable_population_is_empty_with_a_note(self, helper, service, empty):
+        notes = []
+        with self._paging_clients({service: _unavailable("endpoint")}):
+            result = getattr(sagemaker_app, helper)("us-east-1", notes)
+        assert result == empty
+        assert len(notes) == 1
+        assert "is not available in us-east-1" in notes[0]
+
+    @pytest.mark.parametrize(
+        ("helper", "service"),
+        [
+            ("_microvm_networks", "lambda-microvms"),
+            ("_microvm_image_versions", "lambda-microvms"),
+            ("_agentcore_runtime_subnets", "bedrock-agentcore-control"),
+        ],
+    )
+    def test_denied_population_is_unread_without_a_note(self, helper, service):
+        notes = []
+        with self._paging_clients({service: _unavailable("AccessDeniedException")}):
+            result = getattr(sagemaker_app, helper)("us-east-1", notes)
+        assert notes == []
+        assert any("AccessDeniedException" in item for item in result[-1])
+
+    @pytest.mark.parametrize(
+        "check",
+        [
+            "check_ai_api_method_authorization",
+            "check_ai_lambda_network_boundary",
+            "check_workload_network_segmentation",
+        ],
+    )
+    def test_checks_carry_the_note_and_no_incomplete_row(self, check):
+        unavailable = _unavailable("endpoint")
+        with self._paging_clients(
+            {
+                "bedrock-agent": unavailable,
+                "bedrock-agentcore-control": unavailable,
+                "lambda-microvms": unavailable,
+            }
+        ):
+            kwargs = {"region": "us-east-1"}
+            if check == "check_ai_lambda_network_boundary":
+                kwargs["permission_cache"] = {"role_permissions": {}}
+            rows = extract_csv_data(getattr(sagemaker_app, check)(**kwargs))
+        assert rows
+        assert not any(r["Finding"].endswith("Incomplete") for r in rows)
+        assert all(
+            "is not available in us-east-1" in r["Finding_Details"] for r in rows
+        )
