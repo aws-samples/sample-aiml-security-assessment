@@ -64,24 +64,18 @@ AGENTIC_AI_LENS_URL = (
     "agentic-ai-lens.html"
 )
 AGENTCORE_STARTER_TOOLKIT_URL = (
-    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "what-is-bedrock-agentcore.html"
 )
 AGENTCORE_VPC_REFERENCE_URL = (
-    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
-    "user-guide/security/agentcore-vpc.html"
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html"
 )
 AGENTCORE_OBSERVABILITY_REFERENCE_URL = (
-    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
-    "user-guide/observability/quickstart.html"
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "observability-configure.html"
 )
-AGENTCORE_MEMORY_REFERENCE_URL = (
-    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
-    "user-guide/memory/quickstart.html"
-)
-AGENTCORE_GATEWAY_REFERENCE_URL = (
-    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
-    "user-guide/gateway/quickstart.html"
-)
+AGENTCORE_MEMORY_REFERENCE_URL = "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/storage-encryption.html"
+AGENTCORE_GATEWAY_REFERENCE_URL = "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-building.html"
 AGENTCORE_DATA_ENCRYPTION_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/data-encryption.html"
 )
@@ -1176,7 +1170,7 @@ def check_agentcore_full_access_roles(
                     finding_name="AgentCore IAM Full Access Check",
                     finding_details="No IAM role permissions found in cache",
                     resolution="No action required",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-iam-awsmanpol.html",
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -1223,7 +1217,7 @@ def check_agentcore_full_access_roles(
                     finding_name="AgentCore IAM Full Access Policy",
                     finding_details=f"The following roles have AgentCore full-access policies: {', '.join(full_access_roles)}",
                     resolution="Replace with least-privilege policies scoped to specific AgentCore resources and actions",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-iam-awsmanpol.html",
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
                 )
@@ -1237,7 +1231,7 @@ def check_agentcore_full_access_roles(
                     finding_name="AgentCore IAM Wildcard Permissions",
                     finding_details=f"The following roles have wildcard or allow-except AgentCore permissions on all resources: {', '.join(sorted(wildcard_roles))}",
                     resolution="Replace wildcard or allow-except permissions with required AgentCore actions and scope resources using ARNs",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-iam-awsmanpol.html",
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
                 )
@@ -1249,7 +1243,7 @@ def check_agentcore_full_access_roles(
                     check_id="AC-02",
                     finding_name="AgentCore IAM Full Access Check",
                     error=policy_parse_errors[0],
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-iam-awsmanpol.html",
                 )
             )
 
@@ -1261,7 +1255,7 @@ def check_agentcore_full_access_roles(
                     finding_name="AgentCore IAM Full Access Check",
                     finding_details="No roles with overly permissive AgentCore access found",
                     resolution="No action required",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-iam-awsmanpol.html",
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.PASSED,
                 )
@@ -1274,7 +1268,7 @@ def check_agentcore_full_access_roles(
                 check_id="AC-02",
                 finding_name="AgentCore IAM Full Access Check",
                 error=e,
-                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
+                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-iam-awsmanpol.html",
             )
         )
 

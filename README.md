@@ -92,7 +92,7 @@ The framework generates professional, interactive security assessment reports wi
 
 This serverless assessment framework automatically evaluates your AI/ML workloads against AWS security best practices. It uses AWS serverless services to gather data from the control plane and generate reports containing the status of various security checks, severity levels, and recommended actions.
 
-Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), [Amazon Bedrock AgentCore](https://aws.github.io/bedrock-agentcore-starter-toolkit/), [AWS Agent Registry](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/registry.html), [Amazon SageMaker AI](https://aws.amazon.com/sagemaker/ai/), or the optional Responsible AI GRC assessment.
+Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), [Amazon Bedrock AgentCore](https://aws.amazon.com/bedrock/agentcore/), [AWS Agent Registry](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/registry.html), [Amazon SageMaker AI](https://aws.amazon.com/sagemaker/ai/), or the optional Responsible AI GRC assessment.
 
 ### Why Use This Framework?
 
@@ -159,7 +159,7 @@ codebase do not constitute end-to-end support for those partitions.
 ## Prerequisites
 
 - Python 3.12 — [Install Python](https://www.python.org/downloads/)
-- AWS SAM CLI — [Install the AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
+- AWS SAM CLI — [Install the AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
 - Docker (optional) — [Install Docker](https://hub.docker.com/search/?type=edition&offering=community) — Only required for local development
 
 ---

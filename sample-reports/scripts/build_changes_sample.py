@@ -546,7 +546,7 @@ EDITS = (
             "based models and not image and video generation model. This can also "
             "help to keep cost in check.",
             "reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/"
-            "security-iam-awsmanpol.html#security-iam-awsmanpol-bedrock-marketplace",
+            "security-iam-awsmanpol.html#security-iam-awsmanpol-AmazonBedrockMarketplaceAccess",
             "severity": "High",
             "status": "Failed",
         },
