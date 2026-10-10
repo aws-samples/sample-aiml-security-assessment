@@ -91,7 +91,7 @@ Parameters:
     Type: String
     Default: "false"
     AllowedValues: ["true", "false"]
-    Description: Fail BR-37 when the Bedrock retention mode is default or inherit.
+    Description: Deprecated and ignored. BR-37 now judges the Bedrock retention mode at every setting. Kept so existing stacks still update.
   RequireMarketplaceEndpointCMK:
     Type: String
     Default: "true"
@@ -375,13 +375,13 @@ Resources:
             # BR-34 reads whether each GuardDuty detector has AI Protection on.
             # BR-46 reads when each knowledge base data source last ingested.
             # BR-37 lists every bedrock-mantle project to read its
-            # data_retention mode.
+            # data_retention mode, and each model's allowed_modes.
             # The service authorization reference gives GetEventDataStore the
             # eventdatastore resource type, DescribeDeliveryStream the
             # deliverystream type, ListRegions the account type,
             # ListTargetsByRule the rule type, GetDetector the detector type,
-            # ListIngestionJobs the knowledge-base type and ListProjects the
-            # project type. An action matches only ARNs of its own service, so
+            # ListIngestionJobs the knowledge-base type and ListProjects and
+            # ListModels the project type. An action matches only ARNs of its own service, so
             # none is granted on another's ARN. It holds the former Sids
             # CloudTrailEventDataStoreRead, EventDataStoreAndArchiveStreamRead,
             # AccountListRegions, EventBridgeRuleTargetList,
@@ -396,6 +396,7 @@ Resources:
               - guardduty:GetDetector # BR-34
               - bedrock:ListIngestionJobs # BR-46
               - bedrock-mantle:ListProjects # BR-37
+              - bedrock-mantle:ListModels # BR-37
             Resource:
               - !Sub 'arn:${AWS::Partition}:cloudtrail:*:${AWS::AccountId}:eventdatastore/*'
               - !Sub 'arn:${AWS::Partition}:firehose:*:${AWS::AccountId}:deliverystream/*'
@@ -859,6 +860,7 @@ Resources:
                 - macie2:ListClassificationJobs # BR-46
                 # Former Sid BackupVaultInventory.
                 - backup:ListBackupVaults # BR-52
+                - backup:ListRecoveryPointsByResource # BR-52
                 # Former Sid ResourceTagRead.
                 - tag:GetResources # BR-53
                 # Former Sid CloudTrailPermissions.
@@ -1106,11 +1108,15 @@ Resources:
               Resource: !Sub 'arn:${AWS::Partition}:s3:::*'
             - Sid: BackupVaultLockRead
               # BR-52 reads the Vault Lock mode, lock date and minimum retention
-              # of the vault holding a data path bucket's newest recovery point.
+              # of the vault holding a data path bucket's newest recovery point,
+              # and the scheduled deletion of a point older than the lock.
               Effect: Allow
               Action:
                 - backup:DescribeBackupVault # BR-52
-              Resource: !Sub 'arn:${AWS::Partition}:backup:*:${AWS::AccountId}:backup-vault:*'
+                - backup:DescribeRecoveryPoint # BR-52
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:backup:*:${AWS::AccountId}:backup-vault:*'
+                - !Sub 'arn:${AWS::Partition}:backup:*:${AWS::AccountId}:recovery-point:*'
             - Sid: LambdaPermissions
               Effect: Allow
               Action:

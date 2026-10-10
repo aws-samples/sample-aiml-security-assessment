@@ -85,6 +85,31 @@ def _caller_identity_partition(caller_identity: Dict[str, Any]) -> str:
     return parts[1]
 
 
+_ACCOUNT_PARTITION: Optional[str] = None
+
+
+def _account_partition() -> str:
+    """
+    Return the partition of the Region this Lambda runs in, which is the
+    assessed account's partition. Read once per container, with no API call.
+    """
+    global _ACCOUNT_PARTITION
+    if _ACCOUNT_PARTITION is None:
+        region = os.environ.get("AWS_REGION") or os.environ.get(
+            "AWS_DEFAULT_REGION", "us-east-1"
+        )
+        try:
+            _ACCOUNT_PARTITION = boto3.Session().get_partition_for_region(region)
+        except BotoCoreError as error:
+            logger.warning(
+                "No partition known for Region %s (%s)",
+                region,
+                get_assessment_error_label(error),
+            )
+            _ACCOUNT_PARTITION = "aws"
+    return _ACCOUNT_PARTITION
+
+
 AGENTIC_AI_LENS_URL = (
     "https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/"
     "agentic-ai-lens.html"
@@ -462,6 +487,24 @@ def get_guardrail_attachment_inventory(
     are read as well (_guardrail_condition_pins).
     """
     inventory = {"attachments": [], "versions": {}, "errors": []}
+    try:
+        _read_guardrail_attachments(inventory, region, permission_cache, scp_inventory)
+    except Exception as error:
+        logger.exception("Guardrail attachment inventory failed in %s", region)
+        inventory["errors"].append(
+            "the guardrail attachment read stopped on an unexpected "
+            f"{get_assessment_error_label(error)}"
+        )
+    return inventory
+
+
+def _read_guardrail_attachments(
+    inventory: Dict[str, Any],
+    region: str,
+    permission_cache: Optional[Dict[str, Any]],
+    scp_inventory: Optional[Dict[str, Any]],
+) -> None:
+    """Fill ``inventory`` for get_guardrail_attachment_inventory."""
     attachments = inventory["attachments"]
     errors = inventory["errors"]
     agent_client = boto3.client(
@@ -684,7 +727,6 @@ def get_guardrail_attachment_inventory(
             entry["detail"] = response.get("guardrail", response)
         except (ClientError, BotoCoreError) as error:
             entry["error"] = _guardrail_read_error(error)
-    return inventory
 
 
 def _guardrail_condition_pins(
@@ -1300,7 +1342,14 @@ def check_marketplace_subscription_access(
                 )
             )
 
-        return findings
+        return _apply_cache_population_gaps(
+            findings,
+            permission_cache,
+            "BR-03",
+            "Marketplace Subscription Access Check",
+            "https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-bedrock-marketplace",
+            region,
+        )
 
     except Exception as e:
         logger.error(
@@ -12393,7 +12442,7 @@ def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, A
 
                         # Check policy document for resource constraints and conditions
                         doc = policy.get("document", {})
-                        for statement in doc.get("Statement", []):
+                        for statement in _policy_statements(doc):
                             if statement.get("Effect") == "Allow":
                                 # Check for resource constraints
                                 resources = statement.get("Resource", [])
@@ -12410,7 +12459,7 @@ def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, A
                     # Check inline policies
                     for policy in role_info["inline_policies"]:
                         doc = policy.get("document", {})
-                        for statement in doc.get("Statement", []):
+                        for statement in _policy_statements(doc):
                             if statement.get("Effect") == "Allow":
                                 resources = statement.get("Resource", [])
                                 if resources == ["*"]:
@@ -12493,7 +12542,15 @@ def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, A
                 )
             )
 
-        return findings
+        return _apply_cache_population_gaps(
+            findings,
+            permission_cache,
+            "BR-08",
+            "Bedrock Agent IAM Roles Check",
+            "https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/gensec05-bp01.html",
+            region,
+            principal_types=("role",),
+        )
 
     except Exception as e:
         logger.error(f"Error in check_bedrock_agent_roles: {str(e)}", exc_info=True)
@@ -13193,8 +13250,8 @@ def _guardrail_share_grants(
 
     An Allow counts when it is scoped to the organization by aws:PrincipalOrgID
     or aws:PrincipalOrgPaths, or names principals in other accounts. A '*'
-    principal, or one with a wildcard in its account segment, with neither key
-    shares the resource with every AWS account. "org_scoped" lists the shares
+    principal, one with a wildcard in its account segment, or a NotPrincipal,
+    with neither key shares the resource with every AWS account. "org_scoped" lists the shares
     that carry one of the two keys; a share to named accounts reaches only
     those accounts.
 
@@ -13260,6 +13317,8 @@ def _guardrail_share_grants(
                 )
             )
         ]
+        if "NotPrincipal" in statement:
+            open_principals = ["every principal not named in its NotPrincipal"]
         if org_scopes:
             text = f"an Allow of {action_label} scoped by " + "; ".join(org_scopes)
             observed["shared"].append(text)
@@ -13768,6 +13827,7 @@ def check_bedrock_central_guardrail_enforcement(
                 )
 
         attached_bedrock_policies = {}
+        off_path_policies = []
         if context["readable"]:
             try:
                 path_ids = {
@@ -13776,8 +13836,10 @@ def check_bedrock_central_guardrail_enforcement(
                         orgs_client, caller_account
                     )
                 }
+                path_read = True
             except Exception as error:
                 path_ids = set()
+                path_read = False
                 policy_errors.append(
                     "the account's organization path could not be read "
                     f"({get_assessment_error_label(error)})"
@@ -13795,7 +13857,9 @@ def check_bedrock_central_guardrail_enforcement(
                 )
             except Exception as error:
                 bedrock_policies = []
-                policy_errors.append(f"BEDROCK_POLICY listing: {str(error)}")
+                policy_errors.append(
+                    f"BEDROCK_POLICY listing: {get_assessment_error_label(error)}"
+                )
 
             for policy in bedrock_policies:
                 policy_id = policy.get("Id")
@@ -13821,13 +13885,29 @@ def check_bedrock_central_guardrail_enforcement(
                     )
                     summary = _summarize_guardrail_policy_document(content or "{}")
                 except Exception as error:
-                    policy_errors.append(f"policy '{policy_name}': {str(error)}")
+                    policy_errors.append(
+                        f"policy '{policy_name}': {get_assessment_error_label(error)}"
+                    )
                     continue
 
                 target_names = [
                     f"{target.get('Type', 'target')} {target.get('TargetId', 'unknown')}"
                     for target in targets
                 ]
+                # A policy attached nowhere on this account's path does not
+                # apply to it, so its content is context and not a finding here.
+                if path_read and not any(
+                    target.get("TargetId") in path_ids for target in targets
+                ):
+                    off_path_policies.append(
+                        "'{}' ({})".format(
+                            policy_name,
+                            "attached to " + ", ".join(target_names)
+                            if target_names
+                            else "attached to no target",
+                        )
+                    )
+                    continue
                 if not target_names:
                     deficient_policies.append(
                         {
@@ -14054,6 +14134,24 @@ def check_bedrock_central_guardrail_enforcement(
                 )
             if not scp_note:
                 scp_note = " " + _scp_scope_note(scps)
+
+        if off_path_policies:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-41",
+                    finding_name=check_name,
+                    finding_details="{} Organizations Bedrock policy(ies) are attached nowhere on the organization path of account {}, so they do not apply to it and are not judged here: {}.".format(
+                        len(off_path_policies),
+                        caller_account or "unknown",
+                        "; ".join(off_path_policies[:5]),
+                    ),
+                    resolution="No action required for this account. Assess the accounts these policies are attached to.",
+                    reference=reference,
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
 
         for policy in deficient_policies:
             findings["status"] = "WARN"
@@ -19316,7 +19414,15 @@ def check_bedrock_agent_action_group_iam(
             else:
                 raise
 
-        return findings
+        return _apply_cache_population_gaps(
+            findings,
+            permission_cache,
+            "BR-21",
+            "Agent Action Group IAM Least Privilege Check",
+            "https://docs.aws.amazon.com/bedrock/latest/userguide/agents-permissions.html",
+            region,
+            principal_types=("role",),
+        )
 
     except Exception as e:
         logger.error(
@@ -19724,6 +19830,23 @@ def get_knowledge_base_screening_inventory(
         "details": {},
         "list_error": "",
     }
+    try:
+        _read_knowledge_base_screening(inventory, region, attachment_inventory)
+    except Exception as error:
+        logger.exception("Knowledge base screening inventory failed in %s", region)
+        inventory["errors"].append(
+            "the knowledge base screening read stopped on an unexpected "
+            f"{get_assessment_error_label(error)}"
+        )
+    return inventory
+
+
+def _read_knowledge_base_screening(
+    inventory: Dict[str, Any],
+    region: str,
+    attachment_inventory: Optional[Dict[str, Any]],
+) -> None:
+    """Fill ``inventory`` for get_knowledge_base_screening_inventory."""
     errors = inventory["errors"]
     client = boto3.client("bedrock-agent", config=boto3_config, region_name=region)
     try:
@@ -19732,7 +19855,7 @@ def get_knowledge_base_screening_inventory(
         )
     except (ClientError, BotoCoreError, TypeError) as error:
         inventory["list_error"] = get_assessment_error_label(error)
-        return inventory
+        return
     by_id = {}
     for summary in summaries:
         kb_id = summary.get("knowledgeBaseId")
@@ -19999,7 +20122,6 @@ def get_knowledge_base_screening_inventory(
                 "detail": None,
                 "error": _guardrail_read_error(error),
             }
-    return inventory
 
 
 KNOWLEDGE_BASE_SCREENING_CEILING = (
@@ -28038,6 +28160,32 @@ def _mantle_data_retention(region: str) -> Dict[str, Any]:
     return result
 
 
+def _mantle_models(region: str) -> Dict[str, Any]:
+    """
+    Read every model GET /v1/models lists (bedrock-mantle:ListModels), each with
+    its data_retention.allowed_modes. ``models`` is None when the read failed.
+    """
+    models: List[Any] = []
+    after = None
+    try:
+        while True:
+            page = _mantle_get(
+                region, "/v1/models", {"after": after} if after else None
+            )
+            data = page.get("data")
+            if not isinstance(data, list):
+                raise MantleRequestError("no data list")
+            models.extend(data)
+            if not page.get("has_more"):
+                break
+            if not page.get("last_id") or page.get("last_id") == after:
+                raise MantleRequestError("has_more with no new last_id")
+            after = page["last_id"]
+    except MantleRequestError as error:
+        return {"models": None, "error": f"bedrock-mantle:ListModels ({error.label})"}
+    return {"models": models, "error": None}
+
+
 def _mantle_account_sentence(mantle: Dict[str, Any], control_mode: Any) -> str:
     """Name the mantle account mode beside the control-plane mode."""
     if mantle["account_error"]:
@@ -28056,9 +28204,7 @@ def _mantle_account_sentence(mantle: Dict[str, Any], control_mode: Any) -> str:
     return (
         f"The bedrock-mantle account mode, which a project set to inherit takes, "
         f"is {account}{differs}. Mantle projects are judged in the "
-        f"{MANTLE_PROJECT_RETENTION_FINDING} rows. Each model's allowed_modes are "
-        "not read: GET /v1/models returns them, but bedrock-mantle:ListModels is "
-        "not granted to the Bedrock assessment role."
+        f"{MANTLE_PROJECT_RETENTION_FINDING} rows."
     )
 
 
@@ -28095,9 +28241,8 @@ def _mantle_account_finding(mantle: Dict[str, Any], region: str) -> Dict[str, An
         )
     mode = mantle["account_mode"]
     allowed_modes = (
-        " Each model's allowed_modes are not read: GET /v1/models returns them, "
-        "but bedrock-mantle:ListModels is not granted to the Bedrock assessment "
-        "role, so they are a missing grant, not an API limit."
+        " A project whose effective mode is the model default is judged on each "
+        "model's allowed_modes in its own row."
     )
     if mode == "none":
         return row(
@@ -28205,22 +28350,88 @@ def _mantle_project_findings(
         else:
             effective, scope = "model default", None
         if effective == "model default":
-            findings.append(
-                row(
-                    f"Project {arn} has effective mode model default: the project "
-                    "and the bedrock-mantle account are both inherit, so each "
-                    "model's own default applies and no scope pins zero "
-                    "retention. A model whose allowed_modes include none still "
-                    "retains nothing; per-model allowed_modes are not read, "
-                    "because bedrock-mantle:ListModels (GET /v1/models), which "
-                    "returns them, is not granted to the Bedrock assessment role."
-                    + control_note,
-                    "Set the project's data_retention mode, or the bedrock-mantle "
-                    "account mode (PUT /v1/data_retention), to none.",
-                    "High",
-                    "Failed",
-                )
+            if "models" not in mantle:
+                mantle["models"] = _mantle_models(region)
+            listed = mantle["models"]["models"]
+            lead = (
+                f"Project {arn} has effective mode model default: the project "
+                "and the bedrock-mantle account are both inherit, so each "
+                "model's own default applies and no scope pins zero retention. "
+                "A model whose allowed_modes include none retains nothing."
             )
+            fix = (
+                "Set the project's data_retention mode, or the bedrock-mantle "
+                "account mode (PUT /v1/data_retention), to none."
+            )
+            if listed is None:
+                findings.append(
+                    row(
+                        f"{lead} The models were not read "
+                        f"({mantle['models']['error']}), so whether any of them "
+                        "retains data is not judged." + control_note,
+                        COULD_NOT_ASSESS_RESOLUTION,
+                        "Informational",
+                        "N/A",
+                    )
+                )
+                continue
+            retaining, unknown = [], []
+            for model in listed:
+                model = model if isinstance(model, dict) else {}
+                name = str(model.get("id") or "unnamed")
+                modes = (model.get("data_retention") or {}).get("allowed_modes")
+                if not isinstance(modes, list):
+                    unknown.append(name)
+                elif "none" not in modes:
+                    retaining.append(name)
+            if retaining:
+                findings.append(
+                    row(
+                        "{} {} of the {} model(s) listed with bedrock-mantle:"
+                        "ListModels have no none in allowed_modes, so they retain "
+                        "data under this project: {}.{}".format(
+                            lead,
+                            len(retaining),
+                            len(listed),
+                            ", ".join(retaining[:10]),
+                            control_note,
+                        ),
+                        fix,
+                        "High",
+                        "Failed",
+                    )
+                )
+            elif unknown or not listed:
+                findings.append(
+                    row(
+                        "{} {}, so whether any model retains data is not "
+                        "judged.{}".format(
+                            lead,
+                            "No model was listed with bedrock-mantle:ListModels"
+                            if not listed
+                            else "{} model(s) listed carry no allowed_modes: {}".format(
+                                len(unknown), ", ".join(unknown[:10])
+                            ),
+                            control_note,
+                        ),
+                        COULD_NOT_ASSESS_RESOLUTION,
+                        "Informational",
+                        "N/A",
+                    )
+                )
+            else:
+                findings.append(
+                    row(
+                        f"{lead} Each of the {len(listed)} model(s) listed with "
+                        "bedrock-mantle:ListModels has none in allowed_modes, so "
+                        "none retains data under this project. A model added later "
+                        "is not covered." + control_note,
+                        "No action required. Set the project or bedrock-mantle "
+                        "account mode to none to cover models added later.",
+                        "High",
+                        "Passed",
+                    )
+                )
         elif effective not in DATA_RETENTION_MODES:
             findings.append(
                 row(
@@ -30311,7 +30522,7 @@ def _s3_bucket_pattern_is_open(resource: Any, bucket: str) -> bool:
         return False
     pattern = resource.strip().lower()
     if not _wildcard_matches(
-        pattern, f"arn:aws:s3:::{bucket.lower()}/{ANY_OBJECT_KEY}"
+        pattern, f"arn:{_account_partition()}:s3:::{bucket.lower()}/{ANY_OBJECT_KEY}"
     ):
         return False
     segments = pattern.split(":", 5)
@@ -30329,7 +30540,7 @@ def _training_data_reach(
     reach ``bucket`` through a bucket wildcard and those that name it.
     """
     reach = {"open": [], "named": []}
-    target = f"arn:aws:s3:::{bucket.lower()}/{ANY_OBJECT_KEY}"
+    target = f"arn:{_account_partition()}:s3:::{bucket.lower()}/{ANY_OBJECT_KEY}"
     for statement in statements:
         if str(statement.get("Effect", "")).upper() != "ALLOW":
             continue
@@ -32500,6 +32711,21 @@ CUSTOM_MODEL_SHARING_REFERENCE = (
 MAX_CUSTOM_MODEL_POLICY_READS = 100
 
 
+def _describe_organization_id() -> str:
+    """
+    Return this account's organization id, or "" when
+    organizations:DescribeOrganization does not return one.
+    """
+    try:
+        organization = boto3.client(
+            "organizations", config=boto3_config
+        ).describe_organization()
+    except (ClientError, BotoCoreError) as error:
+        logger.info("Organization id not read (%s)", get_assessment_error_label(error))
+        return ""
+    return str((organization.get("Organization") or {}).get("Id") or "")
+
+
 def check_bedrock_custom_model_sharing(region: str = "") -> Dict[str, Any]:
     """
     BR-43: read the resource policy of every custom model the account owns and
@@ -32548,6 +32774,7 @@ def check_bedrock_custom_model_sharing(region: str = "") -> Dict[str, Any]:
         shared = []
         unread = []
         policies_read = 0
+        organization_id = None
         for model in owned[:MAX_CUSTOM_MODEL_POLICY_READS]:
             if _deadline_reached():
                 break
@@ -32564,12 +32791,16 @@ def check_bedrock_custom_model_sharing(region: str = "") -> Dict[str, Any]:
                     continue
                 unread.append(f"{name} ({get_assessment_error_label(error)})")
                 continue
+            if organization_id is None:
+                organization_id = _describe_organization_id()
             observed = _guardrail_share_grants(
                 response.get("resourcePolicy") or "{}",
                 account_id,
                 action=None,
                 action_label="access",
+                organization_id=organization_id,
             )
+            unread.extend(f"{name}: {text}" for text in observed["held"])
             if observed["unbounded"]:
                 unbounded_models.add(name)
             unbounded.extend(f"{name}: {text}" for text in observed["unbounded"])
@@ -32596,7 +32827,18 @@ def check_bedrock_custom_model_sharing(region: str = "") -> Dict[str, Any]:
             else ""
         )
 
-        if unbounded:
+        if not owned:
+            findings["details"] = "No owned custom model to judge"
+            findings["csv_data"].append(
+                row(
+                    f"No custom model owned by this account is listed in {region}, "
+                    "so no custom model resource policy was judged.",
+                    "No action required.",
+                    "Informational",
+                    "N/A",
+                )
+            )
+        elif unbounded:
             findings["status"] = "WARN"
             findings["details"] = "A custom model is open to every AWS account"
             findings["csv_data"].append(
@@ -32626,7 +32868,8 @@ def check_bedrock_custom_model_sharing(region: str = "") -> Dict[str, Any]:
                         unread_text,
                         " Shared: {}.".format("; ".join(shared[:5])) if shared else "",
                     ),
-                    "Grant bedrock:GetResourcePolicy on the custom models and retry.",
+                    "Grant bedrock:GetResourcePolicy on the custom models and "
+                    "organizations:DescribeOrganization, then retry.",
                     "Informational",
                     "N/A",
                 )
@@ -33595,6 +33838,7 @@ def check_bedrock_marketplace_model_control(
         scoped = []
         scp_bounded = []
         viewers = []
+        unparsed = []
 
         identities = [
             ("role", name, permissions)
@@ -33622,16 +33866,10 @@ def check_bedrock_marketplace_model_control(
                 ]
                 boundary_statements = _policy_statements(boundary)
             except (ValueError, TypeError) as error:
-                deficient.append(
-                    {
-                        "type": identity_type,
-                        "name": identity_name,
-                        "reasons": [
-                            "a policy document could not be parsed ({})".format(
-                                get_assessment_error_label(error)
-                            )
-                        ],
-                    }
+                unparsed.append(
+                    "{} '{}' ({})".format(
+                        identity_type, identity_name, get_assessment_error_label(error)
+                    )
                 )
                 continue
 
@@ -33849,7 +34087,26 @@ def check_bedrock_marketplace_model_control(
                 )
             )
 
-        if not scoped and not deficient and not scp_bounded:
+        if unparsed:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-44",
+                    finding_name=check_name,
+                    finding_details=(
+                        "A policy document of {} identity/identities could not be "
+                        "parsed, so whether they can subscribe to or unsubscribe "
+                        "from unapproved Marketplace models was not judged: "
+                        "{}.".format(len(unparsed), "; ".join(unparsed[:10]))
+                    ),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
+                    reference=MARKETPLACE_MODEL_CONTROL_REFERENCE,
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        if not scoped and not deficient and not scp_bounded and not unparsed:
             version = permission_cache.get("cache_schema_version")
             complete = isinstance(version, int) and version >= IAM_CACHE_SCHEMA_VERSION
             findings["details"] = "No cached identity grants Marketplace subscription"
@@ -39032,16 +39289,52 @@ def check_bedrock_prompt_pii_screening(
                 "N/A",
             )
         elif not unscreened:
-            findings["status"] = "WARN"
-            row(
+            nothing_applies = (
                 "No agent, flow node, un-narrowed account-enforced configuration, "
                 "guardrail condition pin or logged invocation joined to CloudTrail "
-                f"in {region} applies a guardrail, so no prompt is shown to be "
-                f"screened for PII before the model reads it.{unused_note}{scope}",
-                resolution,
-                "High",
-                "Failed",
+                f"in {region} applies a guardrail"
             )
+            footprint = (
+                True
+                if summaries or unguarded_requests
+                else detect_bedrock_regional_footprint(region)
+            )
+            if footprint is not True:
+                findings["status"] = "N/A"
+                row(
+                    bedrock_footprint_na_detail(
+                        footprint,
+                        f"in {region}, so prompt PII screening was not judged. "
+                        f"{nothing_applies}.{scope}",
+                    ),
+                    "No action required",
+                    "Informational",
+                    "N/A",
+                )
+            elif log is not None and log["logging"] is False:
+                # With invocation logging off, a guardrail passed per request
+                # is never seen, so an absence of evidence proves nothing.
+                findings["status"] = "N/A"
+                row(
+                    f"{nothing_applies}, and no invocation log is read, so whether "
+                    "prompts reach the model unscreened for PII is not shown."
+                    f"{unused_note}{scope}",
+                    "Turn on model invocation logging so guardrails passed per "
+                    "request can be judged, or apply a guardrail that acts on PII "
+                    "on the input through the agent or flow configuration or an "
+                    "account-enforced guardrail configuration.",
+                    "Informational",
+                    "N/A",
+                )
+            else:
+                findings["status"] = "WARN"
+                row(
+                    f"{nothing_applies}, so no prompt is shown to be screened for "
+                    f"PII before the model reads it.{unused_note}{scope}",
+                    resolution,
+                    "High",
+                    "Failed",
+                )
         return findings
     except Exception as e:
         logger.error(
@@ -40563,9 +40856,10 @@ def _backup_grant_gap(error: Exception, action: str) -> str:
     if not _is_access_denied_client_error(error):
         return ""
     return (
-        f"; {action} is not granted to the Bedrock assessment role, so this read "
-        f"was not made. The API returns the field, so a grant of {action} would "
-        "let the check judge it"
+        f"; {action} was denied to the Bedrock assessment role, so this read was "
+        "not made. Both SAM templates grant it, so look for a service control "
+        "policy, a permissions boundary, or an assessment deployment older than "
+        "the grant"
     )
 
 
@@ -40588,7 +40882,7 @@ def _bucket_backup_lock(
             max_results_param="MaxResults",
             token_param="NextToken",
             token_response_keys=("NextToken",),
-            ResourceArn=f"arn:aws:s3:::{bucket}",
+            ResourceArn=f"arn:{_account_partition()}:s3:::{bucket}",
         )
     except (ClientError, BotoCoreError) as error:
         return {
@@ -40789,6 +41083,7 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
         vault_cache: Dict[str, Any] = {}
         locked = []
         indeterminate = []
+        backup_unread = []
         for bucket in sorted(inventory["buckets"]):
             labels = "; ".join(sorted(inventory["buckets"][bucket])[:3])
             unread = None
@@ -40825,17 +41120,17 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
                     f"{bucket} ({labels}): {unread}, and {backup['detail']}"
                 )
                 continue
+            if backup["status"] == "unread":
+                backup_unread.append(
+                    f"{bucket} ({labels}) {deficiency}, and {backup['detail']}"
+                )
+                continue
             findings["status"] = "WARN"
-            backup_text = (
-                f"No immutable backup covers it: {backup['detail']}."
-                if backup["status"] == "unlocked"
-                else f"Whether an immutable backup covers it is unknown: {backup['detail']}."
-            )
             findings["csv_data"].append(
                 row(
                     f"Bucket {bucket} is on the Bedrock data path as {labels} and "
                     f"{deficiency}, so its objects can be deleted or overwritten. "
-                    f"{backup_text} {evidence}",
+                    f"No immutable backup covers it: {backup['detail']}. {evidence}",
                     "Enable Object Lock on the bucket and set a default retention "
                     "in COMPLIANCE mode with a period that meets your "
                     "record-retention requirement.",
@@ -40872,6 +41167,20 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
                     "configuration, which is a permissions or ownership problem and "
                     "not evidence that objects are unlocked: {}.".format(
                         len(indeterminate), "; ".join(indeterminate[:5])
+                    ),
+                    COULD_NOT_ASSESS_RESOLUTION,
+                    "Informational",
+                    "N/A",
+                )
+            )
+        if backup_unread:
+            findings["csv_data"].append(
+                row(
+                    "{} Bedrock data path bucket(s) do not lock objects in "
+                    "COMPLIANCE mode by default, but whether an immutable AWS "
+                    "Backup recovery point covers them was not read, so they are "
+                    "not judged: {}. {}".format(
+                        len(backup_unread), "; ".join(backup_unread[:5]), evidence
                     ),
                     COULD_NOT_ASSESS_RESOLUTION,
                     "Informational",
@@ -42292,7 +42601,11 @@ def check_lambda_public_invoke_configuration(
 
         compliant = []
         indeterminate = []
-        for function in functions:
+        not_reached = 0
+        for position, function in enumerate(functions):
+            if _deadline_reached():
+                not_reached = len(functions) - position
+                break
             name = function.get("FunctionName") or function.get("FunctionArn")
             problems = []
             try:
@@ -42328,12 +42641,22 @@ def check_lambda_public_invoke_configuration(
                 )
                 public = {None: read_policy(name)}
                 for alias in aliases:
+                    if _deadline_reached():
+                        raise TimeoutError
                     if alias.get("Name"):
                         public[alias["Name"]] = read_policy(name, alias["Name"])
                 for version in versions:
+                    if _deadline_reached():
+                        raise TimeoutError
                     number = version.get("Version")
                     if number and number != "$LATEST":
                         public[number] = read_policy(name, number)
+            except TimeoutError:
+                indeterminate.append(
+                    f"{name}: its alias and version policies were not all read, "
+                    f"the read stopped {DEADLINE_STOP}"
+                )
+                continue
             except Exception as error:
                 indeterminate.append(f"{name}: {get_assessment_error_label(error)}")
                 continue
@@ -42398,7 +42721,7 @@ def check_lambda_public_invoke_configuration(
                     "policy statement on the function, an alias or a version "
                     "letting every principal invoke them without a source "
                     "condition that names one source.".format(
-                        len(compliant), len(functions)
+                        len(compliant), len(functions) - not_reached
                     ),
                     "No action required",
                     "High",
@@ -42412,6 +42735,19 @@ def check_lambda_public_invoke_configuration(
                     "read: {}.".format(
                         len(indeterminate), "; ".join(indeterminate[:5])
                     ),
+                    COULD_NOT_ASSESS_RESOLUTION,
+                    "Informational",
+                    "N/A",
+                )
+            )
+        if not_reached:
+            if findings["status"] == "PASS":
+                findings["status"] = "N/A"
+            findings["csv_data"].append(
+                row(
+                    f"{not_reached} of the {len(functions)} Lambda function(s) "
+                    f"listed were not read: the read stopped {DEADLINE_STOP}. "
+                    "The rows above cover only the functions read before it.",
                     COULD_NOT_ASSESS_RESOLUTION,
                     "Informational",
                     "N/A",
@@ -43108,7 +43444,8 @@ LLM_JACKING_REFERENCE = (
 # names, the same 0.4 threshold compared with a strict greater-than on the
 # unrounded share of those names one identity called, the same 1440-minute
 # window, and the same identity key of userIdentity arn plus type, skipping
-# events that carry no arn. It departs from Prowler in three places. Prowler
+# events that carry no arn. It departs from Prowler in four places. It fails
+# only an identity that also called one of LLM_JACKING_WRITE_ACTIONS. Prowler
 # reads only the first LookupEvents page per event name, discards lookup errors
 # and passes, and looks only in the Region of the account's trails, passing
 # when there is no trail. BR-56 pages up to LLM_JACKING_MAX_PAGES_PER_ACTION,
@@ -43133,6 +43470,20 @@ LLM_JACKING_ACTIONS = (
 )
 
 LLM_JACKING_THRESHOLD = 0.4
+
+# Prowler fails on the share alone. A console user browsing model access calls
+# six or more of the read and invoke actions, so BR-56 fails an identity only
+# when at least one of its calls grants model access, accepts an agreement or
+# rewrites invocation logging.
+LLM_JACKING_WRITE_ACTIONS = frozenset(
+    {
+        "PutUseCaseForModelAccess",
+        "PutFoundationModelEntitlement",
+        "PutModelInvocationLoggingConfiguration",
+        "CreateFoundationModelAgreement",
+        "AcceptAgreementRequest",
+    }
+)
 
 LLM_JACKING_LOOKBACK = timedelta(minutes=1440)
 
@@ -43190,7 +43541,9 @@ def check_bedrock_llm_jacking_activity(region: str = "") -> Dict[str, Any]:
     """
     BR-56: flag any identity that called more than 40% of the Bedrock and
     Marketplace actions an LLM jacking actor calls, in the last 24 hours of
-    CloudTrail event history for the Region.
+    CloudTrail event history for the Region, including at least one of
+    LLM_JACKING_WRITE_ACTIONS. An identity over the share with reads and
+    invocations only is named in an Informational row.
     """
     logger.debug("Starting check for Bedrock LLM jacking activity")
     check_name = LLM_JACKING_FINDING
@@ -43283,10 +43636,20 @@ def check_bedrock_llm_jacking_activity(region: str = "") -> Dict[str, Any]:
         # after crediting it with every unseen action.
         limit = LLM_JACKING_THRESHOLD * total
         indeterminate = []
+        read_only = []
         for (arn, identity_type), called in sorted(
             identities.items(), key=lambda item: (item[0][0], str(item[0][1]))
         ):
-            if len(called) > limit:
+            if len(called) > limit and not called & LLM_JACKING_WRITE_ACTIONS:
+                if set(unseen) & LLM_JACKING_WRITE_ACTIONS:
+                    indeterminate.append(f"{identity_type} {arn}")
+                else:
+                    read_only.append(
+                        "{} {} ({} of {})".format(
+                            identity_type, arn, len(called), total
+                        )
+                    )
+            elif len(called) > limit:
                 findings["status"] = "WARN"
                 findings["csv_data"].append(
                     row(
@@ -43321,6 +43684,30 @@ def check_bedrock_llm_jacking_activity(region: str = "") -> Dict[str, Any]:
                 "not read in full".format(len(unseen), total)
             )
 
+        if read_only:
+            findings["csv_data"].append(
+                row(
+                    "{} identit{} called more than {:.0%} of the {} actions judged "
+                    "in the last {} hours, but none of {}, so no call changed model "
+                    "access, an agreement or invocation logging, and they are not "
+                    "failed: {}. Confirm each is expected to read and invoke models. "
+                    "{}".format(
+                        len(read_only),
+                        "y" if len(read_only) == 1 else "ies",
+                        LLM_JACKING_THRESHOLD,
+                        total,
+                        int(LLM_JACKING_LOOKBACK.total_seconds() // 3600),
+                        ", ".join(sorted(LLM_JACKING_WRITE_ACTIONS)),
+                        "; ".join(read_only[:5]),
+                        visibility,
+                    ),
+                    "No action required if each identity is expected to read and "
+                    "invoke models.",
+                    "Informational",
+                    "N/A",
+                )
+            )
+
         if indeterminate:
             findings["csv_data"].append(
                 row(
@@ -43337,7 +43724,7 @@ def check_bedrock_llm_jacking_activity(region: str = "") -> Dict[str, Any]:
                     "N/A",
                 )
             )
-        elif findings["status"] != "WARN":
+        elif findings["status"] != "WARN" and not read_only:
             truncation = (
                 " These actions were not read in full, and crediting every "
                 "identity with all of them still leaves it at or below the "
@@ -44048,7 +44435,15 @@ def check_agent_handoff_source_identity(
         roles_read = 0
         if agent_roles:
             iam_client = boto3.client("iam", config=boto3_config)
-            for role_name in sorted(role_cache):
+            role_names = sorted(role_cache)
+            for position, role_name in enumerate(role_names):
+                if _deadline_reached():
+                    unread.append(
+                        f"the trust policies of {len(role_names) - position} of "
+                        f"{len(role_names)} role(s) were not read: the read "
+                        f"stopped {DEADLINE_STOP}"
+                    )
+                    break
                 try:
                     role = iam_client.get_role(RoleName=role_name).get("Role", {})
                     document = _trust_policy_document(role)
@@ -46018,6 +46413,31 @@ def _statement_invoke_actions(statement: Dict[str, Any]) -> List[str]:
     ]
 
 
+def _allow_requires_guardrail_identifier(statement: Dict[str, Any]) -> bool:
+    """
+    Return True when an Allow matches only a request that names a guardrail:
+    a positive, non-IfExists test on bedrock:GuardrailIdentifier whose values
+    are not all a bare *. Such an Allow grants no unguarded call.
+    """
+    return any(
+        key == GUARDRAIL_CONDITION_KEY
+        and _condition_is_positive_match(operator)
+        and values
+        and not all(str(value).strip() == "*" for value in values)
+        for operator, key, values in _condition_keys_by_operator(statement)
+    )
+
+
+def _allow_reaches_a_model(statement: Dict[str, Any], action: str) -> bool:
+    """Return True when an Allow's Resource or NotResource can name a model."""
+    if "NotResource" in statement:
+        return not _not_resource_excludes_every_model(statement, action)
+    return any(
+        _resource_can_name_model(resource, _model_arn_patterns(action))
+        for resource in _as_list(statement.get("Resource"))
+    )
+
+
 def _identity_guardrail_deny_coverage(
     policies: List[Dict[str, Any]], permissions: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
@@ -46025,12 +46445,17 @@ def _identity_guardrail_deny_coverage(
     Describe how far an identity's policies deny unguarded model invocation.
 
     ``allowed`` is what the identity may invoke and ``denied`` is what a
-    conditioned Deny takes back, so the gap between them is the set of actions
-    the identity can still call with no guardrail attached. When
-    ``permissions`` carries a permissions boundary, an action the boundary does
-    not allow is not granted, and a Deny in the boundary counts as a Deny.
+    conditioned Deny takes back, so the gap between ``denied`` and the actions
+    an Allow grants with no guardrail condition is the set of actions the
+    identity can still call with no guardrail attached. An Allow counts only
+    when its Resource can name a model; one that matches only a request naming
+    a guardrail is listed in ``pinned``. When ``permissions`` carries a
+    permissions boundary, an action the boundary does not allow is not
+    granted, and a Deny in the boundary counts as a Deny.
     """
     allowed = set()
+    unpinned = set()
+    pinned = set()
     denied = set()
     uncredited = []
     unreadable = []
@@ -46075,7 +46500,14 @@ def _identity_guardrail_deny_coverage(
 
             effect = str(statement.get("Effect", "")).upper()
             if effect == "ALLOW":
-                allowed.update(set(covered) - boundary_denied)
+                for action in set(covered) - boundary_denied:
+                    if not _allow_reaches_a_model(statement, action.lower()):
+                        continue
+                    allowed.add(action)
+                    if _allow_requires_guardrail_identifier(statement):
+                        pinned.add(action)
+                    else:
+                        unpinned.add(action)
                 continue
             if effect != "DENY":
                 continue
@@ -46114,7 +46546,8 @@ def _identity_guardrail_deny_coverage(
     return {
         "allowed": sorted(allowed),
         "denied": sorted(denied),
-        "uncovered": sorted(allowed - denied),
+        "pinned": sorted(pinned - unpinned - denied),
+        "uncovered": sorted(unpinned - denied),
         "uncredited": uncredited,
         "unreadable": unreadable,
     }
@@ -46132,8 +46565,11 @@ def check_bedrock_guardrail_invocation_deny(
     InvokeModelWithResponseStream: an Allow carrying a
     bedrock:GuardrailIdentifier condition restricts which guardrail may be named
     but does not stop a second Allow statement, or another policy, from
-    permitting the same call with no guardrail at all. Only a Deny does that, so
-    this check asserts the Deny and names the actions it misses. BR-41 asserts
+    permitting the same call with no guardrail at all. An action is therefore
+    guarded when a conditioned Deny covers it, or when every Allow of it that
+    can name a model requires a positive, non-IfExists
+    bedrock:GuardrailIdentifier test. An Allow whose Resource names no model
+    grants no invocation and is not counted. BR-41 asserts
     the account and organization enforcement surfaces
     (ListEnforcedGuardrailsConfiguration and the Organizations Bedrock policy),
     which are a different mechanism from an identity policy.
@@ -46188,11 +46624,19 @@ def check_bedrock_guardrail_invocation_deny(
                     }
                 )
             else:
-                guarded.append(
-                    "{} is denied all of {} without an approved guardrail".format(
-                        label, ", ".join(coverage["denied"])
+                parts = []
+                if coverage["denied"]:
+                    parts.append(
+                        "is denied all of {} without an approved guardrail".format(
+                            ", ".join(coverage["denied"])
+                        )
                     )
-                )
+                if coverage["pinned"]:
+                    parts.append(
+                        "is allowed {} only under a bedrock:GuardrailIdentifier "
+                        "condition".format(", ".join(coverage["pinned"]))
+                    )
+                guarded.append("{} {}".format(label, " and ".join(parts)))
 
         if not unguarded and not guarded:
             findings["csv_data"].append(
@@ -46291,7 +46735,7 @@ def check_bedrock_guardrail_invocation_deny(
                     finding_name=check_name,
                     finding_details=(
                         "{} of {} identity/identities that can invoke a Bedrock model "
-                        "are denied every guardrail-capable action they hold unless "
+                        "can call no guardrail-capable action they hold unless "
                         "the request names an approved guardrail: {}.".format(
                             len(guarded),
                             len(guarded) + len(unguarded),
@@ -46470,6 +46914,41 @@ def write_to_s3(
         raise
 
 
+def _run_check_safely(
+    check_id: str, check: Callable[[], Dict[str, Any]], region: str
+) -> Dict[str, Any]:
+    """Turn an exception escaping one check into one N/A Incomplete row for it."""
+    try:
+        return check()
+    except Exception as error:
+        logger.exception("%s failed in %s", check_id, region)
+        details = (
+            f"The assessment could not complete {check_id} in {region}: it stopped "
+            f"on an unexpected {get_assessment_error_label(error)}. The other "
+            "checks in this report ran."
+        )
+        return {
+            "check_name": f"{check_id} Check",
+            "status": "N/A",
+            "details": details,
+            "csv_data": [
+                create_finding(
+                    check_id=check_id,
+                    finding_name=f"{check_id} Check Incomplete",
+                    finding_details=details,
+                    resolution=(
+                        "Review the Bedrock assessment Lambda's CloudWatch Logs "
+                        f"for the {check_id} error, then rerun the assessment."
+                    ),
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            ],
+        }
+
+
 def lambda_handler(event, context):
     """
     Main Lambda handler
@@ -46535,8 +47014,12 @@ def lambda_handler(event, context):
             else:
                 logger.info("Running global AmazonBedrockFullAccess check (BR-01)")
                 all_findings.append(
-                    check_bedrock_full_access_roles(
-                        permission_cache, region=GLOBAL_REGION_LABEL
+                    _run_check_safely(
+                        "BR-01",
+                        lambda: check_bedrock_full_access_roles(
+                            permission_cache, region=GLOBAL_REGION_LABEL
+                        ),
+                        GLOBAL_REGION_LABEL,
                     )
                 )
 
@@ -46544,14 +47027,22 @@ def lambda_handler(event, context):
                     "Running global marketplace subscription access check (BR-03)"
                 )
                 all_findings.append(
-                    check_marketplace_subscription_access(
-                        permission_cache, region=GLOBAL_REGION_LABEL
+                    _run_check_safely(
+                        "BR-03",
+                        lambda: check_marketplace_subscription_access(
+                            permission_cache, region=GLOBAL_REGION_LABEL
+                        ),
+                        GLOBAL_REGION_LABEL,
                     )
                 )
 
                 logger.info("Running foundation model allow-list check (BR-42)")
-                allow_list_findings = check_bedrock_model_allow_list(
-                    permission_cache, region=GLOBAL_REGION_LABEL
+                allow_list_findings = _run_check_safely(
+                    "BR-42",
+                    lambda: check_bedrock_model_allow_list(
+                        permission_cache, region=GLOBAL_REGION_LABEL
+                    ),
+                    GLOBAL_REGION_LABEL,
                 )
                 all_findings.append(allow_list_findings)
 
@@ -46565,41 +47056,63 @@ def lambda_handler(event, context):
                 # BR-44 passes only when BR-42 blocks unapproved models at
                 # invocation, so BR-42's organization leg is read here and its
                 # result is appended at its own place below.
-                org_allow_list_findings = check_bedrock_approved_model_control(
-                    region=GLOBAL_REGION_LABEL,
-                    scp_inventory=scp_inventory,
-                    check_id="BR-42",
-                )
-                all_findings.append(
-                    check_bedrock_marketplace_model_control(
-                        permission_cache,
+                org_allow_list_findings = _run_check_safely(
+                    "BR-42",
+                    lambda: check_bedrock_approved_model_control(
                         region=GLOBAL_REGION_LABEL,
                         scp_inventory=scp_inventory,
-                        allow_list_findings=allow_list_findings,
-                        org_allow_list_findings=org_allow_list_findings,
+                        check_id="BR-42",
+                    ),
+                    GLOBAL_REGION_LABEL,
+                )
+                all_findings.append(
+                    _run_check_safely(
+                        "BR-44",
+                        lambda: check_bedrock_marketplace_model_control(
+                            permission_cache,
+                            region=GLOBAL_REGION_LABEL,
+                            scp_inventory=scp_inventory,
+                            allow_list_findings=allow_list_findings,
+                            org_allow_list_findings=org_allow_list_findings,
+                        ),
+                        GLOBAL_REGION_LABEL,
                     )
                 )
 
                 logger.info("Running AI user long-term access key check (BR-50)")
                 all_findings.append(
-                    check_bedrock_ai_user_access_keys(
-                        permission_cache, region=GLOBAL_REGION_LABEL
+                    _run_check_safely(
+                        "BR-50",
+                        lambda: check_bedrock_ai_user_access_keys(
+                            permission_cache, region=GLOBAL_REGION_LABEL
+                        ),
+                        GLOBAL_REGION_LABEL,
                     )
                 )
 
                 logger.info("Running AI user console MFA check (BR-51)")
                 all_findings.append(
-                    check_bedrock_ai_user_console_mfa(
-                        permission_cache,
-                        region=GLOBAL_REGION_LABEL,
-                        identity_center_region=region,
-                        scp_inventory=scp_inventory,
+                    _run_check_safely(
+                        "BR-51",
+                        lambda: check_bedrock_ai_user_console_mfa(
+                            permission_cache,
+                            region=GLOBAL_REGION_LABEL,
+                            identity_center_region=region,
+                            scp_inventory=scp_inventory,
+                        ),
+                        GLOBAL_REGION_LABEL,
                     )
                 )
 
             # The root leg of BR-50 reads iam:GetAccountSummary, not the cache.
             logger.info("Running root user access key check (BR-50)")
-            all_findings.append(check_root_user_access_key(region=GLOBAL_REGION_LABEL))
+            all_findings.append(
+                _run_check_safely(
+                    "BR-50",
+                    lambda: check_root_user_access_key(region=GLOBAL_REGION_LABEL),
+                    GLOBAL_REGION_LABEL,
+                )
+            )
 
             # logger.info("Running global stale Bedrock access check (BR-14)")
             # all_findings.append(
@@ -46671,38 +47184,57 @@ def lambda_handler(event, context):
                 "BR-02", "Bedrock Access and VPC Endpoint Check", region
             )
             if permission_cache is None
-            else check_bedrock_access_and_vpc_endpoints(permission_cache, region=region)
+            else _run_check_safely(
+                "BR-02",
+                lambda: check_bedrock_access_and_vpc_endpoints(
+                    permission_cache, region=region
+                ),
+                region,
+            )
         )
         all_findings.append(bedrock_access_vpc_findings)
 
         logger.info("Running Bedrock logging findings check")
-        bedrock_logging_findings = check_bedrock_logging_configuration(region=region)
-        # AIR-FND-DAT-08 also covers AgentCore Memory retention, so BR-04
-        # carries one row per memory for that leg, and the same for Bedrock
-        # agent memory and SageMaker inference data.
-        bedrock_logging_findings["csv_data"].extend(
-            _agentcore_memory_expiry_findings(region)
-        )
-        bedrock_logging_findings["csv_data"].extend(
-            _bedrock_agent_memory_findings(region)
-        )
-        bedrock_logging_findings["csv_data"].extend(
-            _sagemaker_inference_retention_findings(region)
+
+        def bedrock_logging_check() -> Dict[str, Any]:
+            result = check_bedrock_logging_configuration(region=region)
+            # AIR-FND-DAT-08 also covers AgentCore Memory retention, so BR-04
+            # carries one row per memory for that leg, and the same for Bedrock
+            # agent memory and SageMaker inference data.
+            result["csv_data"].extend(_agentcore_memory_expiry_findings(region))
+            result["csv_data"].extend(_bedrock_agent_memory_findings(region))
+            result["csv_data"].extend(_sagemaker_inference_retention_findings(region))
+            return result
+
+        bedrock_logging_findings = _run_check_safely(
+            "BR-04", bedrock_logging_check, region
         )
         all_findings.append(bedrock_logging_findings)
 
         logger.info("Running Bedrock Guardrails check")
-        bedrock_guardrails_findings = check_bedrock_guardrails(region=region)
+        bedrock_guardrails_findings = _run_check_safely(
+            "BR-05", lambda: check_bedrock_guardrails(region=region), region
+        )
         all_findings.append(bedrock_guardrails_findings)
 
         logger.info("Running Bedrock CloudTrail logging check")
-        bedrock_cloudtrail_findings = check_bedrock_cloudtrail_logging(region=region)
+        bedrock_cloudtrail_findings = _run_check_safely(
+            "BR-06", lambda: check_bedrock_cloudtrail_logging(region=region), region
+        )
         all_findings.append(bedrock_cloudtrail_findings)
-        all_findings.append(check_bedrock_inference_trace(region=region))
+        all_findings.append(
+            _run_check_safely(
+                "BR-06", lambda: check_bedrock_inference_trace(region=region), region
+            )
+        )
 
         logger.info("Running Bedrock Prompt Management check")
-        bedrock_prompt_management_findings = check_bedrock_prompt_management(
-            region=region, permission_cache=permission_cache
+        bedrock_prompt_management_findings = _run_check_safely(
+            "BR-07",
+            lambda: check_bedrock_prompt_management(
+                region=region, permission_cache=permission_cache
+            ),
+            region,
         )
         all_findings.append(bedrock_prompt_management_findings)
 
@@ -46712,12 +47244,20 @@ def lambda_handler(event, context):
                 "BR-08", "Bedrock Agent IAM Roles Check", region
             )
             if permission_cache is None
-            else check_bedrock_agent_roles(permission_cache, region=region)
+            else _run_check_safely(
+                "BR-08",
+                lambda: check_bedrock_agent_roles(permission_cache, region=region),
+                region,
+            )
         )
         all_findings.append(bedrock_agent_roles_findings)
 
         logger.info("Running Bedrock Knowledge Base encryption check")
-        kb_encryption_findings = check_bedrock_knowledge_base_encryption(region=region)
+        kb_encryption_findings = _run_check_safely(
+            "BR-09",
+            lambda: check_bedrock_knowledge_base_encryption(region=region),
+            region,
+        )
         all_findings.append(kb_encryption_findings)
 
         logger.info("Running Bedrock Guardrail IAM enforcement check")
@@ -46726,34 +47266,48 @@ def lambda_handler(event, context):
                 "BR-10", "Bedrock Guardrail IAM Enforcement Check", region
             )
             if permission_cache is None
-            else check_bedrock_guardrail_iam_enforcement(
-                permission_cache, region=region, scp_inventory=scp_inventory
+            else _run_check_safely(
+                "BR-10",
+                lambda: check_bedrock_guardrail_iam_enforcement(
+                    permission_cache, region=region, scp_inventory=scp_inventory
+                ),
+                region,
             )
         )
         all_findings.append(guardrail_iam_findings)
 
         logger.info("Running Bedrock custom model encryption check")
-        custom_model_encryption_findings = check_bedrock_custom_model_encryption(
-            region=region
+        custom_model_encryption_findings = _run_check_safely(
+            "BR-11",
+            lambda: check_bedrock_custom_model_encryption(region=region),
+            region,
         )
         all_findings.append(custom_model_encryption_findings)
 
         logger.info("Running Bedrock invocation log encryption check")
-        invocation_log_encryption_findings = check_bedrock_invocation_log_encryption(
-            region=region
+        invocation_log_encryption_findings = _run_check_safely(
+            "BR-12",
+            lambda: check_bedrock_invocation_log_encryption(region=region),
+            region,
         )
         all_findings.append(invocation_log_encryption_findings)
 
         logger.info("Running Bedrock Flows guardrails check")
-        flows_guardrails_findings = check_bedrock_flows_guardrails(region=region)
+        flows_guardrails_findings = _run_check_safely(
+            "BR-13", lambda: check_bedrock_flows_guardrails(region=region), region
+        )
         all_findings.append(flows_guardrails_findings)
 
         # New security checks (BR-15+)
         # BR-15 is a global check (runs once on primary region)
         if is_primary_region:
             logger.info("Running cross-account guardrails enforcement check (BR-15)")
-            cross_account_guardrails_findings = check_bedrock_cross_account_guardrails(
-                region=GLOBAL_REGION_LABEL, api_region=region
+            cross_account_guardrails_findings = _run_check_safely(
+                "BR-15",
+                lambda: check_bedrock_cross_account_guardrails(
+                    region=GLOBAL_REGION_LABEL, api_region=region
+                ),
+                GLOBAL_REGION_LABEL,
             )
             all_findings.append(cross_account_guardrails_findings)
 
@@ -46761,39 +47315,59 @@ def lambda_handler(event, context):
                 scp_inventory = get_service_control_policy_inventory()
 
             logger.info("Running central guardrail enforcement check (BR-41)")
-            central_guardrail_findings = check_bedrock_central_guardrail_enforcement(
-                region=GLOBAL_REGION_LABEL,
-                api_region=region,
-                scp_inventory=scp_inventory,
+            central_guardrail_findings = _run_check_safely(
+                "BR-41",
+                lambda: check_bedrock_central_guardrail_enforcement(
+                    region=GLOBAL_REGION_LABEL,
+                    api_region=region,
+                    scp_inventory=scp_inventory,
+                ),
+                GLOBAL_REGION_LABEL,
             )
             all_findings.append(central_guardrail_findings)
 
             logger.info("Running Region invocation control check (BR-43)")
             all_findings.append(
-                check_bedrock_region_invocation_control(
-                    region=GLOBAL_REGION_LABEL,
-                    api_region=region,
-                    scp_inventory=scp_inventory,
+                _run_check_safely(
+                    "BR-43",
+                    lambda: check_bedrock_region_invocation_control(
+                        region=GLOBAL_REGION_LABEL,
+                        api_region=region,
+                        scp_inventory=scp_inventory,
+                    ),
+                    GLOBAL_REGION_LABEL,
                 )
             )
             all_findings.append(
-                check_bedrock_approved_model_control(
-                    region=GLOBAL_REGION_LABEL, scp_inventory=scp_inventory
+                _run_check_safely(
+                    "BR-43",
+                    lambda: check_bedrock_approved_model_control(
+                        region=GLOBAL_REGION_LABEL, scp_inventory=scp_inventory
+                    ),
+                    GLOBAL_REGION_LABEL,
                 )
             )
 
             logger.info("Running inference Region evidence check (BR-43)")
             all_findings.append(
-                check_bedrock_inference_region_evidence(
-                    region=GLOBAL_REGION_LABEL,
-                    api_region=region,
-                    scp_inventory=scp_inventory,
+                _run_check_safely(
+                    "BR-43",
+                    lambda: check_bedrock_inference_region_evidence(
+                        region=GLOBAL_REGION_LABEL,
+                        api_region=region,
+                        scp_inventory=scp_inventory,
+                    ),
+                    GLOBAL_REGION_LABEL,
                 )
             )
             logger.info("Running AI service Region control check (BR-43)")
             all_findings.append(
-                check_ai_service_region_control(
-                    region=GLOBAL_REGION_LABEL, scp_inventory=scp_inventory
+                _run_check_safely(
+                    "BR-43",
+                    lambda: check_ai_service_region_control(
+                        region=GLOBAL_REGION_LABEL, scp_inventory=scp_inventory
+                    ),
+                    GLOBAL_REGION_LABEL,
                 )
             )
 
@@ -46801,10 +47375,14 @@ def lambda_handler(event, context):
             all_findings.append(
                 org_allow_list_findings
                 if org_allow_list_findings is not None
-                else check_bedrock_approved_model_control(
-                    region=GLOBAL_REGION_LABEL,
-                    scp_inventory=scp_inventory,
-                    check_id="BR-42",
+                else _run_check_safely(
+                    "BR-42",
+                    lambda: check_bedrock_approved_model_control(
+                        region=GLOBAL_REGION_LABEL,
+                        scp_inventory=scp_inventory,
+                        check_id="BR-42",
+                    ),
+                    GLOBAL_REGION_LABEL,
                 )
             )
 
@@ -46814,23 +47392,37 @@ def lambda_handler(event, context):
                     "BR-45", "Bedrock API Key Governance Check", GLOBAL_REGION_LABEL
                 )
                 if permission_cache is None
-                else check_bedrock_api_key_governance(
-                    permission_cache,
-                    region=GLOBAL_REGION_LABEL,
-                    scp_inventory=scp_inventory,
+                else _run_check_safely(
+                    "BR-45",
+                    lambda: check_bedrock_api_key_governance(
+                        permission_cache,
+                        region=GLOBAL_REGION_LABEL,
+                        scp_inventory=scp_inventory,
+                    ),
+                    GLOBAL_REGION_LABEL,
                 )
             )
 
             logger.info("Running data retention service control policy check (BR-37)")
             all_findings.append(
-                check_bedrock_data_retention_scp(
-                    region=GLOBAL_REGION_LABEL, scp_inventory=scp_inventory
+                _run_check_safely(
+                    "BR-37",
+                    lambda: check_bedrock_data_retention_scp(
+                        region=GLOBAL_REGION_LABEL, scp_inventory=scp_inventory
+                    ),
+                    GLOBAL_REGION_LABEL,
                 )
             )
 
             logger.info("Running AI services opt-out policy check (BR-48)")
             all_findings.append(
-                check_bedrock_ai_services_opt_out(region=GLOBAL_REGION_LABEL)
+                _run_check_safely(
+                    "BR-48",
+                    lambda: check_bedrock_ai_services_opt_out(
+                        region=GLOBAL_REGION_LABEL
+                    ),
+                    GLOBAL_REGION_LABEL,
+                )
             )
 
             logger.info("Running guardrail invocation Deny check (BR-49)")
@@ -46841,40 +47433,64 @@ def lambda_handler(event, context):
                     GLOBAL_REGION_LABEL,
                 )
                 if permission_cache is None
-                else check_bedrock_guardrail_invocation_deny(
-                    permission_cache, region=GLOBAL_REGION_LABEL
+                else _run_check_safely(
+                    "BR-49",
+                    lambda: check_bedrock_guardrail_invocation_deny(
+                        permission_cache, region=GLOBAL_REGION_LABEL
+                    ),
+                    GLOBAL_REGION_LABEL,
                 )
             )
 
         # Regional checks (BR-16 through BR-25)
         logger.info("Running custom model cross-account access check (BR-43)")
-        all_findings.append(check_bedrock_custom_model_sharing(region=region))
+        all_findings.append(
+            _run_check_safely(
+                "BR-43",
+                lambda: check_bedrock_custom_model_sharing(region=region),
+                region,
+            )
+        )
 
         logger.info("Running guardrail tier validation check (BR-16)")
-        guardrail_tier_findings = check_bedrock_guardrail_tier(region=region)
+        guardrail_tier_findings = _run_check_safely(
+            "BR-16", lambda: check_bedrock_guardrail_tier(region=region), region
+        )
         all_findings.append(guardrail_tier_findings)
 
         logger.info(
             "Running custom model customer-managed KMS encryption check (BR-17)"
         )
-        custom_model_kms_findings = check_bedrock_custom_model_kms_encryption(
-            region=region
+        custom_model_kms_findings = _run_check_safely(
+            "BR-17",
+            lambda: check_bedrock_custom_model_kms_encryption(region=region),
+            region,
         )
         all_findings.append(custom_model_kms_findings)
 
         logger.info("Running model evaluation implementation check (BR-18)")
-        model_eval_findings = check_bedrock_model_evaluations(region=region)
+        model_eval_findings = _run_check_safely(
+            "BR-18", lambda: check_bedrock_model_evaluations(region=region), region
+        )
         all_findings.append(model_eval_findings)
 
         logger.info("Running prompt flow validation check (BR-19)")
-        prompt_flow_findings = check_bedrock_prompt_flow_validation(region=region)
+        prompt_flow_findings = _run_check_safely(
+            "BR-19",
+            lambda: check_bedrock_prompt_flow_validation(region=region),
+            region,
+        )
         all_findings.append(prompt_flow_findings)
 
         logger.info(
             "Running knowledge base customer-managed KMS encryption check (BR-20)"
         )
-        kb_kms_findings = check_bedrock_knowledge_base_kms_encryption(
-            region=region, permission_cache=permission_cache
+        kb_kms_findings = _run_check_safely(
+            "BR-20",
+            lambda: check_bedrock_knowledge_base_kms_encryption(
+                region=region, permission_cache=permission_cache
+            ),
+            region,
         )
         all_findings.append(kb_kms_findings)
 
@@ -46884,14 +47500,22 @@ def lambda_handler(event, context):
                 "BR-21", "Agent Action Group IAM Least Privilege Check", region
             )
             if permission_cache is None
-            else check_bedrock_agent_action_group_iam(
-                region=region, permission_cache=permission_cache
+            else _run_check_safely(
+                "BR-21",
+                lambda: check_bedrock_agent_action_group_iam(
+                    region=region, permission_cache=permission_cache
+                ),
+                region,
             )
         )
         all_findings.append(agent_action_group_iam_findings)
 
         logger.info("Running service quotas throttling limits check (BR-22)")
-        service_quotas_findings = check_bedrock_service_quotas_throttling(region=region)
+        service_quotas_findings = _run_check_safely(
+            "BR-22",
+            lambda: check_bedrock_service_quotas_throttling(region=region),
+            region,
+        )
         all_findings.append(service_quotas_findings)
 
         guardrail_inventory = get_guardrail_detail_inventory(region)
@@ -46908,129 +47532,221 @@ def lambda_handler(event, context):
             region, guardrail_attachments
         )
         logger.info("Running guardrail content filter coverage check (BR-23)")
-        content_filter_findings = check_bedrock_guardrail_content_filters(
-            region=region, guardrail_inventory=guardrail_inventory
+        content_filter_findings = _run_check_safely(
+            "BR-23",
+            lambda: check_bedrock_guardrail_content_filters(
+                region=region, guardrail_inventory=guardrail_inventory
+            ),
+            region,
         )
         all_findings.append(content_filter_findings)
 
         logger.info("Running automated reasoning policy implementation check (BR-24)")
-        automated_reasoning_findings = check_bedrock_automated_reasoning_policy(
-            region=region
+        automated_reasoning_findings = _run_check_safely(
+            "BR-24",
+            lambda: check_bedrock_automated_reasoning_policy(region=region),
+            region,
         )
         all_findings.append(automated_reasoning_findings)
 
         logger.info("Running RAG evaluation jobs check (BR-25)")
-        rag_eval_findings = check_bedrock_rag_evaluation_jobs(region=region)
+        rag_eval_findings = _run_check_safely(
+            "BR-25", lambda: check_bedrock_rag_evaluation_jobs(region=region), region
+        )
         all_findings.append(rag_eval_findings)
 
         logger.info("Running guardrail sensitive-information filter check (BR-26)")
-        guardrail_pii_findings = check_bedrock_guardrail_pii_filters(
-            region=region,
-            attachment_inventory=guardrail_attachments,
-            knowledge_base_inventory=knowledge_base_screening,
+        guardrail_pii_findings = _run_check_safely(
+            "BR-26",
+            lambda: check_bedrock_guardrail_pii_filters(
+                region=region,
+                attachment_inventory=guardrail_attachments,
+                knowledge_base_inventory=knowledge_base_screening,
+            ),
+            region,
         )
         all_findings.append(guardrail_pii_findings)
 
         logger.info("Running guardrail contextual grounding check (BR-27)")
-        guardrail_grounding_findings = check_bedrock_guardrail_contextual_grounding(
-            region=region, attachment_inventory=guardrail_attachments
+        guardrail_grounding_findings = _run_check_safely(
+            "BR-27",
+            lambda: check_bedrock_guardrail_contextual_grounding(
+                region=region, attachment_inventory=guardrail_attachments
+            ),
+            region,
         )
         all_findings.append(guardrail_grounding_findings)
         # BR-27 and BR-34 join invocation log records to CloudTrail through one
         # shared cache and LookupEvents page budget.
         guardrail_joins = {"resolved": {}, "pages": 0}
         all_findings.append(
-            check_guardrail_grounding_score_evidence(
-                region=region, joins=guardrail_joins
+            _run_check_safely(
+                "BR-27",
+                lambda: check_guardrail_grounding_score_evidence(
+                    region=region, joins=guardrail_joins
+                ),
+                region,
             )
         )
 
         logger.info("Running agent guardrail association check (BR-28)")
-        agent_guardrail_findings = check_bedrock_agent_guardrail_association(
-            region=region
+        agent_guardrail_findings = _run_check_safely(
+            "BR-28",
+            lambda: check_bedrock_agent_guardrail_association(region=region),
+            region,
         )
         all_findings.append(agent_guardrail_findings)
 
         logger.info("Running agent idle session TTL check (BR-29)")
-        agent_ttl_findings = check_bedrock_agent_idle_session_ttl(region=region)
+        agent_ttl_findings = _run_check_safely(
+            "BR-29",
+            lambda: check_bedrock_agent_idle_session_ttl(region=region),
+            region,
+        )
         all_findings.append(agent_ttl_findings)
 
         logger.info("Running imported model KMS encryption check (BR-30)")
-        imported_model_findings = check_bedrock_imported_model_kms_encryption(
-            region=region
+        imported_model_findings = _run_check_safely(
+            "BR-30",
+            lambda: check_bedrock_imported_model_kms_encryption(region=region),
+            region,
         )
         all_findings.append(imported_model_findings)
 
         logger.info("Running batch inference output encryption check (BR-31)")
-        batch_inference_findings = check_bedrock_batch_inference_output_encryption(
-            region=region
+        batch_inference_findings = _run_check_safely(
+            "BR-31",
+            lambda: check_bedrock_batch_inference_output_encryption(region=region),
+            region,
         )
         all_findings.append(batch_inference_findings)
 
         logger.info("Running CloudWatch alarm check (BR-32)")
-        cloudwatch_alarm_findings = check_bedrock_cloudwatch_alarms(
-            region=region,
-            guardrail_inventory=guardrail_inventory,
-            attachment_inventory=guardrail_attachments,
+        cloudwatch_alarm_findings = _run_check_safely(
+            "BR-32",
+            lambda: check_bedrock_cloudwatch_alarms(
+                region=region,
+                guardrail_inventory=guardrail_inventory,
+                attachment_inventory=guardrail_attachments,
+            ),
+            region,
         )
         all_findings.append(cloudwatch_alarm_findings)
 
         logger.info("Running Amazon Inspector Lambda code scanning check (BR-33)")
-        inspector_lambda_findings = check_inspector_lambda_code_scanning(
-            region=region, permission_cache=permission_cache
+        inspector_lambda_findings = _run_check_safely(
+            "BR-33",
+            lambda: check_inspector_lambda_code_scanning(
+                region=region, permission_cache=permission_cache
+            ),
+            region,
         )
         all_findings.append(inspector_lambda_findings)
         all_findings.append(
-            check_bedrock_container_image_scanning(
-                region=region, permission_cache=permission_cache
+            _run_check_safely(
+                "BR-33",
+                lambda: check_bedrock_container_image_scanning(
+                    region=region, permission_cache=permission_cache
+                ),
+                region,
             )
         )
 
         logger.info("Running guardrail prompt attack filter check (BR-34)")
         all_findings.append(
-            check_bedrock_guardrail_prompt_attack_filter(
-                region=region,
-                guardrail_inventory=guardrail_inventory,
-                attachment_inventory=guardrail_attachments,
-                knowledge_base_inventory=knowledge_base_screening,
+            _run_check_safely(
+                "BR-34",
+                lambda: check_bedrock_guardrail_prompt_attack_filter(
+                    region=region,
+                    guardrail_inventory=guardrail_inventory,
+                    attachment_inventory=guardrail_attachments,
+                    knowledge_base_inventory=knowledge_base_screening,
+                ),
+                region,
             )
         )
-        all_findings.append(check_guardrail_intervention_logging(region=region))
         all_findings.append(
-            check_guardrail_prompt_attack_invocation_evidence(
-                region=region, joins=guardrail_joins
+            _run_check_safely(
+                "BR-34",
+                lambda: check_guardrail_intervention_logging(region=region),
+                region,
             )
         )
-        all_findings.append(check_guardduty_prompt_injection_detection(region=region))
+        all_findings.append(
+            _run_check_safely(
+                "BR-34",
+                lambda: check_guardrail_prompt_attack_invocation_evidence(
+                    region=region, joins=guardrail_joins
+                ),
+                region,
+            )
+        )
+        all_findings.append(
+            _run_check_safely(
+                "BR-34",
+                lambda: check_guardduty_prompt_injection_detection(region=region),
+                region,
+            )
+        )
 
         logger.info("Running guardrail image content filter advisory (BR-35)")
         all_findings.append(
-            check_bedrock_guardrail_image_content_filters(
-                region=region, guardrail_inventory=guardrail_inventory
+            _run_check_safely(
+                "BR-35",
+                lambda: check_bedrock_guardrail_image_content_filters(
+                    region=region, guardrail_inventory=guardrail_inventory
+                ),
+                region,
             )
         )
 
         logger.info("Running application inference profile governance check (BR-36)")
-        all_findings.append(check_bedrock_inference_profile_governance(region=region))
+        all_findings.append(
+            _run_check_safely(
+                "BR-36",
+                lambda: check_bedrock_inference_profile_governance(region=region),
+                region,
+            )
+        )
 
         logger.info("Running account data retention check (BR-37)")
-        all_findings.append(check_bedrock_account_data_retention(region=region))
+        all_findings.append(
+            _run_check_safely(
+                "BR-37",
+                lambda: check_bedrock_account_data_retention(region=region),
+                region,
+            )
+        )
 
         logger.info("Running Automated Reasoning policy encryption check (BR-38)")
         all_findings.append(
-            check_bedrock_automated_reasoning_policy_encryption(region=region)
+            _run_check_safely(
+                "BR-38",
+                lambda: check_bedrock_automated_reasoning_policy_encryption(
+                    region=region
+                ),
+                region,
+            )
         )
 
         marketplace_endpoint_inventory = get_marketplace_endpoint_inventory(region)
         logger.info("Running Marketplace endpoint VPC check (BR-39)")
         all_findings.append(
-            check_bedrock_marketplace_endpoint_vpc(
-                region=region, endpoint_inventory=marketplace_endpoint_inventory
+            _run_check_safely(
+                "BR-39",
+                lambda: check_bedrock_marketplace_endpoint_vpc(
+                    region=region, endpoint_inventory=marketplace_endpoint_inventory
+                ),
+                region,
             )
         )
 
         logger.info("Running Bedrock job VPC check (BR-39)")
-        all_findings.append(check_bedrock_job_vpc(region=region))
+        all_findings.append(
+            _run_check_safely(
+                "BR-39", lambda: check_bedrock_job_vpc(region=region), region
+            )
+        )
 
         logger.info("Running AI workload subnet privacy check (BR-39)")
         all_findings.append(
@@ -47038,51 +47754,109 @@ def lambda_handler(event, context):
                 "BR-39", AI_WORKLOAD_SUBNET_FINDING, region
             )
             if permission_cache is None
-            else check_ai_workload_subnet_privacy(permission_cache, region=region)
+            else _run_check_safely(
+                "BR-39",
+                lambda: check_ai_workload_subnet_privacy(
+                    permission_cache, region=region
+                ),
+                region,
+            )
         )
 
         logger.info("Running Marketplace endpoint CMK check (BR-40)")
         all_findings.append(
-            check_bedrock_marketplace_endpoint_cmk(
-                region=region, endpoint_inventory=marketplace_endpoint_inventory
+            _run_check_safely(
+                "BR-40",
+                lambda: check_bedrock_marketplace_endpoint_cmk(
+                    region=region, endpoint_inventory=marketplace_endpoint_inventory
+                ),
+                region,
             )
         )
 
         logger.info("Running knowledge base source classification check (BR-46)")
         all_findings.append(
-            check_bedrock_knowledge_base_source_classification(region=region)
+            _run_check_safely(
+                "BR-46",
+                lambda: check_bedrock_knowledge_base_source_classification(
+                    region=region
+                ),
+                region,
+            )
         )
         all_findings.append(
-            check_bedrock_prompt_pii_screening(
-                region=region,
-                attachment_inventory=guardrail_attachments,
-                joins=guardrail_joins,
+            _run_check_safely(
+                "BR-46",
+                lambda: check_bedrock_prompt_pii_screening(
+                    region=region,
+                    attachment_inventory=guardrail_attachments,
+                    joins=guardrail_joins,
+                ),
+                region,
             )
         )
 
         logger.info("Running data path bucket TLS check (BR-47)")
-        all_findings.append(check_bedrock_data_path_bucket_tls(region=region))
+        all_findings.append(
+            _run_check_safely(
+                "BR-47",
+                lambda: check_bedrock_data_path_bucket_tls(region=region),
+                region,
+            )
+        )
 
         logger.info("Running data path bucket Object Lock check (BR-52)")
-        all_findings.append(check_bedrock_data_path_object_lock(region=region))
+        all_findings.append(
+            _run_check_safely(
+                "BR-52",
+                lambda: check_bedrock_data_path_object_lock(region=region),
+                region,
+            )
+        )
 
         logger.info("Running Bedrock resource owner tag check (BR-53)")
-        all_findings.append(check_bedrock_resource_owner_tag(region=region))
-        all_findings.append(check_ai_resource_owner_tag_sweep(region=region))
+        all_findings.append(
+            _run_check_safely(
+                "BR-53",
+                lambda: check_bedrock_resource_owner_tag(region=region),
+                region,
+            )
+        )
+        all_findings.append(
+            _run_check_safely(
+                "BR-53",
+                lambda: check_ai_resource_owner_tag_sweep(region=region),
+                region,
+            )
+        )
 
         logger.info("Running Lambda public invoke configuration check (BR-54)")
         all_findings.append(
-            check_lambda_public_invoke_configuration(
-                region=region,
-                scp_inventory=scp_inventory if is_primary_region else None,
+            _run_check_safely(
+                "BR-54",
+                lambda: check_lambda_public_invoke_configuration(
+                    region=region,
+                    scp_inventory=scp_inventory if is_primary_region else None,
+                ),
+                region,
             )
         )
 
         logger.info("Running KMS enclave attestation binding check (BR-55)")
-        all_findings.append(check_kms_enclave_key_binding(region=region))
+        all_findings.append(
+            _run_check_safely(
+                "BR-55", lambda: check_kms_enclave_key_binding(region=region), region
+            )
+        )
 
         logger.info("Running Bedrock LLM jacking activity check (BR-56)")
-        all_findings.append(check_bedrock_llm_jacking_activity(region=region))
+        all_findings.append(
+            _run_check_safely(
+                "BR-56",
+                lambda: check_bedrock_llm_jacking_activity(region=region),
+                region,
+            )
+        )
 
         logger.info("Running agent handoff source identity check (BR-57)")
         # Read once for both BR-57 checks; on a failure each reads its own
@@ -47100,15 +47874,25 @@ def lambda_handler(event, context):
         all_findings.append(
             _permission_cache_unavailable_result("BR-57", AGENT_HANDOFF_FINDING, region)
             if permission_cache is None
-            else check_agent_handoff_source_identity(
-                permission_cache, region=region, agent_inventory=agent_inventory
+            else _run_check_safely(
+                "BR-57",
+                lambda: check_agent_handoff_source_identity(
+                    permission_cache,
+                    region=region,
+                    agent_inventory=agent_inventory,
+                ),
+                region,
             )
         )
         all_findings.append(
-            check_bedrock_agent_workload_identity(
-                region=region,
-                agent_inventory=agent_inventory,
-                function_roles=function_roles,
+            _run_check_safely(
+                "BR-57",
+                lambda: check_bedrock_agent_workload_identity(
+                    region=region,
+                    agent_inventory=agent_inventory,
+                    function_roles=function_roles,
+                ),
+                region,
             )
         )
         all_findings.append(
@@ -47116,17 +47900,25 @@ def lambda_handler(event, context):
                 "BR-57", AGENT_ROLE_SCOPE_FINDING, region
             )
             if permission_cache is None
-            else check_bedrock_agent_role_scope(
-                permission_cache,
-                region=region,
-                agent_inventory=agent_inventory,
-                function_roles=function_roles,
+            else _run_check_safely(
+                "BR-57",
+                lambda: check_bedrock_agent_role_scope(
+                    permission_cache,
+                    region=region,
+                    agent_inventory=agent_inventory,
+                    function_roles=function_roles,
+                ),
+                region,
             )
         )
         assessed_regions = _assessed_regions(region)
         if is_primary_region and len(assessed_regions) > 1:
             all_findings.append(
-                check_agent_roles_shared_across_regions(assessed_regions)
+                _run_check_safely(
+                    "BR-57",
+                    lambda: check_agent_roles_shared_across_regions(assessed_regions),
+                    GLOBAL_REGION_LABEL,
+                )
             )
 
         logger.info("Building Agentic AI Security findings from Bedrock results")

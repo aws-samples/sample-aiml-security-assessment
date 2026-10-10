@@ -74,7 +74,7 @@ Metadata:
       GitHubBranch:
         default: GitHub branch
       RequireBedrockZeroDataRetention:
-        default: Require Bedrock zero data retention
+        default: Require Bedrock zero data retention (deprecated, ignored)
       RequireMarketplaceEndpointCMK:
         default: Require Marketplace endpoint customer-managed keys
       RequireAgentCoreOnlineEvaluation:
@@ -249,7 +249,7 @@ Parameters:
     Type: String
     Default: "false"
     AllowedValues: ["true", "false"]
-    Description: Fail BR-37 when the Bedrock retention mode is default or inherit.
+    Description: Deprecated and ignored. BR-37 now judges the Bedrock retention mode at every setting. Kept so existing stacks still update.
 
   RequireMarketplaceEndpointCMK:
     Type: String

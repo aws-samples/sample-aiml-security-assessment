@@ -3507,6 +3507,24 @@ class TestBR03MarketplaceAccess:
         assert len(findings) >= 1
         assert findings[0]["Status"] == "Passed"
 
+    def test_br03_cache_principal_errors_block_a_clean_pass(
+        self, permission_cache_compliant
+    ):
+        # Review #72 item 12: an unread principal could hold the grant.
+        cache = {
+            **permission_cache_compliant,
+            "cache_schema_version": 2,
+            "principal_errors": [
+                {"type": "role", "name": "Hidden", "stage": "policies", "error": "x"}
+            ],
+        }
+        findings = extract_csv_data(
+            bedrock_app.check_marketplace_subscription_access(cache)
+        )
+        assert "Passed" not in [f["Status"] for f in findings]
+        assert all(f["Check_ID"] == "BR-03" for f in findings)
+        assert any("Hidden" in f["Finding_Details"] for f in findings)
+
     def test_br03_schema_valid(self, permission_cache_marketplace_overpermissive):
         check = bedrock_app.check_marketplace_subscription_access
         result = check(permission_cache_marketplace_overpermissive)
@@ -7333,6 +7351,93 @@ class TestBR08AgentRoles:
         assert len(findings) >= 1
         mock_agent.get_agent.assert_called_once_with(agentId="a1")
 
+    @staticmethod
+    def _one_agent(mock_client, role_name):
+        mock_agent = MagicMock()
+        mock_client.return_value = mock_agent
+        mock_agent.get_paginator.return_value.paginate.return_value = [
+            {"agentSummaries": [{"agentId": "a1", "agentName": "TestAgent"}]}
+        ]
+        mock_agent.get_agent.return_value = {
+            "agent": {
+                "agentResourceRoleArn": f"arn:aws:iam::123456789012:role/{role_name}"
+            }
+        }
+
+    @patch("boto3.client")
+    def test_br08_single_statement_object_is_judged(self, mock_client):
+        # Review #72 item 12: a Statement given as one object was walked by key.
+        self._one_agent(mock_client, "OneStatementRole")
+        cache = {
+            "cache_schema_version": 2,
+            "principal_errors": [],
+            "role_permissions": {
+                "OneStatementRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "inline",
+                            "document": {
+                                "Version": "2012-10-17",
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "Action": "bedrock:InvokeModel",
+                                    "Resource": ["*"],
+                                },
+                            },
+                        }
+                    ],
+                    "permission_boundary": "arn:aws:iam::123456789012:policy/b",
+                }
+            },
+            "user_permissions": {},
+        }
+        findings = extract_csv_data(bedrock_app.check_bedrock_agent_roles(cache))
+        assert [f["Status"] for f in findings] == ["Failed"]
+        assert (
+            "role 'OneStatementRole' lacks specific resource constraints"
+            in findings[0]["Finding_Details"]
+        )
+
+    @patch("boto3.client")
+    def test_br08_cache_principal_errors_block_a_clean_pass(self, mock_client):
+        self._one_agent(mock_client, "VpcRole")
+        cache = {
+            "cache_schema_version": 2,
+            "principal_errors": [
+                {"type": "role", "name": "Hidden", "stage": "policies", "error": "x"}
+            ],
+            "role_permissions": {
+                "VpcRole": {
+                    "attached_policies": [
+                        {
+                            "name": "Scoped",
+                            "document": {
+                                "Statement": [
+                                    {
+                                        "Effect": "Allow",
+                                        "Action": "bedrock:InvokeModel",
+                                        "Resource": [
+                                            "arn:aws:bedrock:us-east-1::foundation-model/x"
+                                        ],
+                                        "Condition": {
+                                            "StringEquals": {"aws:SourceVpc": "vpc-1"}
+                                        },
+                                    }
+                                ]
+                            },
+                        }
+                    ],
+                    "inline_policies": [],
+                    "permission_boundary": "arn:aws:iam::123456789012:policy/b",
+                }
+            },
+            "user_permissions": {},
+        }
+        findings = extract_csv_data(bedrock_app.check_bedrock_agent_roles(cache))
+        assert "Passed" not in [f["Status"] for f in findings]
+        assert any("Hidden" in f["Finding_Details"] for f in findings)
+
     @patch("boto3.client")
     def test_br08_exception_returns_error_finding(
         self, mock_client, empty_permission_cache
@@ -10623,7 +10728,11 @@ class TestBR41CentralGuardrailEnforcement:
         org_client, _, findings = self._run_clients(**kwargs)
         return org_client, findings
 
-    def test_br41_draft_version_fails_while_published_version_passes(self):
+    def test_br41_off_path_draft_policy_is_context_while_published_version_passes(
+        self,
+    ):
+        # Review #72 item 8: the DRAFT policy is attached to an OU this account
+        # is not under, so it does not apply here. It used to fail this account.
         org_client, findings = self._run(
             effective=self._effective_policy_document(self.GUARDRAIL_ARN, "3"),
             bedrock_policies=[
@@ -10644,13 +10753,18 @@ class TestBR41CentralGuardrailEnforcement:
 
         failed = [f for f in findings if f["Status"] == "Failed"]
         passed = [f for f in findings if f["Status"] == "Passed"]
+        context = [f for f in findings if f["Status"] == "N/A"]
 
-        assert len(failed) == 1
-        assert failed[0]["Check_ID"] == "BR-41"
-        assert "DraftGuardrail" in failed[0]["Finding_Details"]
-        assert "p-draft" in failed[0]["Finding_Details"]
-        assert "DRAFT guardrail version" in failed[0]["Finding_Details"]
-        assert self.OTHER_GUARDRAIL_ARN in failed[0]["Finding_Details"]
+        assert failed == []
+        assert len(context) == 1
+        assert context[0]["Check_ID"] == "BR-41"
+        assert context[0]["Severity"] == "Informational"
+        assert (
+            "1 Organizations Bedrock policy(ies) are attached nowhere on the "
+            "organization path of account 123456789012, so they do not apply to "
+            "it and are not judged here: 'DraftGuardrail' (attached to "
+            "ORGANIZATIONAL_UNIT ou-1234)."
+        ) == context[0]["Finding_Details"]
 
         assert len(passed) == 1
         assert "PublishedGuardrail" in passed[0]["Finding_Details"]
@@ -10663,6 +10777,32 @@ class TestBR41CentralGuardrailEnforcement:
             for call in org_client.list_policies.call_args_list
         )
 
+    def test_br41_on_path_draft_policy_fails(self):
+        _, findings = self._run(
+            effective=self._effective_policy_document(self.GUARDRAIL_ARN, "3"),
+            bedrock_policies=[
+                {"Id": "p-published", "Name": "PublishedGuardrail"},
+                {"Id": "p-draft", "Name": "DraftGuardrail"},
+            ],
+            targets={
+                "p-published": [{"TargetId": "r-abc123", "Type": "ROOT"}],
+                "p-draft": [{"TargetId": "r-abc123", "Type": "ROOT"}],
+            },
+            contents={
+                "p-published": self._bedrock_policy_document(self.GUARDRAIL_ARN, "3"),
+                "p-draft": self._bedrock_policy_document(
+                    self.OTHER_GUARDRAIL_ARN, "DRAFT"
+                ),
+            },
+        )
+
+        failed = [f for f in findings if f["Status"] == "Failed"]
+        assert len(failed) == 1
+        assert "DraftGuardrail" in failed[0]["Finding_Details"]
+        assert "p-draft" in failed[0]["Finding_Details"]
+        assert "DRAFT guardrail version" in failed[0]["Finding_Details"]
+        assert self.OTHER_GUARDRAIL_ARN in failed[0]["Finding_Details"]
+
     def test_br41_unattached_policy_is_not_enforcement(self):
         _, findings = self._run(
             bedrock_policies=[{"Id": "p-orphan", "Name": "OrphanGuardrail"}],
@@ -10672,11 +10812,82 @@ class TestBR41CentralGuardrailEnforcement:
             },
         )
 
+        # Review #72 item 8: a policy attached nowhere is context, and the
+        # account still fails on having no enforcement at all.
+        failed = [f for f in findings if f["Status"] == "Failed"]
+        context = [f for f in findings if f["Status"] == "N/A"]
+        assert len(failed) == 1
+        assert (
+            "No account-enforced guardrail configuration"
+            in (failed[0]["Finding_Details"])
+        )
+        assert len(context) == 1
+        assert (
+            "'OrphanGuardrail' (attached to no target)"
+            in (context[0]["Finding_Details"])
+        )
+        assert not [f for f in findings if f["Status"] == "Passed"]
+
+    def test_br41_policy_read_error_is_a_label_not_raw_text(self):
+        # Review #72 item 16: str(error) put the raw exception message in the report.
+        org_client, _, factory = self._client_factory(
+            [{"Id": "p-root", "Name": "RootGuardrail"}],
+            (),
+            {"p-root": [{"TargetId": "r-abc123", "Type": "ROOT"}]},
+            {},
+            "123456789012",
+            (),
+            None,
+            None,
+        )
+        org_client.describe_policy.side_effect = ClientError(
+            {
+                "Error": {
+                    "Code": "AccessDeniedException",
+                    "Message": "User arn:aws:sts::123456789012:assumed-role/x is not authorized",
+                }
+            },
+            "DescribePolicy",
+        )
+        with patch("bedrock_app.boto3.client", side_effect=factory):
+            findings = extract_csv_data(
+                bedrock_app.check_bedrock_central_guardrail_enforcement(
+                    region="Global", api_region="us-east-1"
+                )
+            )
+
+        details = " ".join(f["Finding_Details"] for f in findings)
+        assert "policy 'RootGuardrail': AccessDeniedException" in details
+        assert "is not authorized" not in details
+        assert "assumed-role" not in details
+
+    def test_br41_unread_path_still_judges_every_policy(self):
+        # Without the account's path, no policy can be ruled off it.
+        org_client, _, factory = self._client_factory(
+            [{"Id": "p-orphan", "Name": "OrphanGuardrail"}],
+            (),
+            {"p-orphan": []},
+            {"p-orphan": self._bedrock_policy_document(self.GUARDRAIL_ARN, "2")},
+            "123456789012",
+            (),
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        org_client.list_parents.side_effect = _make_client_error("AccessDenied")
+        with patch("bedrock_app.boto3.client", side_effect=factory):
+            findings = extract_csv_data(
+                bedrock_app.check_bedrock_central_guardrail_enforcement(
+                    region="Global", api_region="us-east-1"
+                )
+            )
+
         failed = [f for f in findings if f["Status"] == "Failed"]
         assert len(failed) == 1
         assert "OrphanGuardrail" in failed[0]["Finding_Details"]
         assert "no attached root" in failed[0]["Finding_Details"]
-        assert not [f for f in findings if f["Status"] == "Passed"]
 
     def test_br41_policy_naming_no_guardrail_is_not_enforcement(self):
         _, findings = self._run(
@@ -11149,7 +11360,11 @@ class TestBR41CentralGuardrailEnforcement:
         )
 
         assert not [f for f in findings if f["Status"] == "Passed"]
-        assert [f["Status"] for f in findings] == ["Failed"]
+        assert [f["Status"] for f in findings] == ["N/A", "Failed"]
+        assert (
+            "'OuGuardrail' (attached to ORGANIZATIONAL_UNIT ou-abc1-zzzzzzzz)"
+            in (findings[0]["Finding_Details"])
+        )
 
     def test_br41_missing_guardrail_share_fails(self):
         _, findings = self._run(
@@ -15410,8 +15625,16 @@ class TestBR43CustomModelSharing:
             "ownerAccountId": owner,
         }
 
-    def _run(self, models, policies):
-        """policies maps a model ARN to a document, or to an exception to raise."""
+    def _run(self, models, policies, organization="o-abc123"):
+        """policies maps a model ARN to a document, or to an exception to raise.
+        organization is the DescribeOrganization id, or an exception to raise."""
+        orgs_client = MagicMock()
+        if isinstance(organization, Exception):
+            orgs_client.describe_organization.side_effect = organization
+        else:
+            orgs_client.describe_organization.return_value = {
+                "Organization": {"Id": organization}
+            }
         bedrock_client = MagicMock()
         bedrock_client.get_paginator.return_value.paginate.return_value = [
             {"modelSummaries": models}
@@ -15436,6 +15659,7 @@ class TestBR43CustomModelSharing:
             side_effect=lambda service, **kwargs: {
                 "bedrock": bedrock_client,
                 "sts": sts_client,
+                "organizations": orgs_client,
             }[service],
         ):
             findings = extract_csv_data(
@@ -15548,6 +15772,81 @@ class TestBR43CustomModelSharing:
             "an Allow of bedrock:ApplyGuardrail to arn:aws:iam::111122223333:role/*"
         ]
 
+    def test_no_owned_custom_model_is_na_not_passed(self):
+        # Review #72 item 6: an empty inventory used to pass.
+        findings, client = self._run([self._model("theirs", owner="111122223333")], {})
+
+        assert [f["Status"] for f in findings] == ["N/A"]
+        assert findings[0]["Severity"] == "Informational"
+        assert (
+            "No custom model owned by this account is listed in us-east-1"
+            in findings[0]["Finding_Details"]
+        )
+        client.get_resource_policy.assert_not_called()
+
+    def test_not_principal_allow_is_unbounded(self):
+        a = self._model("tuned-a")
+        findings, _ = self._run(
+            [a],
+            {
+                a["modelArn"]: {
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "NotPrincipal": {"AWS": "arn:aws:iam::111122223333:root"},
+                            "Action": "bedrock:CreateModelCopyJob",
+                            "Resource": "*",
+                        }
+                    ]
+                }
+            },
+        )
+
+        assert [f["Status"] for f in findings] == ["Failed"]
+        assert (
+            "tuned-a: an Allow of access to every principal not named in its "
+            "NotPrincipal with no aws:PrincipalOrgID or aws:PrincipalOrgPaths "
+            "condition" in findings[0]["Finding_Details"]
+        )
+
+    def test_another_organizations_id_is_not_an_org_share(self):
+        a = self._model("tuned-a")
+        findings, _ = self._run(
+            [a],
+            {
+                a["modelArn"]: self._allow(
+                    "*", {"StringEquals": {"aws:PrincipalOrgID": "o-f6g7h8i9j0"}}
+                )
+            },
+            organization="o-a1b2c3d4e5",
+        )
+
+        assert [f["Status"] for f in findings] == ["Failed"]
+        assert (
+            "scoped by aws:PrincipalOrgID o-f6g7h8i9j0, which does not limit it "
+            "to organization o-a1b2c3d4e5" in findings[0]["Finding_Details"]
+        )
+
+    def test_unread_organization_id_holds_an_org_share_na(self):
+        a = self._model("tuned-a")
+        findings, _ = self._run(
+            [a],
+            {
+                a["modelArn"]: self._allow(
+                    "*", {"StringEquals": {"aws:PrincipalOrgID": "o-a1b2c3d4e5"}}
+                )
+            },
+            organization=_client_error(
+                "AccessDeniedException", operation="DescribeOrganization"
+            ),
+        )
+
+        assert [f["Status"] for f in findings] == ["N/A"]
+        assert (
+            "which organizations:DescribeOrganization did not return"
+            in findings[0]["Finding_Details"]
+        )
+
     def test_models_past_the_cap_are_not_a_clean_result(self):
         models = [
             self._model(f"m{index}")
@@ -15619,6 +15918,45 @@ class TestBR44MarketplaceModelControl:
         assert "ScopedRole" in passed[0]["Finding_Details"]
         assert self.PRODUCT_ID in passed[0]["Finding_Details"]
         assert "BR-42" in passed[0]["Finding_Details"]
+
+    def test_br44_unparsable_policy_is_na_not_failed(self):
+        # Review #72 item 7: a parse failure was reported as a Failed grant.
+        findings = self._run(
+            _identity_cache(
+                roles={
+                    "BrokenRole": [("Broken", "{not json")],
+                    "OtherBroken": [("Broken", "[")],
+                }
+            )
+        )
+
+        assert [f["Status"] for f in findings] == ["N/A"]
+        [row] = findings
+        assert row["Check_ID"] == "BR-44"
+        assert row["Severity"] == "Informational"
+        assert (
+            "A policy document of 2 identity/identities could not be parsed"
+            in row["Finding_Details"]
+        )
+        assert "role 'BrokenRole'" in row["Finding_Details"]
+        assert "role 'OtherBroken'" in row["Finding_Details"]
+
+    def test_br44_unparsable_policy_beside_an_open_grant_keeps_the_failure(self):
+        findings = self._run(
+            _identity_cache(
+                roles={
+                    "BrokenRole": [("Broken", "{not json")],
+                    "OpenRole": [
+                        ("OpenSubscribe", _allow("aws-marketplace:Subscribe", "*"))
+                    ],
+                }
+            )
+        )
+
+        assert sorted(f["Status"] for f in findings) == ["Failed", "N/A"]
+        failed = next(f for f in findings if f["Status"] == "Failed")
+        assert "Role 'OpenRole'" in failed["Finding_Details"]
+        assert "BrokenRole" not in failed["Finding_Details"]
 
     def test_br44_deny_naming_products_positively_fails_open(self):
         document = {
@@ -19161,6 +19499,53 @@ class TestBR46PromptPiiScreening:
         assert [f["Status"] for f in findings] == ["N/A"]
         assert "bedrock:ListGuardrails" in findings[0]["Finding_Details"]
 
+    @pytest.mark.parametrize(
+        "footprint, lead",
+        [
+            (False, "No regional Bedrock resources found in us-east-1"),
+            (
+                None,
+                "Bedrock footprint could not be determined in this region (access "
+                "may be restricted) in us-east-1",
+            ),
+        ],
+    )
+    def test_br46_prompt_region_without_bedrock_is_na_not_failed(self, footprint, lead):
+        # Review #72 item 1: an unused Region failed High on an absence.
+        with patch.object(
+            bedrock_app, "detect_bedrock_regional_footprint", return_value=footprint
+        ):
+            findings = self._run(guardrails=[])
+        assert [f["Status"] for f in findings] == ["N/A"]
+        assert findings[0]["Severity"] == "Informational"
+        details = findings[0]["Finding_Details"]
+        assert details.startswith(
+            f"{lead}, so prompt PII screening was not judged. No agent, flow node"
+        )
+        if footprint is None:
+            assert "No regional Bedrock resources found" not in details
+
+    def test_br46_prompt_with_logging_off_is_na_not_failed(self):
+        findings = self._run(
+            guardrails=["g1"],
+            details={"g1": self.OUTPUT_ONLY_PII},
+            joins={"log": self._log(logging=False, reason="logging is off")},
+        )
+        assert [f["Status"] for f in findings] == ["N/A"]
+        assert findings[0]["Severity"] == "Informational"
+        assert (
+            "and no invocation log is read, so whether prompts reach the model "
+            "unscreened for PII is not shown." in findings[0]["Finding_Details"]
+        )
+
+    def test_br46_prompt_footprint_with_logging_on_still_fails(self):
+        with patch.object(
+            bedrock_app, "detect_bedrock_regional_footprint", return_value=True
+        ):
+            findings = self._run(guardrails=[])
+        assert [f["Status"] for f in findings] == ["Failed"]
+        assert "no prompt is shown to be screened" in findings[0]["Finding_Details"]
+
 
 class TestBR46ClassificationJobCoverage:
     """
@@ -22009,6 +22394,35 @@ class TestBR21AgentActionGroupIAM:
         passed = [f for f in findings if f["Status"] == "Passed"]
         assert len(passed) >= 1
         assert passed[0]["Check_ID"] == "BR-21"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br21_cache_principal_errors_block_a_clean_pass(self, mock_client):
+        # Review #72 item 12: an unread role could be an action group's role.
+        agent_client, lambda_client = self._agent_client_with_lambda_role("ScopedRole")
+        mock_client.side_effect = lambda service, **kwargs: (
+            lambda_client if service == "lambda" else agent_client
+        )
+        cache = {
+            "cache_schema_version": 2,
+            "principal_errors": [
+                {"type": "role", "name": "Hidden", "stage": "policies", "error": "x"}
+            ],
+            "role_permissions": {
+                "ScopedRole": {
+                    "attached_policies": [{"name": "CustomScopedPolicy"}],
+                    "inline_policies": [],
+                }
+            },
+            "user_permissions": {},
+        }
+        findings = extract_csv_data(
+            bedrock_app.check_bedrock_agent_action_group_iam(
+                region="us-east-1", permission_cache=cache
+            )
+        )
+        assert "Passed" not in [f["Status"] for f in findings]
+        assert all(f["Check_ID"] == "BR-21" for f in findings)
+        assert any("Hidden" in f["Finding_Details"] for f in findings)
 
     @patch("bedrock_app.boto3.client")
     def test_br21_region_unsupported_returns_na(self, mock_client):
@@ -32239,10 +32653,14 @@ class TestBR49GuardrailInvocationDeny:
 
         assert [f["Status"] for f in findings] == ["N/A"]
 
-    def test_br49_allow_side_guardrail_condition_alone_fails(
+    def test_br49_allow_side_guardrail_condition_alone_passes(
         self, permission_cache_with_guardrail_condition
     ):
-        """BR-10 passes this cache: an Allow condition is not a Deny."""
+        """
+        The only Allow requires StringEquals bedrock:GuardrailIdentifier, so the
+        role cannot invoke without the guardrail. This used to fail High
+        because only a Deny was credited.
+        """
         bedrock_client = MagicMock()
         bedrock_client.list_guardrails.return_value = {
             "guardrails": [{"id": "gr-1", "name": "TestGuardrail"}]
@@ -32257,12 +32675,99 @@ class TestBR49GuardrailInvocationDeny:
         findings = self._run(permission_cache_with_guardrail_condition)
 
         assert [f["Status"] for f in br10] == ["Passed"]
-        assert [f["Status"] for f in findings] == ["Failed"]
+        assert [f["Status"] for f in findings] == ["Passed"]
         assert "role 'GuardrailEnforcedRole'" in findings[0]["Finding_Details"]
         assert (
-            "bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream"
+            "is allowed bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream "
+            "only under a bedrock:GuardrailIdentifier condition"
             in findings[0]["Finding_Details"]
         )
+
+    def test_br49_pinned_allow_beside_an_unconditioned_allow_fails(self):
+        pinned = {
+            "Effect": "Allow",
+            "Action": "bedrock:InvokeModel",
+            "Resource": "*",
+            "Condition": {
+                "StringEquals": {
+                    "bedrock:GuardrailIdentifier": (
+                        "arn:aws:bedrock:us-east-1:123456789012:guardrail/abc123"
+                    )
+                }
+            },
+        }
+        open_allow = {
+            "Effect": "Allow",
+            "Action": "bedrock:InvokeModel",
+            "Resource": "*",
+        }
+        findings = self._run(_invoke_cache(pinned, open_allow))
+
+        assert [f["Status"] for f in findings] == ["Failed"]
+        assert (
+            "no policy on it denies bedrock:InvokeModel unless"
+            in findings[0]["Finding_Details"]
+        )
+
+    @pytest.mark.parametrize(
+        "operator,value",
+        [
+            (
+                "StringEqualsIfExists",
+                "arn:aws:bedrock:us-east-1:123456789012:guardrail/g",
+            ),
+            ("StringLike", "*"),
+            ("StringNotEquals", "arn:aws:bedrock:us-east-1:123456789012:guardrail/g"),
+        ],
+    )
+    def test_br49_allow_condition_that_admits_an_unguarded_call_fails(
+        self, operator, value
+    ):
+        """IfExists matches an absent key, and * or a negation names no guardrail."""
+        findings = self._run(
+            _invoke_cache(
+                {
+                    "Effect": "Allow",
+                    "Action": "bedrock:InvokeModel",
+                    "Resource": "*",
+                    "Condition": {operator: {"bedrock:GuardrailIdentifier": value}},
+                }
+            )
+        )
+
+        assert [f["Status"] for f in findings] == ["Failed"]
+
+    @pytest.mark.parametrize(
+        "resource",
+        [
+            "arn:aws:s3:::training-bucket/*",
+            "arn:aws:bedrock:us-east-1:123456789012:knowledge-base/*",
+            ["arn:aws:s3:::a", "arn:aws:bedrock:us-east-1:123456789012:agent/*"],
+        ],
+    )
+    def test_br49_wildcard_allow_on_non_model_resources_is_not_an_invoker(
+        self, resource
+    ):
+        """Action * on resources that are not models grants no invocation."""
+        findings = self._run(
+            _invoke_cache({"Effect": "Allow", "Action": "*", "Resource": resource})
+        )
+
+        assert [f["Status"] for f in findings] == ["N/A"]
+        assert findings[0]["Check_ID"] == "BR-49"
+
+    def test_br49_wildcard_allow_on_a_model_resource_still_fails(self):
+        findings = self._run(
+            _invoke_cache(
+                {
+                    "Effect": "Allow",
+                    "Action": "bedrock:*",
+                    "Resource": "arn:aws:bedrock:us-east-1::foundation-model/*",
+                }
+            )
+        )
+
+        assert [f["Status"] for f in findings] == ["Failed"]
 
     def test_br49_no_invoke_permission_returns_na(self):
         findings = self._run(
@@ -37906,14 +38411,18 @@ class TestBR52DataPathObjectLock:
                 "b": _make_client_error("AccessDeniedException"),
             },
         )
-        assert [r["Status"] for r in rows] == ["Failed", "N/A"]
+        # Review #72 item 3: an unread backup is N/A, no longer Failed.
+        assert [r["Status"] for r in rows] == ["N/A", "N/A"]
+        assert all(r["Severity"] == "Informational" for r in rows)
+        object_lock, backup = rows
+        assert "b (kb)" in object_lock["Finding_Details"]
+        assert "backup:ListRecoveryPointsByResource" in object_lock["Finding_Details"]
         assert (
-            "Whether an immutable backup covers it is unknown"
-            in (rows[0]["Finding_Details"])
-        )
-        assert "backup:ListRecoveryPointsByResource" in rows[0]["Finding_Details"]
-        assert "backup:ListRecoveryPointsByResource" in rows[1]["Finding_Details"]
-        assert "b (kb)" in rows[1]["Finding_Details"]
+            "1 Bedrock data path bucket(s) do not lock objects in COMPLIANCE mode "
+            "by default, but whether an immutable AWS Backup recovery point covers "
+            "them was not read, so they are not judged: a (kb)"
+        ) in backup["Finding_Details"]
+        assert "backup:ListRecoveryPointsByResource" in backup["Finding_Details"]
 
     def test_br52_denied_backup_reads_name_the_missing_grant_not_a_ceiling(self):
         _, rows = self._run(
@@ -37924,19 +38433,23 @@ class TestBR52DataPathObjectLock:
                 "b": _make_client_error("ThrottlingException"),
             },
         )
-        assert [r["Status"] for r in rows] == ["Failed", "Failed"]
-        denied, throttled = rows[0]["Finding_Details"], rows[1]["Finding_Details"]
-        assert "Bucket a" in denied
+        # Review #72 item 3: both SAM templates now grant the read, so a denial
+        # points at what blocked it, and an unread backup is N/A, not Failed.
+        [row] = rows
+        assert row["Status"] == "N/A"
+        details = row["Finding_Details"]
+        assert "2 Bedrock data path bucket(s)" in details
+        denied, throttled = details.split("; b (kb)")
+        assert "a (kb)" in denied
         assert (
-            "backup:ListRecoveryPointsByResource is not granted to the Bedrock "
-            "assessment role, so this read was not made. The API returns the "
-            "field, so a grant of backup:ListRecoveryPointsByResource would let "
-            "the check judge it" in denied
+            "backup:ListRecoveryPointsByResource was denied to the Bedrock "
+            "assessment role, so this read was not made. Both SAM templates grant "
+            "it, so look for a service control policy, a permissions boundary, or "
+            "an assessment deployment older than the grant" in denied
         )
-        assert "ceiling reached" not in denied
-        assert "Bucket b" in throttled
-        assert "is not granted" not in throttled
-        assert "ceiling reached" not in throttled
+        assert "not granted" not in details
+        assert "ceiling reached" not in details
+        assert "was denied" not in throttled
 
     def test_br52_denied_recovery_point_describe_names_the_missing_grant(self):
         _, rows = self._run(
@@ -37946,11 +38459,10 @@ class TestBR52DataPathObjectLock:
             vault_details={"vault-c": self._vault(lock_days_ago=1)},
             point_details={"vault-c": _make_client_error("AccessDeniedException")},
         )
-        assert [r["Status"] for r in rows] == ["Failed"]
+        assert [r["Status"] for r in rows] == ["N/A"]
         assert (
-            "backup:DescribeRecoveryPoint is not granted to the Bedrock assessment "
-            "role, so this read was not made. The API returns the field, so a "
-            "grant of backup:DescribeRecoveryPoint would let the check judge it"
+            "backup:DescribeRecoveryPoint was denied to the Bedrock assessment "
+            "role, so this read was not made. Both SAM templates grant it"
             in rows[0]["Finding_Details"]
         )
         assert "ceiling reached" not in rows[0]["Finding_Details"]
@@ -38022,7 +38534,7 @@ class TestBR52DataPathObjectLock:
         assert self.backup.describe_recovery_point.call_count == 0
 
     def test_br52_an_unread_older_point_does_not_clear_the_bucket(self):
-        """Object Lock alone fails a, so an unread backup leaves it Failed."""
+        """Object Lock alone does not clear a, and an unread backup leaves it N/A."""
         _, rows = self._run(
             {"a": ["kb"], "b": ["kb"]},
             {"a": self.GOVERNED, "b": self.COMPLIANT},
@@ -38030,10 +38542,10 @@ class TestBR52DataPathObjectLock:
             vault_details={"vault-c": self._vault(lock_days_ago=1)},
             point_details={"vault-c": _make_client_error("AccessDeniedException")},
         )
-        assert [r["Status"] for r in rows] == ["Failed", "Passed"]
-        assert "Bucket a" in rows[0]["Finding_Details"]
-        assert "backup:DescribeRecoveryPoint" in rows[0]["Finding_Details"]
-        assert "b (" in rows[1]["Finding_Details"]
+        assert [r["Status"] for r in rows] == ["Passed", "N/A"]
+        assert "b (" in rows[0]["Finding_Details"]
+        assert "a (kb)" in rows[1]["Finding_Details"]
+        assert "backup:DescribeRecoveryPoint" in rows[1]["Finding_Details"]
 
     def test_br52_vault_describe_failure_is_named_and_cached(self):
         _, rows = self._run(
@@ -38045,13 +38557,40 @@ class TestBR52DataPathObjectLock:
             },
             vault_details={"vault-x": _make_client_error("AccessDeniedException")},
         )
-        assert [r["Status"] for r in rows] == ["Failed", "Failed"]
-        for row in rows:
-            assert (
+        [row] = rows
+        assert row["Status"] == "N/A"
+        assert "2 Bedrock data path bucket(s)" in row["Finding_Details"]
+        assert (
+            row["Finding_Details"].count(
                 "whose Vault Lock was not read (backup:DescribeBackupVault"
-                in (row["Finding_Details"])
             )
+            == 2
+        )
         assert self.backup.describe_backup_vault.call_count == 1
+
+    def test_br52_recovery_points_are_read_with_the_account_partition(
+        self, monkeypatch
+    ):
+        # Review #72 item 15: the bucket ARN used to hard-code arn:aws.
+        monkeypatch.setenv("AWS_REGION", "us-gov-west-1")
+        monkeypatch.setattr(bedrock_app, "_ACCOUNT_PARTITION", None)
+        self._run({"a": ["kb"]}, {"a": self.GOVERNED})
+        self.backup.list_recovery_points_by_resource.assert_called_once()
+        assert (
+            self.backup.list_recovery_points_by_resource.call_args.kwargs["ResourceArn"]
+            == "arn:aws-us-gov:s3:::a"
+        )
+
+    @pytest.mark.parametrize(
+        "region, partition",
+        [("cn-north-1", "aws-cn"), ("us-east-1", "aws"), ("xx-nowhere-1", "aws")],
+    )
+    def test_account_partition_follows_the_lambda_region(
+        self, monkeypatch, region, partition
+    ):
+        monkeypatch.setenv("AWS_REGION", region)
+        monkeypatch.setattr(bedrock_app, "_ACCOUNT_PARTITION", None)
+        assert bedrock_app._account_partition() == partition
 
     def test_br52_exception_is_could_not_assess(self):
         with patch.object(
@@ -39288,6 +39827,31 @@ class TestBR54LambdaPublicInvoke:
         "Action": "lambda:InvokeFunction",
         "Resource": "*",
     }
+
+    def test_br54_functions_past_the_deadline_are_named_not_passed(self):
+        # Review #72 item 5: the loop had no deadline check, so a large account
+        # timed out and lost the whole report.
+        with patch.object(bedrock_app, "_deadline_reached", side_effect=[False, True]):
+            result, rows, lam = self._run(["a", "b", "c"])
+        assert [r["Status"] for r in rows] == ["Passed", "N/A"]
+        assert "1 of the 1 Lambda function(s) read" in rows[0]["Finding_Details"]
+        assert rows[1]["Severity"] == "Informational"
+        assert (
+            "2 of the 3 Lambda function(s) listed were not read: the read stopped "
+            f"{bedrock_app.DEADLINE_STOP}. The rows above cover only the functions "
+            "read before it."
+        ) in rows[1]["Finding_Details"]
+        assert lam.list_function_url_configs.call_count == 1
+
+    def test_br54_alias_reads_stopped_by_the_deadline_are_indeterminate(self):
+        with patch.object(bedrock_app, "_deadline_reached", side_effect=[False, True]):
+            result, rows, lam = self._run(["a"], aliases={"a": ["live"]})
+        assert [r["Status"] for r in rows] == ["N/A"]
+        assert (
+            "a: its alias and version policies were not all read, the read "
+            f"stopped {bedrock_app.DEADLINE_STOP}" in rows[0]["Finding_Details"]
+        )
+        lam.get_policy.assert_called_once_with(FunctionName="a")
 
     def test_br54_first_function_private_second_url_none_fails(self):
         result, rows, _ = self._run(
@@ -40782,6 +41346,69 @@ def test_handler_emits_the_guardrail_intervention_logging_row():
     assert [(r["Check_ID"], r["Status"]) for r in rows] == [("BR-34", "N/A")]
 
 
+def test_handler_keeps_the_report_when_one_check_raises():
+    # Review #72 item 4: an exception escaping one check used to end the
+    # handler before the CSV was written, losing every other check's rows.
+    test_client = MagicMock()
+    test_client.get_model_invocation_logging_configuration.side_effect = (
+        _make_client_error("AccessDeniedException")
+    )
+    captured = {}
+
+    def fake_csv(findings):
+        captured["findings"] = findings
+        return "csv"
+
+    with (
+        patch.object(bedrock_app.boto3, "client", return_value=test_client),
+        patch.object(bedrock_app, "get_permissions_cache", return_value=None),
+        patch.object(
+            bedrock_app,
+            "check_guardrail_intervention_logging",
+            side_effect=KeyError("logging"),
+        ),
+        patch.object(bedrock_app, "generate_csv_report", side_effect=fake_csv),
+        patch.object(
+            bedrock_app, "write_to_s3", return_value="s3://b/r.csv"
+        ) as write_to_s3,
+    ):
+        resp = bedrock_app.lambda_handler(
+            _bedrock_event(region="us-east-1", region_index=0), None
+        )
+    assert resp["statusCode"] == 200
+    write_to_s3.assert_called_once()
+    rows = [r for f in captured["findings"] for r in f.get("csv_data", [])]
+    [incomplete] = [r for r in rows if r["Finding"] == "BR-34 Check Incomplete"]
+    assert incomplete["Check_ID"] == "BR-34"
+    assert incomplete["Status"] == "N/A"
+    assert incomplete["Severity"] == "Informational"
+    assert (
+        "The assessment could not complete BR-34 in us-east-1: it stopped on an "
+        "unexpected KeyError. The other checks in this report ran."
+    ) == incomplete["Finding_Details"]
+    assert {"BR-01", "BR-04", "BR-41", "BR-56"} <= {r["Check_ID"] for r in rows}
+
+
+def test_guardrail_inventories_record_an_unexpected_error():
+    with patch.object(
+        bedrock_app, "_read_guardrail_attachments", side_effect=KeyError("x")
+    ):
+        inventory = bedrock_app.get_guardrail_attachment_inventory(
+            "us-east-1", {"role_permissions": {}, "user_permissions": {}}
+        )
+    assert any(
+        "the guardrail attachment read stopped on an unexpected KeyError" in error
+        for error in inventory["errors"]
+    )
+    with patch.object(
+        bedrock_app, "_read_knowledge_base_screening", side_effect=KeyError("x")
+    ):
+        screening = bedrock_app.get_knowledge_base_screening_inventory(
+            "us-east-1", inventory
+        )
+    assert any("unexpected KeyError" in error for error in screening["errors"])
+
+
 def test_handler_reports_br50_and_br51_unassessed_without_a_cache():
     test_client = MagicMock()
     test_client.get_model_invocation_logging_configuration.side_effect = (
@@ -41434,6 +42061,40 @@ class TestBedrockLlmJackingActivity:
         assert "0.43" in rows[0]["Finding_Details"]
         assert self.BOB not in rows[0]["Finding_Details"]
 
+    def test_read_and_invoke_only_above_the_share_is_named_not_failed(self):
+        # Review #72 item 10: 7 of 14 reads and invocations, no write action.
+        result, rows, _ = self._run({self.ALICE: self.ACTIONS[4:11]})
+        assert result["status"] == "N/A"
+        assert [r["Status"] for r in rows] == ["N/A"]
+        assert rows[0]["Severity"] == "Informational"
+        details = rows[0]["Finding_Details"]
+        assert (
+            "1 identity called more than 40% of the 14 actions judged in the last "
+            "24 hours, but none of AcceptAgreementRequest, "
+            "CreateFoundationModelAgreement, PutFoundationModelEntitlement, "
+            "PutModelInvocationLoggingConfiguration, PutUseCaseForModelAccess"
+        ) in details
+        assert f"IAMUser {self.ALICE} (7 of 14)" in details
+        assert "No identity called more than" not in details
+
+    @pytest.mark.parametrize("write", sorted(bedrock_app.LLM_JACKING_WRITE_ACTIONS))
+    def test_one_write_action_above_the_share_fails(self, write):
+        reads = [
+            a for a in self.ACTIONS if a not in bedrock_app.LLM_JACKING_WRITE_ACTIONS
+        ]
+        result, rows, _ = self._run({self.ALICE: tuple(reads[:5]) + (write,)})
+        assert result["status"] == "WARN"
+        assert [r["Status"] for r in rows] == ["Failed"]
+        assert write in rows[0]["Finding_Details"]
+
+    def test_read_only_identity_with_an_unread_write_action_is_held(self):
+        result, rows, _ = self._run(
+            {self.ALICE: self.ACTIONS[4:11]}, truncated=("AcceptAgreementRequest",)
+        )
+        assert [r["Status"] for r in rows] == ["N/A"]
+        assert "Could not prove every identity" in rows[0]["Finding_Details"]
+        assert self.ALICE in rows[0]["Finding_Details"]
+
     def test_two_identities_below_threshold_pass_and_name_the_blind_spots(self):
         result, rows, cloudtrail = self._run(
             {self.ALICE: self.ACTIONS[:5], self.BOB: self.ACTIONS[5:10]}
@@ -41489,8 +42150,13 @@ class TestBedrockLlmJackingActivity:
         assert "InvokeModel (more than 5 pages)" in rows[0]["Finding_Details"]
 
     def test_failure_still_reported_beside_a_truncated_action(self):
+        # Review #72 item 10: ALICE now also accepts an agreement, because an
+        # identity that only reads and invokes is no longer failed.
         result, rows, _ = self._run(
-            {self.ALICE: self.ACTIONS[5:12], self.BOB: self.ACTIONS[6:11]},
+            {
+                self.ALICE: self.ACTIONS[5:12] + ("AcceptAgreementRequest",),
+                self.BOB: self.ACTIONS[6:11],
+            },
             truncated=("InvokeModel",),
         )
         assert result["status"] == "WARN"
@@ -46923,6 +47589,51 @@ class TestBR57AgentHandoffSourceIdentity:
         assert "not evaluated per principal" in detail
         assert not self._status(rows, "Passed")
 
+    def test_roles_past_the_deadline_hold_the_pass(self):
+        # Review #72 item 5: the GetRole loop read every cached role with no
+        # deadline check. tool-2 is never read here, so Passed is held back.
+        agent = self._role_arn("agent-a")
+        cache = self._cache(
+            {"agent-a": _identity(), "tool-1": _identity(), "tool-2": _identity()}
+        )
+        bound = self._trust(
+            self._assume(
+                {"AWS": [agent]},
+                {"StringEquals": {"sts:SourceIdentity": ["agent-a"]}},
+            )
+        )
+        iam = MagicMock()
+
+        def get_role(RoleName):
+            if RoleName == "tool-1":
+                bedrock_app._DEADLINE = time.monotonic() - 1
+            return {
+                "Role": {
+                    "Arn": self._role_arn(RoleName),
+                    "AssumeRolePolicyDocument": bound
+                    if RoleName == "tool-1"
+                    else self._trust(),
+                }
+            }
+
+        iam.get_role.side_effect = get_role
+        with patch("boto3.client", return_value=iam):
+            result = bedrock_app.check_agent_handoff_source_identity(
+                cache,
+                region="us-east-1",
+                agent_inventory=self._inventory(
+                    {"agent-a": ["Bedrock agent 'a' version DRAFT"]}
+                ),
+            )
+        rows = extract_csv_data(result)
+        assert iam.get_role.call_count == 2
+        assert not self._status(rows, "Passed")
+        assert any(
+            "the trust policies of 1 of 3 role(s) were not read: the read stopped "
+            f"{bedrock_app.DEADLINE_STOP}" in row["Finding_Details"]
+            for row in self._status(rows, "N/A")
+        )
+
     def test_pinned_trust_passes_and_names_the_binding(self):
         agent = self._role_arn("agent-a")
         cache = self._cache({"agent-a": _identity(), "tool-1": _identity()})
@@ -48108,9 +48819,10 @@ class TestBR37MantleDataRetention:
     """BR-37 bedrock-mantle leg: the mantle account mode and every project."""
 
     @staticmethod
-    def _run(control_mode, account, pages, calls=None, account_rows=None):
+    def _run(control_mode, account, pages, calls=None, account_rows=None, models=None):
         """account is a mode string or an exception; pages a list or exception.
-        account_rows, when a list, receives the mantle account row."""
+        account_rows, when a list, receives the mantle account row. models is
+        the GET /v1/models data list, a list of such pages, or an exception."""
 
         def fake_get(region, path, params=None):
             if calls is not None:
@@ -48119,6 +48831,19 @@ class TestBR37MantleDataRetention:
                 if isinstance(account, Exception):
                     raise account
                 return {"mode": account, "updated_at": 1789138967}
+            if path == "/v1/models":
+                if isinstance(models, Exception):
+                    raise models
+                if models and isinstance(models[0], dict) and "data" in models[0]:
+                    after = (params or {}).get("after")
+                    if after is None:
+                        return models[0]
+                    return next(
+                        models[i + 1]
+                        for i, page in enumerate(models)
+                        if page.get("last_id") == after
+                    )
+                return {"data": models or [], "has_more": False}
             assert path == "/v1/organization/projects"
             if isinstance(pages, Exception):
                 raise pages
@@ -48180,10 +48905,10 @@ class TestBR37MantleDataRetention:
         if status != "N/A":
             assert f"mode in us-east-1 is {account}" in row["Finding_Details"]
             assert (
-                "allowed_modes are not read: GET /v1/models returns them, but "
-                "bedrock-mantle:ListModels is not granted to the Bedrock assessment "
-                "role, so they are a missing grant, not an API limit."
+                "A project whose effective mode is the model default is judged on "
+                "each model's allowed_modes in its own row."
             ) in row["Finding_Details"]
+            assert "not granted" not in row["Finding_Details"]
 
     def test_an_unread_mantle_account_mode_is_na(self):
         account_rows = []
@@ -48258,18 +48983,102 @@ class TestBR37MantleDataRetention:
         assert [p["Status"] for p in projects] == ["Passed"]
         assert "decided at the project scope" in projects[0]["Finding_Details"]
 
+    @staticmethod
+    def _model(model_id, allowed):
+        return {"id": model_id, "data_retention": {"allowed_modes": allowed}}
+
     def test_inherit_at_both_scopes_is_the_model_default_and_fails(self):
+        # Review #72 item 3: ListModels is now read, so the model-default
+        # project fails only on a listed model that cannot retain nothing.
         _, projects = self._run(
-            "none", "inherit", [_mantle_page([_mantle_project("p1", "inherit")])]
+            "none",
+            "inherit",
+            [_mantle_page([_mantle_project("p1", "inherit")])],
+            models=[
+                self._model("m-none", ["none", "default"]),
+                self._model("m-keeps", ["default", "aws_review"]),
+            ],
         )
         [project] = projects
         assert project["Status"] == "Failed"
-        assert "effective mode model default" in project["Finding_Details"]
+        assert project["Severity"] == "High"
+        details = project["Finding_Details"]
+        assert "effective mode model default" in details
         assert (
-            "per-model allowed_modes are not read, because "
-            "bedrock-mantle:ListModels (GET /v1/models), which returns them, is not "
-            "granted to the Bedrock assessment role."
-        ) in project["Finding_Details"]
+            "1 of the 2 model(s) listed with bedrock-mantle:ListModels have no "
+            "none in allowed_modes, so they retain data under this project: m-keeps."
+        ) in details
+        assert "m-none" not in details
+        assert "not granted" not in details
+
+    def test_model_default_passes_when_every_model_allows_none(self):
+        _, projects = self._run(
+            "none",
+            "inherit",
+            [_mantle_page([_mantle_project("p1", "inherit")])],
+            models=[self._model("a", ["none"]), self._model("b", ["default", "none"])],
+        )
+        [project] = projects
+        assert project["Status"] == "Passed"
+        assert "Each of the 2 model(s) listed" in project["Finding_Details"]
+        assert project["Resolution"].startswith("No action required")
+
+    def test_model_default_with_unread_models_is_na_not_failed(self):
+        _, projects = self._run(
+            "none",
+            "inherit",
+            [_mantle_page([_mantle_project("p1", "inherit")])],
+            models=bedrock_app.MantleRequestError("HTTP 403 AccessDeniedException"),
+        )
+        [project] = projects
+        assert project["Status"] == "N/A"
+        assert project["Severity"] == "Informational"
+        assert (
+            "bedrock-mantle:ListModels (HTTP 403 AccessDeniedException)"
+            in project["Finding_Details"]
+        )
+
+    @pytest.mark.parametrize(
+        "models, text",
+        [
+            ([], "No model was listed with bedrock-mantle:ListModels"),
+            ([{"id": "bare"}], "1 model(s) listed carry no allowed_modes: bare"),
+        ],
+    )
+    def test_model_default_with_nothing_to_judge_is_na(self, models, text):
+        _, projects = self._run(
+            "none",
+            "inherit",
+            [_mantle_page([_mantle_project("p1", "inherit")])],
+            models=models,
+        )
+        [project] = projects
+        assert project["Status"] == "N/A"
+        assert text in project["Finding_Details"]
+
+    def test_models_are_read_once_and_on_every_page(self):
+        calls = []
+        _, projects = self._run(
+            "none",
+            "inherit",
+            [
+                _mantle_page(
+                    [_mantle_project("p1", "inherit"), _mantle_project("p2", "inherit")]
+                )
+            ],
+            calls,
+            models=[
+                {
+                    "data": [self._model("a", ["none"])],
+                    "has_more": True,
+                    "last_id": "a",
+                },
+                {"data": [self._model("b", ["default"])], "has_more": False},
+            ],
+        )
+        assert [p["Status"] for p in projects] == ["Failed", "Failed"]
+        model_calls = [c for c in calls if c[1] == "/v1/models"]
+        assert [c[2].get("after") for c in model_calls] == [None, "a"]
 
     def test_provider_data_share_fails(self):
         _, projects = self._run(
@@ -53749,9 +54558,11 @@ class TestInvocationDeadline:
         sts.get_caller_identity.return_value = {"Account": "123456789012"}
         with patch(
             "bedrock_app.boto3.client",
-            side_effect=lambda service, **kwargs: {"bedrock": bedrock, "sts": sts}[
-                service
-            ],
+            side_effect=lambda service, **kwargs: {
+                "bedrock": bedrock,
+                "sts": sts,
+                "organizations": MagicMock(),
+            }[service],
         ):
             rows = extract_csv_data(
                 bedrock_app.check_bedrock_custom_model_sharing(region="us-east-1")
