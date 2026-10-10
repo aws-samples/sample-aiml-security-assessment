@@ -67,14 +67,19 @@ To send us a pull request, please:
    $RUFF check $CHANGED_PY
    $RUFF format --check $CHANGED_PY
 
-   # Keep these as separate pytest sessions. Several Lambda packages import a
-   # top-level app.py, so combining suites can cause module-name collisions.
+   # Keep these as separate pytest sessions, as CI does. The Responsible AI GRC
+   # suite has its own conftest.py, and the report tests run from their own
+   # package directory.
    $PYTHON -m pytest tests/ -v --tb=short
    $PYTHON -m pytest aiml-security-assessment/functions/security/responsible_ai_grc_tests/ -v --tb=short
    $PYTHON -m pytest tests/test_consolidate_responsible_ai_grc.py -v --tb=short
 
    (cd aiml-security-assessment/functions/security/generate_consolidated_report \
      && $PYTHON -m pytest test_generate_report.py -v --tb=short)
+
+   # assessment_history must keep 100% line and branch coverage.
+   $PYTHON -m pytest tests/test_assessment_history_*.py --cov=assessment_history \
+     --cov-branch --cov-report=term-missing --cov-fail-under=100
    ```
 
    If your change modifies a SAM or deployment template, also run the
@@ -83,7 +88,7 @@ To send us a pull request, please:
 
 5. For a new or changed assessment check, service, lens, or compliance standard,
    complete the [check-authoring steps](docs/DEVELOPER_GUIDE.md#adding-a-new-check-inside-an-existing-service)
-   and the [review checklist](AGENTS.md#review-checklist-run-before-committing-changes-to-checks-or-iam)
+   and the [delivery checklist](AGENTS.md#before-delivering-assessment-changes)
    before opening the PR. In particular:
    - Confirm the documented control matches the AWS API response fields,
      allowed values, resource scope, and successful empty-response behavior.
@@ -106,10 +111,12 @@ To send us a pull request, please:
 
 ### Automated CI Checks
 
-The following checks run automatically on every pull request:
+The following checks run automatically on pull requests to `main`. Each runs
+only when files it covers change (see
+[CI/CD Workflows](docs/DEVELOPER_GUIDE.md#cicd-workflows) for the watched paths):
 
 - **Python Code Quality** — `ruff check` (lint) and `ruff format --check` (formatting) on changed Python files
-- **AI/ML Security Assessment Tests** — core, Responsible AI GRC, consolidator, and report-pipeline pytest sessions on Python 3.12
+- **AI/ML Security Assessment Tests** — core, Responsible AI GRC, consolidator, and report-pipeline pytest sessions plus the `assessment_history` 100% line and branch coverage gate, on Python 3.12
 - **CloudFormation Lint** — `cfn-lint` validation of deployment and SAM templates
 - **SAM Validate & Build** — `sam validate --lint` and `sam build` on SAM templates
 - **ASH Security Scan** — [Automated Security Helper](https://github.com/awslabs/automated-security-helper) scans changed files for secrets, dependency vulnerabilities, and IaC misconfigurations

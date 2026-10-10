@@ -491,8 +491,8 @@ COMPLIANCE_MAP: Dict[str, str] = {
 
 # ---------------------------------------------------------------------------
 # SEVERITY METHODOLOGY (see
-# docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md
-# + docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md)
+# docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md, including its
+# #severity-register section)
 #
 # Severity = property of the CONTROL (the risk it mitigates), assigned once via a
 # Likelihood (L) x Impact (I) matrix mapped to the AWS Security Hub ASFF label set,
@@ -540,10 +540,10 @@ _DISPOSITION_SEVERITY = {
 
 
 # Authoritative per-finding severity register (keyed by finding-name).
-# Source of truth derived from
-# docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md. The test suite
-# (test_severity_register.py) asserts every emitted severity matches this map.
-# Entries: finding_name -> (severity, disposition). I/L rationale lives in the doc.
+# This dict is the enforced source of truth; the Severity Register section of
+# docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md mirrors it. The
+# test suite (test_severity_register.py) asserts emitted severities match this map.
+# Entries: finding_name -> severity. Disposition and I/L rationale live in the doc.
 SEVERITY_REGISTER: Dict[str, str] = {
     # --- FS-00 (not a control: the regional not-applicable row. Registered so
     #     severity drift on it is caught, since FS-00 is absent from the check

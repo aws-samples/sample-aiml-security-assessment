@@ -22,8 +22,9 @@ section.
   `security_assessment_changes_<YYYYMMDD_HHMMSS>.html` and `.csv` next to its
   main report, comparing the run with the account's previous usable run and
   labeling each finding Resolved, Still open, Regressed, New, No longer
-  reported, or No longer assessed. It reads only the existing findings CSVs,
-  runs in the CodeBuild post-build phase in both deployment modes, and can't
+  reported, or No longer assessed. It reads only the existing findings CSVs
+  (plus, in single-account mode, the run records described under Deployment
+  impact), runs in the CodeBuild post-build phase in both deployment modes, and can't
   fail a run: problems are logged as warnings, and the step is skipped when
   little build time is left. The first run of an account is skipped. See
   `docs/ASSESSMENT_HISTORY.md`.

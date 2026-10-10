@@ -1,33 +1,72 @@
 # Cleanup Guide
 
-This guide provides step-by-step instructions for removing resources deployed by the AI/ML Security Assessment framework.
+This guide explains how to remove the resources deployed by the AI/ML Security
+Assessment framework.
 
-Before deleting any stacks, record the S3 bucket names from the stack outputs. After a stack is deleted, its outputs are no longer available.
+Before deleting any stack, record the S3 bucket names from its outputs. After a
+stack is deleted, its outputs are no longer available.
 
-The deployment creates two kinds of buckets:
+The deployment creates these buckets, all versioned:
 
-- **Infrastructure stack bucket**: The `AssessmentBucket` output from the stack you deployed manually, such as `aiml-security-single-account` or `aiml-security-multi-account`.
-- **Assessment stack buckets**: The `AssessmentBucketName` output from the auto-created SAM stacks, such as `aiml-sec-{account_id}`, `aiml-security-{account_id}`, or `aiml-security-mgmt`. These buckets use `DeletionPolicy: Retain`, so they remain after the SAM assessment stack is deleted and must be deleted manually if you want a full cleanup.
+- **Infrastructure stack bucket:** the `AssessmentBucket` output of the stack
+  you deployed, such as `aiml-security-single-account` or
+  `aiml-security-multi-account`. It holds every report, so it is never empty
+  after a run. CloudFormation cannot delete a bucket that still contains
+  objects, so empty it **before** deleting the stack.
+- **Assessment stack buckets:** the `AssessmentBucketName` output of each
+  AWS SAM assessment stack (`aiml-sec-{account_id}`, `aiml-security-{account_id}`,
+  or `aiml-security-mgmt`). These buckets use `DeletionPolicy: Retain`, so they
+  remain after the stack is deleted. Delete them yourself for a full cleanup.
+- **AWS SAM CLI artifact bucket:** created by `sam deploy --resolve-s3` in the
+  `aws-sam-cli-managed-default` stack of each assessed account. See
+  [Optional: AWS SAM CLI Artifact Stack](#optional-aws-sam-cli-artifact-stack).
+
+To tell the stacks apart, see
+[Confused by Multiple CloudFormation Stacks](TROUBLESHOOTING.md#11-confused-by-multiple-cloudformation-stacks).
+
+## Table of Contents
+
+- [Cleanup Order](#cleanup-order)
+- [Emptying and Deleting Versioned S3 Buckets](#emptying-and-deleting-versioned-s3-buckets)
+- [Single-Account Cleanup](#single-account-cleanup)
+- [Multi-Account Cleanup](#multi-account-cleanup)
+- [Optional: AWS SAM CLI Artifact Stack](#optional-aws-sam-cli-artifact-stack)
+- [Optional: CloudWatch Logs Cleanup](#optional-cloudwatch-logs-cleanup)
+
+<a id="identifying-stack-types"></a>
 
 ## Cleanup Order
 
-For a clean removal, delete resources in this order:
+Delete resources in this order:
 
-1. Record S3 bucket names from stack outputs
-2. **Assessment stacks** (auto-created by SAM)
-3. Manually empty and delete retained assessment buckets
-4. **Infrastructure stack** (the stack you deployed manually)
-5. Manually empty and delete the infrastructure stack bucket if stack deletion fails
-6. AWS CloudFormation StackSet member roles (multi-account only)
-7. Optional: CloudWatch log groups created during assessment runs
+1. Record the S3 bucket names from the stack outputs.
+2. Delete the **assessment stacks** (created by CodeBuild with AWS SAM).
+3. Empty and delete the retained assessment buckets.
+4. Empty the **infrastructure stack** bucket, then delete the infrastructure
+   stack (the stack you deployed).
+5. Delete the AWS CloudFormation StackSet member roles (multi-account only).
+6. Optional: delete the `aws-sam-cli-managed-default` stack and its bucket.
+7. Optional: delete the CloudWatch log groups created during assessment runs.
 
 ---
 
 ## Emptying and Deleting Versioned S3 Buckets
 
-The buckets created by this framework are versioned. A recursive `aws s3 rm` removes current objects, but versioned buckets can still contain noncurrent versions and delete markers. Use the following helper to remove current objects, noncurrent versions, delete markers, and then the bucket.
+A recursive `aws s3 rm` removes only current objects; a versioned bucket still
+holds noncurrent versions and delete markers. The following commands remove
+current objects, noncurrent versions, and delete markers, and then the bucket.
+They require `jq`.
 
-This command requires `jq`.
+To list likely buckets created by the framework (single-account names start
+with `aiml-sec-`, multi-account names with `aiml-security-`, and the
+infrastructure bucket name contains `assessmentbucket`):
+
+```bash
+aws s3 ls | grep -E 'aiml-sec|assessmentbucket'
+```
+
+Confirm each bucket against the names you recorded from the stack outputs
+before deleting it.
 
 ```bash
 BUCKET_NAME="<bucket-name>"
@@ -53,105 +92,109 @@ done
 aws s3 rb "s3://${BUCKET_NAME}"
 ```
 
-Repeat this for each infrastructure and assessment bucket you want to remove.
+Repeat for each bucket you want to remove. To empty a bucket but keep it (for
+the infrastructure bucket, before deleting its stack), skip the final
+`aws s3 rb` command.
 
 ---
 
 ## Single-Account Cleanup
 
-To remove all resources deployed for single-account assessment:
-
-1. **Delete the AWS SAM-deployed assessment stack**:
-   - Navigate to **AWS CloudFormation** > **Stacks**
-   - Select the `aiml-sec-{account_id}` stack (for example, `aiml-sec-123456789012`)
-   - Before deleting it, open **Outputs** and record the `AssessmentBucketName` value
-   - Click **Delete**
-   - Wait for stack deletion to complete
-   - The assessment bucket is retained by design, so delete it manually using the S3 cleanup helper above if you no longer need the report artifacts
-
-2. **Delete the AWS CodeBuild infrastructure stack**:
-   - Select the `aiml-security-single-account` stack (or your custom stack name)
-   - Before deleting it, open **Outputs** and record the `AssessmentBucket` value
-   - Click **Delete**
-   - Wait for stack deletion to complete
-
-3. **Clean up Amazon S3 buckets**:
-   - Delete the retained `AssessmentBucketName` bucket from the SAM assessment stack.
-   - If the infrastructure stack deletion fails because its `AssessmentBucket` is not empty, empty and delete that bucket, then retry stack deletion.
+1. **Delete the AWS SAM assessment stack:**
+   - Open **AWS CloudFormation** > **Stacks**.
+   - Select the `aiml-sec-{account_id}` stack (for example,
+     `aiml-sec-123456789012`).
+   - Open **Outputs** and record the `AssessmentBucketName` value.
+   - Choose **Delete** and wait for the deletion to complete.
+2. **Delete the retained assessment bucket** recorded in step 1, using
+   [the commands above](#emptying-and-deleting-versioned-s3-buckets), if you no
+   longer need its contents.
+3. **Empty the infrastructure bucket:**
+   - Select the `aiml-security-single-account` stack (or your stack name).
+   - Open **Outputs** and record the `AssessmentBucket` value.
+   - Download any reports you want to keep, then empty the bucket.
+4. **Delete the infrastructure stack:** choose **Delete** and wait for the
+   deletion to complete. If the bucket still has objects, the deletion fails;
+   empty it and retry.
 
 ---
 
 ## Multi-Account Cleanup
 
-To remove all resources deployed for multi-account assessment:
-
-1. **Delete AWS SAM-deployed stacks in each member account**:
-   - In the deployment region, for each account that was scanned, navigate to **AWS CloudFormation** > **Stacks**
-   - Select the `aiml-security-{account_id}` stack (for example, `aiml-security-123456789012`)
-   - For the management account, select `aiml-security-mgmt`
-   - Before deleting each stack, open **Outputs** and record the `AssessmentBucketName` value
-   - Click **Delete**
-   - Alternatively, use the AWS CLI to delete across accounts:
+1. **Delete the AWS SAM assessment stacks in each assessed account:**
+   - In the deployment region of each scanned account, open
+     **AWS CloudFormation** > **Stacks**.
+   - Select the `aiml-security-{account_id}` stack (for example,
+     `aiml-security-123456789012`). For the central account that runs
+     CodeBuild, select `aiml-security-mgmt`.
+   - Open **Outputs** and record the `AssessmentBucketName` value.
+   - Choose **Delete**. Alternatively, with credentials for that account, use
+     the AWS CLI:
 
      ```bash
-     # Assume role in member account and delete stack
      aws cloudformation delete-stack --stack-name aiml-security-<account_id> \
        --region <deployment-region>
      ```
 
-   - The assessment buckets are retained by design, so delete them manually using the S3 cleanup helper above if you no longer need the report artifacts
-
-2. **Delete the central AWS CodeBuild infrastructure stack**:
-   - In the management account, navigate to **AWS CloudFormation** > **Stacks**
-   - Select the `aiml-security-multi-account` stack, or the custom stack name you chose
-   - Before deleting it, open **Outputs** and record the `AssessmentBucket` value
-   - Click **Delete**
-   - Wait for stack deletion to complete
-
-3. **Delete the AWS CloudFormation StackSet member roles**:
-   - Navigate to **AWS CloudFormation** > **StackSets**
-   - Select the StackSet created from `deployment/1-aiml-security-member-roles.yaml` (for example, `aiml-security-member-roles`, or your custom StackSet name)
-   - Click **Actions** > **Delete stacks from StackSet**
-   - Select all deployment targets (OUs or accounts)
-   - Wait for stack instances to be deleted
-   - Once all stack instances are removed, delete the AWS CloudFormation StackSet itself
-
-4. **Clean up Amazon S3 buckets**:
-   - Delete each retained `AssessmentBucketName` bucket from the per-account SAM assessment stacks.
-   - If the central infrastructure stack deletion fails because its `AssessmentBucket` is not empty, empty and delete that bucket, then retry stack deletion.
-
-   To find likely assessment buckets:
-
-   ```bash
-   aws s3 ls | grep aiml-security
-   ```
+2. **Delete the retained assessment buckets** recorded in step 1, using
+   [the commands above](#emptying-and-deleting-versioned-s3-buckets), if you no
+   longer need their contents.
+3. **Empty the central infrastructure bucket:**
+   - In the central account, select the `aiml-security-multi-account` stack
+     (or your stack name).
+   - Open **Outputs** and record the `AssessmentBucket` value.
+   - Download any reports you want to keep, then empty the bucket.
+4. **Delete the central infrastructure stack:** choose **Delete** and wait for
+   the deletion to complete.
+5. **Delete the member-role StackSet:**
+   - Open **AWS CloudFormation** > **StackSets**.
+   - Select the StackSet created from
+     `deployment/1-aiml-security-member-roles.yaml` (for example,
+     `aiml-security-member-roles`).
+   - Choose **Actions** > **Delete stacks from StackSet**, select all deployment
+     targets (OUs or accounts), and wait for the stack instances to be deleted.
+   - When all stack instances are removed, delete the StackSet.
 
 ---
 
-## Identifying Stack Types
+## Optional: AWS SAM CLI Artifact Stack
 
-The deployment creates multiple AWS CloudFormation stacks. Here's how to identify them:
+CodeBuild runs `sam deploy --resolve-s3`, which creates an
+`aws-sam-cli-managed-default` stack and a versioned bucket (named
+`aws-sam-cli-managed-default-samclisourcebucket-*`) for deployment packages. It
+exists in the deployment region of each assessed account: the single account,
+or each scanned member account and the central account that runs CodeBuild.
 
-| Stack Type | How to Identify | Action |
-| --- | --- | --- |
-| **Infrastructure Stack** (yours) | The name you chose (for example, `aiml-security-single-account`) | Delete after assessment stacks |
-| **Assessment Stack** (auto-generated) | `aiml-sec-{account_id}` (single) or `aiml-security-{account_id}` (multi) | Delete before the infrastructure stack |
+> **Warning:** This stack and bucket are shared by every AWS SAM CLI project
+> that deploys with `--resolve-s3` in the same account and region. Delete them
+> only if nothing else in that account and region uses the AWS SAM CLI.
 
-**Quick Check**: If you see a stack name starting with `aiml-sec-` or `aiml-security-` followed by numbers (or `aiml-security-mgmt`), that's an auto-generated assessment stack.
+To remove them:
+
+1. Open the `aws-sam-cli-managed-default` stack, and record the `SourceBucket`
+   output.
+2. Empty that bucket using
+   [the commands above](#emptying-and-deleting-versioned-s3-buckets), skipping
+   the final `aws s3 rb`.
+3. Delete the `aws-sam-cli-managed-default` stack.
 
 ---
 
-## Optional CloudWatch Logs Cleanup
+## Optional: CloudWatch Logs Cleanup
 
-AWS Lambda and AWS CodeBuild create Amazon CloudWatch log groups during assessment runs. These log groups can remain after stack deletion unless you delete them or configure retention.
+AWS Lambda and AWS CodeBuild create Amazon CloudWatch log groups during
+assessment runs. These log groups remain after the stacks are deleted unless you
+delete them or set a retention period.
 
-Common log group name patterns include:
+Log group names follow these patterns:
 
 - `/aws/lambda/aiml-security-*`
 - `/aws/codebuild/AIMLSecurityCodeBuild`
 - `/aws/codebuild/AIMLSecurityMultiAccountCodeBuild`
+- `/aws/lambda/<infrastructure-stack-name>-CodeBuildStartBuildLambda-*` (the
+  function that starts the first build)
 
-To list likely log groups:
+To list them:
 
 ```bash
 aws logs describe-log-groups \

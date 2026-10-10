@@ -35,6 +35,17 @@ one of the placeholder account IDs.
 
 Rerun it after regenerating a sample report, and review the diff.
 
+## Selection Examples
+
+`generate_selection_examples.py` writes `sample-reports/selection-bedrock.html`
+(single-account, Bedrock only) and `sample-reports/selection-governance-only.html`
+(multi-account, no direct services selected) from synthetic findings, without
+calling AWS. It does not capture the matching `.jpg` screenshots.
+
+```bash
+.venv/bin/python sample-reports/scripts/generate_selection_examples.py
+```
+
 ## Screenshot Capture Tool
 
 `capture_screenshots.py` - Automated screenshot capture and optimization for documentation.

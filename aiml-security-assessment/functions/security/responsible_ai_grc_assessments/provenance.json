@@ -59,7 +59,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Protect your LLM APIs and Amazon Bedrock-hosted LLMs by using AWS WAF and AWS Shield Advanced.\" Also covers: \"To protect your API endpoints, set maximum length limits for input requests when you use large language models (LLMs) directly or through Amazon Bedrock.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `shield:DescribeSubscription` to check Shield Advanced is active. Calls `wafv2:ListWebACLs(Scope=REGIONAL)` in each region where GenAI API endpoints run to verify at least one regional Web ACL exists (covers API Gateway, ALB, AppSync). **Additionally** calls `wafv2:ListWebACLs(Scope=CLOUDFRONT)` in `us-east-1` to detect Web ACLs protecting CloudFront distributions fronting GenAI workloads — CLOUDFRONT-scope Web ACLs must be created and queried in `us-east-1` per the [WAF resources documentation](https://docs.aws.amazon.com/waf/latest/developerguide/how-aws-waf-works-resources.html). For ",
+      "inspected_aws_evidence": "Calls `shield:DescribeSubscription`; a successful response is reported as Shield Advanced enabled, and any error (including `ResourceNotFoundException`) as not enabled. Reads the shared Web ACL inventory (`wafv2:ListWebACLs(Scope=REGIONAL)`) and reports whether at least one regional Web ACL exists. `CLOUDFRONT`-scope Web ACLs are NOT listed, the `Rules` array is NOT inspected for `RateBasedStatement` or `SizeConstraintStatement`, and whether an ACL is associated with a GenAI-facing resource is NOT checked. Shield and WAF are reported as separate rows (Low and Medium). If the Web ACL inventory ",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -92,7 +92,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"protect your API endpoints by implementing rate limits and quotas for APIs that access large language models (LLMs)\".",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `apigateway:GetUsagePlans` and inspects each plan's `throttle.rateLimit` and `throttle.burstLimit`. Flags plans where either is zero or absent.",
+      "inspected_aws_evidence": "Calls `apigateway:GetUsagePlans` (paginated; IAM action `apigateway:GET`) and inspects each plan's `throttle.rateLimit`. Flags plans with no `throttle` block or a `rateLimit` of zero or absent; `burstLimit` is not evaluated, and whether a plan is attached to a GenAI-facing stage is not checked. No usage plans at all is reported N/A (Informational).",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -127,7 +127,7 @@
       "derivation_type": "project-extension",
       "source_excerpt_summary": "guide practical guidance notes \"Bedrock has default quota on model inference based on token usage\" and recommends optimising `max_tokens`. Quota review as an operational control is an extension aligned with this guidance.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `service-quotas:ListServiceQuotas(ServiceCode=bedrock)` for applied quotas and `ListAWSDefaultServiceQuotas` for defaults, then compares each adjustable quota's `Value` against the default `Value`. Flags accounts where every quota equals the service default (indicating no quota review or increase has been requested).",
+      "inspected_aws_evidence": "Calls `ListServiceQuotas(ServiceCode=bedrock)` and `ListAWSDefaultServiceQuotas(ServiceCode=bedrock)` (IAM actions `servicequotas:ListServiceQuotas` and `servicequotas:ListAWSDefaultServiceQuotas`), keeps applied quotas whose `QuotaName` contains \"token\", and compares each `Value` with the default for the same `QuotaCode`. Passes when at least one token quota exceeds its default. When every token quota equals its default, the row is `N/A` at Medium severity (the documented SOFT_WARNING exception), not `Failed`. No token quotas returned, or no default quotas returned, is reported `Failed`. Adju",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -226,7 +226,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Track, allocate, and manage your costs and usage for generative AI.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `budgets:DescribeBudgets` and inspects each budget's `FilterExpression` (the current field) and `CostFilters` (deprecated but may still be populated on older budgets) for references to \"bedrock\" or \"sagemaker\". Note: `CostFilters` is marked deprecated in the AWS Budgets API — new budgets use `FilterExpression` with an `Expression` object; the detection should check both fields to cover both old and new budgets.",
+      "inspected_aws_evidence": "Calls `DescribeBudgets` (paginated, with `ShowFilterExpression=true`; IAM action `budgets:ViewBudget`) for the caller's account and inspects each budget's `FilterExpression` (the current field) and `CostFilters` (deprecated but may still be populated on older budgets) for references to \"bedrock\" or \"sagemaker\". Both fields are checked, so old and new budgets are covered. Alert thresholds and notifications are not inspected.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -259,7 +259,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"grant only the minimum permissions required\"; \"Define and enforce explicit action boundaries in the agent configuration\".",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `ListAgents` and `GetAgent` (via the `bedrock-agent` boto3 client; IAM actions are `bedrock:ListAgents` and `bedrock:GetAgent`) to retrieve each agent's `agentResourceRoleArn`. Resolves the role name and inspects attached and inline policy documents from the permissions cache for wildcard Allow statements. A missing, unreadable, or malformed cache produces an informational `N/A` incomplete-assessment row.",
+      "inspected_aws_evidence": "Calls `ListAgents` and `GetAgent` (via the `bedrock-agent` boto3 client; IAM actions are `bedrock:ListAgents` and `bedrock:GetAgent`) to retrieve each agent's `agentResourceRoleArn`. Resolves the role name and inspects attached and inline policy documents from the permissions cache for Allow statements whose `Action` is exactly `*`, `iam:*`, `s3:*`, `ec2:*`, or `lambda:*`. An agent whose `GetAgent` call fails is skipped. No agents is reported N/A. A missing, unreadable, or malformed cache produces an informational `N/A` incomplete-assessment row.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -332,7 +332,7 @@
       "derivation_type": "project-extension",
       "source_excerpt_summary": "Lambda reserved concurrency is not named in the guide, but it directly implements the guide mitigation \"Monitor agent call rates and alarm upon exceeding defined thresholds\" by capping execution parallelism.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `lambda:ListFunctions` and filters for functions with agent-related naming patterns. For each, calls `lambda:GetFunctionConcurrency` and flags functions with no reserved concurrency set.",
+      "inspected_aws_evidence": "Reads the shared Lambda inventory (`lambda:ListFunctions`) and selects functions whose name contains `agent`, `bedrock`, or `aiml`. For each, calls `lambda:GetFunctionConcurrency` and flags functions with no `ReservedConcurrentExecutions`; a `GetFunctionConcurrency` error is also counted as no reserved concurrency. When no function matches, the row is `N/A`.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -365,7 +365,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"For internal AI systems, validate outputs with human review before business use (human-in-the-loop).\" HITL is referenced in six separate guide risk sections.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `stepfunctions:ListStateMachines` and filters for agent/GenAI-related names. Retrieves each definition via `stepfunctions:DescribeStateMachine` and parses the ASL JSON for task states with `.waitForTaskToken` or callback patterns indicating human approval gates.",
+      "inspected_aws_evidence": "Calls `ListStateMachines` (IAM action `states:ListStateMachines`) and selects state machines whose name contains `agent`, `approval`, `human`, or `review`. Retrieves each definition via `DescribeStateMachine` (IAM action `states:DescribeStateMachine`) and passes when the definition text contains the quoted token `\"waitForTaskToken\"` or `\"TaskToken\"`. The ASL is not parsed into states. No matching state machine is reported N/A.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -400,7 +400,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Monitor agent call rates and alarm upon exceeding defined thresholds.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Paginates `cloudwatch:DescribeAlarms` and filters for alarms referencing \"agent\" in the alarm name or targeting `AWS/Bedrock/Agents` agent-related metrics (such as `InvocationCount` or `InvocationThrottles` with the `Operation, AgentAliasArn, ModelId` dimension combination).",
+      "inspected_aws_evidence": "Paginates `cloudwatch:DescribeAlarms(AlarmTypes=MetricAlarm)` and counts alarms whose alarm name or `Namespace` contains \"agent\" (for example the `AWS/Bedrock/Agents` namespace). Metric names, dimensions, thresholds, and alarm actions are not inspected.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -468,7 +468,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Maintain a model inventory that records the provenance, version, license terms, and risk assessment status of all models in use across the organization.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `bedrock:ListCustomModels` and `sagemaker:ListModels` to enumerate models the account owns, then `bedrock:ListTagsForResource` / `sagemaker:ListTags` per model and checks for the tag keys `model-source`, `model-version`, `approval-date`, `risk-tier`. Foundation models are deliberately excluded: they are not account-owned resources and cannot carry provenance tags. Tag presence is checked, not tag correctness — a `model-source` tag with a wrong value passes.",
+      "inspected_aws_evidence": "Calls `bedrock:ListCustomModels` and `sagemaker:ListModels` to enumerate models the account owns, then `bedrock:ListTagsForResource` / `sagemaker:ListTags` per model and checks for the tag keys `source`, `version`, and `approval-date` (case-insensitive). `risk-tier` is not required. When the account owns no models, the check reports Passed. Foundation models are deliberately excluded: they are not account-owned resources and cannot carry provenance tags. Tag presence is checked, not tag correctness — a `model-source` tag with a wrong value passes.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -503,7 +503,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"To onboard a model, follow these steps: Review EULA, Complete procurement, Follow security and compliance procedures, Assess MRM requirements, Document findings, Get necessary approvals from stakeholders.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `config:DescribeConfigRules` and searches for rules targeting `AWS::Bedrock::*` resources or custom rules with \"model\" or \"onboarding\" in the name.",
+      "inspected_aws_evidence": "Calls `config:DescribeConfigRules` and passes when any rule's `ConfigRuleName` contains \"bedrock\" or \"model\" (case-insensitive). Rule scope, resource types, and evaluation results are not inspected, so a name match is not evidence of an onboarding process.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -538,7 +538,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Amazon Bedrock Evaluations can help to evaluate models against specific types of attacks by automating your test cases, scoring, reporting and to enable comparison of different models.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `bedrock:ListEvaluationJobs` and inspects each job's configuration for evaluation datasets. Flags if no evaluation jobs exist or if none reference adversarial/red-team test data.",
+      "inspected_aws_evidence": "Calls `bedrock:ListEvaluationJobs` (paginated). Fails when no evaluation jobs exist and passes when at least one exists, regardless of its status. Job configuration and datasets are not inspected, so whether a job uses adversarial or red-team data is not determined; the passing row asks the reviewer to confirm it.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -573,7 +573,7 @@
       "derivation_type": "project-extension",
       "source_excerpt_summary": "ECR image scanning is not named in the guide, but directly mitigates the guide's listed risk \"Third-party package vulnerabilities\" in LLM supply chains. Included for completeness of the supply-chain risk category.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `ecr:DescribeRepositories` and for each repository checks `imageScanningConfiguration.scanOnPush`. Also checks whether Amazon Inspector ECR scanning is enabled via `inspector2:BatchGetAccountStatus`. Flags repositories relying solely on basic scanning or with no scanning configured.",
+      "inspected_aws_evidence": "Calls `ecr:DescribeRepositories` and for each repository checks `imageScanningConfiguration.scanOnPush`. Also calls `inspector2:BatchGetAccountStatus` for the caller's account and reads `resourceState.ecr.status`. Repositories with `scanOnPush=true` pass (basic scanning counts). Repositories without scan-on-push pass when Inspector ECR scanning is `ENABLED`, and fail only when Inspector is confirmed not enabled. If the Inspector status cannot be read (an error, or the account returned in `failedAccounts` or absent), those repositories are reported COULD NOT ASSESS. No repositories is reported ",
       "unsupported_assertions": [
         "that any image has actually been scanned",
         "that scan findings have been triaged or remediated",
@@ -802,7 +802,7 @@
       "derivation_type": "project-extension",
       "source_excerpt_summary": "network isolation is not verbatim in the guide but directly implements \"Apply the principle of least privilege to control access to your vector and embedding database\" at the network layer.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `opensearchserverless:ListSecurityPolicies(type=network)` (IAM action `aoss:ListSecurityPolicies` — the service prefix for OpenSearch Serverless is `aoss`, not `opensearchserverless`) and inspects each policy rule for `AllowFromPublic=true`. Flags collections accessible from the public internet. Note: a policy with `AllowFromPublic=false` may still grant private access to Bedrock via `SourceServices: [\"bedrock.amazonaws.com\"]` or to specific VPC endpoints via `SourceVPCEs` — these are the recommended private-access patterns and are not flagged.",
+      "inspected_aws_evidence": "Calls `opensearchserverless:ListSecurityPolicies(type=network)` (IAM action `aoss:ListSecurityPolicies` — the service prefix for OpenSearch Serverless is `aoss`, not `opensearchserverless`). No network policies is reported `Failed`, even when no collections exist. Otherwise each policy summary is searched for the text \"vpc\", and the check passes if any policy matches. `AllowFromPublic` is not evaluated and policies are not matched to collections. Limitation: `ListSecurityPolicies` summaries carry no `policy` document (only type, name, version, description, and dates), and `GetSecurityPolicy` i",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -837,7 +837,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Automated Reasoning checks in Amazon Bedrock Guardrails uses automated reasoning to verify that natural language content complies with your defined policies. This mathematical verification helps ensure that your content strictly follows your guardrails.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `bedrock:ListGuardrails` and `bedrock:GetGuardrail` for each. Inspects the response fields `contextualGroundingPolicy` and `automatedReasoningPolicy`. Flags guardrails with neither enabled.",
+      "inspected_aws_evidence": "Calls `bedrock:ListGuardrails` and `bedrock:GetGuardrail` for each guardrail and checks for a `contextualGroundingPolicy`; flags the account when no guardrail has one. Separately calls `bedrock:ListAutomatedReasoningPolicies` and reports whether any Automated Reasoning policy exists in the account (this is an account-level inventory, not a per-guardrail association).",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -872,7 +872,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Configure content filters and guardrails to restrict model responses to approved topics\" with reference \"Amazon Bedrock User Guide – Guardrails – Denied topics\".",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `topicPolicy.topics` for entries with `type=DENY`. Flags guardrails with no denied topics or with no topics related to financial advice, investment recommendations, or tax guidance.",
+      "inspected_aws_evidence": "Reads the shared guardrail inventory (`bedrock:ListGuardrails`, then `bedrock:GetGuardrail` for each guardrail's `DRAFT` version) and checks whether `topicPolicy.topics` is non-empty, reading `topicPolicy.tier.tierName`. Fails only when no guardrail has a topic policy. Topic names, definitions, `type`, and `inputEnabled`/`outputEnabled` are not inspected, so financial-advice coverage is not determined. CLASSIC-tier guardrails pass with a STANDARD-tier recommendation, and a missing tier is reported as unknown. No guardrails is reported N/A.",
       "unsupported_assertions": [
         "that the configured topics cover regulated financial advice",
         "that topic definitions are complete or correctly scoped",
@@ -918,7 +918,7 @@
       "derivation_type": "project-extension",
       "source_excerpt_summary": "disclaimers are not verbatim in §1.2.1 but the guide references \"Implement response disclaimers in customer-facing applications\" under §1.2.7 Hallucination, which is conceptually the same control applied here for non-compliant financial-advice output.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Advisory check — cannot be fully automated. Inspects application Lambda function environment variables or configuration for disclaimer-related settings (e.g., `DISCLAIMER_ENABLED`, `COMPLIANCE_FOOTER`).",
+      "inspected_aws_evidence": "Advisory check — makes no AWS API calls. Always emits an `N/A` manual-review finding, because disclaimer behavior lives in application code and cannot be verified through AWS APIs.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1100,7 +1100,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "*\"Update existing third-party risk management processes to continuously monitor model providers and third-party dependencies, including tracking vendor security advisories, model deprecation notices, and change to terms and conditions.\"* (Note: moved from the Misinformation section in the prior draft; the guide places TPRM under Supply Chain.)",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `bedrock:ListFoundationModels` and reads `modelLifecycle.status` from the list summaries, reporting how many models offered in the region are `LEGACY`. `bedrock:GetFoundationModel` is deliberately NOT called: verified live, it returns an identical `modelLifecycle` member, so the extra call per model adds nothing. Scope limit: this is the REGION CATALOGUE, not the models the account invokes — verified live, us-east-1 offers 119 models of which 19 are `LEGACY` in an account using none of them, so the row is Informational/N/A rather than a failure. Note: the API exposes only `ACTIVE` and `L",
+      "inspected_aws_evidence": "Calls `bedrock:ListFoundationModels` and reads `modelLifecycle.status` from the list summaries, reporting how many models offered in the region are `LEGACY`. `bedrock:GetFoundationModel` is deliberately NOT called: verified live, it returns an identical `modelLifecycle` member, so the extra call per model adds nothing. Scope limit: this is the REGION CATALOGUE, not the models the account invokes — verified live, us-east-1 offers 119 models of which 19 are `LEGACY` in an account using none of them, so the row is Informational/N/A rather than a failure. When no `LEGACY` model is offered, the row",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1168,7 +1168,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Use Amazon Bedrock's guardrails to detect and filter harmful content.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `contentPolicy.filters`. Flags guardrails missing filters for HATE, VIOLENCE, SEXUAL, INSULTS, or MISCONDUCT categories. Also checks that `inputStrength` and `outputStrength` are at least `MEDIUM`.",
+      "inspected_aws_evidence": "Reads the shared guardrail inventory (`bedrock:GetGuardrail`, `DRAFT` version) and checks whether `contentPolicy.filters` is non-empty, reading `contentPolicy.tier.tierName`. Fails only when no guardrail has any content filter. Individual categories (HATE, VIOLENCE, SEXUAL, INSULTS, MISCONDUCT) and `inputStrength`/`outputStrength` are not evaluated. CLASSIC-tier guardrails pass with a STANDARD-tier recommendation, and a missing tier is reported as unknown. No guardrails is reported N/A.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1203,7 +1203,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Implement a user reporting mechanism that allows end users to flag abusive or harmful outputs. Reported incidents [are] reviewed within a defined process to refine content filters.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Advisory check — inspects application configuration for feedback-related settings (e.g., `FEEDBACK_ENABLED`, `REPORT_ABUSE_ENDPOINT`). Checks for Lambda functions with \"feedback\" or \"report\" in the name.",
+      "inspected_aws_evidence": "Advisory check — makes no AWS API calls. Always emits an `N/A` manual-review finding, because user feedback mechanisms live in the application and cannot be verified through AWS APIs.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1238,7 +1238,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Create allowlists for business terms that include approved terminology for: brand names, product names, industry terms, and technical vocabulary. Also test filter settings to verify that your content filters allow necessary business communications and generate accurate alerts. Monitor and adjust regularly your filtering system to reduce false positives.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `wordPolicy`. Flags guardrails with no custom `words` array (blocked phrases). Also checks `managedWordLists` for the AWS-managed `PROFANITY` list. Note: a guardrail with only the profanity filter and no custom FinServ-specific blocked terms should still be flagged as incomplete for financial services use cases.",
+      "inspected_aws_evidence": "Reads the shared guardrail inventory (`bedrock:GetGuardrail`, `DRAFT` version) and passes when any guardrail has a non-empty `wordPolicy.words` or `wordPolicy.managedWordLists`. A guardrail with only the managed profanity list therefore passes. Word content is not inspected, and no allowlist evidence is collected. Fails only when no guardrail has a word filter. No guardrails is reported N/A.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1271,7 +1271,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Use Amazon SageMaker Clarify to detect bias, increase transparency, and explain predictions for your fine-tuned and self-trained AI models.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `sagemaker:ListMonitoringSchedules` with the `MonitoringTypeEquals=ModelBias` filter parameter (the `MonitoringType` field on the `MonitoringScheduleSummary` response has one of four values: `DataQuality`, `ModelQuality`, `ModelBias`, `ModelExplainability`). Flags if no bias monitoring schedules exist. Cross-references with endpoints tagged `use-case=financial-decision` or similar. Clarify bias monitoring publishes metrics to the `aws/sagemaker/Endpoints/bias-metrics` namespace for real-time endpoints (and `aws/sagemaker/ModelMonitoring/bias-metrics` for batch transform jobs) with `Endpo",
+      "inspected_aws_evidence": "Calls `sagemaker:ListMonitoringSchedules` (paginated, unfiltered) and keeps summaries whose `MonitoringType` is `ModelBias` (the field has one of four values: `DataQuality`, `ModelQuality`, `ModelBias`, `ModelExplainability`). Fails if no bias schedule exists. When schedules exist, emits a Passed row for their presence plus a separate Failed row for any schedule whose `MonitoringScheduleStatus` is not `Scheduled`. Endpoints, endpoint tags, and job definitions are not inspected. Clarify bias monitoring publishes metrics to the `aws/sagemaker/Endpoints/bias-metrics` namespace for real-time endpo",
       "unsupported_assertions": [
         "association with production financial-decision models",
         "which protected attributes are evaluated",
@@ -1353,7 +1353,7 @@
       "derivation_type": "project-extension",
       "source_excerpt_summary": "Guide §1.2.5 recommends \"Amazon SageMaker Clarify to detect bias, increase transparency, and explain predictions\". ECOA/Fair Housing adverse-action-notice use case is an FS-specific extension of Clarify explainability not named verbatim in the guide.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `sagemaker:ListMonitoringSchedules` with the `MonitoringTypeEquals=ModelExplainability` filter parameter. Flags if no explainability monitoring schedules exist for financial decision model endpoints. Clarify explainability monitoring publishes metrics to the `aws/sagemaker/Endpoints/explainability-metrics` namespace for real-time endpoints (and `aws/sagemaker/ModelMonitoring/explainability-metrics` for batch transform jobs) with `Endpoint`, `MonitoringSchedule`, `ExplainabilityMethod` (value: `KernelShap`), `Label`, and `ValueType` (values: `GlobalShapValues` or `ExpectedValue`) dimensio",
+      "inspected_aws_evidence": "Calls `sagemaker:ListMonitoringSchedules` (paginated, unfiltered) and keeps summaries whose `MonitoringType` is `ModelExplainability`. Fails if no explainability schedule exists. When schedules exist, emits a Passed row for their presence plus a separate Failed row for any schedule whose `MonitoringScheduleStatus` is not `Scheduled`. Endpoints are not filtered to financial-decision models, and whether explanations feed adverse-action notices is a manual review. Clarify explainability monitoring publishes metrics to the `aws/sagemaker/Endpoints/explainability-metrics` namespace for real-time en",
       "unsupported_assertions": [
         "that explanations support adverse-action notices",
         "that SHAP features map to human-readable reason codes",
@@ -1525,7 +1525,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Use Amazon Bedrock Guardrails to detect and filter structured sensitive information in model inputs and outputs, such as personally identifiable information (PII), protected health information (PHI).\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `sensitiveInformationPolicy.piiEntities`. Flags guardrails missing filters for critical PII types: `US_SOCIAL_SECURITY_NUMBER`, `CREDIT_DEBIT_CARD_NUMBER`, `CREDIT_DEBIT_CARD_CVV`, `CREDIT_DEBIT_CARD_EXPIRY`, `US_BANK_ACCOUNT_NUMBER`, `US_BANK_ROUTING_NUMBER`, `PIN`, `SWIFT_CODE`, `INTERNATIONAL_BANK_ACCOUNT_NUMBER`, `US_INDIVIDUAL_TAX_IDENTIFICATION_NUMBER`, `EMAIL`, `PHONE`.",
+      "inspected_aws_evidence": "Reads the shared guardrail inventory (`bedrock:GetGuardrail`, `DRAFT` version) and passes when any guardrail has a non-empty `sensitiveInformationPolicy.piiEntities`. Entity types, `inputAction`/`outputAction`, and custom regexes are not evaluated. Fails only when no guardrail has a PII filter. No guardrails is reported N/A. Recommended entity types for financial services include `US_SOCIAL_SECURITY_NUMBER`, `CREDIT_DEBIT_CARD_NUMBER`, `CREDIT_DEBIT_CARD_CVV`, `CREDIT_DEBIT_CARD_EXPIRY`, `US_BANK_ACCOUNT_NUMBER`, `US_BANK_ROUTING_NUMBER`, `PIN`, `SWIFT_CODE`, `INTERNATIONAL_BANK_ACCOUNT_NUMBER",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1560,7 +1560,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Implement data classification scanning and access controls on the data sources connected to your AI system to prevent disclosure of company-confidential or proprietary information.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Lists S3 buckets and filters for AI/ML-related names or tags. Calls `s3:GetBucketTagging` for each and checks for a `data-classification` tag with values like `public`, `internal`, `confidential`, `restricted`. Flags buckets missing the tag.",
+      "inspected_aws_evidence": "Reads the shared S3 bucket inventory (`ListBuckets`; IAM action `s3:ListAllMyBuckets`) and selects buckets whose name contains `train`, `model`, `bedrock`, `sagemaker`, `kb`, or `knowledge`. Calls `s3:GetBucketTagging` for each and passes a bucket that has a `data-classification` or `classification` tag key (case-insensitive); tag values are not checked. A bucket with no tag set is flagged; an access-denied response makes the check COULD NOT ASSESS. No matching bucket is reported N/A.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1630,7 +1630,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Use Retrieval-Augmented Generation (RAG) to enhance your model responses with information from trusted knowledge bases.\" Referenced in three separate guide risk sections.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `ListKnowledgeBases` (via the `bedrock-agent` boto3 client; IAM action `bedrock:ListKnowledgeBases`) and checks that at least one KB exists with `status=ACTIVE`. Flags accounts with no active KBs when Bedrock models are in use (indicating responses are ungrounded).",
+      "inspected_aws_evidence": "Calls `ListKnowledgeBases` (via the `bedrock-agent` boto3 client; IAM action `bedrock:ListKnowledgeBases`) and checks that at least one KB exists with `status=ACTIVE`. Flags accounts with no active KBs, including accounts with no KBs at all; whether Bedrock models are in use, or whether applications call `RetrieveAndGenerate`, is not checked.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1663,7 +1663,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Implement response disclaimers in customer-facing applications, to inform end users that AI-generated responses should be verified for critical decisions.\" References \"AWS Well-Architected Framework Generative AI Lens - Implement guardrails to mitigate harmful or incorrect model responses\".",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Advisory check — inspects application Lambda environment variables for disclaimer-related settings. Checks for post-processing Lambda functions that append disclaimers.",
+      "inspected_aws_evidence": "Advisory check — makes no AWS API calls. Always emits an `N/A` manual-review finding, because hallucination disclaimers live in application code and cannot be verified through AWS APIs.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1698,7 +1698,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Use Amazon Bedrock Guardrails to detect and filter hallucinations in model responses by performing contextual grounding checks.\" Contextual grounding covers both `GROUNDING` and `RELEVANCE` filter sub-types.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `contextualGroundingPolicy.filters` for the `RELEVANCE` filter type. Flags guardrails with no relevance filter configured.",
+      "inspected_aws_evidence": "Reads the shared guardrail inventory (`bedrock:GetGuardrail`, `DRAFT` version) and inspects `contextualGroundingPolicy.filters` for the `RELEVANCE` filter type. Passes when any guardrail has one; the threshold is not evaluated. Fails when no guardrail has a relevance filter, including when no guardrails exist (this check has no N/A branch).",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1731,7 +1731,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Use Amazon Bedrock Guardrails to detect and block user inputs that attempt to override system instructions through prompt attacks.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `contentPolicy.filters` for a filter with `type=PROMPT_ATTACK`. Flags guardrails where this filter is absent, has `inputStrength` set to `NONE` or `LOW` (note: PROMPT_ATTACK only applies to inputs — there is no `outputStrength` for this filter type), or where `contentPolicy.tier.tierName=CLASSIC` (the PROMPT_ATTACK filter in Classic tier detects jailbreaks and prompt injection; in Standard tier it additionally detects **prompt leakage** — attempts to extract system prompts or developer instructions).",
+      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `contentPolicy.filters` for a filter with `type=PROMPT_ATTACK` (input-only; this filter type has no `outputStrength`). Fails when no guardrail has the filter. Guardrails with the filter pass; those on `contentPolicy.tier.tierName=CLASSIC` pass with a recommendation to move to the Standard tier, which additionally detects **prompt leakage**, and guardrails with no reported tier are noted as tier unknown rather than assumed Classic. Filter strength is not evaluated.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1766,7 +1766,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Stay Updated – Keep your Amazon Bedrock SDK, libraries, and dependencies current to receive the latest security patches and updates.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `lambda:ListFunctions` and filters for functions with Bedrock-related names or environment variables referencing Bedrock. Checks each function's `Runtime` against the list of deprecated Lambda runtimes.",
+      "inspected_aws_evidence": "Reads the shared Lambda inventory (`lambda:ListFunctions`) and selects functions whose name contains `bedrock`, `agent`, `aiml`, or `genai`; environment variables are not read. Flags any selected function whose `Runtime` is not in an in-code allowlist of supported runtimes (as of June 2026). Functions with no `Runtime` (container images) are skipped. No matching function is reported N/A.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1801,7 +1801,7 @@
       "derivation_type": "project-extension",
       "source_excerpt_summary": "WAF SQLi and known-bad-inputs rule groups are not named in the guide, but implement the guide mitigation \"Secure Coding Practices – use parameterized queries, avoid string concatenation for input, grant minimal access privileges\" at the network edge for web-facing GenAI endpoints.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `wafv2:ListWebACLs(Scope=REGIONAL)` and for each calls `wafv2:GetWebACL`. Inspects the rules list for `AWSManagedRulesSQLiRuleSet` and `AWSManagedRulesKnownBadInputsRuleSet`. Flags ACLs missing either rule group.",
+      "inspected_aws_evidence": "Reads the shared Web ACL inventory (`wafv2:ListWebACLs(Scope=REGIONAL)`, then `wafv2:GetWebACL` per ACL) and collects the `ManagedRuleGroupStatement.Name` of each top-level rule. An ACL passes when it contains any one of `AWSManagedRulesSQLiRuleSet`, `AWSManagedRulesCommonRuleSet`, or `AWSManagedRulesKnownBadInputsRuleSet`, so an ACL with only the Common Rule Set passes without the SQLi rule group. Flags ACLs with none of the three. Nested statements and Firewall Manager rule groups are not inspected. No regional ACLs is reported N/A.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1838,7 +1838,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Security Testing – Test your applications regularly for prompt injection and other security vulnerabilities. Use penetration testing, static code analysis, and dynamic application security testing (DAST).\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Advisory check — inspects resource tags for `last-pentest-date` or checks for a documented penetration testing schedule. Cannot be fully automated.",
+      "inspected_aws_evidence": "Advisory check — makes no AWS API calls. Always emits an `N/A` manual-review finding; penetration-testing evidence (for example, a `last-pentest-date` resource tag or a documented testing schedule) must be reviewed manually.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1875,7 +1875,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Implement output validation rules specific to the expected response format. For example, if the AI system is expected to return structured data (JSON, SQL), validate the output against the expected schema before processing.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `lambda:ListFunctions` and searches for functions with naming patterns indicating output validation (e.g., \"output-valid\", \"sanitiz\", \"post-process\", \"response-filter\"). Flags if no such functions exist.",
+      "inspected_aws_evidence": "Reads the shared Lambda inventory (`lambda:ListFunctions`) and passes when any function name contains `validate`, `sanitize`, `filter`, or `output` (case-insensitive). Flags if no such function exists. Function code and wiring into the GenAI pipeline are not inspected, so a name match is a hint, not evidence of output validation.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1910,7 +1910,7 @@
       "derivation_type": "project-extension",
       "source_excerpt_summary": "WAF XSS rule groups are not named in the guide, but implement the guide mitigation \"Apply context-specific output sanitization ... apply HTML encoding for web applications\" at the network edge.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `wafv2:GetWebACL` for each regional ACL and inspects rules for `AWSManagedRulesCommonRuleSet` (which includes the four `CrossSiteScripting_*` rules covering request body, query arguments, cookies, and URI path) or custom rules using `XssMatchStatement` on request components. Flags ACLs missing XSS protection.",
+      "inspected_aws_evidence": "Reads the shared Web ACL inventory (`wafv2:GetWebACL` for each regional ACL) and checks each ACL's top-level rules for the `AWSManagedRulesCommonRuleSet` managed rule group (which includes the four `CrossSiteScripting_*` rules covering request body, query arguments, cookies, and URI path). Flags ACLs without it. Custom rules using `XssMatchStatement` are not credited. No regional ACLs is reported N/A.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1947,7 +1947,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Apply context-specific output sanitization based on the downstream consumer. For example, apply HTML encoding for web applications, SQL parameterization for database queries, and command escaping for system integrations.\" Practical guidance: \"Use Amazon Bedrock Agents to securely integrate with AWS native and third-party services and implement output encoding in the action group Lambda function u",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Advisory check — inspects application Lambda functions for encoding libraries or patterns (e.g., `html.escape`, `json.dumps`, `markupsafe`). Checks environment variables for encoding-related configuration.",
+      "inspected_aws_evidence": "Advisory check — makes no AWS API calls. Always emits an `N/A` manual-review finding, because output encoding happens in application code and cannot be verified through AWS APIs.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -1982,7 +1982,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Implement output validation rules specific to the expected response format. For example, if the AI system is expected to return structured data (JSON, SQL), validate the output against the expected schema before processing.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Inspects Step Functions state machine definitions for states that perform schema validation (e.g., `Choice` states with JSON path conditions, Lambda states with \"schema\" or \"validate\" in the name). Does not rely on API Gateway response models as a validation signal because those are used for SDK generation, not runtime validation.",
+      "inspected_aws_evidence": "Uses the shared Lambda function inventory (`lambda:ListFunctions`) and counts functions whose names contain `schema`, `validate`, `parse`, or `format`, as a hint for reviewers. Always emits an `N/A` manual-review finding; it does not inspect Step Functions definitions or API Gateway response models.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -2017,7 +2017,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Configure content filters and guardrails to restrict model responses to approved topics.\" The check name uses \"allowlist\" loosely — implementation uses denied-topic lists to block out-of-scope content.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `topicPolicy.topics`. Checks that denied topics exist to block off-topic conversations (e.g., politics, entertainment, medical advice). Flags guardrails with no topic restrictions.",
+      "inspected_aws_evidence": "Reads the shared guardrail inventory (`bedrock:GetGuardrail`, `DRAFT` version) and checks whether `topicPolicy.topics` is non-empty, reading `topicPolicy.tier.tierName`. Fails only when no guardrail has a topic policy. Topic content is not inspected, so whether off-topic categories (for example politics, entertainment, medical advice) are covered requires manual review. CLASSIC-tier guardrails pass with a STANDARD-tier recommendation. No guardrails is reported N/A.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -2085,7 +2085,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Keep your knowledge bases up to date.\" Automated scheduling via EventBridge operationalises this mitigation.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `events:ListRules` and searches for rules with targets that invoke `StartIngestionJob` (IAM action `bedrock:StartIngestionJob`) or Lambda functions that trigger KB sync. Also checks AWS Scheduler (`scheduler:ListSchedules`) for schedules targeting KB sync. Flags if no scheduled sync mechanism exists.",
+      "inspected_aws_evidence": "Name heuristic. Calls `events:ListRules` and counts rules whose name contains \"bedrock\" or \"knowledge\", and `scheduler:ListSchedules` and counts schedules whose name contains \"bedrock\", \"knowledge\", \"kb-sync\", or \"ingestion\", or whose `Target.Arn` contains \"bedrock\". Rule targets are not read, and whether a match actually calls `StartIngestionJob` is not verified. Fails if nothing matches; if `ListSchedules` is denied and no rule matches, the check is reported COULD NOT ASSESS. No Knowledge Bases is reported N/A.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -2118,7 +2118,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Include data currency disclaimers in AI system responses where appropriate. Use source attribution in RAG-based response for end users to verify currency of information.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Advisory check — inspects application configuration for data-currency disclaimer settings. Checks system prompts for instructions to include data freshness information.",
+      "inspected_aws_evidence": "Advisory check — makes no AWS API calls. Always emits an `N/A` manual-review finding, because data-currency disclaimers live in application code and system prompts that cannot be verified through AWS APIs.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -2193,7 +2193,7 @@
       "source_section": "§1.2.3",
       "source_page": null,
       "derivation_type": "direct-derived",
-      "source_excerpt_summary": "\"Use integrity monitoring on knowledge base data sources to detect unauthorized modifications... For example on S3 data sources use Amazon S3 event notification to track changes to documents.\" **Note:** This check overlaps with FS-33; FS-33 verifies notifications are *enabled* on the bucket, while FS-65 verifies that notifications are *routed to an alerting destination* (SNS/Lambda/EventBridge rul",
+      "source_excerpt_summary": "\"Use integrity monitoring on knowledge base data sources to detect unauthorized modifications... For example on S3 data sources use Amazon S3 event notification to track changes to documents.\" **Note:** This check complements FS-33: FS-33 verifies that knowledge base data-source buckets have versioning enabled, while FS-65 verifies that S3 event notifications are configured on them.",
       "derivation_rationale": null,
       "inspected_aws_evidence": "Identifies KB data-source S3 buckets via `ListDataSources` and `GetDataSource` (via the `bedrock-agent` boto3 client; IAM actions `bedrock:ListDataSources` and `bedrock:GetDataSource`). For each bucket, calls `s3:GetBucketNotificationConfiguration` and checks for the presence of `EventBridgeConfiguration`, `TopicConfigurations`, `QueueConfigurations`, or `LambdaFunctionConfigurations`. Flags buckets with no notifications configured.",
       "unsupported_assertions": [],
@@ -2230,7 +2230,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"1. Implement least privilege for identities associated with agents and tool services. 2. Where supported by the tool service ensure that communications to tool services or agents are authorized by the end user. 3. Customers building their own tool services should consider propagating end-user identities separately; ensuring these identities can be validated and are not revealed to unauthorized th",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `ListAgentRuntimes` (via the `bedrock-agentcore-control` boto3 client; IAM action `bedrock-agentcore:ListAgentRuntimes`) and inspects each runtime's `authorizerConfiguration.customJWTAuthorizer` for a `discoveryUrl` and allowed audiences/clients/scopes. Flags runtimes with no JWT authorizer (meaning inbound calls carry no verifiable end-user identity), and advises configuring outbound OAuth for downstream tool services.",
+      "inspected_aws_evidence": "Calls `ListAgentRuntimes` (paginated, via the `bedrock-agentcore-control` boto3 client; IAM action `bedrock-agentcore:ListAgentRuntimes`), then `GetAgentRuntime` per runtime (IAM action `bedrock-agentcore:GetAgentRuntime`), and checks whether `authorizerConfiguration.customJWTAuthorizer` is present. Its contents (`discoveryUrl`, audiences, clients, scopes) are not evaluated. Flags runtimes with no JWT authorizer (meaning inbound calls carry no verifiable end-user identity), and advises configuring outbound OAuth for downstream tool services. A runtime that cannot be described is reported COULD",
       "unsupported_assertions": [
         "that the end-user identity is actually forwarded to downstream tool services (an application behavior, not a runtime property)",
         "that tool services validate a propagated identity",
@@ -2318,7 +2318,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"To protect your API endpoints, set maximum length limits for input requests when you use large language models (LLMs) directly or through Amazon Bedrock.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `apigateway:GetRestApis` and for each calls `apigateway:GetRequestValidators` to check for validators (validators enforce parameter-existence and request-body JSON schema conformance — not total body size). Calls `wafv2:GetWebACL` for associated ACLs and inspects rules for `SizeConstraintStatement` targeting the request body. Flags APIs with no WAF `SizeConstraintStatement` on body, since that is the only AWS-native mechanism that enforces a custom maximum body size in front of API Gateway.",
+      "inspected_aws_evidence": "Account-level, not per API. Calls `GetRestApis`, and for each REST API `GetRequestValidators` and `GetModels` (IAM action `apigateway:GET`); an API counts only if a validator has `validateRequestBody` and a model schema contains `maxLength`, `maxItems`, or `maxProperties`. Reads every regional Web ACL from the shared inventory (`wafv2:GetWebACL`) and counts ACLs with a `SizeConstraintStatement` on `Body` or `JsonBody`, including inside And/Or/Not statements; a GT/GE threshold above 16 KB is not credited unless `OversizeHandling=MATCH`. Passes if any API or any ACL qualifies; ACL-to-API associa",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -2355,7 +2355,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Input Validation – Before you send user input to Amazon Bedrock or the tokenizer, validate and sanitize it by removing special characters or using escape sequences. Make sure the input matches your expected format.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `lambda:ListFunctions` and searches for functions with input-validation naming patterns (e.g., \"sanitiz\", \"validat\", \"input-filter\", \"prompt-guard\", \"preprocess\"). Flags if no such functions exist.",
+      "inspected_aws_evidence": "Reads the shared Lambda inventory (`lambda:ListFunctions`) and passes when any function name contains `sanitiz`, `validat`, `input`, `preprocess`, `pre-process`, `filter`, `clean`, `prompt-guard`, or `promptguard` (case-insensitive). Flags if no such function exists. Function code and wiring are not inspected, so a name match is a hint, not evidence of input validation.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [

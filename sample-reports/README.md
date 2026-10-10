@@ -8,12 +8,9 @@ This directory contains sample AI/ML security assessment reports and documentati
 
 Interactive HTML reports demonstrating the assessment output:
 
-- **[security_assessment_single_account.html](security_assessment_single_account.html)** - Example report for a single AWS account showing 7 findings across Bedrock, SageMaker, and AgentCore
-- **[security_assessment_multi_account.html](security_assessment_multi_account.html)** - Example consolidated report for 3 AWS accounts showing 73 findings
+- **[security_assessment_single_account.html](security_assessment_single_account.html)** - Example report for a single AWS account showing 653 finding rows across Bedrock, SageMaker AI, AgentCore, AWS Agent Registry, Agentic AI Security, Responsible AI GRC, and OWASP Top 10 for LLM
+- **[security_assessment_multi_account.html](security_assessment_multi_account.html)** - Example consolidated report for 3 AWS accounts showing 2,072 finding rows
 - **[security_assessment_changes.html](security_assessment_changes.html)** and [`.csv`](security_assessment_changes.csv) - Example "Changes since last assessment" report comparing the single-account sample with an edited copy of it (built by `scripts/build_changes_sample.py`; see [Changes Since Last Assessment](../docs/ASSESSMENT_HISTORY.md))
-- **[security_assessment_multi_account_agentic_prototype.html](security_assessment_multi_account_agentic_prototype.html)** - Prototype based on the existing multi-account report with an Agentic AI security overlay added to the same UI
-- **[agentic-ai-lens-prototype.html](agentic-ai-lens-prototype.html)** - Prototype report showing how security-scoped Agentic AI check and control-domain metadata could be added to the HTML experience
-
 - **[selection-bedrock.html](selection-bedrock.html)** - Synthetic Bedrock-only selection with GRC and OWASP enabled; [screenshot](selection-bedrock.jpg).
 - **[selection-governance-only.html](selection-governance-only.html)** - Synthetic all-direct-services-disabled selection showing independent GRC findings and OWASP coverage notices; [screenshot](selection-governance-only.jpg).
 
@@ -31,7 +28,7 @@ They use fictional findings and a placeholder account ID, and are UI examples ra
 - Filterable findings table
 - Light/dark mode toggle
 - Direct links to AWS documentation
-- Agentic AI security prototype view with security control summaries, question mapping, and lens-aware filters
+- Agentic AI Security lens view with its own section, sidebar entry, and filter option
 
 **How to view:** Download the HTML file and open it in your web browser.
 
@@ -100,5 +97,5 @@ When updating the report template (`aiml-security-assessment/functions/security/
 
 - These are example reports with realistic but fictional findings
 - Actual assessment results will vary based on your AWS environment
-- Reports are fully self-contained HTML files (no external dependencies)
+- Reports are single HTML files with inline CSS and JavaScript; the only external resource is the Google Fonts stylesheet, and the report falls back to system fonts offline
 - Screenshots are automatically optimized to keep file sizes small

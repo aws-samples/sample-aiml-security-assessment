@@ -6,6 +6,8 @@ report next to the run's main report. It shows which findings were resolved,
 which are still open, which regressed, which are new, and which no longer
 appear.
 
+## Table of Contents
+
 - [What you get](#what-you-get)
 - [Turning it on or off](#turning-it-on-or-off)
 - [When it runs](#when-it-runs)
@@ -81,8 +83,9 @@ after the run's results are in the central `AssessmentBucket`:
 - **Single-account:** after the results are synced to the central bucket,
   and only if the Step Functions execution succeeded. The run record is
   written first, whether the execution succeeded or not.
-- **Multi-account:** once per account, after the multi-account report is
-  created and before the build's failure summary. Accounts whose run failed
+- **Multi-account:** once per account, after the multi-account report step
+  (which is skipped when any account failed) and before the build's failure
+  summary. Accounts whose run failed
   get no changes report; the build log names them and gives the reasons from
   the build's failure list.
 
@@ -101,9 +104,9 @@ It can't fail an assessment run:
 - The CSV is written before the page, so if the page can't be written, the
   CSV is still there.
 
-It reads only the findings CSVs already in the bucket, and in single-account
-mode the run records. No changes were made to the scanners, the AWS SAM
-templates, the Step Functions workflow, or the IAM roles.
+It reads only the findings CSVs already in the bucket and, in single-account
+mode, the run records. It does not modify the scanners, the AWS SAM templates,
+the Step Functions workflow, or the IAM roles.
 
 ## Which run is "the previous run"
 
@@ -114,12 +117,12 @@ files**; a run's time is its latest file's time.
 The previous run is the most recent **usable** run saved before the current
 run. A run is usable when:
 
-- **Its files are complete.** Every core service the run selected (Bedrock,
-  SageMaker, AgentCore, AWS Agent Registry), and OWASP if it ran, has a CSV
-  with at least one row for every region the run's CSV names show (its core
-  CSVs, or its OWASP CSVs when no core service was selected), and the
-  Responsible AI GRC CSV, if present, has at least one row. This follows the main
-  report's own completeness check, but from the files alone: the main report
+- **Its files are complete.** Every core service the run selected (Amazon
+  Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, AWS Agent Registry),
+  and OWASP if it ran, has a CSV with at least one row for every region the
+  run's CSV names show (its core CSVs, or its OWASP CSVs when no core service
+  was selected), and the Responsible AI GRC CSV, if present, has at least one
+  row. This follows the main report's own completeness check, but from the files alone: the main report
   knows which regions the run was asked to scan and which options were on,
   and the files don't. So a run that failed partway can still look complete.
 - **Its run record, if it has one, says it succeeded.** In single-account
@@ -139,7 +142,8 @@ run. A run is usable when:
   at the same time) are ignored and noted in the log.
 - Two runs saved in the same second are ordered by execution ID, so the choice
   is always the same.
-- Only the current run and the chosen previous run are read.
+- Besides the current run and the chosen previous run, only runs passed over
+  between them may be read; runs older than the chosen previous run never are.
 
 **Service selection.** A service turned off with the deployment's
 `Enable*Assessment` switches writes no CSV, so its CSVs aren't required. Which
@@ -168,17 +172,17 @@ as found in only one run.
 
 Only what ran in both runs is compared:
 
-- **Core services** (Bedrock, SageMaker, AgentCore, AWS Agent Registry) are
-  compared only if both runs selected them. Otherwise the report says "Not
-  compared: not selected in both runs", and the service's sidebar count and
+- **Core services** (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock
+  AgentCore, AWS Agent Registry) are compared only if both runs selected them. Otherwise the report's notes say "Not
+  compared (not selected in both runs)", and the service's sidebar count and
   row in the counts by area say so instead of showing zero; the headline
   counts leave it out and the note under them names it.
 - **Optional modules** (Responsible AI GRC, OWASP) are compared only if both
-  runs have them. Otherwise the report says "Not compared: enabled in only
-  one run".
+  runs have them. Otherwise the report says "Not compared (enabled in only
+  one run)".
 - **Regions** are compared only if both runs scanned them (taken from the core
-  CSV names). Otherwise the report says "Not compared: scanned in only one
-  run". `Global` rows (account-level findings) are always compared. A row
+  CSV names, or the OWASP CSV names when a run has no core CSV). Otherwise the
+  report says "Not compared (scanned in only one run)". `Global` rows (account-level findings) are always compared. A row
   whose Region lists several regions is compared when every listed region was
   scanned in both runs.
 
@@ -210,12 +214,16 @@ another when they pass or can't be assessed (for example, SM-04 writes
 "GuardDuty Not Enabled", "GuardDuty Enabled", or "GuardDuty Check Error").
 Some checks write one row per resource (for example, one row per IAM role),
 with the resource only in `Finding_Details`. Within a group, rows are paired
-in these steps:
+in five steps: same title and details, same details with a new title, one row
+each, several rows against one summary row, and everything else left unpaired.
+
+<details>
+<summary>The five matching steps in detail</summary>
 
 1. **Same title, identical details.** Rows with the same `Finding` and
-   `Finding_Details` are paired. Then, rows with the same `Finding` are paired
-   whose details are the same once values that change on every run are
-   blanked out:
+   `Finding_Details` are paired. Then rows with the same `Finding` are paired
+   if their details match once values that change on every run are blanked
+   out:
 
    | Changing value | Written by |
    | --- | --- |
@@ -244,13 +252,15 @@ in these steps:
 5. **Everything else is unpaired**, and shows as New or No longer reported.
 
 A pair is made only when it's unambiguous: if two rows would pair with the
-same row in steps 1 and 2, none of them are paired. The CSV's `Match_Rule`
+same row in steps 1 and 2, none of them is paired. The CSV's `Match_Rule`
 column records which step paired each row (`exact`, `normalized`, `details`,
 `single-row`, `check-level`, or `unmatched`), so any result can be traced. A
 `check-level` summary row appears once for each row it's paired with.
 
 Repeated rows within a run are dropped first, with the same rule the main
 report uses.
+
+</details>
 
 ## Reading the report
 
@@ -261,11 +271,10 @@ choice carries over between the two reports).
   (counted by calendar date), and the account. When the current run's main
   report can be identified with certainty, the header links to it.
 - **Summary counts:** Regressed, New, Still open, Resolved, No longer
-  reported, and No longer assessed, for the four services only (Bedrock,
-  SageMaker, AgentCore, AWS Agent Registry), or those of them selected in both
-  runs; the note under the counts names any service left out. With none of
-  the four selected in both runs, the counts show "—". Most Agentic AI Security and
-  OWASP rows are derived from service findings, so one change can appear in
+  reported, and No longer assessed, for the four core services only, or for
+  those of them selected in both runs; the note under the counts names any
+  service left out. With none of the four selected in both runs, the counts
+  show "—". Most Agentic AI Security and OWASP rows are derived from service findings, so one change can appear in
   several areas; counts are shown per area and not added across areas.
 - **Counts by area:** under the main report's headings (By Service, By Lens,
   By Governance Framework, By Compliance Standard).
@@ -313,10 +322,17 @@ can contain resource names chosen by anyone who can create resources.
 
 ## Build log messages
 
+Search the CodeBuild log for `Changes report` to find the comparison's
+messages. If no changes report was written, the message says why.
+
+<details>
+<summary>All build log messages</summary>
+
 | Message | Meaning |
 | --- | --- |
 | `Changes report for account <id>` | Start of that account's comparison |
 | `Compared run <id> (saved <time>) with run <id> (saved <time>), N day(s) apart` | The two runs used |
+| `<services>: Regressed N, New N, Still open N, Resolved N, No longer reported N, No longer assessed N` | The headline counts, for the core services selected in both runs |
 | `No changes since the last assessment` | Nothing changed; the report is still written |
 | `Written: s3://...` | Where the report was written |
 | `No previous run for account <id>; changes report skipped. If this stack was redeployed, or earlier results were moved or deleted, they aren't compared. ...` | First run for the account, or no usable earlier run in the bucket |
@@ -326,6 +342,9 @@ can contain resource names chosen by anyone who can create resources.
 | `Skipped run <id> saved <time>: unreadable (...)` | One of the run's CSVs can't be read; the next older run is tried |
 | `Skipped N more run(s)` | More than five runs were passed over |
 | `Not compared (not selected in both runs): <service> (<which run>)` | A core service selected in only one of the two runs, or in neither; it's left out of the comparison and the counts |
+| `Not compared (enabled in only one run): <module> (<which run>)` | Responsible AI GRC or OWASP ran in only one of the two runs |
+| `Not compared (scanned in only one run): <region> (<which run>)` | A region scanned in only one of the two runs |
+| `Check IDs found in only one run: <id> (<which run>)` | For example, checks added or removed by an upgrade |
 | `No core service was selected in both runs, so there are no headline counts; see the changes CSV` | Only Responsible AI GRC or OWASP were compared |
 | `WARNING: ENABLE_<SERVICE>='<value>' is not true or false; the services with CSVs are taken as selected` | A service switch has an unexpected value |
 | `WARNING: ENABLE_<SERVICE> is '<value>', not true or false, so the run record does not list the selected services` | Single-account: the record is still written; later runs judge this run by its files |
@@ -340,12 +359,16 @@ can contain resource names chosen by anyone who can create resources.
 | `WARNING: The changes page for account <id> could not be written; the CSV was. Reason: ...` | Only the CSV was written for that account |
 | `Changes report skipped: the assessment run did not succeed` | Single-account run failed |
 | `Changes report disabled (EnableAssessmentHistory=false)` | The setting is off |
+| `WARNING: ENABLE_ASSESSMENT_HISTORY is '<value>', not true or false; using true` | The setting has an unexpected value; the report is written |
+| `WARNING: The changes report step did not complete; assessment results are not affected` | The step stopped early, for example at the time limit |
+
+</details>
 
 ## Re-runs, redeployments, and moved files
 
 - **Re-runs.** Every run is the same build; there is no separate "first run"
   setting. Start a run from CodeBuild (**Start build**) or on a schedule (see
-  [Can I schedule automated assessments?](TROUBLESHOOTING.md#customization-and-configuration)).
+  [Can I schedule automated assessments?](FAQ.md#can-i-schedule-automated-assessments)).
   Each run is compared with the most recent usable run before it.
 - **Redeploying.** History lives in the infrastructure stack's
   `AssessmentBucket`. Updating the stack keeps it. Deleting and recreating the
@@ -363,6 +386,11 @@ can contain resource names chosen by anyone who can create resources.
 
 ## Comparing two runs yourself
 
+You can run the same comparison on your computer for any two runs.
+
+<details>
+<summary>How to compare two runs locally</summary>
+
 The same code compares any two runs on your computer. Copy each run's findings
 CSVs into its own folder (for example with `aws s3 cp --recursive --exclude "*"
 --include "*_security_report_<execution_id>*"`), then run from the repository
@@ -376,7 +404,10 @@ root:
   --output-dir ./changes
 ```
 
-Each folder must hold one complete run. The setting is ignored in this mode.
+Each folder must hold one complete run. The `EnableAssessmentHistory` setting
+is ignored in this mode.
+
+</details>
 
 ## Known limits
 
@@ -403,47 +434,6 @@ Each folder must hold one complete run. The setting is ignored in this mode.
 
 ## For developers
 
-| Path | Contents |
-| --- | --- |
-| `assessment_history/models.py` | Record shapes, change states, CSV columns |
-| `assessment_history/normalize.py` | The changing values blanked out in matching step 1 |
-| `assessment_history/compare.py` | The comparison (no AWS calls) |
-| `assessment_history/discover.py` | Finding and reading an account's runs in S3 or a local folder |
-| `assessment_history/render_common.py`, `render_changes.py` | The HTML page, using the main report's styling |
-| `assessment_history/__main__.py` | The command line the build runs |
-| `tests/test_assessment_history_*.py` | Tests; `tests/assessment_history_helpers.py` builds test data |
-| `tests/fixtures/assessment_history/` | A hand-written example account folder, and the golden saved answers (`golden/expected_*.json`) |
-| `sample-reports/scripts/build_changes_sample.py` | Builds the sample page and CSV and the golden saved answers |
-| `sample-reports/scripts/capture_changes_screenshot.py` | Captures `sample-reports/changes-overview.png` from the sample page |
-
-Run the tests with the package's 100% line and branch coverage bar (CI runs
-the same check):
-
-```bash
-.venv/bin/python -m pytest tests/test_assessment_history_*.py \
-  --cov=assessment_history --cov-branch --cov-report=term-missing \
-  --cov-fail-under=100
-```
-
-The golden tests use both sample reports: each is turned back into the
-findings CSVs the scanners write (in a temporary folder; only the saved answers
-are committed), and a current run is made by applying a short list of edits
-(`EDITS` in the script) that covers every change state and each matching step.
-Values that AWS generated in the sample reports (resource IDs, the random parts
-of resource names) are replaced with made-up values of the same shape first,
-and a test fails if any of them reaches a committed file. After changing a sample report or a comparison rule,
-regenerate and review the diff:
-
-```bash
-.venv/bin/python sample-reports/scripts/build_changes_sample.py
-```
-
-`--check` makes no changes and exits 1 if anything is out of date. To
-refresh the screenshot afterwards:
-
-```bash
-./sample-reports/scripts/capture_changes_screenshot.py
-```
-
-It uses the same browser setup as `capture_screenshots.py`, but captures only
-the changes page and doesn't rewrite any report.
+The package layout, tests, coverage bar, and golden sample workflow are
+described in the Developer Guide under
+[Assessment History (Changes Since Last Assessment)](DEVELOPER_GUIDE.md#assessment-history-changes-since-last-assessment).

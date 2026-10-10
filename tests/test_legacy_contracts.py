@@ -1,8 +1,8 @@
 """Compatibility locks for report selectors, CSS classes, and deployment identities.
 
 Phase 1 changed visible *labels* only and froze every machine identity. Phase
-2 Stage 2b (see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md, now
-superseded) renamed the CloudFormation logical ID, the physical Lambda name
+2 Stage 2b (the Stage 2b rename design, since superseded; see
+docs/RESPONSIBLE_AI_GRC_SCOPE.md#compatibility-policy) renamed the CloudFormation logical ID, the physical Lambda name
 suffix, all four Step Functions state names, and the ASL error result path
 from FinServ-branded names to Responsible AI GRC-branded names, and this file
 was updated to lock in those new values.
@@ -341,7 +341,8 @@ def test_legacy_finserv_input_fail_state_name_fits_the_step_functions_limit():
 # Lambda replacement, changing ARNs, permissions, logs, and rollback behavior.
 #
 # Phase 2 Stage 2b renamed both, deliberately, as a reviewed CloudFormation
-# replacement (see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md). The
+# replacement (the Stage 2b rename design, since superseded; see
+# docs/RESPONSIBLE_AI_GRC_SCOPE.md#compatibility-policy). The
 # "aiml-security-" physical-name PREFIX is intentionally UNCHANGED — see
 # test_own_lambda_prefix_matches_self_exclusion_assumption below for why.
 # ---------------------------------------------------------------------------

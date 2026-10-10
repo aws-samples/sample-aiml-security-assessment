@@ -7,11 +7,11 @@ underlying BR/SM/AC/FS checks it is derived from.
 - **Reference:** [OWASP Top 10 for LLM 2025](https://genai.owasp.org/llm-top-10/)
   and the category-specific remediation pages linked from that page.
 - **Opt-in:** Set `EnableOWASPAssessment=true` on the deployment stack.
-- **Report location:** New "By Compliance Standard" sidebar section, alongside
-  the existing "By Lens" (Agentic AI) and "By Governance Framework"
+- **Report location:** The "By Compliance Standard" sidebar section, alongside
+  the "By Lens" (Agentic AI) and "By Governance Framework"
   (Responsible AI GRC) sections.
-- **Responsible AI GRC auto-runs when OWASP is enabled.** ~2/3 of the OWASP
-  mapping rows (and all of LLM05) derive from the `FS-*` checks. To guarantee
+- **Responsible AI GRC auto-runs when OWASP is enabled.** 43 of the 95 OWASP
+  source mappings (and all of LLM05) use `FS-*` checks. To guarantee
   full OWASP coverage, the state machine automatically runs the Responsible
   AI GRC Lambda whenever `EnableOWASPAssessment=true`, even when
   `EnableResponsibleAIGRCAssessment=false`. In that case, Responsible AI GRC
@@ -22,11 +22,30 @@ underlying BR/SM/AC/FS checks it is derived from.
   `EnableResponsibleAIGRCAssessment=true` explicitly if you want the
   Responsible AI GRC section to appear alongside OWASP.
 
+## Table of Contents
+
+- [Disclaimer](#disclaimer)
+- [Design](#design)
+  - [Mapping scope for catalog expansions](#mapping-scope-for-catalog-expansions)
+- [Extensibility](#extensibility)
+- [Check catalog](#check-catalog)
+  - [LLM01 Prompt Injection — OW-01](#llm01-prompt-injection--ow-01)
+  - [LLM02 Sensitive Information Disclosure — OW-02](#llm02-sensitive-information-disclosure--ow-02)
+  - [LLM03 Supply Chain — OW-03](#llm03-supply-chain--ow-03)
+  - [LLM04 Data and Model Poisoning — OW-04](#llm04-data-and-model-poisoning--ow-04)
+  - [LLM05 Improper Output Handling — OW-05](#llm05-improper-output-handling--ow-05)
+  - [LLM06 Excessive Agency — OW-06](#llm06-excessive-agency--ow-06)
+  - [LLM07 System Prompt Leakage — OW-07 (mapping) + OW-11, OW-12 (native)](#llm07-system-prompt-leakage--ow-07-mapping--ow-11-ow-12-native)
+  - [LLM08 Vector and Embedding Weaknesses — OW-08](#llm08-vector-and-embedding-weaknesses--ow-08)
+  - [LLM09 Misinformation — OW-09](#llm09-misinformation--ow-09)
+  - [LLM10 Unbounded Consumption — OW-10](#llm10-unbounded-consumption--ow-10)
+- [Severity / status semantics](#severity--status-semantics)
+
 ## Disclaimer
 
 > **These mappings are PRELIMINARY and ILLUSTRATIVE.** They have not been
 > reviewed by AWS Security Assurance Services or external auditors. Each
-> organisation should validate them against its own interpretation of the
+> organization should validate them against its own interpretation of the
 > OWASP Top 10 for LLM 2025 controls before relying on them as audit evidence.
 
 ## Design
@@ -62,10 +81,12 @@ If a required source CSV is missing, the Lambda emits an informational `OW-00`
 coverage row instead of silently omitting all derived rows from that source.
 `OW-00` is not an OWASP Top 10 control; it is a report-completeness marker.
 
-### Mapping scope for recent catalog expansions
+<a id="mapping-scope-for-recent-catalog-expansions"></a>
 
-The OWASP mapping regression coverage tracks 34 check IDs added across the
-recent catalog expansions. Twelve have direct OWASP mappings. The remaining
+### Mapping scope for catalog expansions
+
+The OWASP mapping regression test tracks 34 check IDs added in catalog
+expansions. Twelve have direct OWASP mappings. The remaining
 22 are intentionally unmapped, including all AWS Agent Registry controls:
 
 - `BR-35` checks harmful-content image modality coverage. It does not verify
@@ -88,14 +109,13 @@ recent catalog expansions. Twelve have direct OWASP mappings. The remaining
 
 ## Extensibility
 
-The "By Compliance Standard" sidebar section is data-driven — future NIST AI
-RMF (`NR-` prefix) and EU AI Act (`EU-` prefix) additions require only
-appending a new entry to `COMPLIANCE_STANDARDS` in `report_template.py` and
-following the same Lambda/CFN wire-up pattern (`EnableNISTAssessment` /
-`EnableEUAIActAssessment`). Each new prefix must be 2–3 uppercase letters to
-satisfy the Check_ID regex `^[A-Z]{2,3}-\d{2}$`.
+The "By Compliance Standard" section is generated from `COMPLIANCE_STANDARDS`
+in `report_template.py`. To add a standard, see
+[Adding a Compliance Standard (OWASP-style)](DEVELOPER_GUIDE.md#adding-a-compliance-standard-owasp-style).
 
-## Check catalogue
+<a id="check-catalogue"></a>
+
+## Check catalog
 
 Each emitted OW row uses the category-specific OWASP remediation reference
 for its `Reference` field:
@@ -167,7 +187,7 @@ Maps from:
 | SM-10 | SageMaker notebooks are deployed inside a VPC |
 | SM-11 | SageMaker model containers use network isolation |
 | SM-14 | SageMaker models pull containers through controlled repository access |
-| SM-21 | SageMaker AutoML jobs use network isolation |
+| SM-21 | SageMaker AutoML jobs use inter-container traffic encryption |
 | SM-25 | SageMaker Experiments and lineage associations track model provenance |
 | SM-28 | HyperPod instance groups use controlled VPC network boundaries |
 | SM-30 | Model Registry resource policies restrict public and unapproved cross-account access |
@@ -276,7 +296,7 @@ Maps from:
 | Source | Signal |
 | -------- | -------- |
 | BR-18 | Model evaluation jobs |
-| BR-25 | RAG evaluation for faithfulness |
+| BR-25 | Recent completed RAG evaluation jobs per knowledge base |
 | BR-27 | Contextual grounding for faithfulness |
 | FS-31 | Knowledge Base ingestion freshness |
 | FS-32 | Source attribution via citations |
@@ -300,7 +320,7 @@ Maps from:
 | SM-26 | GuardDuty AI Protection anomalous invocation and cost-harvesting detection |
 | FS-01 | WAF rate-based & Shield protection |
 | FS-02 | API Gateway usage plans |
-| FS-03 | Bedrock TPM/RPM quotas customised |
+| FS-03 | Bedrock TPM/RPM quotas customized |
 | FS-04 | AWS Cost Anomaly Detection |
 | FS-05 | Token / throttle alarms |
 | FS-06 | AWS Budgets with Bedrock filters |
@@ -311,9 +331,10 @@ Maps from:
 
 OW rows follow the same rules as every other check in the framework:
 
-- The row's `Severity` and `Status` are inherited from the source finding.
-  An N/A source produces an OW row with `Severity=Informational` and
-  `Status=N/A` — never an inflated High/Medium.
+- A mapped OW-01..OW-10 row inherits `Severity` and `Status` from its source
+  finding. An N/A source produces an OW row with `Severity=Informational` and
+  `Status=N/A` — never an inflated High/Medium. Service-selection coverage
+  rows are also `N/A` / Informational.
 - Access-denied / region-unsupported paths in OW-11/OW-12 → `N/A`, never
   `Failed`.
 - Missing source CSVs for mapping-derived rows produce `OW-00` with
