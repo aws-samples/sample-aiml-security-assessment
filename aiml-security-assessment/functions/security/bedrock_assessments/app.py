@@ -672,7 +672,7 @@ def check_marketplace_subscription_access(
                         finding_name="Marketplace Subscription Access Check",
                         finding_details=f"{identity['type'].capitalize()} '{identity['name']}' has overly permissive marketplace subscription access through policy '{identity['policy']}'",
                         resolution="Ensure that users have access to only the models that you want user to be able to subscribe to based on your organizational policies. For example, you may want users to have access to only text based models and not image and video generation model. This can also help to keep cost in check.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-bedrock-marketplace",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-AmazonBedrockMarketplaceAccess",
                         severity="High",
                         status="Failed",
                         region=region,
@@ -688,7 +688,7 @@ def check_marketplace_subscription_access(
                     finding_name="Marketplace Subscription Access Check",
                     finding_details="No identities found with overly permissive marketplace subscription access",
                     resolution="No action required",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-bedrock-marketplace",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-AmazonBedrockMarketplaceAccess",
                     severity="Medium",
                     status="Passed",
                     region=region,
@@ -947,7 +947,7 @@ def check_bedrock_full_access_roles(
                     finding_name="AmazonBedrockFullAccess role check",
                     finding_details=f"Role '{role['name']}' has AmazonBedrockFullAccess policy attached",
                     resolution="Limit the AmazonBedrockFullAccess policy only to required access",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html\nhttps://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity="High",
                     status="Failed",
                     region=region,
@@ -961,7 +961,7 @@ def check_bedrock_full_access_roles(
                 finding_name="AmazonBedrockFullAccess role check",
                 finding_details="No roles found with AmazonBedrockFullAccess policy",
                 resolution="No action required",
-                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html\nhttps://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                 severity="High",
                 status="Passed",
                 region=region,
@@ -7653,7 +7653,7 @@ def check_bedrock_marketplace_endpoint_cmk(
 ) -> Dict[str, Any]:
     """BR-40: Assess Marketplace endpoint customer-managed KMS encryption."""
     findings = {"csv_data": []}
-    reference = "https://docs.aws.amazon.com/kms/latest/developerguide/key-types.html"
+    reference = "https://docs.aws.amazon.com/bedrock/latest/userguide/setup-amazon-bedrock-marketplace.html"
     required = os.environ.get("REQUIRE_MARKETPLACE_ENDPOINT_CMK", "true").lower() in {
         "1",
         "true",
@@ -8024,7 +8024,7 @@ def lambda_handler(event, context):
                             finding_name="Bedrock Service Availability",
                             finding_details=unavailable_detail,
                             resolution="No action required. Bedrock is not deployed in this region.",
-                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-regions.html",
+                            reference="https://docs.aws.amazon.com/general/latest/gr/bedrock.html",
                             severity="Informational",
                             status="N/A",
                             region=region,

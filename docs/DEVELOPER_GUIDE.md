@@ -1309,7 +1309,7 @@ export AWS_SECRET_ACCESS_KEY=testing
 ### Documentation
 
 - [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
-- [AWS Security Best Practices](https://aws.amazon.com/security/security-resources/)
+- [AWS Security Best Practices](https://aws.amazon.com/security/security-learning/)
 - [AWS SAM Developer Guide](https://docs.aws.amazon.com/serverless-application-model/)
 
 ---
