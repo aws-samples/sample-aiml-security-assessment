@@ -88,7 +88,15 @@ section.
     and does not treat a wildcard Allow on resources that name no model as an
     invoker.
   - `BR-52` reports a bucket without a `COMPLIANCE` Object Lock whose AWS Backup
-    recovery points were not read in one `N/A` row, not as `Failed`.
+    recovery points were not read as `N/A`, not as `Failed`.
+  - `BR-47` and `BR-52` report each data path bucket once. Each bucket gets its
+    own row in the bucket's Region, read with `s3:GetBucketLocation`, and the
+    row text does not depend on the assessed Region, so a bucket that
+    resources in several Regions reference is no longer repeated in the report.
+    `BR-52` reads AWS Backup in the bucket's Region. The resources that
+    reference each bucket move from the verdict rows to one Informational
+    `N/A` row per assessed Region. A check with several enforcing buckets now
+    has one `Passed` row per bucket instead of one shared row.
   - `BR-54` and `BR-57` stop at the invocation deadline and name what they did
     not read, instead of running the Lambda into its timeout.
   - An unexpected error in one Bedrock check no longer ends the Bedrock
@@ -280,7 +288,9 @@ change:
     `backup:ListRecoveryPointsByResource` (on `*`, which has no resource type)
     and `backup:DescribeRecoveryPoint` (on the account's `recovery-point:*`
     ARNs), and `BR-37` lists models with `bedrock-mantle:ListModels` (on the
-    account's mantle `project/*` ARNs). All three are reads.
+    account's mantle `project/*` ARNs). `BR-47` and `BR-52` read each bucket's
+    Region with `s3:GetBucketLocation` (on `arn:${AWS::Partition}:s3:::*`).
+    All four are reads.
   - `cloudwatch:DescribeAlarms` moves from the account's `alarm:*` ARNs to `*`
     on the Bedrock role, because composite alarms are returned only to a `*`
     grant.

@@ -1104,6 +1104,7 @@ Resources:
                 - s3:GetBucketPolicy # BR-47, BR-42
                 - s3:GetBucketVersioning # BR-04, BR-52
                 - s3:GetBucketObjectLockConfiguration # BR-52, BR-04
+                - s3:GetBucketLocation # BR-47, BR-52
                 - s3:GetReplicationConfiguration # BR-04
               Resource: !Sub 'arn:${AWS::Partition}:s3:::*'
             - Sid: BackupVaultLockRead

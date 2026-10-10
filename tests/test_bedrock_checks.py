@@ -53,8 +53,10 @@ _spec.loader.exec_module(bedrock_app)
 def _fresh_data_path_buckets():
     """Each test mocks its own clients, so no data path read carries over."""
     bedrock_app._AI_DATA_PATH_BUCKETS_BY_REGION.clear()
+    bedrock_app._BUCKET_REGIONS.clear()
     yield
     bedrock_app._AI_DATA_PATH_BUCKETS_BY_REGION.clear()
+    bedrock_app._BUCKET_REGIONS.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -30053,6 +30055,27 @@ def _bucket_policy(*statements):
     }
 
 
+def _peel_data_path_reference(rows):
+    """
+    Split off the one per-Region row that names which resources reference each
+    data path bucket, so a test reads the per-bucket verdicts on their own.
+    """
+    references = [
+        row
+        for row in rows
+        if "data path bucket(s) are referenced by resources in"
+        in row["Finding_Details"]
+    ]
+    assert len(references) <= 1
+    if not references:
+        return rows, None
+    reference = references[0]
+    assert rows[-1] is reference
+    assert reference["Status"] == "N/A"
+    assert reference["Severity"] == "Informational"
+    return rows[:-1], reference
+
+
 class TestBR47DataPathBucketTLS:
     """BR-47: every Bedrock data path bucket must deny plaintext requests."""
 
@@ -30305,9 +30328,12 @@ class TestBR47DataPathBucketTLS:
                 "bedrock-agentcore-control": agentcore_client,
             }[service],
         ):
-            return extract_csv_data(
-                bedrock_app.check_bedrock_data_path_bucket_tls(region="us-east-1")
+            rows, self.reference = _peel_data_path_reference(
+                extract_csv_data(
+                    bedrock_app.check_bedrock_data_path_bucket_tls(region="us-east-1")
+                )
             )
+            return rows
 
     @staticmethod
     def _s3_source(data_source_id, name, bucket):
@@ -30366,16 +30392,15 @@ class TestBR47DataPathBucketTLS:
         assert failed[0]["Severity"] == "High"
         assert "Bucket hr-bucket" in failed[0]["Finding_Details"]
         assert (
-            "data source 'hr-docs' in knowledge base 'hr-kb'"
-            in failed[0]["Finding_Details"]
+            "hr-bucket (data source 'hr-docs' in knowledge base 'hr-kb')"
+            in self.reference["Finding_Details"]
         )
         assert (
             "no Deny statement conditioned on aws:SecureTransport being false"
             in failed[0]["Finding_Details"]
         )
         assert len(passed) == 1
-        assert "1 of 2 Bedrock data path bucket(s)" in passed[0]["Finding_Details"]
-        assert "support-bucket" in passed[0]["Finding_Details"]
+        assert passed[0]["Finding_Details"].startswith("Bucket support-bucket ")
         for finding in findings:
             assert_finding_schema(finding)
 
@@ -30420,12 +30445,12 @@ class TestBR47DataPathBucketTLS:
             }
         )
 
-        assert [f["Status"] for f in findings] == ["Passed"]
-        assert "2 of 2 Bedrock data path bucket(s)" in findings[0]["Finding_Details"]
-        assert (
-            "exempting only AWS service principals through "
-            "aws:PrincipalIsAWSService false"
-        ) in findings[0]["Finding_Details"]
+        assert [f["Status"] for f in findings] == ["Passed", "Passed"]
+        for finding in findings:
+            assert (
+                "exempting only AWS service principals through "
+                "aws:PrincipalIsAWSService false"
+            ) in finding["Finding_Details"]
 
     def test_br47_aws_service_test_on_true_is_not_credited(self):
         """A true test limits the Deny to service principals, so identities keep HTTP."""
@@ -30484,13 +30509,15 @@ class TestBR47DataPathBucketTLS:
             }
         )
 
-        assert [f["Status"] for f in findings] == ["N/A"]
-        assert findings[0]["Severity"] == "Informational"
-        assert (
-            "neither proven to enforce TLS nor proven to accept plaintext"
-            in findings[0]["Finding_Details"]
-        )
-        assert "support-bucket" in findings[0]["Finding_Details"]
+        assert [f["Status"] for f in findings] == ["N/A", "N/A"]
+        for finding in findings:
+            assert finding["Severity"] == "Informational"
+            assert (
+                "neither proven to enforce TLS nor proven to accept plaintext"
+                in finding["Finding_Details"]
+            )
+        assert findings[0]["Finding_Details"].startswith("Bucket hr-bucket ")
+        assert findings[1]["Finding_Details"].startswith("Bucket support-bucket ")
 
     def test_br47_no_data_path_bucket_returns_na(self):
         findings = self._run()
@@ -30519,9 +30546,12 @@ class TestBR47DataPathBucketTLS:
         assert statuses == ["N/A", "N/A"]
         assert "data path read(s) failed" in findings[0]["Finding_Details"]
         assert "knowledge base data sources" in findings[0]["Finding_Details"]
-        assert "log-bucket" in findings[1]["Finding_Details"]
-        assert "the model invocation log destination" in findings[1]["Finding_Details"]
-        assert "the bucket list is incomplete" in findings[1]["Finding_Details"]
+        assert findings[1]["Finding_Details"].startswith("Bucket log-bucket ")
+        assert (
+            "log-bucket (the model invocation log destination)"
+            in self.reference["Finding_Details"]
+        )
+        assert "bucket list is incomplete" in findings[1]["Finding_Details"]
 
     def test_br47_per_data_source_error_still_assesses_the_other_bucket(self):
         findings = self._two_bucket_estate(
@@ -30543,11 +30573,8 @@ class TestBR47DataPathBucketTLS:
             "data source 'hr-docs' in knowledge base 'hr-kb'"
             in findings[0]["Finding_Details"]
         )
-        assert "support-bucket" in findings[1]["Finding_Details"]
-        assert (
-            "1 of the 1 Bedrock data path bucket(s) read"
-            in findings[1]["Finding_Details"]
-        )
+        assert findings[1]["Finding_Details"].startswith("Bucket support-bucket ")
+        assert "bucket list is incomplete" in findings[1]["Finding_Details"]
 
     def test_br47_customization_job_buckets_are_on_the_data_path(self):
         """Training, validation and output buckets of a job are each judged.
@@ -30576,11 +30603,13 @@ class TestBR47DataPathBucketTLS:
         assert len(failed) == 1
         assert "Bucket train-bucket" in failed[0]["Finding_Details"]
         assert (
-            "the training data of customization job 'tune-1'"
-            in failed[0]["Finding_Details"]
+            "train-bucket (the training data of customization job 'tune-1')"
+            in self.reference["Finding_Details"]
         )
-        assert len(passed) == 1
-        assert "2 of 3 Bedrock data path bucket(s)" in passed[0]["Finding_Details"]
+        assert [f["Finding_Details"].split()[1] for f in passed] == [
+            "out-bucket",
+            "valid-bucket",
+        ]
         for finding in findings:
             assert_finding_schema(finding)
 
@@ -30610,11 +30639,11 @@ class TestBR47DataPathBucketTLS:
         assert len(failed) == 1, [f["Finding_Details"] for f in findings]
         assert "Bucket batch-in" in failed[0]["Finding_Details"]
         assert (
-            "the input of batch inference job 'nightly'"
-            in (failed[0]["Finding_Details"])
+            "batch-in (the input of batch inference job 'nightly')"
+            in self.reference["Finding_Details"]
         )
         passed = [f for f in findings if f["Status"] == "Passed"]
-        assert "1 of 2 Bedrock data path bucket(s)" in passed[0]["Finding_Details"]
+        assert [f["Finding_Details"].split()[1] for f in passed] == ["batch-out"]
 
     def test_br47_sagemaker_training_buckets_are_on_the_data_path(self):
         findings = self._run(
@@ -30636,12 +30665,13 @@ class TestBR47DataPathBucketTLS:
         )
         failed = [f for f in findings if f["Status"] == "Failed"]
         assert len(failed) == 1, [f["Finding_Details"] for f in findings]
+        assert failed[0]["Finding_Details"].startswith("Bucket sm-train ")
         assert (
-            "Bucket sm-train is on the Bedrock data path as the training data "
-            "channel 'train' of SageMaker training job 'tj-1'"
-        ) in failed[0]["Finding_Details"]
+            "sm-train (the training data channel 'train' of SageMaker training "
+            "job 'tj-1')"
+        ) in self.reference["Finding_Details"]
         passed = [f for f in findings if f["Status"] == "Passed"]
-        assert "1 of 2 Bedrock data path bucket(s)" in passed[0]["Finding_Details"]
+        assert [f["Finding_Details"].split()[1] for f in passed] == ["sm-out"]
 
     def test_br47_second_training_channel_bucket_fails_with_a_complete_list(self):
         """The first channel and the output enforce TLS; the second channel does not."""
@@ -30676,12 +30706,16 @@ class TestBR47DataPathBucketTLS:
         )
         failed = [f for f in findings if f["Status"] == "Failed"]
         assert len(failed) == 1, [f["Finding_Details"] for f in findings]
+        assert failed[0]["Finding_Details"].startswith("Bucket sm-val ")
         assert (
-            "Bucket sm-val is on the Bedrock data path as the training data "
-            "channel 'validation' of SageMaker training job 'tj-1'"
-        ) in failed[0]["Finding_Details"]
+            "sm-val (the training data channel 'validation' of SageMaker training "
+            "job 'tj-1')"
+        ) in self.reference["Finding_Details"]
         passed = [f for f in findings if f["Status"] == "Passed"]
-        assert "2 of 3 Bedrock data path bucket(s)" in passed[0]["Finding_Details"]
+        assert [f["Finding_Details"].split()[1] for f in passed] == [
+            "sm-out",
+            "sm-train",
+        ]
 
     @staticmethod
     def _code(bucket):
@@ -30712,8 +30746,8 @@ class TestBR47DataPathBucketTLS:
         assert len(failed) == 1, [f["Finding_Details"] for f in findings]
         assert "Bucket code-v2" in failed[0]["Finding_Details"]
         assert (
-            "the code artifact of AgentCore runtime 'rt-1' version 2"
-            in failed[0]["Finding_Details"]
+            "code-v2 (the code artifact of AgentCore runtime 'rt-1' version 2)"
+            in self.reference["Finding_Details"]
         )
         assert [
             c.kwargs["agentRuntimeVersion"]
@@ -30769,17 +30803,17 @@ class TestBR47DataPathBucketTLS:
         assert len(failed) == 1, [f["Finding_Details"] for f in findings]
         assert "Bucket recordings" in failed[0]["Finding_Details"]
         assert (
-            "the session recording destination of browser 'br-on'"
-            in (failed[0]["Finding_Details"])
+            "recordings (the session recording destination of browser 'br-on')"
+            in self.reference["Finding_Details"]
         )
         passed = [f for f in findings if f["Status"] == "Passed"]
-        assert "1 of 2 Bedrock data path bucket(s)" in passed[0]["Finding_Details"]
+        assert [f["Finding_Details"].split()[1] for f in passed] == ["agent-code"]
         assert (
-            "the code artifact of AgentCore runtime 'rt-1' version 3"
-            in (passed[0]["Finding_Details"])
+            "agent-code (the code artifact of AgentCore runtime 'rt-1' version 3)"
+            in self.reference["Finding_Details"]
         )
         assert "unused-recordings" not in " ".join(
-            f["Finding_Details"] for f in findings
+            f["Finding_Details"] for f in findings + [self.reference]
         )
 
     @pytest.mark.parametrize(
@@ -30829,14 +30863,16 @@ class TestBR47DataPathBucketTLS:
                 ),
             }
         )
-        assert [f["Status"] for f in findings] == ["Passed"]
+        assert [f["Status"] for f in findings] == ["Passed", "Passed"]
         details = findings[0]["Finding_Details"]
+        assert details.startswith("Bucket hr-bucket ")
         assert (
             f"exempts principal {self.INGEST_ROLE} (arnnotlike aws:PrincipalArn), "
             "which keep plaintext access to the bucket" in details
         )
-        assert "deny every plaintext request" not in details
-        assert "plaintext requests from every principal they do not exempt" in details
+        assert "denies every plaintext request" not in details
+        assert "plaintext requests from every principal it does not exempt" in details
+        assert "denies every plaintext request" in findings[1]["Finding_Details"]
 
     def _exempting_hr(self, operator, key, value):
         return {"hr-bucket": self._exempting("hr-bucket", operator, key, value)}
@@ -30868,7 +30904,7 @@ class TestBR47DataPathBucketTLS:
             in findings[0]["Finding_Details"].lower()
         )
         assert "exempts" not in findings[1]["Finding_Details"]
-        assert "deny every plaintext request" in findings[1]["Finding_Details"]
+        assert "denies every plaintext request" in findings[1]["Finding_Details"]
 
     def test_br47_exact_and_wildcard_exemptions_split_two_buckets(self):
         findings = self._two_bucket_estate(
@@ -30902,7 +30938,8 @@ class TestBR47DataPathBucketTLS:
                 ),
             }
         )
-        assert [f["Status"] for f in findings] == ["Passed"]
+        assert [f["Status"] for f in findings] == ["Passed", "Passed"]
+        assert findings[0]["Finding_Details"].startswith("Bucket hr-bucket ")
         assert f"principal {self.INGEST_ROLE} " in findings[0]["Finding_Details"]
         assert f"principal {second} " in findings[0]["Finding_Details"]
 
@@ -30926,12 +30963,17 @@ class TestBR47DataPathBucketTLS:
                 ),
             },
         )
-        assert [f["Status"] for f in findings] == ["Passed"]
-        details = findings[0]["Finding_Details"]
-        assert "7 of 7 Bedrock data path bucket(s)" in details
-        assert "z-exempt (the input 'z-exempt' of SageMaker processing job" in details
-        assert f"exempts principal {self.INGEST_ROLE} " in details
-        assert all(f"{name} (" in details for name in enforced)
+        assert [f["Status"] for f in findings] == ["Passed"] * 7
+        assert [f["Finding_Details"].split()[1] for f in findings] == enforced + [
+            "z-exempt"
+        ]
+        assert (
+            f"exempts principal {self.INGEST_ROLE} " in findings[6]["Finding_Details"]
+        )
+        assert (
+            "z-exempt (the input 'z-exempt' of SageMaker processing job"
+            in self.reference["Finding_Details"]
+        )
 
     # DAT-02: SageMaker transform, processing and endpoint buckets and Bedrock
     # evaluation buckets are on the data path. Each source alone names one
@@ -31084,10 +31126,10 @@ class TestBR47DataPathBucketTLS:
             **source,
         )
         assert [f["Status"] for f in findings] == ["Failed", "Passed"]
-        assert (
-            f"Bucket {bucket} is on the Bedrock data path as {label} and it has no "
-            "bucket policy" in findings[0]["Finding_Details"]
+        assert findings[0]["Finding_Details"].startswith(
+            f"Bucket {bucket} is on the Bedrock data path and it has no bucket policy"
         )
+        assert f"{bucket} ({label})" in self.reference["Finding_Details"]
 
     def test_br47_disabled_data_capture_is_not_on_the_data_path(self):
         findings = self._run(
@@ -31268,14 +31310,15 @@ class TestBR47DataPathBucketTLS:
                 **self._exempting_hr(operator, "aws:ViaAWSService", "false"),
             }
         )
-        assert [f["Status"] for f in findings] == ["Passed"]
+        assert [f["Status"] for f in findings] == ["Passed", "Passed"]
         details = findings[0]["Finding_Details"]
+        assert details.startswith("Bucket hr-bucket ")
         assert (
             "exempts requests an AWS service makes on a principal's behalf "
             f"({operator.lower()} aws:ViaAWSService false), which keep plaintext "
             "access to the bucket" in details
         )
-        assert "deny every plaintext request" not in details
+        assert "denies every plaintext request" not in details
 
     @pytest.mark.parametrize(
         "operator,value",
@@ -31421,9 +31464,12 @@ class TestBR47DataPathBucketTLS:
             },
         )
 
-        assert [f["Status"] for f in findings] == ["Passed"]
-        assert "51 of 51 Bedrock data path bucket(s)" in findings[0]["Finding_Details"]
-        assert "read cap" not in findings[0]["Finding_Details"]
+        assert [f["Status"] for f in findings] == ["Passed"] * 51
+        assert {f["Finding_Details"].split()[1] for f in findings} == {
+            f"bucket-{i}" for i in range(51)
+        }
+        assert "51 data path bucket(s)" in self.reference["Finding_Details"]
+        assert "read cap" not in self.reference["Finding_Details"]
         assert self.last_s3_client.get_bucket_policy.call_count == 51
         for finding in findings:
             assert_finding_schema(finding)
@@ -31450,12 +31496,11 @@ class TestBR47DataPathBucketTLS:
         assert len(failed) == 1
         assert "Bucket large-bucket" in failed[0]["Finding_Details"]
         assert (
-            "the large-data destination of CloudWatch model invocation logging"
-            in failed[0]["Finding_Details"]
+            "large-bucket (the large-data destination of CloudWatch model "
+            "invocation logging)" in self.reference["Finding_Details"]
         )
         assert len(passed) == 1
-        assert "1 of 2 Bedrock data path bucket(s)" in passed[0]["Finding_Details"]
-        assert "log-bucket" in passed[0]["Finding_Details"]
+        assert passed[0]["Finding_Details"].startswith("Bucket log-bucket ")
 
     def test_br47_large_data_bucket_shared_with_the_s3_destination_is_read_once(self):
         findings = self._run(
@@ -31475,10 +31520,12 @@ class TestBR47DataPathBucketTLS:
 
         assert self.last_s3_client.get_bucket_policy.call_count == 1
         assert [f["Status"] for f in findings] == ["Passed"]
-        assert "the model invocation log destination" in findings[0]["Finding_Details"]
+        assert (
+            "the model invocation log destination" in self.reference["Finding_Details"]
+        )
         assert (
             "the large-data destination of CloudWatch model invocation logging"
-            in findings[0]["Finding_Details"]
+            in self.reference["Finding_Details"]
         )
 
     def test_br47_distillation_invocation_log_sources_are_on_the_data_path(self):
@@ -31516,14 +31563,16 @@ class TestBR47DataPathBucketTLS:
         assert len(failed) == 1
         assert "Bucket logs-b" in failed[0]["Finding_Details"]
         assert (
-            "the invocation log source of customization job 'distill-2'"
-            in failed[0]["Finding_Details"]
+            "logs-b (the invocation log source of customization job 'distill-2')"
+            in self.reference["Finding_Details"]
         )
-        assert len(passed) == 1
-        assert "2 of 3 Bedrock data path bucket(s)" in passed[0]["Finding_Details"]
+        assert [f["Finding_Details"].split()[1] for f in passed] == [
+            "logs-a",
+            "out-bucket",
+        ]
         assert (
-            "the invocation log source of customization job 'distill-1'"
-            in passed[0]["Finding_Details"]
+            "logs-a (the invocation log source of customization job 'distill-1')"
+            in self.reference["Finding_Details"]
         )
 
     def test_br47_log_destination_read_by_a_distillation_job_is_read_once(self):
@@ -31545,10 +31594,12 @@ class TestBR47DataPathBucketTLS:
 
         assert self.last_s3_client.get_bucket_policy.call_count == 1
         assert [f["Status"] for f in findings] == ["Failed"]
-        assert "the model invocation log destination" in findings[0]["Finding_Details"]
+        assert (
+            "the model invocation log destination" in self.reference["Finding_Details"]
+        )
         assert (
             "the invocation log source of customization job 'distill-1'"
-            in findings[0]["Finding_Details"]
+            in self.reference["Finding_Details"]
         )
 
     def test_br47_deny_over_the_bucket_only_leaves_objects_plaintext(self):
@@ -31651,8 +31702,11 @@ class TestBR47DataPathBucketTLS:
             }
         )
 
-        assert [f["Status"] for f in findings] == ["Passed"]
-        assert "2 of 2 Bedrock data path bucket(s)" in findings[0]["Finding_Details"]
+        assert [f["Status"] for f in findings] == ["Passed", "Passed"]
+        assert [f["Finding_Details"].split()[1] for f in findings] == [
+            "hr-bucket",
+            "support-bucket",
+        ]
 
     def test_br47_deny_on_one_action_does_not_cover_the_s3_family(self):
         findings = self._two_bucket_estate(
@@ -31682,7 +31736,7 @@ class TestBR47DataPathBucketTLS:
             }
         )
 
-        assert [f["Status"] for f in findings] == ["Passed"]
+        assert [f["Status"] for f in findings] == ["Passed", "Passed"]
 
     def test_br47_one_bucket_serving_two_knowledge_bases_is_read_once(self):
         findings = self._run(
@@ -31705,7 +31759,12 @@ class TestBR47DataPathBucketTLS:
 
         assert self.last_s3_client.get_bucket_policy.call_count == 1
         assert [f["Status"] for f in findings] == ["Passed"]
-        assert "1 of 1 Bedrock data path bucket(s)" in findings[0]["Finding_Details"]
+        assert findings[0]["Finding_Details"].startswith("Bucket shared-bucket ")
+        assert (
+            "shared-bucket (data source 'hr-docs' in knowledge base 'hr-kb'; "
+            "data source 'support-docs' in knowledge base 'support-kb')"
+            in self.reference["Finding_Details"]
+        )
 
     def test_br47_unparseable_bucket_policy_is_na(self):
         findings = self._two_bucket_estate(
@@ -38062,7 +38121,8 @@ class TestBR52DataPathObjectLock:
             ),
         ):
             result = bedrock_app.check_bedrock_data_path_object_lock(region="us-east-1")
-        return result, extract_csv_data(result)
+        rows, self.reference = _peel_data_path_reference(extract_csv_data(result))
+        return result, rows
 
     def test_br52_first_bucket_compliant_second_governance_fails(self):
         result, rows = self._run(
@@ -38233,7 +38293,7 @@ class TestBR52DataPathObjectLock:
         )
         assert [r["Status"] for r in rows] == ["Failed", "Passed"]
         assert "open-b" in rows[0]["Finding_Details"]
-        assert "SageMaker training job 'tj-old'" in rows[0]["Finding_Details"]
+        assert "SageMaker training job 'tj-old'" in self.reference["Finding_Details"]
         assert "lock-a" in rows[1]["Finding_Details"]
         assert "not a verdict on the whole data path" not in " ".join(
             r["Finding_Details"] for r in rows
@@ -38272,8 +38332,10 @@ class TestBR52DataPathObjectLock:
                 ],
             ),
         ):
-            rows = extract_csv_data(
-                bedrock_app.check_bedrock_data_path_object_lock(region="us-east-1")
+            rows, _ = _peel_data_path_reference(
+                extract_csv_data(
+                    bedrock_app.check_bedrock_data_path_object_lock(region="us-east-1")
+                )
             )
         assert [r["Status"] for r in rows] == ["Passed"]
         assert "AWS Backup vaults could not be listed" in rows[0]["Finding_Details"]
@@ -38332,7 +38394,10 @@ class TestBR52DataPathObjectLock:
         assert "No immutable backup covers it" in rows[0]["Finding_Details"]
         assert "vault vault-g" in rows[0]["Finding_Details"]
         assert "in governance mode" in rows[0]["Finding_Details"]
-        assert "a-backed (kb) through AWS Backup" in rows[1]["Finding_Details"]
+        assert rows[1]["Finding_Details"].startswith(
+            "Bucket a-backed is on the Bedrock data path and holds its newest "
+            "backup in a compliance-mode Vault Lock"
+        )
         assert "vault vault-c" in rows[1]["Finding_Details"]
         assert (
             "minimum retention 35 day(s), in compliance mode, immutable since"
@@ -38391,7 +38456,9 @@ class TestBR52DataPathObjectLock:
             "vault vault-unlocked (minimum retention 35 day(s), has no Vault Lock)"
             in (rows[0]["Finding_Details"])
         )
-        assert "b (kb) through AWS Backup" in rows[1]["Finding_Details"]
+        assert rows[1]["Finding_Details"].startswith(
+            "Bucket b is on the Bedrock data path and holds its newest backup"
+        )
         assert self.backup.describe_backup_vault.call_count == 2
 
     def test_br52_no_recovery_point_is_named_in_the_failure(self):
@@ -38415,13 +38482,19 @@ class TestBR52DataPathObjectLock:
         assert [r["Status"] for r in rows] == ["N/A", "N/A"]
         assert all(r["Severity"] == "Informational" for r in rows)
         object_lock, backup = rows
-        assert "b (kb)" in object_lock["Finding_Details"]
+        assert object_lock["Finding_Details"].startswith(
+            "Bucket b is on the Bedrock data path, but its Object Lock "
+            "configuration was not read"
+        )
         assert "backup:ListRecoveryPointsByResource" in object_lock["Finding_Details"]
+        assert backup["Finding_Details"].startswith(
+            "Bucket a is on the Bedrock data path and uses GOVERNANCE mode default "
+            "retention"
+        )
         assert (
-            "1 Bedrock data path bucket(s) do not lock objects in COMPLIANCE mode "
-            "by default, but whether an immutable AWS Backup recovery point covers "
-            "them was not read, so they are not judged: a (kb)"
-        ) in backup["Finding_Details"]
+            "but whether an immutable AWS Backup recovery point covers it was not "
+            "read, so it is not judged" in backup["Finding_Details"]
+        )
         assert "backup:ListRecoveryPointsByResource" in backup["Finding_Details"]
 
     def test_br52_denied_backup_reads_name_the_missing_grant_not_a_ceiling(self):
@@ -38435,12 +38508,11 @@ class TestBR52DataPathObjectLock:
         )
         # Review #72 item 3: both SAM templates now grant the read, so a denial
         # points at what blocked it, and an unread backup is N/A, not Failed.
-        [row] = rows
-        assert row["Status"] == "N/A"
-        details = row["Finding_Details"]
-        assert "2 Bedrock data path bucket(s)" in details
-        denied, throttled = details.split("; b (kb)")
-        assert "a (kb)" in denied
+        assert [r["Status"] for r in rows] == ["N/A", "N/A"]
+        denied, throttled = (r["Finding_Details"] for r in rows)
+        details = denied + throttled
+        assert denied.startswith("Bucket a ")
+        assert throttled.startswith("Bucket b ")
         assert (
             "backup:ListRecoveryPointsByResource was denied to the Bedrock "
             "assessment role, so this read was not made. Both SAM templates grant "
@@ -38478,9 +38550,10 @@ class TestBR52DataPathObjectLock:
             vault_details={"vault-c": self._vault(lock_days_ago=3)},
         )
         assert [r["Status"] for r in rows] == ["Passed", "N/A"]
-        assert "a (kb) through AWS Backup" in rows[0]["Finding_Details"]
-        assert "1 of the 2" in rows[0]["Finding_Details"]
-        assert "b (kb)" in rows[1]["Finding_Details"]
+        assert rows[0]["Finding_Details"].startswith(
+            "Bucket a is on the Bedrock data path and holds its newest backup"
+        )
+        assert rows[1]["Finding_Details"].startswith("Bucket b ")
 
     def test_br52_a_point_older_than_the_lock_keeps_its_own_short_retention(self):
         """The minimum retention does not bind a point already in the vault.
@@ -38512,7 +38585,9 @@ class TestBR52DataPathObjectLock:
             "created before the lock date and is deleted at 2026-09-27 00:00:00+00:00, "
             "7 day(s) after creation" in rows[0]["Finding_Details"]
         )
-        assert "b (kb) through AWS Backup" in rows[1]["Finding_Details"]
+        assert rows[1]["Finding_Details"].startswith(
+            "Bucket b is on the Bedrock data path and holds its newest backup"
+        )
         assert "kept until 2027-09-20" in rows[1]["Finding_Details"]
 
     def test_br52_a_point_after_the_lock_is_not_described(self):
@@ -38543,8 +38618,8 @@ class TestBR52DataPathObjectLock:
             point_details={"vault-c": _make_client_error("AccessDeniedException")},
         )
         assert [r["Status"] for r in rows] == ["Passed", "N/A"]
-        assert "b (" in rows[0]["Finding_Details"]
-        assert "a (kb)" in rows[1]["Finding_Details"]
+        assert rows[0]["Finding_Details"].startswith("Bucket b ")
+        assert rows[1]["Finding_Details"].startswith("Bucket a ")
         assert "backup:DescribeRecoveryPoint" in rows[1]["Finding_Details"]
 
     def test_br52_vault_describe_failure_is_named_and_cached(self):
@@ -38557,15 +38632,12 @@ class TestBR52DataPathObjectLock:
             },
             vault_details={"vault-x": _make_client_error("AccessDeniedException")},
         )
-        [row] = rows
-        assert row["Status"] == "N/A"
-        assert "2 Bedrock data path bucket(s)" in row["Finding_Details"]
-        assert (
-            row["Finding_Details"].count(
+        assert [r["Status"] for r in rows] == ["N/A", "N/A"]
+        for row in rows:
+            assert (
                 "whose Vault Lock was not read (backup:DescribeBackupVault"
+                in row["Finding_Details"]
             )
-            == 2
-        )
         assert self.backup.describe_backup_vault.call_count == 1
 
     def test_br52_recovery_points_are_read_with_the_account_partition(
@@ -38610,6 +38682,211 @@ class TestBR52DataPathObjectLock:
         for finding in rows:
             assert_finding_schema(finding)
             assert finding["Check_ID"] == "BR-52"
+
+
+class TestDataPathBucketHomeRegion:
+    """Review #72 item 9: each data path bucket is judged once, in its Region."""
+
+    @pytest.mark.parametrize(
+        "constraint, home",
+        [
+            (None, "us-east-1"),
+            ("", "us-east-1"),
+            ("EU", "eu-west-1"),
+            ("ap-south-1", "ap-south-1"),
+        ],
+    )
+    def test_location_constraint_maps_to_a_region(self, constraint, home):
+        s3 = MagicMock()
+        s3.get_bucket_location.return_value = {"LocationConstraint": constraint}
+        assert bedrock_app._bucket_home_region(s3, "b", "us-west-2") == (home, "")
+        assert bedrock_app._bucket_home_region(s3, "b", "us-west-2") == (home, "")
+        s3.get_bucket_location.assert_called_once_with(Bucket="b")
+
+    def test_unread_location_keeps_the_assessing_region_and_is_retried(self):
+        s3 = MagicMock()
+        s3.get_bucket_location.side_effect = _make_client_error("AccessDenied")
+        home, note = bedrock_app._bucket_home_region(s3, "b", "us-west-2")
+        assert home == "us-west-2"
+        assert note == (
+            " Its home Region was not read (s3:GetBucketLocation: AccessDenied), "
+            "so this row is reported in the assessing Region us-west-2."
+        )
+        bedrock_app._bucket_home_region(s3, "b", "us-west-2")
+        assert s3.get_bucket_location.call_count == 2
+
+    INVENTORIES = {
+        "us-east-1": {
+            "buckets": {
+                "shared-bucket": ["data source 'docs' in knowledge base 'east-kb'"],
+                "east-only": ["the model invocation log destination"],
+            },
+            "errors": [],
+            "truncated": [],
+        },
+        "us-west-2": {
+            "buckets": {
+                "shared-bucket": ["the training data of customization job 'west'"]
+            },
+            "errors": [],
+            "truncated": [],
+        },
+    }
+
+    def _assess(self, location_error=None):
+        """Run BR-47 and BR-52 from two Regions that both reference one bucket."""
+        s3 = MagicMock()
+        if location_error:
+            s3.get_bucket_location.side_effect = location_error
+        else:
+            s3.get_bucket_location.side_effect = lambda Bucket: {
+                "LocationConstraint": {"shared-bucket": "EU", "east-only": None}[Bucket]
+            }
+        s3.get_bucket_policy.side_effect = _client_error("NoSuchBucketPolicy")
+        s3.get_object_lock_configuration.side_effect = _make_client_error(
+            "ObjectLockConfigurationNotFoundError"
+        )
+        backup = MagicMock()
+        backup.list_backup_vaults.return_value = {"BackupVaultList": []}
+        backup.list_recovery_points_by_resource.return_value = {"RecoveryPoints": []}
+        self.s3 = s3
+        self.backup_regions = []
+
+        def client(service, **kwargs):
+            if service == "backup":
+                self.backup_regions.append(kwargs.get("region_name"))
+                return backup
+            return {"s3": s3}[service]
+
+        csvs = {}
+        with (
+            patch.object(
+                bedrock_app,
+                "_ai_data_path_buckets",
+                side_effect=lambda region: self.INVENTORIES[region],
+            ),
+            patch("boto3.client", side_effect=client),
+        ):
+            for region in self.INVENTORIES:
+                csvs[region] = bedrock_app.generate_csv_report(
+                    [
+                        bedrock_app.check_bedrock_data_path_bucket_tls(region=region),
+                        bedrock_app.check_bedrock_data_path_object_lock(region=region),
+                    ]
+                )
+        return csvs
+
+    @staticmethod
+    def _consolidate(csvs):
+        """Feed the regional CSVs through the report Lambda's dedup."""
+        report_dir = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "aiml-security-assessment/functions/security/generate_consolidated_report",
+        )
+        if report_dir not in sys.path:
+            sys.path.insert(0, report_dir)
+        spec = importlib.util.spec_from_file_location(
+            "consolidated_report_app_item9", os.path.join(report_dir, "app.py")
+        )
+        report_app = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(report_app)
+        captured = {}
+        results = {
+            "execution_id": "exec-123",
+            "account_id": "111122223333",
+            "bedrock": {
+                f"bedrock_security_report_exec-123_{region}": (
+                    report_app.parse_csv_content(text)
+                )
+                for region, text in csvs.items()
+            },
+            "sagemaker": {},
+            "agentcore": {},
+        }
+        with patch.object(
+            report_app,
+            "generate_report_from_template",
+            side_effect=lambda **kwargs: captured.update(kwargs) or "<html></html>",
+        ):
+            report_app.generate_html_report(results)
+        return captured["all_findings"]
+
+    def test_a_bucket_two_regions_reference_is_reported_once(self):
+        findings = self._consolidate(self._assess())
+
+        for check_id in ("BR-47", "BR-52"):
+            shared = [
+                f
+                for f in findings
+                if f["Check_ID"] == check_id
+                and f["Finding_Details"].startswith("Bucket shared-bucket ")
+            ]
+            assert [(f["Status"], f["Region"]) for f in shared] == [
+                ("Failed", "eu-west-1")
+            ]
+            east = [
+                f
+                for f in findings
+                if f["Check_ID"] == check_id
+                and f["Finding_Details"].startswith("Bucket east-only ")
+            ]
+            assert [(f["Status"], f["Region"]) for f in east] == [
+                ("Failed", "us-east-1")
+            ]
+            # Each assessed Region keeps its own record of what references
+            # which bucket.
+            references = [
+                f
+                for f in findings
+                if f["Check_ID"] == check_id
+                and "are referenced by resources in" in f["Finding_Details"]
+            ]
+            assert sorted(f["Region"] for f in references) == [
+                "us-east-1",
+                "us-west-2",
+            ]
+            assert any(
+                "east-kb" in f["Finding_Details"] and f["Region"] == "us-east-1"
+                for f in references
+            )
+            assert any(
+                "customization job 'west'" in f["Finding_Details"]
+                and f["Region"] == "us-west-2"
+                for f in references
+            )
+
+        locations = [c.kwargs["Bucket"] for c in self.s3.get_bucket_location.mock_calls]
+        assert sorted(locations) == ["east-only", "shared-bucket"]
+        assert sorted(set(self.backup_regions)) == ["eu-west-1", "us-east-1"]
+        assert (
+            "AWS Backup vault(s) in eu-west-1"
+            in [
+                f["Finding_Details"]
+                for f in findings
+                if f["Check_ID"] == "BR-52"
+                and f["Finding_Details"].startswith("Bucket shared-bucket ")
+            ][0]
+        )
+
+    def test_an_unread_location_keeps_each_assessing_region(self):
+        findings = self._consolidate(
+            self._assess(location_error=_make_client_error("AccessDenied"))
+        )
+
+        shared = [
+            f
+            for f in findings
+            if f["Check_ID"] == "BR-47"
+            and f["Finding_Details"].startswith("Bucket shared-bucket ")
+        ]
+        assert sorted(f["Region"] for f in shared) == ["us-east-1", "us-west-2"]
+        for finding in shared:
+            assert (
+                "Its home Region was not read (s3:GetBucketLocation: AccessDenied), "
+                f"so this row is reported in the assessing Region {finding['Region']}."
+            ) in finding["Finding_Details"]
+        assert sorted(set(self.backup_regions)) == ["us-east-1", "us-west-2"]
 
 
 class TestBR53OwnerTagSweep:

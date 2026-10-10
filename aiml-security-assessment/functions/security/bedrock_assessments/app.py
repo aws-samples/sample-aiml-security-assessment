@@ -40454,6 +40454,69 @@ def _agentcore_s3_locations(region: str = "") -> Dict[str, Any]:
     return {"locations": locations, "errors": errors}
 
 
+# Bucket name -> home Region, read once per container. A bucket keeps its
+# Region for its lifetime, so only successful reads are cached.
+_BUCKET_REGIONS: Dict[str, str] = {}
+
+
+def _bucket_home_region(s3_client, bucket: str, region: str) -> Tuple[str, str]:
+    """
+    Return (Region, note) for a data path bucket's BR-47 and BR-52 rows.
+
+    Buckets are account-global, and every assessed Region that references one
+    reports it. Giving each row the bucket's own Region and Region-free text
+    lets the report collapse the copies. When GetBucketLocation fails the row
+    keeps the assessing Region and the note says why.
+    """
+    if bucket in _BUCKET_REGIONS:
+        return _BUCKET_REGIONS[bucket], ""
+    try:
+        constraint = s3_client.get_bucket_location(Bucket=bucket).get(
+            "LocationConstraint"
+        )
+    except (ClientError, BotoCoreError) as error:
+        return region, (
+            " Its home Region was not read (s3:GetBucketLocation: {}), so this "
+            "row is reported in the assessing Region {}.".format(
+                get_assessment_error_label(error), region or "unknown"
+            )
+        )
+    # S3 returns no LocationConstraint for us-east-1 and the legacy EU for
+    # eu-west-1.
+    if not isinstance(constraint, str) or not constraint:
+        home = "us-east-1"
+    elif constraint == "EU":
+        home = "eu-west-1"
+    else:
+        home = constraint
+    _BUCKET_REGIONS[bucket] = home
+    return home, ""
+
+
+def _data_path_reference_detail(buckets: Dict[str, Any], region: str) -> str:
+    """
+    Name the resources in ``region`` that put each bucket on the data path.
+
+    The per-bucket rows carry no Region-specific text, so this row keeps the
+    record of which resources in the assessed Region reference each bucket.
+    """
+    names = sorted(buckets)
+    listed = "; ".join(
+        "{} ({})".format(bucket, "; ".join(sorted(buckets[bucket])[:3]))
+        for bucket in names[:MAX_REPORTED_PLAINTEXT_BUCKETS]
+    )
+    more = len(names) - MAX_REPORTED_PLAINTEXT_BUCKETS
+    return (
+        "{} data path bucket(s) are referenced by resources in {}: {}{}. Each "
+        "bucket is judged in its own row, reported in the bucket's Region.".format(
+            len(names),
+            region or "this region",
+            listed,
+            f", and {more} more" if more > 0 else "",
+        )
+    )
+
+
 def check_bedrock_data_path_bucket_tls(region: str = "") -> Dict[str, Any]:
     """
     BR-47: Verify every S3 bucket on the Bedrock data path denies plaintext
@@ -40542,13 +40605,26 @@ def check_bedrock_data_path_bucket_tls(region: str = "") -> Dict[str, Any]:
             return findings
 
         s3_client = boto3.client("s3", config=boto3_config, region_name=region)
-        enforced = []
         plaintext = []
-        exempted = False
-        indeterminate = []
+        enforced_rows = []
+        indeterminate_rows = []
+        incomplete = bool(inventory["errors"])
+
+        def bucket_row(home, note, details, resolution, severity, status):
+            return create_finding(
+                check_id="BR-47",
+                finding_name=check_name,
+                finding_details=details + note,
+                resolution=resolution,
+                reference=AI_DATA_PATH_TLS_REFERENCE,
+                severity=severity,
+                status=status,
+                region=home,
+            )
 
         for bucket in sorted(inventory["buckets"]):
-            labels = "; ".join(sorted(inventory["buckets"][bucket])[:3])
+            home, note = _bucket_home_region(s3_client, bucket, region)
+            unread = None
             try:
                 policy = s3_client.get_bucket_policy(Bucket=bucket)
             except ClientError as error:
@@ -40557,7 +40633,8 @@ def check_bedrock_data_path_bucket_tls(region: str = "") -> Dict[str, Any]:
                     plaintext.append(
                         {
                             "bucket": bucket,
-                            "labels": labels,
+                            "home": home,
+                            "note": note,
                             "detail": (
                                 "it has no bucket policy at all, so every request to "
                                 "it is accepted over plaintext HTTP"
@@ -40565,36 +40642,81 @@ def check_bedrock_data_path_bucket_tls(region: str = "") -> Dict[str, Any]:
                         }
                     )
                     continue
-                indeterminate.append(
-                    f"{bucket} ({labels}): its bucket policy could not be read "
+                unread = (
+                    f"its bucket policy could not be read "
                     f"({get_assessment_error_label(error)}), which is a permissions "
                     "or location problem and not evidence that TLS is unenforced"
                 )
-                continue
             except Exception as error:
-                indeterminate.append(
-                    f"{bucket} ({labels}): its bucket policy could not be read "
+                unread = (
+                    f"its bucket policy could not be read "
                     f"({get_assessment_error_label(error)})"
                 )
-                continue
 
-            try:
-                assessment = _bucket_tls_enforcement(bucket, policy.get("Policy"))
-            except (ValueError, TypeError) as error:
-                indeterminate.append(
-                    f"{bucket} ({labels}): its bucket policy is not readable JSON "
-                    f"({get_assessment_error_label(error)})"
+            if unread is None:
+                try:
+                    assessment = _bucket_tls_enforcement(bucket, policy.get("Policy"))
+                except (ValueError, TypeError) as error:
+                    unread = (
+                        "its bucket policy is not readable JSON "
+                        f"({get_assessment_error_label(error)})"
+                    )
+
+            if unread is not None:
+                indeterminate_rows.append(
+                    bucket_row(
+                        home,
+                        note,
+                        f"Bucket {bucket} is on the Bedrock data path, but {unread}, "
+                        "so it is neither proven to enforce TLS nor proven to "
+                        "accept plaintext.",
+                        "Grant s3:GetBucketPolicy on this bucket, or run the "
+                        "assessment from the account that owns it, then re-check "
+                        "the transport condition.",
+                        "Informational",
+                        "N/A",
+                    )
                 )
-                continue
-
-            if assessment["enforced"]:
-                enforced.append(f"{bucket} ({labels}): {assessment['detail']}")
-                exempted = exempted or assessment["exempted"]
+            elif assessment["enforced"]:
+                denied = (
+                    "plaintext requests from every principal it does not exempt"
+                    if assessment["exempted"]
+                    else "every plaintext request"
+                )
+                details = (
+                    f"Bucket {bucket} is on the Bedrock data path and denies "
+                    f"{denied}: {assessment['detail']}."
+                )
+                enforced_rows.append(
+                    bucket_row(
+                        home,
+                        note,
+                        details
+                        + " It is N/A because the bucket list is incomplete, so "
+                        "this is not a verdict on the whole data path.",
+                        "Resolve the incomplete reads reported for this check, "
+                        "then re-run it to judge every data path bucket.",
+                        "Informational",
+                        "N/A",
+                    )
+                    if incomplete
+                    else bucket_row(
+                        home,
+                        note,
+                        details,
+                        "No action required. Re-check whenever a knowledge base "
+                        "data source, a log destination or a customization job "
+                        "adds a bucket.",
+                        "Medium",
+                        "Passed",
+                    )
+                )
             else:
                 plaintext.append(
                     {
                         "bucket": bucket,
-                        "labels": labels,
+                        "home": home,
+                        "note": note,
                         "detail": assessment["detail"],
                     }
                 )
@@ -40602,25 +40724,19 @@ def check_bedrock_data_path_bucket_tls(region: str = "") -> Dict[str, Any]:
         for entry in plaintext[:MAX_REPORTED_PLAINTEXT_BUCKETS]:
             findings["status"] = "WARN"
             findings["csv_data"].append(
-                create_finding(
-                    check_id="BR-47",
-                    finding_name=check_name,
-                    finding_details=(
-                        "Bucket {} is on the Bedrock data path as {} and {}.".format(
-                            entry["bucket"], entry["labels"], entry["detail"]
-                        )
+                bucket_row(
+                    entry["home"],
+                    entry["note"],
+                    "Bucket {} is on the Bedrock data path and {}.".format(
+                        entry["bucket"], entry["detail"]
                     ),
-                    resolution=(
-                        'Add a bucket policy statement with "Effect": "Deny", '
-                        '"Principal": "*", "Action": "s3:*", both '
-                        "arn:aws:s3:::<bucket> and arn:aws:s3:::<bucket>/* in "
-                        'Resource, and "Condition": {"Bool": '
-                        '{"aws:SecureTransport": "false"}}.'
-                    ),
-                    reference=AI_DATA_PATH_TLS_REFERENCE,
-                    severity="High",
-                    status="Failed",
-                    region=region,
+                    'Add a bucket policy statement with "Effect": "Deny", '
+                    '"Principal": "*", "Action": "s3:*", both '
+                    "arn:aws:s3:::<bucket> and arn:aws:s3:::<bucket>/* in "
+                    'Resource, and "Condition": {"Bool": '
+                    '{"aws:SecureTransport": "false"}}.',
+                    "High",
+                    "Failed",
                 )
             )
 
@@ -40653,86 +40769,22 @@ def check_bedrock_data_path_bucket_tls(region: str = "") -> Dict[str, Any]:
                 )
             )
 
-        incomplete = bool(inventory["errors"])
-        denied = (
-            "plaintext requests from every principal they do not exempt"
-            if exempted
-            else "every plaintext request"
+        findings["csv_data"].extend(enforced_rows)
+        findings["csv_data"].extend(indeterminate_rows)
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-47",
+                finding_name=check_name,
+                finding_details=_data_path_reference_detail(
+                    inventory["buckets"], region
+                ),
+                resolution="No action required",
+                reference=AI_DATA_PATH_TLS_REFERENCE,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
         )
-        if enforced and incomplete:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="BR-47",
-                    finding_name=check_name,
-                    finding_details=(
-                        "{} of the {} Bedrock data path bucket(s) read deny {}, "
-                        "but the bucket list is incomplete, so this is not a "
-                        "verdict on the whole data path: {}.".format(
-                            len(enforced),
-                            len(inventory["buckets"]),
-                            denied,
-                            "; ".join(enforced),
-                        )
-                    ),
-                    resolution=(
-                        "Resolve the incomplete reads reported for this check, then "
-                        "re-run it to judge every data path bucket."
-                    ),
-                    reference=AI_DATA_PATH_TLS_REFERENCE,
-                    severity="Informational",
-                    status="N/A",
-                    region=region,
-                )
-            )
-        elif enforced:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="BR-47",
-                    finding_name=check_name,
-                    finding_details=(
-                        "{} of {} Bedrock data path bucket(s) deny {}: {}.".format(
-                            len(enforced),
-                            len(inventory["buckets"]),
-                            denied,
-                            "; ".join(enforced),
-                        )
-                    ),
-                    resolution=(
-                        "No action required. Re-check whenever a knowledge base data "
-                        "source, a log destination or a customization job adds a "
-                        "bucket."
-                    ),
-                    reference=AI_DATA_PATH_TLS_REFERENCE,
-                    severity="Medium",
-                    status="Passed",
-                    region=region,
-                )
-            )
-
-        if indeterminate:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="BR-47",
-                    finding_name=check_name,
-                    finding_details=(
-                        "{} Bedrock data path bucket(s) have no readable bucket "
-                        "policy, so they are neither proven to enforce TLS nor proven "
-                        "to accept plaintext: {}.".format(
-                            len(indeterminate), "; ".join(indeterminate[:5])
-                        )
-                    ),
-                    resolution=(
-                        "Grant s3:GetBucketPolicy on these buckets, or run the "
-                        "assessment from the account and Region that owns them, then "
-                        "re-check the transport condition."
-                    ),
-                    reference=AI_DATA_PATH_TLS_REFERENCE,
-                    severity="Informational",
-                    status="N/A",
-                    region=region,
-                )
-            )
-
         return findings
 
     except Exception as e:
@@ -41035,7 +41087,7 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
             "csv_data": [],
         }
 
-        def row(details, resolution, severity, status):
+        def row(details, resolution, severity, status, row_region=None):
             return create_finding(
                 check_id="BR-52",
                 finding_name=check_name,
@@ -41044,7 +41096,7 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
                 reference=OBJECT_LOCK_REFERENCE,
                 severity=severity,
                 status=status,
-                region=region,
+                region=region if row_region is None else row_region,
             )
 
         inventory = _ai_data_path_buckets(region)
@@ -41076,16 +41128,37 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
             )
             return findings
 
+        def locked_row(details, note, home):
+            if gaps:
+                return row(
+                    details + " It is N/A because the bucket list is incomplete, "
+                    "so this is not a verdict on the whole data path." + note,
+                    COULD_NOT_ASSESS_RESOLUTION,
+                    "Informational",
+                    "N/A",
+                    home,
+                )
+            return row(details + note, "No action required", "Medium", "Passed", home)
+
         now = datetime.now(timezone.utc)
-        evidence = _backup_vault_lock_evidence(region, now)
         s3_client = boto3.client("s3", config=boto3_config, region_name=region)
-        backup_client = boto3.client("backup", config=boto3_config, region_name=region)
-        vault_cache: Dict[str, Any] = {}
-        locked = []
-        indeterminate = []
-        backup_unread = []
+        # AWS Backup is regional, so a bucket's recovery points and vaults are
+        # read in the bucket's own Region.
+        backup_clients: Dict[str, Any] = {}
+        vault_caches: Dict[str, Dict[str, Any]] = {}
+        evidence_by_region: Dict[str, str] = {}
+        locked_rows = []
+        indeterminate_rows = []
+        backup_unread_rows = []
         for bucket in sorted(inventory["buckets"]):
-            labels = "; ".join(sorted(inventory["buckets"][bucket])[:3])
+            home, note = _bucket_home_region(s3_client, bucket, region)
+            if home not in backup_clients:
+                backup_clients[home] = boto3.client(
+                    "backup", config=boto3_config, region_name=home
+                )
+                vault_caches[home] = {}
+                evidence_by_region[home] = _backup_vault_lock_evidence(home, now)
+            evidence = evidence_by_region[home]
             unread = None
             try:
                 configuration = (
@@ -41107,86 +41180,83 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
                 deficiency = None
 
             if deficiency is None and unread is None:
-                locked.append(f"{bucket} ({labels})")
+                locked_rows.append(
+                    locked_row(
+                        f"Bucket {bucket} is on the Bedrock data path and locks its "
+                        f"objects in COMPLIANCE mode by default. {evidence}",
+                        note,
+                        home,
+                    )
+                )
                 continue
-            backup = _bucket_backup_lock(backup_client, bucket, vault_cache, now)
+            backup = _bucket_backup_lock(
+                backup_clients[home], bucket, vault_caches[home], now
+            )
             if backup["status"] == "locked":
-                locked.append(
-                    f"{bucket} ({labels}) through AWS Backup: {backup['detail']}"
+                locked_rows.append(
+                    locked_row(
+                        f"Bucket {bucket} is on the Bedrock data path and holds its "
+                        "newest backup in a compliance-mode Vault Lock: "
+                        f"{backup['detail']}. {evidence}",
+                        note,
+                        home,
+                    )
                 )
                 continue
             if unread is not None:
-                indeterminate.append(
-                    f"{bucket} ({labels}): {unread}, and {backup['detail']}"
+                indeterminate_rows.append(
+                    row(
+                        f"Bucket {bucket} is on the Bedrock data path, but its "
+                        f"Object Lock configuration was not read ({unread}), which "
+                        "is a permissions or ownership problem and not evidence "
+                        f"that objects are unlocked, and {backup['detail']}.{note}",
+                        COULD_NOT_ASSESS_RESOLUTION,
+                        "Informational",
+                        "N/A",
+                        home,
+                    )
                 )
                 continue
             if backup["status"] == "unread":
-                backup_unread.append(
-                    f"{bucket} ({labels}) {deficiency}, and {backup['detail']}"
+                backup_unread_rows.append(
+                    row(
+                        f"Bucket {bucket} is on the Bedrock data path and "
+                        f"{deficiency}, but whether an immutable AWS Backup "
+                        "recovery point covers it was not read, so it is not "
+                        f"judged: {backup['detail']}. {evidence}{note}",
+                        COULD_NOT_ASSESS_RESOLUTION,
+                        "Informational",
+                        "N/A",
+                        home,
+                    )
                 )
                 continue
             findings["status"] = "WARN"
             findings["csv_data"].append(
                 row(
-                    f"Bucket {bucket} is on the Bedrock data path as {labels} and "
+                    f"Bucket {bucket} is on the Bedrock data path and "
                     f"{deficiency}, so its objects can be deleted or overwritten. "
-                    f"No immutable backup covers it: {backup['detail']}. {evidence}",
+                    f"No immutable backup covers it: {backup['detail']}. "
+                    f"{evidence}{note}",
                     "Enable Object Lock on the bucket and set a default retention "
                     "in COMPLIANCE mode with a period that meets your "
                     "record-retention requirement.",
                     "Medium",
                     "Failed",
+                    home,
                 )
             )
-
-        if locked:
-            findings["csv_data"].append(
-                row(
-                    "{} of the {} Bedrock data path bucket(s) read lock objects in "
-                    "COMPLIANCE mode by default or hold their newest backup in a "
-                    "compliance-mode Vault Lock: {}.{} {}".format(
-                        len(locked),
-                        len(inventory["buckets"]),
-                        "; ".join(locked[:5]),
-                        " The bucket list is incomplete, so this is not a verdict "
-                        "on the whole data path."
-                        if gaps
-                        else "",
-                        evidence,
-                    ),
-                    COULD_NOT_ASSESS_RESOLUTION if gaps else "No action required",
-                    "Informational" if gaps else "Medium",
-                    "N/A" if gaps else "Passed",
-                )
+        findings["csv_data"].extend(locked_rows)
+        findings["csv_data"].extend(indeterminate_rows)
+        findings["csv_data"].extend(backup_unread_rows)
+        findings["csv_data"].append(
+            row(
+                _data_path_reference_detail(inventory["buckets"], region),
+                "No action required",
+                "Informational",
+                "N/A",
             )
-
-        if indeterminate:
-            findings["csv_data"].append(
-                row(
-                    "{} Bedrock data path bucket(s) have no readable Object Lock "
-                    "configuration, which is a permissions or ownership problem and "
-                    "not evidence that objects are unlocked: {}.".format(
-                        len(indeterminate), "; ".join(indeterminate[:5])
-                    ),
-                    COULD_NOT_ASSESS_RESOLUTION,
-                    "Informational",
-                    "N/A",
-                )
-            )
-        if backup_unread:
-            findings["csv_data"].append(
-                row(
-                    "{} Bedrock data path bucket(s) do not lock objects in "
-                    "COMPLIANCE mode by default, but whether an immutable AWS "
-                    "Backup recovery point covers them was not read, so they are "
-                    "not judged: {}. {}".format(
-                        len(backup_unread), "; ".join(backup_unread[:5]), evidence
-                    ),
-                    COULD_NOT_ASSESS_RESOLUTION,
-                    "Informational",
-                    "N/A",
-                )
-            )
+        )
         return findings
 
     except Exception as e:
