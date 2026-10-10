@@ -132,8 +132,13 @@ ACCESS_DENIED_ERROR_CODES = {
 # - AR-01..AR-08 and their AG-33..AG-38 derivatives cover Agent Registry
 #   governance but do not directly establish an OWASP LLM01-LLM10 control, so
 #   the OWASP assessment deliberately does not read the Registry CSV.
+#
+# A mapping with "source_finding_prefixes" maps only the source rows whose
+# Finding starts with one of them. SM-10, SM-11 and SM-22 also emit rows for
+# other controls (Studio domain networks, AI Lambda subnets, endpoint
+# encryption, registry sharing), which do not establish the mapped control.
 # ---------------------------------------------------------------------------
-OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
+OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, Any]]] = {
     # LLM01 Prompt Injection
     "BR-34": [
         {
@@ -419,6 +424,7 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
             "owasp_category": "LLM03:2025 Supply Chain",
             "finding": "OWASP LLM03: SageMaker Notebook VPC Deployment",
             "resolution": "Deploy SageMaker notebook instances inside a VPC so package, data, and model artifact access can be controlled through private network paths.",
+            "source_finding_prefixes": ("SageMaker Notebook ",),
         }
     ],
     "SM-11": [
@@ -427,12 +433,14 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
             "owasp_category": "LLM03:2025 Supply Chain",
             "finding": "OWASP LLM03: SageMaker Model Network Isolation",
             "resolution": "Enable network isolation on SageMaker models so inference containers cannot make unmanaged outbound calls that alter dependencies or exfiltrate model artifacts.",
+            "source_finding_prefixes": ("SageMaker Model Network Isolation",),
         },
         {
             "check_id": "OW-10",
             "owasp_category": "LLM10:2025 Unbounded Consumption",
             "finding": "OWASP LLM10: SageMaker Model Outbound Network Control",
             "resolution": "Enable SageMaker model network isolation to prevent deployed model containers from making uncontrolled outbound calls that can amplify consumption or abuse downstream services.",
+            "source_finding_prefixes": ("SageMaker Model Network Isolation",),
         },
     ],
     "SM-14": [
@@ -546,12 +554,20 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
             "owasp_category": "LLM04:2025 Data and Model Poisoning",
             "finding": "OWASP LLM04: SageMaker Model Approval Workflow",
             "resolution": "Require SageMaker Model Registry approval workflows before production deployment so poisoned or unreviewed model versions are not promoted automatically.",
+            "source_finding_prefixes": (
+                "Model Approval Workflow",
+                "Deployed Model Registration",
+            ),
         },
         {
             "check_id": "OW-09",
             "owasp_category": "LLM09:2025 Misinformation",
             "finding": "OWASP LLM09: SageMaker Model Approval Workflow",
             "resolution": "Use SageMaker Model Registry approval workflows to ensure model behavior, intended use, and validation evidence are reviewed before production release.",
+            "source_finding_prefixes": (
+                "Model Approval Workflow",
+                "Deployed Model Registration",
+            ),
         },
     ],
     "SM-23": [
@@ -1123,7 +1139,11 @@ def build_owasp_mapping_findings(
                 source_severity = "Informational"
             row_region = row.get("Region") or region
 
+            source_finding = row.get("Finding") or ""
             for m in mappings:
+                prefixes = m.get("source_finding_prefixes")
+                if prefixes and not source_finding.startswith(tuple(prefixes)):
+                    continue
                 try:
                     owasp_rows.append(
                         create_finding(

@@ -86,6 +86,21 @@ recent catalog expansions. Twelve have direct OWASP mappings. The remaining
   OWASP Lambda and all fourteen Registry-derived controls are excluded from
   OWASP mapping.
 
+### Source rows filtered by finding name
+
+Three SageMaker check IDs also emit rows for controls other than the one their
+OWASP mapping names. For these, only source rows whose `Finding` starts with
+the listed text become OW rows:
+
+| Source | OW rows | Mapped source findings | Not mapped |
+| --- | --- | --- | --- |
+| `SM-10` | OW-03 | `SageMaker Notebook ...` | Studio domain network boundary and subnet exposure rows |
+| `SM-11` | OW-03, OW-10 | `SageMaker Model Network Isolation ...` | AI Lambda function network boundary, endpoint config encryption and subnet exposure, model VPC attachment, endpoint model network path, private invoke path and invocation source network rows |
+| `SM-22` | OW-04, OW-09 | `Model Approval Workflow ...`, `Deployed Model Registration` | Model Registry cross-account visibility and lifecycle stage rows |
+
+A `SageMaker Check Incomplete` row, written when a SageMaker check stops on an
+unexpected error, maps to no OW row.
+
 ## Extensibility
 
 The "By Compliance Standard" sidebar section is data-driven — future NIST AI

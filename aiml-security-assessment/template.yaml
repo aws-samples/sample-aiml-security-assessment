@@ -28,6 +28,7 @@ Metadata:
           - AgentCoreTokenVaultId
           - ApprovedExternalAccountIds
           - ApprovedOrganizationIds
+          - EnableSageMakerArtifactObjectReads
     ParameterLabels:
       EnableBedrockAssessment:
         default: Amazon Bedrock assessment
@@ -126,6 +127,15 @@ Parameters:
     Default: ""
     AllowedPattern: "^$|^o-[a-z0-9]{10,32}(,o-[a-z0-9]{10,32})*$"
     Description: Comma-separated AWS Organizations IDs approved for SageMaker Model Registry sharing.
+  EnableSageMakerArtifactObjectReads:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Let SM-43 call HeadObject on each single-object model artifact, which needs s3:GetObject on any object. When false, that leg is reported N/A.
+
+Conditions:
+  SageMakerArtifactObjectReadsEnabled:
+    !Equals [!Ref EnableSageMakerArtifactObjectReads, "true"]
 
 Resources:
   AIMLAssessmentStateMachine:
@@ -1545,7 +1555,7 @@ Resources:
       Runtime: python3.12
       Architectures:
         - x86_64
-      Timeout: 600 # 10 minutes
+      Timeout: 900 # 15 minutes
       MemorySize: 1024
       Environment:
         Variables:
@@ -1553,6 +1563,7 @@ Resources:
           TARGET_REGIONS: !Ref TargetRegions
           AIML_APPROVED_EXTERNAL_ACCOUNT_IDS: !Ref ApprovedExternalAccountIds
           AIML_APPROVED_ORG_IDS: !Ref ApprovedOrganizationIds
+          ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS: !Ref EnableSageMakerArtifactObjectReads
       Policies:
         - Statement:
             - Sid: PermissionCacheRead
@@ -1892,14 +1903,19 @@ Resources:
               Action:
                 - kms:DescribeKey # SM-03, SM-11, SM-18, SM-27
               Resource: !Sub 'arn:${AWS::Partition}:kms:*:${AWS::AccountId}:key/*'
-            - Sid: ModelArtifactObjectRead
-              # SM-43 calls HeadObject on each model artifact named as one S3
-              # object, to compare its ETag to the recorded one and read its own
-              # server-side encryption. HeadObject is authorized by s3:GetObject.
-              Effect: Allow
-              Action:
-                - s3:GetObject # SM-43
-              Resource: !Sub 'arn:${AWS::Partition}:s3:::*/*'
+            # SM-43 calls HeadObject on each model artifact named as one S3
+            # object, to compare its ETag to the recorded one and read its own
+            # server-side encryption. HeadObject is authorized by s3:GetObject,
+            # which also allows downloading any object, so the grant exists only
+            # when EnableSageMakerArtifactObjectReads is true.
+            - !If
+              - SageMakerArtifactObjectReadsEnabled
+              - Sid: ModelArtifactObjectRead
+                Effect: Allow
+                Action:
+                  - s3:GetObject # SM-43
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::*/*'
+              - !Ref AWS::NoValue
         - !Ref SageMakerAssessmentReadsPolicy
         - !Ref SageMakerAssessmentReadsPolicy2
 

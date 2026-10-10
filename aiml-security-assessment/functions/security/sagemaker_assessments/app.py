@@ -9,7 +9,11 @@ import time
 from typing import Callable, Dict, List, Any, Optional, Iterator, Tuple
 from io import StringIO
 from botocore.config import Config
-from botocore.exceptions import ClientError, EndpointConnectionError
+from botocore.exceptions import (
+    ClientError,
+    EndpointConnectionError,
+    UnknownEndpointError,
+)
 import random
 import json
 from functools import lru_cache
@@ -82,6 +86,142 @@ def get_assessment_error_label(error: Exception) -> str:
     if isinstance(error, EndpointConnectionError):
         return "EndpointConnectionError"
     return type(error).__name__
+
+
+# Errors that mean an API is not offered in the Region, or the Region is not
+# enabled: the population it would list is empty there, not unread. Access
+# denied is never one of these.
+SERVICE_UNAVAILABLE_ERROR_CODES = REGION_UNAVAILABLE_ERROR_CODES | {
+    "UnknownEndpoint",
+    "UnsupportedOperation",
+    "UnsupportedOperationException",
+}
+
+
+def _is_service_unavailable(error: Exception) -> bool:
+    """True when the error says the API is not available in this Region."""
+    if isinstance(error, (EndpointConnectionError, UnknownEndpointError)):
+        return True
+    if isinstance(error, ClientError):
+        code = error.response.get("Error", {}).get("Code", "")
+        return code in SERVICE_UNAVAILABLE_ERROR_CODES
+    return False
+
+
+def _service_unavailable_note(service: str, region: str, error: Exception) -> str:
+    return (
+        f"The {service} API is not available in {region or 'this region'} "
+        f"({get_assessment_error_label(error)}), so none of this population "
+        "comes from it."
+    )
+
+
+def _with_notes(rows: List[Dict[str, Any]], notes: List[str]) -> List[Dict[str, Any]]:
+    """Append each availability note to every row a check emitted."""
+    if notes:
+        text = " ".join(dict.fromkeys(notes))
+        for row in rows:
+            row["Finding_Details"] = f"{row['Finding_Details']} {text}"
+    return rows
+
+
+# The Lambda timeout in both SAM templates. Checks run one after another, and
+# the slowest is capped at about a minute, so the handler stops starting checks
+# this long before the timeout to finish the running one and write the CSV.
+LAMBDA_TIMEOUT_SECONDS = 900
+DEADLINE_MARGIN_SECONDS = 120
+_DEADLINE: Optional[float] = None
+
+
+def _deadline_reached() -> bool:
+    """True once less than DEADLINE_MARGIN_SECONDS of the invocation remain."""
+    return _DEADLINE is not None and time.monotonic() >= _DEADLINE
+
+
+CHECK_INCOMPLETE_FINDING = "SageMaker Check Incomplete"
+CHECK_INCOMPLETE_REFERENCE = (
+    "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html"
+)
+CHECK_TIMEOUT_FINDING = "SageMaker Check Not Assessed (Timeout)"
+CHECK_TIMEOUT_REFERENCE = (
+    "https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html"
+)
+
+
+def _run_check_safely(
+    check_id: str,
+    row_region: str,
+    check: Callable[..., Dict[str, Any]],
+    /,
+    *args,
+    **kwargs,
+) -> Dict[str, Any]:
+    """Run one check; an unexpected exception becomes one N/A row for its ID."""
+    try:
+        return check(*args, **kwargs)
+    except Exception as error:
+        logger.error(
+            f"{check.__name__} ({check_id}) failed in {row_region}: {error}",
+            exc_info=True,
+        )
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id=check_id,
+                    finding_name=CHECK_INCOMPLETE_FINDING,
+                    finding_details=(
+                        f"{check.__name__} stopped on an unexpected error, so its "
+                        f"{check_id} rows are not reported. "
+                        + build_could_not_assess_detail(error, row_region)
+                    ),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
+                    reference=CHECK_INCOMPLETE_REFERENCE,
+                    severity="Informational",
+                    status="N/A",
+                    region=row_region,
+                )
+            ]
+        }
+
+
+def _timeout_finding(
+    check_id: str, row_region: str, names: List[str]
+) -> Dict[str, Any]:
+    return create_finding(
+        check_id=check_id,
+        finding_name=CHECK_TIMEOUT_FINDING,
+        finding_details=(
+            f"Timeout, not assessed: the SageMaker assessment stopped starting "
+            f"checks {DEADLINE_MARGIN_SECONDS} s before its Lambda timeout, so "
+            f"{', '.join(names)} did not run in {row_region}. The rows collected "
+            "before the deadline are still reported."
+        ),
+        resolution=(
+            "Rerun the assessment with fewer Regions per run or a lower "
+            "MaxRegionConcurrency, so each SageMaker invocation finishes within "
+            f"its {LAMBDA_TIMEOUT_SECONDS} s timeout."
+        ),
+        reference=CHECK_TIMEOUT_REFERENCE,
+        severity="Informational",
+        status="N/A",
+        region=row_region,
+    )
+
+
+# Security Hub answers InvalidAccessException, "Account ... is not subscribed
+# to AWS Security Hub", when it is not enabled for the account in the Region.
+SECURITY_HUB_NOT_ENABLED_CODE = "InvalidAccessException"
+SECURITY_HUB_NOT_ENABLED_MESSAGE = "not subscribed to aws security hub"
+
+
+def _is_security_hub_not_enabled(error: Exception) -> bool:
+    if not isinstance(error, ClientError):
+        return False
+    detail = error.response.get("Error", {})
+    return (
+        detail.get("Code", "") == SECURITY_HUB_NOT_ENABLED_CODE
+        or SECURITY_HUB_NOT_ENABLED_MESSAGE in str(detail.get("Message", "")).lower()
+    )
 
 
 def build_could_not_assess_detail(error: Exception, region: str = "") -> str:
@@ -1017,6 +1157,25 @@ def _guardduty_security_hub_routing_finding(region: str) -> Dict[str, Any]:
         for page in client.get_paginator("list_enabled_products_for_import").paginate():
             subscriptions.extend(page.get("ProductSubscriptions", []))
     except Exception as error:
+        if _is_security_hub_not_enabled(error):
+            return _row(
+                "Security Hub is not enabled for this account in this region "
+                f"({get_assessment_error_label(error)}), so GuardDuty findings do "
+                "not reach the Security Hub view.",
+                "Enable Security Hub in this region, then enable its GuardDuty "
+                "integration.",
+                "Medium",
+                "Failed",
+            )
+        if _is_service_unavailable(error):
+            return _row(
+                "Security Hub is not available in this region "
+                f"({get_assessment_error_label(error)}), so no GuardDuty finding "
+                "can be routed to it here.",
+                "No action required.",
+                "Informational",
+                "N/A",
+            )
         return _row(
             "Whether GuardDuty findings are imported into Security Hub was not "
             "read: ListEnabledProductsForImport failed. "
@@ -1077,16 +1236,26 @@ def _guardduty_finding_review_finding(
             region=region,
         )
 
-    if routing.get("Status") != "Passed":
+    if routing.get("Finding") == f"{GUARDDUTY_ROUTING_FINDING} Incomplete":
         return _row(
-            "Security Hub in this region does not import GuardDuty findings, or "
-            "whether it does was not read (see the "
-            f"'{GUARDDUTY_ROUTING_FINDING}' row), so their review in Security "
-            "Hub was not judged.",
-            "Enable the GuardDuty integration in Security Hub for this region.",
+            "Whether Security Hub in this region imports GuardDuty findings was "
+            f"not read (see the '{GUARDDUTY_ROUTING_FINDING}' row), so their "
+            "review in Security Hub was not judged.",
+            COULD_NOT_ASSESS_RESOLUTION,
             "Informational",
             "N/A",
             name=f"{GUARDDUTY_REVIEW_FINDING} Incomplete",
+        )
+    if routing.get("Status") != "Passed":
+        # A routing gap is a configuration state the routing row already
+        # reports, so this row is not a failed read.
+        return _row(
+            "Security Hub in this region does not import GuardDuty findings "
+            f"(see the '{GUARDDUTY_ROUTING_FINDING}' row), so their review in "
+            "Security Hub was not judged.",
+            "Enable the GuardDuty integration in Security Hub for this region.",
+            "Informational",
+            "N/A",
         )
     cutoff = datetime.now(timezone.utc) - timedelta(days=GUARDDUTY_REVIEW_WINDOW_DAYS)
     filters = {
@@ -4278,10 +4447,14 @@ def _role_name_from_arn(role_arn: str) -> str:
     return str(role_arn).rsplit("/", 1)[-1]
 
 
-SAGEMAKER_RESOURCE_PROBE = "arn:aws:sagemaker:us-east-1:123456789012:zz-probe/zz-probe"
+SAGEMAKER_RESOURCE_PROBE = (
+    "arn:{partition}:sagemaker:us-east-1:123456789012:zz-probe/zz-probe"
+)
 
 
-def _broad_role_grant(permissions: Dict[str, Any]) -> Optional[str]:
+def _broad_role_grant(
+    permissions: Dict[str, Any], partition: str = "aws"
+) -> Optional[str]:
     """
     Return why a role holds every SageMaker action or more, or None.
 
@@ -4315,8 +4488,10 @@ def _broad_role_grant(permissions: Dict[str, Any]) -> Optional[str]:
                 )
             # AIR-SGM-TRN-05: a partial wildcard such as sagemaker:Create* on
             # every resource reaches every experiment's resources as well.
+            # IAM globs know only "*" and "?", so "[" is a literal character.
+            probe = SAGEMAKER_RESOURCE_PROBE.format(partition=partition)
             every_resource = "NotResource" in statement or any(
-                fnmatch.fnmatchcase(SAGEMAKER_RESOURCE_PROBE, str(r).lower())
+                _globs_overlap(probe, str(r).lower())
                 for r in _policy_values(statement.get("Resource"))
             )
             partial = [
@@ -4359,7 +4534,10 @@ def _environment_role_findings(
             if name not in cached:
                 unread.append(f"{label} role {role_arn} (not in the IAM cache)")
                 continue
-            reason = _broad_role_grant(cached[name])
+            reason = _broad_role_grant(
+                cached[name],
+                str(role_arn).split(":")[1] if ":" in str(role_arn) else "aws",
+            )
             if (
                 reason
                 and cached[name].get("permissions_boundary") is None
@@ -6224,6 +6402,7 @@ def _invoke_source_network_findings(
     inventory: Dict[str, Any],
     region: str,
     scp: Optional[Dict[str, Any]] = None,
+    scp_inventory: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
     AIR-SGM-EP-01: an interface endpoint gives callers a private path but does
@@ -6237,7 +6416,7 @@ def _invoke_source_network_findings(
         return []
     if scp is None:
         try:
-            scp = _creation_scp_state(None)
+            scp = _creation_scp_state(scp_inventory)
         except Exception as error:
             scp = {
                 "state": "unread",
@@ -6458,9 +6637,16 @@ AI_INVOKE_ACTIONS = (
 )
 
 
-def _ai_lambda_references(region: str) -> Tuple[Dict[str, List[str]], List[str]]:
-    """Lambda ARN -> what names it: agent action groups and gateway targets."""
+def _ai_lambda_references(
+    region: str, notes: Optional[List[str]] = None
+) -> Tuple[Dict[str, List[str]], List[str]]:
+    """Lambda ARN -> what names it: agent action groups and gateway targets.
+
+    A service not available in the Region names no function; its note is
+    appended to notes, and it is not a failed read.
+    """
     named, unread = {}, []
+    notes = notes if notes is not None else []
     try:
         agent_client = boto3.client(
             "bedrock-agent", config=boto3_config, region_name=region
@@ -6470,7 +6656,12 @@ def _ai_lambda_references(region: str) -> Tuple[Dict[str, List[str]], List[str]]
             agents.extend(page.get("agentSummaries", []))
     except Exception as error:
         agents = []
-        unread.append(f"bedrock:ListAgents ({get_assessment_error_label(error)})")
+        if _is_service_unavailable(error):
+            notes.append(
+                _service_unavailable_note("Amazon Bedrock Agents", region, error)
+            )
+        else:
+            unread.append(f"bedrock:ListAgents ({get_assessment_error_label(error)})")
     for agent in agents:
         agent_id = agent.get("agentId")
         label = f"agent {agent.get('agentName') or agent_id}"
@@ -6511,9 +6702,16 @@ def _ai_lambda_references(region: str) -> Tuple[Dict[str, List[str]], List[str]]
             gateways.extend(page.get("items", []))
     except Exception as error:
         gateways = []
-        unread.append(
-            f"bedrock-agentcore:ListGateways ({get_assessment_error_label(error)})"
-        )
+        if _is_service_unavailable(error):
+            notes.append(
+                _service_unavailable_note(
+                    "Amazon Bedrock AgentCore control", region, error
+                )
+            )
+        else:
+            unread.append(
+                f"bedrock-agentcore:ListGateways ({get_assessment_error_label(error)})"
+            )
     for gateway in gateways:
         gateway_id = gateway.get("gatewayId")
         label = f"gateway {gateway.get('name') or gateway_id}"
@@ -7105,7 +7303,8 @@ def check_ai_api_method_authorization(
     code that is not read by this check.
     """
     findings = {"csv_data": []}
-    named, unread = _ai_lambda_references(region)
+    notes: List[str] = []
+    named, unread = _ai_lambda_references(region, notes)
     ai_functions = {
         match.group(1)
         for arn in named
@@ -7263,6 +7462,7 @@ def check_ai_api_method_authorization(
                 region=region,
             )
         )
+    _with_notes(findings["csv_data"], notes)
     return findings
 
 
@@ -7394,7 +7594,8 @@ def check_ai_lambda_network_boundary(
     role may invoke a model, agent, runtime or endpoint.
     """
     findings = {"csv_data": []}
-    named, unread = _ai_lambda_references(region)
+    notes: List[str] = []
+    named, unread = _ai_lambda_references(region, notes)
     lambda_client = boto3.client("lambda", config=boto3_config, region_name=region)
     outside, attached = [], []
     if permission_cache is None:
@@ -7495,11 +7696,14 @@ def check_ai_lambda_network_boundary(
                 region=region,
             )
         )
+    _with_notes(findings["csv_data"], notes)
     return findings
 
 
 def check_sagemaker_model_network_isolation(
-    region: str = "", permission_cache: Optional[Dict[str, Any]] = None
+    region: str = "",
+    permission_cache: Optional[Dict[str, Any]] = None,
+    scp_inventory: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Check if SageMaker hosted models have network isolation enabled.
@@ -7726,7 +7930,9 @@ def check_sagemaker_model_network_isolation(
         findings["csv_data"].extend(_endpoint_config_kms_findings(inventory, region))
         findings["csv_data"].extend(_runtime_private_path_findings(inventory, region))
         findings["csv_data"].extend(
-            _invoke_source_network_findings(permission_cache, inventory, region)
+            _invoke_source_network_findings(
+                permission_cache, inventory, region, scp_inventory=scp_inventory
+            )
         )
 
         return findings
@@ -13121,7 +13327,7 @@ def check_sagemaker_config_compliance_evaluation(region: str = "") -> Dict[str, 
                         "invocation or recorder, and re-evaluate the rule."
                     ),
                     reference=CONFIG_REFERENCE,
-                    severity="Medium",
+                    severity="Informational",
                     status="N/A",
                     region=region,
                 )
@@ -15280,8 +15486,9 @@ def check_sagemaker_batch_creation_guardrails(
     network and isolation guardrails at creation time (AIR-SGM-EP-08).
 
     The SM-34 legs, over the batch transform path only, so a training or
-    notebook gap does not fail this verdict. Regional, so it shares a
-    (account, region) key with the SM-18 transform job rows.
+    notebook gap does not fail this verdict. Service control policies are
+    organization-wide, so the handler runs it once, under Global, on the
+    primary Region.
     """
     logger.debug("Starting check for SageMaker batch creation guardrails")
     return _creation_guardrail_findings(
@@ -15853,6 +16060,11 @@ REGIONAL_ADMIN_REFERENCE = (
 )
 
 
+# How _regional_admin marks a service that is not offered in the Region,
+# followed by the error label.
+REGIONAL_ADMIN_UNAVAILABLE = "not available in this Region: "
+
+
 def _account_and_status(response, key, account_field, status_field):
     record = response.get(key) or {}
     return record.get(account_field), record.get(status_field)
@@ -15873,6 +16085,12 @@ def _regional_admin(
     try:
         administrator, status = get_administrator()
     except Exception as error:
+        if _is_service_unavailable(error):
+            return (
+                None,
+                REGIONAL_ADMIN_UNAVAILABLE + get_assessment_error_label(error),
+                None,
+            )
         return None, None, get_assessment_error_label(error)
     if administrator and str(status).lower() == "enabled":
         return administrator, "administers this account as a member", None
@@ -16066,10 +16284,18 @@ def check_regional_security_admin(
         return findings
 
     detector_inventory = detector_inventory or get_guardduty_detector_inventory(region)
-    admins, problems, unread = {}, [], []
+    admins, problems, unread, notes = {}, [], [], []
     guardduty = boto3.client("guardduty", config=boto3_config, region_name=region)
     detector_id = detector_inventory.get("detector_id")
-    if detector_inventory.get("error") is not None:
+    if detector_inventory.get("error") is not None and _is_service_unavailable(
+        detector_inventory["error"]
+    ):
+        notes.append(
+            _service_unavailable_note(
+                "Amazon GuardDuty", region, detector_inventory["error"]
+            )
+        )
+    elif detector_inventory.get("error") is not None:
         unread.append(
             "Amazon GuardDuty (guardduty:ListDetectors: "
             f"{get_assessment_error_label(detector_inventory['error'])})"
@@ -16093,16 +16319,30 @@ def check_regional_security_admin(
             account_id,
         )
     securityhub = boto3.client("securityhub", config=boto3_config, region_name=region)
-    admins["AWS Security Hub"] = _regional_admin(
-        lambda: _account_and_status(
-            securityhub.get_administrator_account(),
-            "Administrator",
-            "AccountId",
-            "MemberStatus",
-        ),
-        securityhub.describe_organization_configuration,
-        account_id,
-    )
+    try:
+        hub_answer = securityhub.get_administrator_account()
+    except Exception as error:
+        hub_answer = error
+    if _is_security_hub_not_enabled(hub_answer):
+        problems.append(
+            "AWS Security Hub is not enabled for this account in this Region "
+            f"({get_assessment_error_label(hub_answer)}), so no administrator "
+            "administers it here"
+        )
+    else:
+
+        def _hub_administrator():
+            if isinstance(hub_answer, Exception):
+                raise hub_answer
+            return _account_and_status(
+                hub_answer, "Administrator", "AccountId", "MemberStatus"
+            )
+
+        admins["AWS Security Hub"] = _regional_admin(
+            _hub_administrator,
+            securityhub.describe_organization_configuration,
+            account_id,
+        )
     inspector = boto3.client("inspector2", config=boto3_config, region_name=region)
 
     def _inspector_admin():
@@ -16149,6 +16389,12 @@ def check_regional_security_admin(
     for service, (administrator, how, reason) in admins.items():
         if reason:
             unread.append(f"{service} ({reason})")
+        elif how and how.startswith(REGIONAL_ADMIN_UNAVAILABLE):
+            notes.append(
+                f"{service} is not available in {region} "
+                f"({how[len(REGIONAL_ADMIN_UNAVAILABLE) :]}), so it has no "
+                "administrator to judge here."
+            )
         elif administrator is None:
             problems.append(
                 f"{service} has no delegated administrator for this account in this "
@@ -16197,7 +16443,16 @@ def check_regional_security_admin(
                 region,
             )
         )
-    if not problems and not unread:
+    if not problems and not unread and not dedicated:
+        findings["csv_data"].append(
+            _row(
+                f"None of the security services checked is available in {region}.",
+                "No action required",
+                "Informational",
+                "N/A",
+            )
+        )
+    elif not problems and not unread:
         ((administrator, services),) = dedicated.items()
         findings["csv_data"].append(
             _row(
@@ -16210,6 +16465,7 @@ def check_regional_security_admin(
                 "Passed",
             )
         )
+    _with_notes(findings["csv_data"], notes)
     return findings
 
 
@@ -16925,7 +17181,7 @@ def _alarm_cannot_fire(
 
 
 def _agentcore_runtime_subnets(
-    region: str,
+    region: str, notes: Optional[List[str]] = None
 ) -> Tuple[Dict[str, List[str]], List[str]]:
     """The subnets of each AgentCore runtime version an endpoint serves, by
     label; an empty list for PUBLIC mode.
@@ -16942,6 +17198,14 @@ def _agentcore_runtime_subnets(
         for page in client.get_paginator("list_agent_runtimes").paginate():
             runtimes.extend(page.get("agentRuntimes", []))
     except Exception as error:
+        if _is_service_unavailable(error):
+            if notes is not None:
+                notes.append(
+                    _service_unavailable_note(
+                        "Amazon Bedrock AgentCore control", region, error
+                    )
+                )
+            return {}, []
         return {}, [
             f"bedrock-agentcore:ListAgentRuntimes ({get_assessment_error_label(error)})"
         ]
@@ -17069,7 +17333,8 @@ def check_sagemaker_endpoint_flow_log_alerting(region: str = "") -> Dict[str, An
                 subnets.update(model_subnets[model_name])
         if not model_unread:
             endpoint_subnets[f"endpoint '{endpoint['name']}'"] = sorted(subnets)
-    runtime_subnets, runtime_unread = _agentcore_runtime_subnets(region)
+    notes: List[str] = []
+    runtime_subnets, runtime_unread = _agentcore_runtime_subnets(region, notes)
     unread.extend(runtime_unread)
     endpoint_subnets.update(runtime_subnets)
 
@@ -17083,6 +17348,7 @@ def check_sagemaker_endpoint_flow_log_alerting(region: str = "") -> Dict[str, An
                 "N/A",
             )
         )
+        _with_notes(findings["csv_data"], notes)
         return findings
 
     ec2_client = boto3.client("ec2", config=boto3_config, region_name=region)
@@ -17338,6 +17604,7 @@ def check_sagemaker_endpoint_flow_log_alerting(region: str = "") -> Dict[str, An
                 "Passed",
             )
         )
+    _with_notes(findings["csv_data"], notes)
     return findings
 
 
@@ -17534,22 +17801,27 @@ MODEL_ARTIFACT_INSTANCE_RESOLUTION = (
 # 2026-10-04 from outside AWS, so in-Region calls from the Lambda are at most
 # this slow: 1,000 sequential HeadObject calls took 60.4 s (median 53 ms, p95
 # 91 ms, slowest 1.8 s), and 10 ListObjectsV2 pages of 1,000 keys took a
-# median 171 ms each (slowest 1.0 s). The function's timeout is 600 s, so the
-# HeadObject cap holds about a tenth of it and the counting pages past it
+# median 171 ms each (slowest 1.0 s). The function's timeout is 900 s, so the
+# HeadObject cap holds about a fifteenth of it and the counting pages past it
 # about 9 s at the median (51 s at the slowest page seen). Objects past the
 # HeadObject cap are counted and reported as not read, which holds Passed at
 # N/A; a count stopped by the page cap is reported as a lower bound.
 SM43_PREFIX_OBJECT_CAP = 1000
 SM43_PREFIX_COUNT_PAGE_CAP = 50
+# HeadObject is authorized by s3:GetObject, which also downloads the object, so
+# the per-object leg runs only when the deployment grants it.
+ARTIFACT_OBJECT_READS_PARAMETER = "EnableSageMakerArtifactObjectReads"
+ARTIFACT_OBJECT_READS_ENV = "ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS"
 MODEL_ARTIFACT_INTEGRITY_SCOPE_NOTE = (
     "A recorded ETag, ManifestEtag or ModelDataETag means an expected value is "
     "recorded; whether SageMaker or the container compared it to the object at "
-    "load time is not returned by any API this check reads. Model data named "
-    "as one S3 object (a ModelDataUrl, an S3Object source or a manifest) is read "
-    "with HeadObject: its current ETag is compared to the recorded value and its "
-    "own server-side encryption is judged. Each object under an S3Prefix source "
-    "or a multi-model prefix is listed and read with HeadObject for its "
-    "server-side encryption, up to "
+    "load time is not returned by any API this check reads. When the "
+    "EnableSageMakerArtifactObjectReads deployment parameter is true, model "
+    "data named as one S3 object (a ModelDataUrl, an S3Object source or a "
+    "manifest) is read with HeadObject: its current ETag is compared to the "
+    "recorded value and its own server-side encryption is judged; and each "
+    "object under an S3Prefix source or a multi-model prefix is listed and read "
+    "with HeadObject for its server-side encryption, up to "
     f"{SM43_PREFIX_OBJECT_CAP} objects per run; objects past that are counted "
     "and reported as not read. No SageMaker field records a "
     "SHA256 digest to compare. The execution role's s3:GetObject reach is judged "
@@ -17707,8 +17979,10 @@ def check_sagemaker_model_artifact_integrity(
     managed signing rule covers the repository; its S3 model data records an
     ETag, ManifestEtag or ModelDataETag, or comes from SageMaker hub content;
     it does not name an HF_MODEL_ID with no model data; and each artifact
-    bucket defaults to SSE-KMS with a named customer managed key. Each object
-    named or listed under a prefix is read with HeadObject, and each execution
+    bucket defaults to SSE-KMS with a named customer managed key. When
+    EnableSageMakerArtifactObjectReads is true, each object named or listed
+    under a prefix is read with HeadObject; otherwise one N/A row says the
+    per-object leg is off. Each execution
     role's s3:GetObject grants must stay inside the artifact buckets. Each EC2
     instance whose instance profile role can read an artifact bucket must
     require IMDSv2. A denied read leaves that endpoint N/A, never Failed.
@@ -17769,6 +18043,10 @@ def check_sagemaker_model_artifact_integrity(
     prefix_budget = [SM43_PREFIX_OBJECT_CAP]
     count_pages = [SM43_PREFIX_COUNT_PAGE_CAP]
     s3_client = boto3.client("s3", config=boto3_config, region_name=region)
+    object_reads = (
+        os.environ.get(ARTIFACT_OBJECT_READS_ENV, "false").strip().lower() == "true"
+    )
+    objects_not_read = []
 
     def _ecr(image_region):
         if image_region not in ecr_clients:
@@ -17963,6 +18241,9 @@ def check_sagemaker_model_artifact_integrity(
     def _judge_object(where, uri, recorded):
         """Compare one S3 object to its recorded ETag and judge its own SSE."""
         problems, unreads = [], []
+        if not object_reads:
+            objects_not_read.append(uri)
+            return problems, unreads
         head = _head(uri)
         if isinstance(head, str):
             if head in ("404", "NoSuchKey", "NotFound"):
@@ -18623,6 +18904,22 @@ def check_sagemaker_model_artifact_integrity(
             f" Of {instances_judged} EC2 instance(s) with an instance profile, "
             "none that accepts IMDSv1 has a role allowed s3:GetObject in the "
             "artifact buckets."
+        )
+    if objects_not_read:
+        findings["csv_data"].append(
+            _row(
+                f"The per-object leg is off: the {ARTIFACT_OBJECT_READS_PARAMETER} "
+                "deployment parameter is false, so HeadObject was not called on "
+                f"{len(dict.fromkeys(objects_not_read))} model artifact object(s), "
+                "and their current ETags and own server-side encryption were not "
+                "compared. Image pinning, recorded expected values, bucket default "
+                "encryption and role read scope were still judged.",
+                f"Set the {ARTIFACT_OBJECT_READS_PARAMETER} deployment parameter to "
+                "true to read each artifact object with HeadObject. That grants the "
+                "assessment Lambda s3:GetObject on every object in every bucket.",
+                "Informational",
+                "N/A",
+            )
         )
     if unread:
         findings["csv_data"].append(
@@ -20727,12 +21024,14 @@ MICROVM_ENDED_STATES = ("TERMINATING", "TERMINATED")
 
 
 def _microvm_networks(
-    region: str,
+    region: str, notes: Optional[List[str]] = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Optional[Dict[str, Any]]], List[str]]:
     """
     Each Lambda MicroVM that has not ended, with the ingress and egress network
     connectors GetMicrovm reports, the VpcEgressConfiguration of each egress
     connector (None when GetNetworkConnector failed), and the failed reads.
+    Where Lambda MicroVMs are not available the population is empty and the
+    reason is appended to notes.
     """
     microvms, unread = [], []
     try:
@@ -20743,6 +21042,10 @@ def _microvm_networks(
         for page in client.get_paginator("list_microvms").paginate():
             items.extend(page.get("items") or [])
     except Exception as error:
+        if _is_service_unavailable(error):
+            if notes is not None:
+                notes.append(_service_unavailable_note("Lambda MicroVM", region, error))
+            return [], {}, []
         return [], {}, [f"lambda:ListMicrovms ({get_assessment_error_label(error)})"]
     for item in items:
         if item.get("state") in MICROVM_ENDED_STATES:
@@ -21343,9 +21646,14 @@ def check_workload_network_segmentation(region: str = "") -> Dict[str, Any]:
     """
     findings = {"csv_data": []}
     findings["csv_data"].extend(_eks_policy_mode_findings(region))
-    microvm_read = _microvm_networks(region)
-    findings["csv_data"].extend(_workload_segmentation_findings(region, microvm_read))
-    findings["csv_data"].extend(_microvm_ingress_findings(region, microvm_read))
+    notes: List[str] = []
+    microvm_read = _microvm_networks(region, notes)
+    findings["csv_data"].extend(
+        _with_notes(_workload_segmentation_findings(region, microvm_read), notes)
+    )
+    findings["csv_data"].extend(
+        _with_notes(_microvm_ingress_findings(region, microvm_read), notes)
+    )
     return findings
 
 
@@ -23731,6 +24039,7 @@ def check_workload_egress_control(region: str = "") -> Dict[str, Any]:
         (WORKLOAD_DNS_EGRESS_FINDING, DNS_FIREWALL_RULE_ACTION_REFERENCE),
         (WORKLOAD_FIREWALL_EGRESS_FINDING, NETWORK_FIREWALL_DOMAIN_LIST_REFERENCE),
     )
+    notes: List[str] = []
     try:
         references, unread, functions, group_workloads, group_unread = (
             _egress_workload_subnets(region)
@@ -23752,13 +24061,13 @@ def check_workload_egress_control(region: str = "") -> Dict[str, Any]:
         unread.extend(bedrock_unread)
         group_workloads.extend(bedrock_groups)
         group_unread.extend(bedrock_unread)
-        named, named_unread = _ai_lambda_references(region)
+        named, named_unread = _ai_lambda_references(region, notes)
         unread.extend(named_unread)
         # A MicroVM egresses through its VPC egress connector's subnets. AWS
         # documents its egress controls as the connector's security groups and
         # network ACLs and says nothing of DNS Firewall, so the connector
         # subnets join the Network Firewall leg only.
-        microvms, connectors, microvm_unread = _microvm_networks(region)
+        microvms, connectors, microvm_unread = _microvm_networks(region, notes)
         unread.extend(microvm_unread)
         firewall_references = list(references)
         for connector, users in sorted(_microvm_connector_users(microvms).items()):
@@ -23980,6 +24289,7 @@ def check_workload_egress_control(region: str = "") -> Dict[str, Any]:
                 managed_lists,
             )
         )
+    _with_notes(findings["csv_data"], notes)
     return findings
 
 
@@ -24541,10 +24851,11 @@ def _sagemaker_model_environments(
 
 
 def _microvm_image_versions(
-    region: str,
+    region: str, notes: Optional[List[str]] = None
 ) -> Tuple[List[Tuple[str, Dict[str, Any]]], List[str]]:
     """(image name, version) of every ACTIVE version of every Lambda MicroVM
-    image, which RunMicrovm can launch, and the reads that failed."""
+    image, which RunMicrovm can launch, and the reads that failed. Where Lambda
+    MicroVMs are not available there are none, and notes says so."""
     try:
         client = boto3.client(
             "lambda-microvms", config=boto3_config, region_name=region
@@ -24555,6 +24866,10 @@ def _microvm_image_versions(
                 i for i in page.get("items", []) if i.get("state") != "DELETED"
             )
     except Exception as error:
+        if _is_service_unavailable(error):
+            if notes is not None:
+                notes.append(_service_unavailable_note("Lambda MicroVM", region, error))
+            return [], []
         return [], [f"lambda:ListMicrovmImages ({get_assessment_error_label(error)})"]
     versions, unread = [], []
     for image in images:
@@ -24579,6 +24894,7 @@ def _microvm_image_versions(
 def _propagation_and_plaintext_findings(
     region: str, secrets: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
+    notes: List[str] = []
     rotating = {
         s.get("ARN"): s.get("Name") for s in secrets if s.get("RotationEnabled") is True
     }
@@ -24700,7 +25016,7 @@ def _propagation_and_plaintext_findings(
                 )
     # AIR-SLF-RT-06: a MicroVM resumed from a suspended state runs only its
     # /resume hook, so that hook is where a rotated secret is re-fetched.
-    microvm_versions, microvm_unread = _microvm_image_versions(region)
+    microvm_versions, microvm_unread = _microvm_image_versions(region, notes)
     unread.extend(microvm_unread)
     no_resume, resume_budgets = [], []
     for image_name, version in microvm_versions:
@@ -24844,7 +25160,7 @@ def _propagation_and_plaintext_findings(
                 region=region,
             )
         )
-    return rows
+    return _with_notes(rows, notes)
 
 
 def check_secret_rotation_history_and_propagation(region: str = "") -> Dict[str, Any]:
@@ -25805,8 +26121,17 @@ def lambda_handler(event, context):
     """
     Main Lambda handler
     """
+    global _DEADLINE
     logger.info("Starting SageMaker security assessment")
+    remaining = (
+        context.get_remaining_time_in_millis() / 1000
+        if context
+        else LAMBDA_TIMEOUT_SECONDS
+    )
+    _DEADLINE = time.monotonic() + remaining - DEADLINE_MARGIN_SECONDS
     all_findings = []
+    # (check ID, row region) -> the check functions the deadline skipped.
+    skipped: Dict[Tuple[str, str], List[str]] = {}
 
     try:
         # Extract target region from Step Functions Map state
@@ -25816,6 +26141,41 @@ def lambda_handler(event, context):
         logger.info(f"Scanning region: {region} (primary={is_primary_region})")
 
         execution_id = event["Execution"]["Name"]
+
+        def run(check_id, check, *args, **kwargs):
+            row_region = kwargs.get("region", region)
+            if _deadline_reached():
+                skipped.setdefault((check_id, row_region), []).append(check.__name__)
+                return
+            logger.info(f"Running {check.__name__} ({check_id})")
+            all_findings.append(
+                _run_check_safely(check_id, row_region, check, *args, **kwargs)
+            )
+
+        def finish(message):
+            for (check_id, row_region), names in skipped.items():
+                all_findings.append(
+                    {"csv_data": [_timeout_finding(check_id, row_region, names)]}
+                )
+            logger.info("Generating reports")
+            csv_content = generate_csv_report(all_findings)
+            bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
+            if not bucket_name:
+                raise ValueError(
+                    "AIML_ASSESSMENT_BUCKET_NAME environment variable is not set"
+                )
+            logger.info("Writing reports to S3")
+            s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
+            return {
+                "statusCode": 200,
+                "body": {
+                    "message": message,
+                    "report_url": s3_url,
+                    "row_count": sum(
+                        len(finding.get("csv_data", [])) for finding in all_findings
+                    ),
+                },
+            }
 
         # Initialize permission cache (shared/global IAM data)
         logger.info("Initializing IAM permission cache")
@@ -25831,52 +26191,51 @@ def lambda_handler(event, context):
         # and stale-access violations are not reported once per scanned region.
         # These run before the regional availability gate so they are still emitted
         # even if SageMaker is not available in the primary region.
+        scp_inventory = None
         if is_primary_region:
-            logger.info("Running global SageMaker IAM permissions check (SM-02)")
-            sagemaker_iam_findings = (
-                _permission_cache_unavailable_result(GLOBAL_REGION_LABEL)
-                if permission_cache is None
-                else check_sagemaker_iam_permissions(
-                    permission_cache, region=GLOBAL_REGION_LABEL
+            if permission_cache is None:
+                all_findings.append(
+                    _permission_cache_unavailable_result(GLOBAL_REGION_LABEL)
                 )
-            )
-            all_findings.append(sagemaker_iam_findings)
+            else:
+                run(
+                    "SM-02",
+                    check_sagemaker_iam_permissions,
+                    permission_cache,
+                    region=GLOBAL_REGION_LABEL,
+                )
 
-            # Service control policies are organization-wide, so this preventive
-            # control is assessed once and not once per scanned region.
-            logger.info("Running SageMaker creation guardrail check (SM-34)")
-            all_findings.append(
-                check_sagemaker_creation_guardrails(
-                    region=GLOBAL_REGION_LABEL, permission_cache=permission_cache
+            # Service control policies are organization-wide, so they are read
+            # once and every guardrail verdict is assessed once, under Global.
+            try:
+                scp_inventory = get_sagemaker_scp_inventory()
+            except Exception as error:
+                scp_inventory = {
+                    "items": [],
+                    "errors": [],
+                    "list_error": get_assessment_error_label(error),
+                }
+            for check_id, check in (
+                ("SM-34", check_sagemaker_creation_guardrails),
+                ("SM-39", check_lambda_vpc_creation_guardrails),
+                ("SM-39", check_lambda_network_connector_guardrails),
+                ("SM-09", check_sagemaker_notebook_access_guardrails),
+                ("SM-42", check_sagemaker_batch_creation_guardrails),
+            ):
+                run(
+                    check_id,
+                    check,
+                    region=GLOBAL_REGION_LABEL,
+                    scp_inventory=scp_inventory,
+                    permission_cache=permission_cache,
                 )
-            )
-
-            logger.info("Running Lambda VPC creation guardrail check (SM-39)")
-            all_findings.append(
-                check_lambda_vpc_creation_guardrails(
-                    region=GLOBAL_REGION_LABEL, permission_cache=permission_cache
-                )
-            )
-
-            logger.info("Running Lambda network connector guardrail check (SM-39)")
-            all_findings.append(
-                check_lambda_network_connector_guardrails(
-                    region=GLOBAL_REGION_LABEL, permission_cache=permission_cache
-                )
-            )
-
-            logger.info("Running SageMaker notebook access guardrail check (SM-09)")
-            all_findings.append(
-                check_sagemaker_notebook_access_guardrails(
-                    region=GLOBAL_REGION_LABEL, permission_cache=permission_cache
-                )
-            )
 
             # Delegated administration is an organization-level setting, so it is
             # assessed once and not once per scanned region.
-            logger.info("Running security service delegated admin check (SM-35)")
-            all_findings.append(
-                check_security_service_delegated_admin(region=GLOBAL_REGION_LABEL)
+            run(
+                "SM-35",
+                check_security_service_delegated_admin,
+                region=GLOBAL_REGION_LABEL,
             )
 
         # Verify SageMaker is available in this region
@@ -25906,16 +26265,7 @@ def lambda_handler(event, context):
                     ],
                 }
             )
-            csv_content = generate_csv_report(all_findings)
-            bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
-            s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
-            return {
-                "statusCode": 200,
-                "body": {
-                    "message": f"SageMaker not available in {region}",
-                    "report_url": s3_url,
-                },
-            }
+            return finish(f"SageMaker not available in {region}")
         except ClientError as e:
             # A region that exists but is not enabled for the account surfaces as
             # an auth/opt-in error rather than a connection failure. Treat it the
@@ -25944,78 +26294,44 @@ def lambda_handler(event, context):
                         ],
                     }
                 )
-                csv_content = generate_csv_report(all_findings)
-                bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
-                s3_url = write_to_s3(
-                    execution_id, csv_content, bucket_name, region=region
-                )
-                return {
-                    "statusCode": 200,
-                    "body": {
-                        "message": f"SageMaker not available in {region}",
-                        "report_url": s3_url,
-                    },
-                }
+                return finish(f"SageMaker not available in {region}")
             # Service is reachable but returned another API error (e.g. AccessDenied)
             # — proceed; individual checks handle their own errors.
             logger.info(
                 f"SageMaker availability probe returned {error_code}; proceeding with checks"
             )
 
-        logger.info("Running SageMaker internet access check")
-        sagemaker_internet_access_findings = check_sagemaker_internet_access(
-            region=region
-        )
-        all_findings.append(sagemaker_internet_access_findings)
-
-        logger.info("Running SageMaker SSO configuration check")
-        sagemaker_sso_findings = check_sagemaker_sso_configuration(region=region)
-        all_findings.append(sagemaker_sso_findings)
-
-        logger.info("Running SageMaker data protection check")
-        sagemaker_data_protection_findings = check_sagemaker_data_protection(
-            region=region
-        )
-        all_findings.append(sagemaker_data_protection_findings)
+        run("SM-01", check_sagemaker_internet_access, region=region)
+        run("SM-02", check_sagemaker_sso_configuration, region=region)
+        run("SM-03", check_sagemaker_data_protection, region=region)
 
         guardduty_inventory = get_guardduty_detector_inventory(region)
-        logger.info("Running GuardDuty SageMaker monitoring check")
-        guardduty_findings = check_guardduty_enabled(
-            region=region, detector_inventory=guardduty_inventory
+        run(
+            "SM-04",
+            check_guardduty_enabled,
+            region=region,
+            detector_inventory=guardduty_inventory,
         )
-        all_findings.append(guardduty_findings)
-
-        logger.info("Running regional security service administrator check (SM-35)")
-        all_findings.append(
-            check_regional_security_admin(
-                region=region, detector_inventory=guardduty_inventory
-            )
+        run(
+            "SM-35",
+            check_regional_security_admin,
+            region=region,
+            detector_inventory=guardduty_inventory,
         )
-
-        logger.info("Running GuardDuty AI Protection check (SM-26)")
-        all_findings.append(
-            check_guardduty_ai_protection(
-                region=region, detector_inventory=guardduty_inventory
-            )
+        run(
+            "SM-26",
+            check_guardduty_ai_protection,
+            region=region,
+            detector_inventory=guardduty_inventory,
         )
-
-        logger.info("Running SageMaker MLOps features utilization check")
-        mlops_findings = check_sagemaker_mlops_utilization(
-            permission_cache, region=region
+        run("SM-05", check_sagemaker_mlops_utilization, permission_cache, region=region)
+        run("SM-06", check_sagemaker_clarify_usage, permission_cache, region=region)
+        run(
+            "SM-07",
+            check_sagemaker_model_monitor_usage,
+            permission_cache,
+            region=region,
         )
-        all_findings.append(mlops_findings)
-
-        logger.info("Running SageMaker Clarify usage check")
-        clarify_findings = check_sagemaker_clarify_usage(
-            permission_cache, region=region
-        )
-        all_findings.append(clarify_findings)
-
-        logger.info("Running SageMaker Model Monitor usage check")
-        monitor_findings = check_sagemaker_model_monitor_usage(
-            permission_cache, region=region
-        )
-        all_findings.append(monitor_findings)
 
         try:
             registry_client = boto3.client(
@@ -26025,245 +26341,119 @@ def lambda_handler(event, context):
         except Exception:
             model_package_groups = None
 
-        logger.info("Running Model Registry usage check")
-        registry_findings = check_model_registry_usage(
+        run(
+            "SM-08",
+            check_model_registry_usage,
             permission_cache,
             region=region,
             model_package_groups=model_package_groups,
         )
-        all_findings.append(registry_findings)
-
-        logger.info("Running SageMaker notebook root access check")
-        notebook_root_findings = check_sagemaker_notebook_root_access(
-            region=region, permission_cache=permission_cache
+        run(
+            "SM-09",
+            check_sagemaker_notebook_root_access,
+            region=region,
+            permission_cache=permission_cache,
         )
-        all_findings.append(notebook_root_findings)
-
-        logger.info("Running SageMaker notebook VPC deployment check")
-        notebook_vpc_findings = check_sagemaker_notebook_vpc_deployment(region=region)
-        all_findings.append(notebook_vpc_findings)
-
-        logger.info("Running SageMaker model network isolation check")
-        model_isolation_findings = check_sagemaker_model_network_isolation(
-            region=region, permission_cache=permission_cache
+        run("SM-10", check_sagemaker_notebook_vpc_deployment, region=region)
+        run(
+            "SM-11",
+            check_sagemaker_model_network_isolation,
+            region=region,
+            permission_cache=permission_cache,
+            scp_inventory=scp_inventory,
         )
-        all_findings.append(model_isolation_findings)
-
-        logger.info("Running AI Lambda function network boundary check (SM-11)")
-        all_findings.append(
-            check_ai_lambda_network_boundary(
-                region=region, permission_cache=permission_cache
-            )
+        run(
+            "SM-11",
+            check_ai_lambda_network_boundary,
+            region=region,
+            permission_cache=permission_cache,
         )
-
-        logger.info("Running AI API method authorization check (SM-02)")
-        all_findings.append(
-            check_ai_api_method_authorization(
-                region=region, permission_cache=permission_cache
-            )
+        run(
+            "SM-02",
+            check_ai_api_method_authorization,
+            region=region,
+            permission_cache=permission_cache,
         )
-
-        logger.info("Running SageMaker endpoint instance count check")
-        endpoint_instance_findings = check_sagemaker_endpoint_instance_count(
-            region=region
-        )
-        all_findings.append(endpoint_instance_findings)
-
-        logger.info("Running SageMaker monitoring network isolation check")
-        monitoring_isolation_findings = check_sagemaker_monitoring_network_isolation(
-            region=region
-        )
-        all_findings.append(monitoring_isolation_findings)
-
-        logger.info("Running SageMaker model container repository check")
-        model_repository_findings = check_sagemaker_model_container_repository(
-            region=region
-        )
-        all_findings.append(model_repository_findings)
-
-        logger.info("Running SageMaker Feature Store encryption check")
-        feature_store_encryption_findings = check_sagemaker_feature_store_encryption(
-            region=region
-        )
-        all_findings.append(feature_store_encryption_findings)
-
-        logger.info("Running SageMaker data quality job encryption check")
-        data_quality_encryption_findings = check_sagemaker_data_quality_encryption(
-            region=region
-        )
-        all_findings.append(data_quality_encryption_findings)
-
+        run("SM-12", check_sagemaker_endpoint_instance_count, region=region)
+        run("SM-13", check_sagemaker_monitoring_network_isolation, region=region)
+        run("SM-14", check_sagemaker_model_container_repository, region=region)
+        run("SM-15", check_sagemaker_feature_store_encryption, region=region)
+        run("SM-16", check_sagemaker_data_quality_encryption, region=region)
         # Additional AWS Security Hub Controls
-        logger.info("Running SageMaker processing job encryption check (SageMaker.10)")
-        processing_job_encryption_findings = check_sagemaker_processing_job_encryption(
-            region=region
-        )
-        all_findings.append(processing_job_encryption_findings)
-
-        logger.info("Running SageMaker transform job encryption check (SageMaker.11)")
-        transform_job_encryption_findings = check_sagemaker_transform_job_encryption(
-            region=region
-        )
-        all_findings.append(transform_job_encryption_findings)
-
-        logger.info("Running SageMaker batch creation guardrail check (SM-42)")
-        all_findings.append(
-            check_sagemaker_batch_creation_guardrails(
-                region=region, permission_cache=permission_cache
-            )
-        )
-
-        logger.info(
-            "Running SageMaker hyperparameter tuning job encryption check (SageMaker.12)"
-        )
-        hyperparameter_tuning_encryption_findings = (
-            check_sagemaker_hyperparameter_tuning_encryption(region=region)
-        )
-        all_findings.append(hyperparameter_tuning_encryption_findings)
-
-        logger.info("Running SageMaker compilation job encryption check (SageMaker.13)")
-        compilation_job_encryption_findings = (
-            check_sagemaker_compilation_job_encryption(region=region)
-        )
-        all_findings.append(compilation_job_encryption_findings)
-
-        logger.info(
-            "Running SageMaker AutoML job network isolation check (SageMaker.15)"
-        )
-        automl_network_isolation_findings = check_sagemaker_automl_network_isolation(
-            region=region
-        )
-        all_findings.append(automl_network_isolation_findings)
-
+        run("SM-17", check_sagemaker_processing_job_encryption, region=region)
+        run("SM-18", check_sagemaker_transform_job_encryption, region=region)
+        run("SM-19", check_sagemaker_hyperparameter_tuning_encryption, region=region)
+        run("SM-20", check_sagemaker_compilation_job_encryption, region=region)
+        run("SM-21", check_sagemaker_automl_network_isolation, region=region)
         # Model Governance Checks
-        logger.info("Running model approval workflow check")
-        model_approval_workflow_findings = check_model_approval_workflow(region=region)
-        all_findings.append(model_approval_workflow_findings)
-
-        logger.info("Running model drift detection check")
-        model_drift_detection_findings = check_model_drift_detection(region=region)
-        all_findings.append(model_drift_detection_findings)
-
-        logger.info("Running A/B testing and shadow deployment check")
-        ab_testing_findings = check_ab_testing_shadow_deployment(region=region)
-        all_findings.append(ab_testing_findings)
-
-        logger.info("Running ML lineage tracking check")
-        ml_lineage_tracking_findings = check_ml_lineage_tracking(region=region)
-        all_findings.append(ml_lineage_tracking_findings)
+        run("SM-22", check_model_approval_workflow, region=region)
+        run("SM-23", check_model_drift_detection, region=region)
+        run("SM-24", check_ab_testing_shadow_deployment, region=region)
+        run("SM-25", check_ml_lineage_tracking, region=region)
 
         hyperpod_inventory = get_hyperpod_cluster_inventory(region)
-        logger.info("Running HyperPod EBS CMK encryption check (SM-27)")
-        all_findings.append(
-            check_hyperpod_ebs_cmk_encryption(
-                region=region, cluster_inventory=hyperpod_inventory
-            )
+        run(
+            "SM-27",
+            check_hyperpod_ebs_cmk_encryption,
+            region=region,
+            cluster_inventory=hyperpod_inventory,
         )
-
-        logger.info("Running HyperPod VPC configuration check (SM-28)")
-        all_findings.append(
-            check_hyperpod_vpc_configuration(
-                region=region, cluster_inventory=hyperpod_inventory
-            )
+        run(
+            "SM-28",
+            check_hyperpod_vpc_configuration,
+            region=region,
+            cluster_inventory=hyperpod_inventory,
         )
-
-        logger.info("Running model package group policy exposure check (SM-30)")
-        all_findings.append(
-            check_model_package_group_policy_exposure(
-                region=region, model_package_groups=model_package_groups
-            )
+        run(
+            "SM-30",
+            check_model_package_group_policy_exposure,
+            region=region,
+            model_package_groups=model_package_groups,
         )
-
-        logger.info("Running SageMaker endpoint data capture check (SM-31)")
-        all_findings.append(check_sagemaker_endpoint_data_capture(region=region))
-
-        logger.info("Running SageMaker AWS Config coverage check (SM-32)")
-        all_findings.append(check_sagemaker_config_compliance_evaluation(region=region))
-
-        logger.info("Running SageMaker training job network boundary check (SM-33)")
-        all_findings.append(
-            check_sagemaker_training_job_network_boundary(region=region)
+        run("SM-31", check_sagemaker_endpoint_data_capture, region=region)
+        run("SM-32", check_sagemaker_config_compliance_evaluation, region=region)
+        run("SM-33", check_sagemaker_training_job_network_boundary, region=region)
+        run("SM-36", check_security_hub_ai_standard, region=region)
+        run(
+            "SM-37",
+            check_guardduty_lambda_network_logs,
+            region=region,
+            detector_inventory=guardduty_inventory,
         )
-
-        logger.info("Running Security Hub AI security standard check (SM-36)")
-        all_findings.append(check_security_hub_ai_standard(region=region))
-
-        logger.info("Running GuardDuty Lambda Protection check (SM-37)")
-        all_findings.append(
-            check_guardduty_lambda_network_logs(
-                region=region, detector_inventory=guardduty_inventory
-            )
+        run("SM-37", check_sagemaker_endpoint_flow_log_alerting, region=region)
+        run("SM-37", check_vpc_dns_resolver_visibility, region=region)
+        run(
+            "SM-43",
+            check_sagemaker_model_artifact_integrity,
+            region=region,
+            permission_cache=permission_cache,
         )
-
-        logger.info("Running SageMaker endpoint flow log alerting check (SM-37)")
-        all_findings.append(check_sagemaker_endpoint_flow_log_alerting(region=region))
-
-        logger.info("Running VPC DNS resolver visibility check (SM-37)")
-        all_findings.append(check_vpc_dns_resolver_visibility(region=region))
-
-        logger.info("Running SageMaker model artifact integrity check (SM-43)")
-        all_findings.append(
-            check_sagemaker_model_artifact_integrity(
-                region=region, permission_cache=permission_cache
-            )
+        run(
+            "SM-38",
+            check_guardduty_runtime_monitoring,
+            region=region,
+            detector_inventory=guardduty_inventory,
         )
-
-        logger.info("Running GuardDuty Runtime Monitoring check (SM-38)")
-        all_findings.append(
-            check_guardduty_runtime_monitoring(
-                region=region, detector_inventory=guardduty_inventory
-            )
+        run(
+            "SM-38",
+            check_guardduty_runtime_monitoring_coverage,
+            region=region,
+            detector_inventory=guardduty_inventory,
         )
-
-        logger.info("Running GuardDuty Runtime Monitoring coverage check (SM-38)")
-        all_findings.append(
-            check_guardduty_runtime_monitoring_coverage(
-                region=region, detector_inventory=guardduty_inventory
-            )
+        run("SM-39", check_eks_vpc_cni_network_policy, region=region)
+        run("SM-39", check_workload_network_segmentation, region=region)
+        run("SM-39", check_workload_egress_control, region=region)
+        run("SM-40", check_secrets_manager_rotation, region=region)
+        run("SM-40", check_secret_rotation_history_and_propagation, region=region)
+        run(
+            "SM-41",
+            check_iot_device_scoped_policies,
+            region=region,
+            permission_cache=permission_cache,
         )
+        run("SM-02", check_sagemaker_runtime_endpoint_policy, region=region)
 
-        logger.info("Running EKS vpc-cni network policy check (SM-39)")
-        all_findings.append(check_eks_vpc_cni_network_policy(region=region))
-        all_findings.append(check_workload_network_segmentation(region=region))
-        all_findings.append(check_workload_egress_control(region=region))
-
-        logger.info("Running Secrets Manager rotation check (SM-40)")
-        all_findings.append(check_secrets_manager_rotation(region=region))
-        all_findings.append(
-            check_secret_rotation_history_and_propagation(region=region)
-        )
-
-        logger.info("Running AWS IoT device-scoped policy check (SM-41)")
-        all_findings.append(
-            check_iot_device_scoped_policies(
-                region=region, permission_cache=permission_cache
-            )
-        )
-
-        logger.info("Running sagemaker.runtime VPC endpoint policy check (SM-02)")
-        all_findings.append(check_sagemaker_runtime_endpoint_policy(region=region))
-
-        # Generate and upload report
-        logger.info("Generating reports")
-        csv_content = generate_csv_report(all_findings)
-
-        bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
-        if not bucket_name:
-            raise ValueError(
-                "AIML_ASSESSMENT_BUCKET_NAME environment variable is not set"
-            )
-
-        logger.info("Writing reports to S3")
-        s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
-
-        return {
-            "statusCode": 200,
-            "body": {
-                "message": "Security checks completed successfully",
-                "findings": all_findings,
-                "report_url": s3_url,
-            },
-        }
+        return finish("Security checks completed successfully")
 
     except Exception as e:
         logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
