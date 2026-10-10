@@ -405,7 +405,7 @@ environment variable, and every `sam deploy` path in `buildspec.yml`.
 
 | CloudFormation parameter | Lambda environment variable | Check |
 | --- | --- | --- |
-| `RequireBedrockZeroDataRetention` | `REQUIRE_BEDROCK_ZERO_DATA_RETENTION` | BR-37 |
+| `RequireBedrockZeroDataRetention` | `REQUIRE_BEDROCK_ZERO_DATA_RETENTION` | None. Deprecated: still accepted and forwarded so existing stacks update, but not read. BR-37 judges the retention mode at every setting. |
 | `RequireMarketplaceEndpointCMK` | `REQUIRE_MARKETPLACE_ENDPOINT_CMK` | BR-40 |
 | `RequireAgentCoreOnlineEvaluation` | `REQUIRE_AGENTCORE_ONLINE_EVALUATION` | AC-17 |
 | `RequireAgentRegistryManualApproval` | `REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL` | AR-03 |

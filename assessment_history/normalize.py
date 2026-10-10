@@ -84,6 +84,26 @@ IGNORED_SOURCES = (
         "{STALE_AFTER_DAYS} days",
         "fixed threshold, the same every run",
     ),
+    (
+        "bedrock_assessments/app.py",
+        "{subject} keeps session summaries for {days} days ",
+        "configured value (agent memory storageDays), the same every run",
+    ),
+    (
+        "bedrock_assessments/app.py",
+        "{} {} allows keys up to {:g} days, above the {}-day cap",
+        "configured value (policy condition) and a fixed threshold",
+    ),
+    (
+        "bedrock_assessments/app.py",
+        "{} denies lifetimes above {:g} days with {}",
+        "configured value (policy condition), the same every run",
+    ),
+    (
+        "bedrock_assessments/app.py",
+        "of at most {BEDROCK_API_KEY_MAX_AGE_DAYS} days, then delete ",
+        "fixed threshold, the same every run",
+    ),
 )
 
 

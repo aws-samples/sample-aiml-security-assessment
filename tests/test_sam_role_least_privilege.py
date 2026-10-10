@@ -172,6 +172,7 @@ _EXPECTED_ACTIONS = {
         "bedrock-agentcore:ListCodeInterpreters",
         "bedrock-agentcore:ListWorkloadIdentities",
         "bedrock-mantle:GetAccountDataRetention",
+        "bedrock-mantle:ListModels",
         "bedrock-mantle:ListProjects",
         "bedrock:ApplyGuardrail",
         "bedrock:GetEvaluationJob",
@@ -232,7 +233,9 @@ _EXPECTED_ACTIONS = {
     "BedrockSecurityAssessmentFunction": {
         "aoss:BatchGetCollection",
         "backup:DescribeBackupVault",
+        "backup:DescribeRecoveryPoint",
         "backup:ListBackupVaults",
+        "backup:ListRecoveryPointsByResource",
         "bedrock-agentcore:GetAgentRuntime",
         "bedrock-agentcore:ListAgentRuntimeEndpoints",
         "bedrock-agentcore:ListAgentRuntimes",
@@ -833,6 +836,7 @@ def test_bedrock_managed_policy_holds_exactly_the_approved_grants(template):
                     "guardduty:GetDetector",
                     "bedrock:ListIngestionJobs",
                     "bedrock-mantle:ListProjects",
+                    "bedrock-mantle:ListModels",
                 )
             ),
             *(
@@ -1619,6 +1623,7 @@ def test_assessment_reads_wildcard_only_where_iam_has_no_resource_type(template)
             "inspector2:BatchGetAccountStatus",
             "kms:ListKeys",
             "backup:ListBackupVaults",
+            "backup:ListRecoveryPointsByResource",
             "tag:GetResources",
             "cloudtrail:LookupEvents",
             "inspector2:ListCoverage",
@@ -1717,6 +1722,10 @@ def test_assessment_reads_wildcard_only_where_iam_has_no_resource_type(template)
         ("BedrockSecurityAssessmentFunction", "SSOPermissionSetRead"): (
             "sso:GetInlinePolicyForPermissionSet",
             "sso:::permissionSet/*/*",
+        ),
+        ("BedrockSecurityAssessmentFunction", "BackupVaultLockRead"): (
+            "backup:DescribeRecoveryPoint",
+            "backup:*:${AWS::AccountId}:recovery-point:*",
         ),
     }
     for (logical_id, sid), (*actions, resource) in scoped.items():

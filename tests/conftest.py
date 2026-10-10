@@ -16,6 +16,10 @@ def aws_env_vars(monkeypatch):
     """Set required AWS environment variables for all tests."""
     monkeypatch.setenv("AIML_ASSESSMENT_BUCKET_NAME", "test-assessment-bucket")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    # Region fallbacks such as _assessed_regions() read these before
+    # AWS_DEFAULT_REGION, so a value from the developer's shell must not leak in.
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.delenv("TARGET_REGIONS", raising=False)
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
     monkeypatch.setenv("AWS_SECURITY_TOKEN", "testing")

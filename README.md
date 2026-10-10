@@ -319,7 +319,7 @@ enforced by default.
 
 | CloudFormation parameter | Default | Affected check | Behavior |
 | --- | --- | --- | --- |
-| `RequireBedrockZeroDataRetention` | `false` | BR-37 | No longer read. BR-37 fails `default`, `inherit` and `provider_data_share` at every setting, and passes only `none`. |
+| `RequireBedrockZeroDataRetention` | `false` | BR-37 | Deprecated and no longer read; still accepted so existing stacks update. BR-37 fails `default`, `inherit` and `provider_data_share` at every setting, and passes only `none`. |
 | `RequireMarketplaceEndpointCMK` | `true` | BR-40 | When `true`, a Bedrock Marketplace model endpoint without a customer-managed KMS key fails. BR-40 uses `kms:DescribeKey` and requires `KeyManager=CUSTOMER`; AWS-managed keys do not pass. When `false`, a missing or AWS-managed key is reported as an informational `N/A` hardening advisory. |
 | `RequireAgentCoreOnlineEvaluation` | `false` | AC-17 | When `true`, missing or incomplete active AgentCore online evaluation coverage fails. When `false`, absent coverage is informational. |
 | `RequireAgentRegistryManualApproval` | `false` | AR-03 | When `true`, Agent Registry instances configured to approve all submitted records fail. When `false`, automatic approval is reported as an informational governance advisory. |
@@ -690,7 +690,12 @@ The deployment uses multiple IAM roles with different trust and permission bound
 
 - **`CodeBuildRole` / `MultiAccountCodeBuildRole`**: orchestration roles used by the infrastructure stack to clone the repo, build SAM, deploy/update or recover failed assessment stacks, and start Step Functions executions. These roles require infrastructure-management permissions such as CloudFormation, Lambda, IAM, Step Functions, and S3 actions.
 - **`AIMLSecurityMemberRole`**: role assumed only in target accounts during multi-account runs. It is limited to deploying, updating, or recovering failed assessment stacks, polling Step Functions executions, and retrieving report artifacts. It does **not** receive Bedrock, SageMaker, AgentCore, or other assessment-service read permissions.
-- **SAM-created Lambda execution roles**: runtime roles for the assessment functions. These are the closest thing to read-only assessment roles. They primarily use `List*`, `Describe*`, and `Get*` access against Bedrock, SageMaker, AgentCore, AWS Agent Registry (`agent-registry:ListRegistries`, `agent-registry:GetRegistry`, `agent-registry:ListRegistryRecords`), IAM analysis APIs, and supporting read APIs, plus S3 access to write reports and read the cached IAM permissions file.
+- **SAM-created Lambda execution roles**: runtime roles for the assessment functions. These are the closest thing to read-only assessment roles. They primarily use `List*`, `Describe*`, and `Get*` access against Bedrock, SageMaker, AgentCore, AWS Agent Registry (`agent-registry:ListRegistries`, `agent-registry:GetRegistry`, `agent-registry:ListRegistryRecords`), IAM analysis APIs, and supporting read APIs, plus S3 access to write reports and read the cached IAM permissions file. Three grants read or process content and not only configuration:
+  - `bedrock:ApplyGuardrail` (BR-26) applies each deployed guardrail version that passes its settings test, once per run, to a fixed synthetic probe string on the OUTPUT source. It sends no customer data. Amazon Bedrock bills each call as guardrail text units in the account being assessed.
+  - `logs:FilterLogEvents` (BR-04, BR-27, BR-34) is granted on every log group in the account and reads model invocation log events from the invocation log group. BR-04 uses only the timestamp of the oldest event. BR-27 and BR-34 read the last 24 hours of records that match a guardrail field. The events returned carry the prompt and completion, but the findings report only request IDs and scores, never a body.
+  - `s3:GetObject` on `*/*AWSLogs/<account>/BedrockModelInvocationLogs/*` (BR-04, BR-27, BR-34) reads the same invocation log records from an S3-only destination, and BR-04 reads object replication status. The records it reads hold prompts and completions, so this grant can read them, even though the findings report only request IDs, scores and status. `s3:GetObject` on `*/*.metadata.json` (BR-46) reads knowledge base metadata sidecar files.
+
+  None of the three can be turned off with a deployment parameter. To withhold one, remove it from the SAM template before deploying. The checks that need it then report `N/A`.
 
 If you need to reduce scope, review the role policies in:
 
