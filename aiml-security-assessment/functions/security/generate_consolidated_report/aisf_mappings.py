@@ -27,9 +27,7 @@ change to a control's YAML in that repository has to be copied here by hand.
 """
 
 import logging
-from typing import Any, Dict, List
-
-from report_template import GENAI_LENS_URL
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +151,24 @@ AISF_DERIVED_MAP: List[Dict[str, Any]] = [
 ]
 
 
+# Source Check_ID prefix -> the service switch (`report_template.CORE_SERVICE_LABELS`)
+# that runs it. A control whose sources all belong to a deselected service is
+# not derived: the report shows that service as "Not selected", and an AISF-00
+# row for it would ask the user to rerun a check they chose not to run.
+SOURCE_PREFIX_TO_SERVICE = {
+    "BR": "bedrock",
+    "SM": "sagemaker",
+    "AC": "agentcore",
+    "AG": "agentcore",
+    "AR": "agent-registry",
+}
+
+
+def _source_selected(check_id: str, selected_services: Dict[str, bool]) -> bool:
+    service = SOURCE_PREFIX_TO_SERVICE.get(check_id.split("-", 1)[0].upper())
+    return selected_services.get(service, True) if service else True
+
+
 def _source_check_ids() -> set:
     """Every incumbent Check_ID any mapping derives from."""
     return {cid for m in AISF_DERIVED_MAP for cid in m["sources"]}
@@ -264,7 +280,10 @@ def _row(
     }
 
 
-def derive_aisf_findings(source_rows: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+def derive_aisf_findings(
+    source_rows: List[Dict[str, Any]],
+    selected_services: Optional[Dict[str, bool]] = None,
+) -> List[Dict[str, str]]:
     """Restate incumbent verdicts as `AISF-` rows, one per control per join key.
 
     The join key is `(Account_ID, Region)`. A source check can also emit rows
@@ -276,14 +295,18 @@ def derive_aisf_findings(source_rows: List[Dict[str, Any]]) -> List[Dict[str, st
     verdict it would repeat the same evidence as a half-populated `N/A`.
 
     A control whose legs are not all present for a key that has at least one leg
-    is emitted as `Status=N/A` naming the missing `Check_ID`s, never dropped: a
+    is emitted naming the missing `Check_ID`s, never dropped: `Failed` when a
+    present leg failed, otherwise `Status=N/A`. A
     silent drop would read as "this control was not relevant here" when what
-    actually happened is that coverage was incomplete.
+    actually happened is that coverage was incomplete. A control whose sources
+    all belong to a service deselected in `selected_services` (the
+    `core_service_selection()` dict) gets no row and no AISF-00 mention.
 
     Per-row work is isolated with try/except, matching
     `owasp_assessments.build_owasp_mapping_findings`, so one malformed source
     row drops only itself.
     """
+    selected_services = selected_services or {}
     relevant = _source_check_ids()
     # (account_id, region) -> {source check id: [status per source finding]}
     # A list, not a status: an incumbent check emits one finding per resource, so
@@ -333,6 +356,8 @@ def derive_aisf_findings(source_rows: List[Dict[str, Any]]) -> List[Dict[str, st
         for mapping in AISF_DERIVED_MAP:
             try:
                 sources = mapping["sources"]
+                if not any(_source_selected(c, selected_services) for c in sources):
+                    continue
                 have = [cid for cid in sources if cid in present]
                 missing = [cid for cid in sources if cid not in present]
                 if not have:
@@ -346,7 +371,17 @@ def derive_aisf_findings(source_rows: List[Dict[str, Any]]) -> List[Dict[str, st
                     )
                     continue
                 legs_txt = _legs_txt(present, have)
-                if missing:
+                status = _aggregate_status([s for cid in have for s in present[cid]])
+                if missing and status == "Failed":
+                    # A present leg already failed, so the control is
+                    # non-compliant whatever the missing legs would report.
+                    details = (
+                        f"AISF control {mapping['control']}. Derived from "
+                        f"{legs_txt}. Source checks not found for this account "
+                        f"and region: {', '.join(missing)}. A present source "
+                        "check failed, so the control fails regardless of them."
+                    )
+                elif missing:
                     status = "N/A"
                     details = (
                         f"AISF control {mapping['control']}. Derived from "
@@ -355,9 +390,6 @@ def derive_aisf_findings(source_rows: List[Dict[str, Any]]) -> List[Dict[str, st
                         "incomplete, so no verdict is asserted for this control."
                     )
                 else:
-                    status = _aggregate_status(
-                        [s for cid in have for s in present[cid]]
-                    )
                     details = (
                         f"AISF control {mapping['control']}. Derived from "
                         f"{legs_txt}. This row restates existing check verdicts "
@@ -411,7 +443,7 @@ def derive_aisf_findings(source_rows: List[Dict[str, Any]]) -> List[Dict[str, st
                         "records incomplete AISF coverage, not a control "
                         "failure."
                     ),
-                    reference=GENAI_LENS_URL,
+                    reference="",
                     severity=NA_SEVERITY,
                     status="N/A",
                     account_id=account_id,

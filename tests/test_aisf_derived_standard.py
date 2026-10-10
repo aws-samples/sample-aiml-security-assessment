@@ -742,6 +742,83 @@ class TestMultiLegAggregation(unittest.TestCase):
         self.assertNotEqual(row["Status"], "Passed")
 
 
+class TestFailedSourceBeatsMissingSource(unittest.TestCase):
+    """A present leg that failed decides the control even when another is absent."""
+
+    def test_a_global_failure_with_missing_regional_legs_is_failed(self):
+        """The reviewer's shape: Global SM-09 Failed folds into a Region with no
+        SM-01 or SM-03 rows."""
+        rows = aisf_mappings.derive_aisf_findings(
+            [
+                _source_row("SM-09", "Failed", region="Global"),
+                _source_row("BR-20", "Passed", region="us-west-2"),
+            ]
+        )
+        row = next(
+            r for r in rows if r["Check_ID"] == "AISF-08" and r["Region"] == "us-west-2"
+        )
+        self.assertEqual(row["Status"], "Failed")
+        self.assertEqual(row["Severity"], "Medium")
+        self.assertIn("SM-01, SM-03", row["Finding_Details"])
+        self.assertIn("SM-09 (Failed)", row["Finding_Details"])
+
+    def test_a_regional_failure_with_a_missing_leg_is_failed(self):
+        rows = aisf_mappings.derive_aisf_findings(
+            [_source_row("SM-09", "Failed"), _source_row("SM-03", "Passed")]
+        )
+        row = _derived_by_id(rows)["AISF-08"]
+        self.assertEqual(row["Status"], "Failed")
+        self.assertIn("SM-01", row["Finding_Details"])
+
+    def test_no_failure_with_a_missing_leg_stays_na(self):
+        rows = aisf_mappings.derive_aisf_findings(
+            [_source_row("SM-09", "Passed"), _source_row("SM-03", "N/A")]
+        )
+        row = _derived_by_id(rows)["AISF-08"]
+        self.assertEqual(row["Status"], "N/A")
+        self.assertEqual(row["Severity"], "Informational")
+
+
+class TestDeselectedServices(unittest.TestCase):
+    """A deselected service is "Not selected", never an AISF-00 coverage gap."""
+
+    def test_sagemaker_off_reports_no_coverage_gap_for_aisf_07_and_08(self):
+        rows = aisf_mappings.derive_aisf_findings(
+            [_source_row("BR-20", "Passed")], {"sagemaker": False}
+        )
+        by_id = _derived_by_id(rows)
+        self.assertEqual(set(by_id), {"AISF-05"})
+        self.assertEqual(by_id["AISF-05"]["Status"], "Passed")
+
+    def test_bedrock_off_reports_no_coverage_gap_for_aisf_05(self):
+        rows = aisf_mappings.derive_aisf_findings(
+            [
+                _source_row(cid, "Passed")
+                for cid in ("SM-18", "SM-42", "SM-09", "SM-01", "SM-03")
+            ],
+            {"bedrock": False},
+        )
+        self.assertEqual(set(_derived_by_id(rows)), {"AISF-07", "AISF-08"})
+
+    def test_a_selected_service_missing_its_sources_keeps_aisf_00(self):
+        rows = aisf_mappings.derive_aisf_findings(
+            [_source_row("BR-20", "Passed")],
+            {"bedrock": True, "sagemaker": True},
+        )
+        coverage = _derived_by_id(rows)[aisf_mappings.AISF_COVERAGE_CHECK_ID]
+        self.assertIn("AISF-07", coverage["Finding_Details"])
+        self.assertIn("AISF-08", coverage["Finding_Details"])
+        self.assertNotIn("AISF-05", coverage["Finding_Details"])
+
+    def test_the_coverage_row_links_no_unrelated_document(self):
+        rows = aisf_mappings.derive_aisf_findings([_source_row("BR-20", "Passed")])
+        coverage = _derived_by_id(rows)[aisf_mappings.AISF_COVERAGE_CHECK_ID]
+        self.assertEqual(coverage["Reference"], "")
+        self.assertNotEqual(
+            _entry("aisf")["reference_url"], report_template.GENAI_LENS_URL
+        )
+
+
 class TestSeveralFindingsPerSourceCheck(unittest.TestCase):
     """One incumbent check emits one finding per resource, so a leg holds many.
 
@@ -1081,6 +1158,32 @@ class TestSingleAccountRouting(unittest.TestCase):
             {"SM-18", "SM-42"},
         )
 
+    def test_a_deselected_sagemaker_gets_no_aisf_00_row(self):
+        captured = {}
+
+        def fake_render(**kwargs):
+            captured.update(kwargs)
+            return "<html>ok</html>"
+
+        with patch.object(
+            single_account, "generate_report_from_template", side_effect=fake_render
+        ):
+            single_account.generate_html_report(
+                {
+                    "account_id": "111122223333",
+                    "bedrock": {
+                        "bedrock_security_report_exec_us-east-1": [
+                            _source_row("BR-20", "Passed"),
+                        ]
+                    },
+                },
+                service_selection={"sagemaker": "false"},
+            )
+        self.assertEqual(
+            {f["Check_ID"] for f in captured["service_findings"]["aisf"]},
+            {"AISF-05"},
+        )
+
     def test_an_ai_prefixed_csv_row_routes_to_aisf_not_the_csv_category(self):
         """A stale or foreign artifact must not file AISF-* under bedrock."""
         captured = self._render(
@@ -1184,6 +1287,22 @@ class TestMultiAccountConsolidator(unittest.TestCase):
 
         derived = _derived_by_id(captured["service_findings"]["aisf"])
         self.assertEqual(derived["AISF-08"]["Status"], "Passed")
+
+    def test_a_deselected_bedrock_gets_no_aisf_00_row(self):
+        rows = []
+        for check_id in ("SM-18", "SM-42", "SM-09", "SM-01", "SM-03"):
+            row = _source_row(check_id, "Passed")
+            row.pop("Account_ID")
+            rows.append(row)
+        self._write("sagemaker_security_report_exec_us-east-1.csv", rows)
+
+        with patch.dict(os.environ, {"ENABLE_BEDROCK": "false"}):
+            captured = self._consolidate()
+
+        self.assertEqual(
+            {f["Check_ID"] for f in captured["service_findings"]["aisf"]},
+            {"AISF-07", "AISF-08"},
+        )
 
     def test_ai_prefix_routes_to_aisf_and_not_to_the_bedrock_fallback(self):
         row = _source_row("AISF-01")

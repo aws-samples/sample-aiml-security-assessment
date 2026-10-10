@@ -47,26 +47,42 @@ section.
   comes from `sample-reports/scripts/capture_changes_screenshot.py`.
 
 - **AWS AI Security Framework (AISF) mapping.** Each producer row now names the
-  AISF controls it asserts in a new `Compliance_Frameworks` CSV column, as
-  `AISF <control>` when the check judges every leg of the control and
-  `AISF <control> (partial)` when it judges only some. The column names 103 of
-  the 105 machine-checkable AISF controls. Of the 105, 64 are asserted in full,
-  39 in part, and 2 are not implementable from configuration.
-  `docs/SECURITY_CHECKS_AISF.md` documents the mapping and the tag vocabulary.
-  Behavior worth knowing:
+  AISF controls it asserts in a new `Compliance_Frameworks` CSV column, in one
+  of three forms: `AISF <control>` when this check alone asserts the whole
+  control, `AISF <control> (N of M checks)` when the control is asserted in
+  full by M checks together and this is one of them, and
+  `AISF <control> (partial)` when the check asserts less than the control
+  requires. A check that maps to several controls carries them pipe-joined.
+  The column names 103 of the 105 machine-checkable AISF controls. Of the 105,
+  64 are asserted in full, 39 in part, and 2 are not implementable from
+  configuration. See
+  [the tag vocabulary](docs/SECURITY_CHECKS_AISF.md#the-qualifier-is-what-makes-a-partly-asserted-control-safe-to-name)
+  in `docs/SECURITY_CHECKS_AISF.md`. Behavior worth knowing:
+  - **CSV consumers:** the Bedrock, SageMaker AI, AgentCore and AWS Agent
+    Registry CSVs gain a `Compliance_Frameworks` column. The Responsible AI GRC
+    CSV already had one, and its `FS-` rows keep carrying regulatory framework
+    ids there, so the one column now holds two vocabularies: split on `|` and
+    read `AISF `-prefixed elements as AISF tags. The OWASP CSV has no such
+    column. A parser that maps columns by position, or that rejects unknown
+    columns, needs updating.
   - The HTML report adds an **AWS AI Security Framework** section under "By
     Compliance Standard", beside OWASP Top 10 for LLM. It renders `AISF-05`
     (knowledge base vector store encryption, from `BR-20`), `AISF-07` (batch
     inference network and encryption, from `SM-18` and `SM-42`) and `AISF-08`
     (notebook access control, from `SM-09`, `SM-01` and `SM-03`). A row is
-    `Passed` only when every source check passed, `Failed` when any failed,
-    and `N/A` naming the absent checks otherwise.
+    `Failed` when any source check present for the account and Region failed,
+    even if another source check is absent (the details name it), `Passed`
+    only when every source check is present and passed, and `N/A` naming the
+    absent checks otherwise.
   - The section needs no deployment parameter, makes no AWS API call, and adds
     no scan time, because each row restates checks that already ran. `AISF-`
     rows are excluded from the 277-check total, the pass rate and Open Action
     Items, as OWASP-mapped rows are.
   - An informational `AISF-00` row appears per account and Region where a
-    mapped source check was absent, so partial coverage reads as unassessed.
+    mapped source check from a selected service was absent, so partial
+    coverage reads as unassessed. A control whose source checks all belong to
+    a deselected service gets no row and no `AISF-00` mention, because the
+    report already shows that service as Not selected.
   - Only a control asserted in full gets a derived row. `AISF-01` to `AISF-04`
     and `AISF-06` were retired before release, because each restated a check
     that asserts only part of its control, and the ids are never reused.

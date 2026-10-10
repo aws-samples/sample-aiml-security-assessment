@@ -4,6 +4,10 @@ This document catalogs the `AISF-XX` rows the report renders under "By
 Compliance Standard", the AWS AI Security Framework control each one reports on,
 and the shipped BR/SM/AC/AG check every row is derived from.
 
+The report's `AISF-NN` ids (`AISF-05`, `AISF-00`) are this scanner's own row
+ids. They are distinct from Prowler's `AISF-AI-06`-style requirement ids, which
+[Prowler AISF requirements](#prowler-aisf-requirements) covers.
+
 - **Reference:** [AWS Well-Architected Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html),
   plus the control-specific AWS documentation linked in the per-control tables
   below.
@@ -86,9 +90,11 @@ omits the key.
 | ----------- | --------- |
 | every source check for the control passed | `Passed` |
 | any source check for the control failed | `Failed` |
-| a source check reported `N/A`, so no verdict is available | `N/A`, `Informational` |
-| some source checks present for the account and region, others absent | `N/A`, `Informational`, naming the absent `Check_ID`s |
+| any source check present for the account and region failed, even if another is absent | `Failed`, naming the absent `Check_ID`s |
+| a source check reported `N/A` and none failed, so no verdict is available | `N/A`, `Informational` |
+| some source checks present for the account and region, others absent, none failed | `N/A`, `Informational`, naming the absent `Check_ID`s |
 | no source check for the control present at all | no `AISF-` row for that control; the absence is reported once per account and region by `AISF-00` |
+| every source check for the control belongs to a deselected service | no `AISF-` row and no `AISF-00` mention; the service shows as Not selected |
 
 A source check emits one finding per resource, so a leg normally carries several
 verdicts for one account and region. All of them are aggregated, and
@@ -105,8 +111,11 @@ Otherwise a `Global` `Failed` would sit beside a regional `Passed` for the same
 control.
 
 `AISF-00` is a report-completeness marker, not an AISF control. It lists every
-derived control that had no source check for that account and region, so an
-incomplete scan reads as unassessed instead of silently omitting rows.
+derived control of a selected service that had no source check for that account
+and region, so an incomplete scan reads as unassessed instead of silently
+omitting rows. It links no reference document. See
+[TROUBLESHOOTING.md](TROUBLESHOOTING.md#15-aisf-00-aisf-derived-control-coverage-row-in-the-report)
+for the causes.
 
 ### Severity
 
@@ -161,9 +170,9 @@ Is access to notebook instances and development environments used for model
 experimentation restricted and monitored the same way as production access?
 
 This is the one control with several source checks. All three legs must report
-`Passed` for `AISF-08` to report `Passed`; any `Failed` leg makes it `Failed`;
-a leg that is missing or `N/A` makes it `N/A` and the finding details name the
-leg.
+`Passed` for `AISF-08` to report `Passed`; any `Failed` leg makes it `Failed`,
+even when another leg is missing; otherwise a leg that is missing or `N/A` makes
+it `N/A`, and the finding details name a missing leg.
 
 | Source | Signal |
 | -------- | -------- |

@@ -264,7 +264,7 @@ def consolidate_html_reports():
     # because the rows built above are lowercase-keyed while the Lambda hands it
     # CSV-cased rows. Derived rows run through the same seen_findings key, so
     # overlapping account CSVs cannot double-count an AISF control.
-    derived_aisf_findings = derive_aisf_findings(all_findings)
+    derived_aisf_findings = derive_aisf_findings(all_findings, selected_services)
     for finding in derived_aisf_findings:
         service = finding["_service"]
         dedup_key = (

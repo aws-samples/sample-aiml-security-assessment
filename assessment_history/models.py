@@ -27,11 +27,11 @@ MODULES = CORE_MODULES + OPTIONAL_MODULES
 # By Governance Framework, By Compliance Standard. Headline counts use the
 # By Service areas only.
 CORE_AREAS = CORE_MODULES
-AREAS = CORE_AREAS + ("agentic", "responsible-ai-grc", "owasp")
+AREAS = CORE_AREAS + ("agentic", "responsible-ai-grc", "owasp", "aisf")
 
 # Compliance-standard Check_ID prefixes. Mirrors COMPLIANCE_STANDARDS in
 # report_template.py; a test fails if the two drift apart.
-COMPLIANCE_PREFIX_TO_AREA = {"OW": "owasp"}
+COMPLIANCE_PREFIX_TO_AREA = {"OW": "owasp", "AISF": "aisf"}
 
 PASSED = "Passed"
 FAILED = "Failed"

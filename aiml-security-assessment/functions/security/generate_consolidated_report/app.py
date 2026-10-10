@@ -413,7 +413,7 @@ def generate_html_report(
     # is snapshotted by the call, so appending to all_findings below is safe.
     # Derived rows run through the same seen_findings key as CSV rows so a
     # source file that appeared twice cannot double-count an AISF control.
-    derived_aisf_findings = derive_aisf_findings(all_findings)
+    derived_aisf_findings = derive_aisf_findings(all_findings, selected_services)
     for finding in derived_aisf_findings:
         output_service = finding["_service"]
         dedup_key = (

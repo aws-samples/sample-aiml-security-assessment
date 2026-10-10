@@ -249,7 +249,7 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 ### SM-18: Transform Job Encryption
 
 - **Severity:** Medium
-- **Description:** Checks transform job volume encryption.
+- **Description:** Checks every transform job (`DescribeTransformJob`) for `TransformResources.VolumeKmsKeyId`, and for a customer managed `TransformOutput.KmsKeyId`, and fails a job whose volume or output key is missing or AWS managed. It resolves each job's `ModelName` with `DescribeModel`, because a transform job takes its network posture from its model, and fails a job whose model has no `VpcConfig` with subnets and security groups or does not set `EnableNetworkIsolation` true. For jobs in a VPC it also reports subnets with an internet gateway route and a missing S3 gateway endpoint, and for the input and output buckets it reports default encryption that is not SSE-KMS with a customer managed key and a missing `aws:SecureTransport` deny. A job whose model or key could not be read is reported as not assessed, never as passed.
 
 ### SM-19: Hyperparameter Tuning Encryption
 
