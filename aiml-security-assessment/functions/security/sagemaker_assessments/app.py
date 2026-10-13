@@ -88,10 +88,13 @@ def get_assessment_error_label(error: Exception) -> str:
     return type(error).__name__
 
 
-# Errors that mean an API is not offered in the Region, or the Region is not
-# enabled: the population it would list is empty there, not unread. Access
-# denied is never one of these.
-SERVICE_UNAVAILABLE_ERROR_CODES = REGION_UNAVAILABLE_ERROR_CODES | {
+# Errors that mean an API is not offered in the Region: the population it would
+# list is empty there, not unread. Access denied is never one of these. These
+# are read after the Region answered the SageMaker probe, so the credential
+# codes in REGION_UNAVAILABLE_ERROR_CODES mean a failed read here, not a
+# disabled Region, and are left out.
+SERVICE_UNAVAILABLE_ERROR_CODES = {
+    "OptInRequired",
     "UnknownEndpoint",
     "UnsupportedOperation",
     "UnsupportedOperationException",
@@ -126,8 +129,11 @@ def _with_notes(rows: List[Dict[str, Any]], notes: List[str]) -> List[Dict[str, 
 
 
 # The Lambda timeout in both SAM templates. Checks run one after another, and
-# the slowest is capped at about a minute, so the handler stops starting checks
-# this long before the timeout to finish the running one and write the CSV.
+# no check has a time cap of its own. The handler stops starting checks this
+# long before the timeout, and the reads that grow with the account (the SM-03
+# and SM-33 training and processing job describes, and SM-40's CloudTrail
+# LookupEvents paging at 2 TPS) stop at the same deadline and report what they
+# read, so the running check can finish and the CSV is written.
 LAMBDA_TIMEOUT_SECONDS = 900
 DEADLINE_MARGIN_SECONDS = 120
 _DEADLINE: Optional[float] = None
@@ -136,6 +142,14 @@ _DEADLINE: Optional[float] = None
 def _deadline_reached() -> bool:
     """True once less than DEADLINE_MARGIN_SECONDS of the invocation remain."""
     return _DEADLINE is not None and time.monotonic() >= _DEADLINE
+
+
+def _deadline_stop_note(read: str, done: int, unit: str = "item(s)") -> str:
+    """The unread entry for a long read the run deadline stopped."""
+    return (
+        f"{read} stopped at the run deadline, {DEADLINE_MARGIN_SECONDS} s before "
+        f"the Lambda timeout, after {done} {unit}, so the rest were not read"
+    )
 
 
 CHECK_INCOMPLETE_FINDING = "SageMaker Check Incomplete"
@@ -210,6 +224,8 @@ def _timeout_finding(
 
 # Security Hub answers InvalidAccessException, "Account ... is not subscribed
 # to AWS Security Hub", when it is not enabled for the account in the Region.
+# It answers the same code to a caller it does not permit, so both the code
+# and the message are matched.
 SECURITY_HUB_NOT_ENABLED_CODE = "InvalidAccessException"
 SECURITY_HUB_NOT_ENABLED_MESSAGE = "not subscribed to aws security hub"
 
@@ -220,7 +236,7 @@ def _is_security_hub_not_enabled(error: Exception) -> bool:
     detail = error.response.get("Error", {})
     return (
         detail.get("Code", "") == SECURITY_HUB_NOT_ENABLED_CODE
-        or SECURITY_HUB_NOT_ENABLED_MESSAGE in str(detail.get("Message", "")).lower()
+        and SECURITY_HUB_NOT_ENABLED_MESSAGE in str(detail.get("Message", "")).lower()
     )
 
 
@@ -3580,10 +3596,16 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
         # Check Training Jobs encryption
         try:
             paginator = sagemaker_client.get_paginator("list_training_jobs")
+            jobs_described = 0
+            stopped = False
             for page in paginator.paginate():
                 for job in page.get("TrainingJobSummaries", []):
                     job_name = job.get("TrainingJobName")
+                    stopped = bool(job_name) and _deadline_reached()
+                    if stopped:
+                        break
                     if job_name:
+                        jobs_described += 1
                         try:
                             job_details = sagemaker_client.describe_training_job(
                                 TrainingJobName=job_name
@@ -3670,6 +3692,12 @@ def check_sagemaker_data_protection(region: str = "") -> Dict[str, Any]:
                         bucket = _s3_uri_bucket(output_config.get("S3OutputPath"))
                         if bucket:
                             bucket_users.setdefault(bucket, []).append(job_name)
+                if stopped:
+                    break
+            if stopped:
+                unread.append(
+                    _deadline_stop_note("sagemaker:DescribeTrainingJob", jobs_described)
+                )
         except Exception as e:
             logger.error(f"Error checking training jobs encryption: {str(e)}")
             unread.append(
@@ -13903,6 +13931,7 @@ def _processing_job_network_findings(
     describe_errors: List[Dict[str, str]] = []
     jobs_read = 0
 
+    stopped = False
     try:
         paginator = sagemaker_client.get_paginator("list_processing_jobs")
         for page in paginator.paginate():
@@ -13910,6 +13939,9 @@ def _processing_job_network_findings(
                 job_name = summary.get("ProcessingJobName")
                 if not job_name:
                     continue
+                stopped = _deadline_reached()
+                if stopped:
+                    break
                 jobs_read += 1
                 try:
                     detail = sagemaker_client.describe_processing_job(
@@ -13931,6 +13963,8 @@ def _processing_job_network_findings(
                     in_vpc.append({"name": job_name, "subnets": list(subnets)})
                 else:
                     without_vpc.append({"name": job_name, "isolated": isolated})
+            if stopped:
+                break
     except Exception as error:
         logger.warning(f"Could not list SageMaker processing jobs: {str(error)}")
         return [
@@ -13990,7 +14024,28 @@ def _processing_job_network_findings(
                 region=region,
             )
         )
-    if in_vpc:
+    if stopped:
+        described = "; ".join(
+            "{} in {}".format(entry["name"], ", ".join(entry["subnets"][:3]))
+            for entry in in_vpc[:3]
+        )
+        rows.append(
+            create_finding(
+                check_id="SM-33",
+                finding_name=PROCESSING_NETWORK_BOUNDARY_FINDING,
+                finding_details=(
+                    f"{_deadline_stop_note('sagemaker:DescribeProcessingJob', jobs_read)}"
+                    f". Of those, {len(in_vpc)} ran in customer subnets"
+                    + (f": {described}." if described else ".")
+                ),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
+                reference=PROCESSING_NETWORK_BOUNDARY_REFERENCE,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    elif in_vpc:
         described = "; ".join(
             "{} in {}".format(entry["name"], ", ".join(entry["subnets"][:3]))
             for entry in in_vpc[:3]
@@ -14091,12 +14146,17 @@ def check_sagemaker_training_job_network_boundary(region: str = "") -> Dict[str,
         describe_errors = []
 
         paginator = sagemaker_client.get_paginator("list_training_jobs")
-        # AIR-SGM-TRN-01 is a population claim, so every job is read.
+        stopped = False
+        # AIR-SGM-TRN-01 is a population claim, so every job is read, up to
+        # the run deadline.
         for page in paginator.paginate(SortBy="CreationTime", SortOrder="Descending"):
             for summary in page.get("TrainingJobSummaries", []):
                 job_name = summary.get("TrainingJobName")
                 if not job_name:
                     continue
+                stopped = _deadline_reached()
+                if stopped:
+                    break
                 jobs_sampled += 1
                 try:
                     detail = sagemaker_client.describe_training_job(
@@ -14126,6 +14186,8 @@ def check_sagemaker_training_job_network_boundary(region: str = "") -> Dict[str,
                     )
                 else:
                     jobs_without_vpc.append({"name": job_name, "isolated": isolated})
+            if stopped:
+                break
 
         processing_rows, processing_jobs = _processing_job_network_findings(
             sagemaker_client, region
@@ -14224,7 +14286,7 @@ def check_sagemaker_training_job_network_boundary(region: str = "") -> Dict[str,
             "Whether those subnets have a route to an internet gateway "
             f"is reported under '{TRAINING_SUBNET_EXPOSURE_FINDING}'."
         )
-        if describe_errors:
+        if describe_errors or stopped:
             findings["csv_data"].append(
                 _unread_resources_finding(
                     "SM-33",
@@ -14232,7 +14294,16 @@ def check_sagemaker_training_job_network_boundary(region: str = "") -> Dict[str,
                     [
                         f"training job '{entry['name']}' ({entry['label']})"
                         for entry in describe_errors
-                    ],
+                    ]
+                    + (
+                        [
+                            _deadline_stop_note(
+                                "sagemaker:DescribeTrainingJob", jobs_sampled
+                            )
+                        ]
+                        if stopped
+                        else []
+                    ),
                     vpc_pass_details,
                     TRAINING_NETWORK_BOUNDARY_REFERENCE,
                     region,
@@ -16237,6 +16308,112 @@ def _detective_regional_admin(region: str, account_id: str):
     return _regional_admin(_administrator, _self, account_id)
 
 
+# The services check_regional_security_admin judges, by trusted-access principal.
+REGIONAL_ADMIN_PRINCIPALS = (
+    "guardduty.amazonaws.com",
+    "securityhub.amazonaws.com",
+    "inspector2.amazonaws.com",
+    "macie.amazonaws.com",
+    "detective.amazonaws.com",
+)
+
+
+def _security_admin_account_role(account_id: str, master_account_id: str):
+    """("management", "delegated" or "member", how it was read) for this account.
+
+    The account is a delegated administrator when an ACTIVE entry of
+    ListDelegatedAdministrators for one of the regional services names it.
+    Organizations answers that call only for the management account and a
+    delegated administrator, so access denied there is how a member is
+    answered. Any other error raises.
+    """
+    if account_id == master_account_id:
+        return "management", "it is the organization management account"
+    orgs_client = boto3.client("organizations", config=boto3_config)
+    for principal in REGIONAL_ADMIN_PRINCIPALS:
+        try:
+            for page in orgs_client.get_paginator(
+                "list_delegated_administrators"
+            ).paginate(ServicePrincipal=principal):
+                if any(
+                    admin.get("Id") == account_id and admin.get("Status") == "ACTIVE"
+                    for admin in page.get("DelegatedAdministrators", [])
+                ):
+                    return "delegated", f"it is the {principal} delegated administrator"
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code", "") in (
+                ACCESS_DENIED_ERROR_CODES
+            ):
+                return "member", (
+                    "organizations:ListDelegatedAdministrators answered "
+                    f"{get_assessment_error_label(error)}, as Organizations answers "
+                    "an account that is neither the management account nor a "
+                    "delegated administrator"
+                )
+            raise
+    return "member", (
+        "organizations:ListDelegatedAdministrators names it as the delegated "
+        f"administrator of none of {', '.join(REGIONAL_ADMIN_PRINCIPALS)}"
+    )
+
+
+def check_member_regional_security_admin(region: str = "") -> Dict[str, Any]:
+    """
+    SM-35: one row for a member account, under Global, in place of the
+    per-Region delegated administrator rows.
+
+    Which account administers each security service in each Region is set in
+    the organization management account, once for every account, so judging it
+    in each member account and Region repeats one decision many times. The
+    management account and each delegated administrator are judged per Region
+    by check_regional_security_admin; any other account gets this row. When the
+    account's role is not read, no row is written here and each Region reports
+    its own could-not-assess row.
+    """
+    try:
+        account_id = boto3.client("sts", config=boto3_config).get_caller_identity()[
+            "Account"
+        ]
+        master_account_id = boto3.client(
+            "organizations", config=boto3_config
+        ).describe_organization()["Organization"]["MasterAccountId"]
+        role, how = _security_admin_account_role(account_id, master_account_id)
+    except Exception as error:
+        logger.warning(
+            "SM-35 account role was not read: " + get_assessment_error_label(error)
+        )
+        return {"csv_data": []}
+    if role != "member":
+        return {"csv_data": []}
+    return {
+        "csv_data": [
+            create_finding(
+                check_id="SM-35",
+                finding_name=REGIONAL_ADMIN_FINDING,
+                finding_details=(
+                    f"Account {account_id} is a member account: it is not the "
+                    f"organization management account, and {how}. Which account "
+                    "administers GuardDuty, Security Hub, Amazon Inspector, "
+                    "Amazon Macie and Amazon Detective in each Region is an "
+                    "organization-level setting made in the management account, "
+                    "so it is judged per Region in the assessments of the "
+                    "management account and the delegated administrator, not "
+                    "in each member account and Region."
+                ),
+                resolution=(
+                    "No action required in this account. Review this check in "
+                    "the assessment of the management account or the delegated "
+                    "administrator account."
+                ),
+                reference=REGIONAL_ADMIN_REFERENCE,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        ]
+    }
+
+
 def check_regional_security_admin(
     region: str = "", detector_inventory: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
@@ -16250,6 +16427,11 @@ def check_regional_security_admin(
     organization-wide delegated administrator list does not show a Region
     where the service has none. The admin listing APIs answer only the
     management account; a member reads its own administrator instead.
+
+    Only the management account and a delegated administrator are judged
+    here. A member account gets no row per Region, because the administrator
+    of each Region is set once for the organization;
+    check_member_regional_security_admin reports it once, under Global.
     """
     findings = {"csv_data": []}
 
@@ -16272,6 +16454,7 @@ def check_regional_security_admin(
         master_account_id = boto3.client(
             "organizations", config=boto3_config
         ).describe_organization()["Organization"]["MasterAccountId"]
+        role, _ = _security_admin_account_role(account_id, master_account_id)
     except Exception as error:
         findings["csv_data"].append(
             _row(
@@ -16281,6 +16464,8 @@ def check_regional_security_admin(
                 "N/A",
             )
         )
+        return findings
+    if role == "member":
         return findings
 
     detector_inventory = detector_inventory or get_guardduty_detector_inventory(region)
@@ -16701,7 +16886,7 @@ def check_security_hub_ai_standard(region: str = "") -> Dict[str, Any]:
         for page in paginator.paginate():
             subscriptions.extend(page.get("StandardsSubscriptions", []))
     except ClientError as error:
-        if error.response.get("Error", {}).get("Code", "") == "InvalidAccessException":
+        if _is_security_hub_not_enabled(error):
             findings["csv_data"].append(
                 _row(
                     "Security Hub is not enabled in this region, so the AI "
@@ -17982,7 +18167,8 @@ def check_sagemaker_model_artifact_integrity(
     bucket defaults to SSE-KMS with a named customer managed key. When
     EnableSageMakerArtifactObjectReads is true, each object named or listed
     under a prefix is read with HeadObject; otherwise one N/A row says the
-    per-object leg is off. Each execution
+    per-object leg is off and names each endpoint that met every other leg,
+    which is N/A rather than Passed because its objects were not read. Each execution
     role's s3:GetObject grants must stay inside the artifact buckets. Each EC2
     instance whose instance profile role can read an artifact bucket must
     require IMDSv2. A denied read leaves that endpoint N/A, never Failed.
@@ -18799,9 +18985,11 @@ def check_sagemaker_model_artifact_integrity(
 
     failed = []
     compliant = []
+    objects_unjudged = []
     artifact_buckets = set()
     for endpoint in endpoints:
         problems, unreads = [], []
+        objects_before = len(objects_not_read)
         work = [("model", name, None) for name in endpoint["models"]]
         component_work, component_unreads = _component_units(endpoint)
         work += component_work
@@ -18866,7 +19054,11 @@ def check_sagemaker_model_artifact_integrity(
         if problems:
             failed.append((endpoint["name"], problems))
         elif not unreads:
-            compliant.append(endpoint["name"])
+            (
+                objects_unjudged
+                if len(objects_not_read) > objects_before
+                else compliant
+            ).append(endpoint["name"])
 
     for name, problems in failed:
         findings["csv_data"].append(
@@ -18913,7 +19105,14 @@ def check_sagemaker_model_artifact_integrity(
                 f"{len(dict.fromkeys(objects_not_read))} model artifact object(s), "
                 "and their current ETags and own server-side encryption were not "
                 "compared. Image pinning, recorded expected values, bucket default "
-                "encryption and role read scope were still judged.",
+                "encryption and role read scope were still judged."
+                + (
+                    f" {len(objects_unjudged)} InService endpoint(s) met every "
+                    "other leg and are N/A, not Passed, because their artifact "
+                    f"objects were not read: {', '.join(objects_unjudged[:10])}."
+                    if objects_unjudged
+                    else ""
+                ),
                 f"Set the {ARTIFACT_OBJECT_READS_PARAMETER} deployment parameter to "
                 "true to read each artifact object with HeadObject. That grants the "
                 "assessment Lambda s3:GetObject on every object in every bucket.",
@@ -24661,16 +24860,27 @@ def _capped_problem_rows(
     return rows
 
 
-def _rotation_events(region: str) -> Dict[str, List[Tuple[str, datetime]]]:
-    """Secret ARN or name to (event name, time) for the last 90 days."""
+def _rotation_events(
+    region: str,
+) -> Tuple[Dict[str, List[Tuple[str, datetime]]], Optional[str]]:
+    """Secret ARN or name to (event name, time) for the last 90 days, and the
+    unread note when the run deadline stopped the paging."""
     client = boto3.client("cloudtrail", config=boto3_config, region_name=region)
     events = {}
+    pages_read = 0
     for event_name in ("RotationStarted",) + ROTATION_FAILURE_EVENTS:
         for page in client.get_paginator("lookup_events").paginate(
             LookupAttributes=[
                 {"AttributeKey": "EventName", "AttributeValue": event_name}
             ]
         ):
+            # LookupEvents allows 2 requests per second, so 90 days of a busy
+            # account's events can take longer than the run has left.
+            if _deadline_reached():
+                return events, _deadline_stop_note(
+                    "cloudtrail:LookupEvents", pages_read, "page(s)"
+                )
+            pages_read += 1
             for event in page.get("Events", []):
                 try:
                     record = json.loads(event.get("CloudTrailEvent") or "{}")
@@ -24684,7 +24894,7 @@ def _rotation_events(region: str) -> Dict[str, List[Tuple[str, datetime]]]:
                     if when.tzinfo is None:
                         when = when.replace(tzinfo=timezone.utc)
                     events.setdefault(secret, []).append((event_name, when))
-    return events
+    return events, None
 
 
 def _rotation_history_findings(
@@ -24694,7 +24904,7 @@ def _rotation_history_findings(
     if not rotating:
         return []
     try:
-        events = _rotation_events(region)
+        events, stopped = _rotation_events(region)
     except Exception as error:
         return [
             _unread_resources_finding(
@@ -24750,18 +24960,24 @@ def _rotation_history_findings(
         region,
         "secrets with a failed or stalled rotation",
     )
-    if in_progress:
+    if in_progress or stopped:
         rows.append(
             _unread_resources_finding(
                 "SM-40",
                 SECRET_HISTORY_FINDING,
-                in_progress,
-                "a rotation in progress has no outcome yet.",
+                in_progress + ([stopped] if stopped else []),
+                "a rotation in progress has no outcome yet."
+                if not stopped
+                else (
+                    f"{len(clean)} rotating secret(s) recorded no failed, "
+                    "abandoned or stalled rotation in the events read before "
+                    "the deadline."
+                ),
                 SECRET_HISTORY_REFERENCE,
                 region,
             )
         )
-    if clean and not problems and not in_progress:
+    if clean and not problems and not in_progress and not stopped:
         rows.append(
             create_finding(
                 check_id="SM-40",
@@ -26235,6 +26451,11 @@ def lambda_handler(event, context):
             run(
                 "SM-35",
                 check_security_service_delegated_admin,
+                region=GLOBAL_REGION_LABEL,
+            )
+            run(
+                "SM-35",
+                check_member_regional_security_admin,
                 region=GLOBAL_REGION_LABEL,
             )
 

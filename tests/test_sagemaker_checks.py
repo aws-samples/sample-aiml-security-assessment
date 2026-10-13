@@ -474,6 +474,20 @@ class TestSM04SecurityHubRouting:
         assert review["Status"] == "N/A"
         assert "does not import GuardDuty findings" in review["Finding_Details"]
 
+    @patch("sagemaker_app.boto3.client")
+    def test_invalid_access_without_not_subscribed_is_incomplete(self, mock_client):
+        # The same code answers a caller Security Hub does not permit, so it
+        # is a failed read, not an "enable Security Hub" gap.
+        rows = self._rows(
+            mock_client,
+            error=_make_client_error(
+                "InvalidAccessException", "The account doesn't have permission"
+            ),
+        )
+        assert (rows[1]["Status"], rows[1]["Severity"]) == ("N/A", "Informational")
+        assert rows[1]["Finding"].endswith("Incomplete")
+        assert "InvalidAccessException" in rows[1]["Finding_Details"]
+
     @pytest.mark.parametrize("code", [None, "UnknownEndpoint"])
     @patch("sagemaker_app.boto3.client")
     def test_security_hub_unavailable_in_region_is_not_assessed(
@@ -9654,13 +9668,22 @@ class TestSM35RegionalAdministrator:
         detector="d-1",
         macie="same",
         detective="same",
+        role="delegated",
+        check=None,
     ):
         """Each service spec: an admin account id (member, Enabled), "self",
         (admin id, status), None for no administrator, or an exception the
         administrator read raises. Macie also takes "off" (not enabled here)
         and Detective "standalone" (this account administers a graph that is
         not the organization graph). "same" is "self" when GuardDuty is, and
-        the tooling account otherwise."""
+        the tooling account otherwise.
+
+        role is how Organizations sees this account: "delegated" (listed as
+        the Detective delegated administrator, on a second page), "management"
+        (it is the management account), "listed-other" (the listing answers
+        but names only the tooling account), or an exception every
+        ListDelegatedAdministrators call raises. check runs instead of the
+        regional check, with no arguments."""
         same = "self" if guardduty == "self" else self.TOOLING
         macie = same if macie == "same" else macie
         detective = same if detective == "same" else detective
@@ -9789,11 +9812,30 @@ class TestSM35RegionalAdministrator:
             detective_organization
         )
         sts = MagicMock()
-        sts.get_caller_identity.return_value = {"Account": self.ME}
+        sts.get_caller_identity.return_value = {
+            "Account": self.MGMT if role == "management" else self.ME
+        }
         orgs = MagicMock()
         orgs.describe_organization.return_value = {
             "Organization": {"MasterAccountId": self.MGMT}
         }
+        self.listed_principals = []
+
+        def delegated_administrators(ServicePrincipal):
+            self.listed_principals.append(ServicePrincipal)
+            if isinstance(role, Exception):
+                raise role
+            listed = [{"Id": self.TOOLING, "Status": "ACTIVE"}]
+            if role == "delegated" and ServicePrincipal == "detective.amazonaws.com":
+                listed.append({"Id": self.ME, "Status": "ACTIVE"})
+            return [
+                {"DelegatedAdministrators": listed[:1]},
+                {"DelegatedAdministrators": listed[1:]},
+            ]
+
+        orgs.get_paginator.side_effect = _pager(
+            {"list_delegated_administrators": delegated_administrators}
+        )
         clients = {
             "sts": sts,
             "organizations": orgs,
@@ -9806,6 +9848,8 @@ class TestSM35RegionalAdministrator:
         with patch(
             "sagemaker_app.boto3.client", side_effect=lambda svc, **_: clients[svc]
         ):
+            if check is not None:
+                return _rows(check())
             return _rows(
                 self.check(
                     region="us-west-2",
@@ -9908,6 +9952,78 @@ class TestSM35RegionalAdministrator:
         details = rows[0]["Finding_Details"]
         assert "Amazon Detective is not available in us-west-2" in details
         assert "Amazon Detective (" not in details
+
+    # Review #73 round 2: which account administers each service in each
+    # Region is set once for the organization, so a member account that is
+    # neither the management account nor a delegated administrator is not
+    # judged on it per Region.
+    MEMBER_DENIED = _make_client_error(
+        "AccessDeniedException", "You don't have permissions to access this resource."
+    )
+
+    @pytest.mark.parametrize("role", [MEMBER_DENIED, "listed-other"])
+    def test_a_member_account_gets_no_regional_row(self, role):
+        rows = self._run(None, None, None, role=role)
+        assert rows == []
+
+    def test_the_management_account_is_judged_per_region(self):
+        rows = self._run(None, self.TOOLING, self.TOOLING, role="management")
+        assert [r["Status"] for r in rows] == ["Failed"]
+        assert (
+            "Amazon GuardDuty has no delegated administrator"
+            in (rows[0]["Finding_Details"])
+        )
+        assert self.listed_principals == []
+
+    def test_a_delegated_administrator_is_judged_per_region(self):
+        rows = self._run(None, self.TOOLING, self.TOOLING)
+        assert [r["Status"] for r in rows] == ["Failed"]
+        assert rows[0]["Severity"] == "High"
+        assert rows[0]["Region"] == "us-west-2"
+        assert self.listed_principals[-1] == "detective.amazonaws.com"
+
+    def test_an_unexpected_listing_error_is_could_not_assess(self):
+        rows = self._run(
+            None, None, None, role=_make_client_error("TooManyRequestsException")
+        )
+        assert [(r["Status"], r["Severity"]) for r in rows] == [
+            ("N/A", "Informational")
+        ]
+        assert "TooManyRequestsException" in rows[0]["Finding_Details"]
+
+    def _member_rows(self, role):
+        return self._run(
+            role=role,
+            check=lambda: sagemaker_app.check_member_regional_security_admin(
+                region="Global"
+            ),
+        )
+
+    @pytest.mark.parametrize("role", [MEMBER_DENIED, "listed-other"])
+    def test_a_member_account_gets_one_global_informational_row(self, role):
+        rows = self._member_rows(role)
+        assert [(r["Status"], r["Severity"], r["Region"]) for r in rows] == [
+            ("N/A", "Informational", "Global")
+        ]
+        assert rows[0]["Check_ID"] == "SM-35"
+        assert rows[0]["Finding"] == sagemaker_app.REGIONAL_ADMIN_FINDING
+        details = rows[0]["Finding_Details"]
+        assert f"Account {self.ME} is a member account" in details
+        assert "organization-level setting" in details
+        assert "management account" in rows[0]["Resolution"]
+
+    def test_the_member_row_names_the_denied_listing(self):
+        details = self._member_rows(self.MEMBER_DENIED)[0]["Finding_Details"]
+        assert "organizations:ListDelegatedAdministrators" in details
+        assert "AccessDeniedException" in details
+
+    @pytest.mark.parametrize("role", ["delegated", "management"])
+    def test_an_administering_account_gets_no_global_member_row(self, role):
+        assert self._member_rows(role) == []
+
+    def test_an_unread_role_gets_no_global_member_row(self):
+        # Each Region then reports its own could-not-assess row.
+        assert self._member_rows(_make_client_error("TooManyRequestsException")) == []
 
 
 class TestSM35DelegatedAdminConsolidation:
@@ -10424,10 +10540,29 @@ class TestSM36SecurityHubAIStandard:
     @patch("sagemaker_app.boto3.client")
     def test_security_hub_not_enabled_is_failed(self, mock_client):
         rows = self._run(
-            mock_client, error=_make_client_error("InvalidAccessException")
+            mock_client,
+            error=_make_client_error(
+                "InvalidAccessException",
+                "Account 123456789012 is not subscribed to AWS Security Hub",
+            ),
         )
         assert rows[0]["Status"] == "Failed"
         assert "not enabled in this region" in rows[0]["Finding_Details"]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_invalid_access_without_not_subscribed_is_could_not_assess(
+        self, mock_client
+    ):
+        # Security Hub answers InvalidAccessException for a caller it does not
+        # permit too, which says nothing about the standard.
+        rows = self._run(
+            mock_client,
+            error=_make_client_error(
+                "InvalidAccessException", "The account doesn't have permission"
+            ),
+        )
+        assert len(rows) == 1
+        assert_could_not_assess_finding(rows[0])
 
     @patch("sagemaker_app.boto3.client")
     def test_access_denied_is_could_not_assess(self, mock_client):
@@ -16976,7 +17111,13 @@ class TestFoundationCheckHandlerWiring:
         assert resp["statusCode"] == 200
         rows = [r for f in findings for r in f.get("csv_data", [])]
         sm35 = [r for r in rows if r["Check_ID"] == "SM-35"]
-        assert len(sm35) == len(sagemaker_app.SECURITY_SERVICE_PRINCIPALS) + 1
+        # One row per service, the consolidation row, and, because the mocked
+        # Organizations names this account as no delegated administrator, the
+        # one member-account row in place of the per-Region rows.
+        assert len(sm35) == len(sagemaker_app.SECURITY_SERVICE_PRINCIPALS) + 2
+        assert [r["Finding"] for r in sm35].count(
+            sagemaker_app.REGIONAL_ADMIN_FINDING
+        ) == 1
         assert {r["Region"] for r in sm35} == {"Global"}
 
     @patch("sagemaker_app.boto3.client")
@@ -23617,11 +23758,12 @@ class TestSM43ModelArtifactIntegrity:
         self, object_reads
     ):
         # Off by default: s3:GetObject is not granted, so HeadObject is never
-        # called and one N/A row says the per-object leg did not run. The
-        # other legs still pass the endpoints.
+        # called. An endpoint whose objects were not read is not Passed: a
+        # deleted object or a changed ETag would go unseen, so the one N/A
+        # row names it.
         rows = _sm43_rows(object_reads=object_reads)
         assert _sm43_rows.head_calls == []
-        assert _sm43_statuses(rows) == ["N/A", "Passed"]
+        assert _sm43_statuses(rows) == ["N/A"]
         off = rows[0]
         assert off["Check_ID"] == "SM-43"
         assert off["Severity"] == "Informational"
@@ -23630,7 +23772,31 @@ class TestSM43ModelArtifactIntegrity:
             "deployment parameter is false, so HeadObject was not called on 1 "
             "model artifact object(s)"
         )
+        assert (
+            "2 InService endpoint(s) met every other leg and are N/A, not "
+            "Passed, because their artifact objects were not read: ep-1, ep-2."
+        ) in off["Finding_Details"]
         assert "EnableSageMakerArtifactObjectReads" in off["Resolution"]
+
+    def test_object_reads_off_still_passes_an_endpoint_with_no_object_to_read(self):
+        # Hub content has no S3 object for HeadObject, so ep-1 is fully
+        # judged and passes while ep-2, whose object was not read, is N/A.
+        hub = _sm43_container(etag=None)
+        hub["ModelDataSource"]["S3DataSource"]["HubAccessConfig"] = {
+            "HubContentArn": "arn:aws:sagemaker:us-east-1:aws:hub-content/x"
+        }
+        rows = _sm43_rows(
+            models={
+                "m-1": {"PrimaryContainer": hub},
+                "m-2": {"PrimaryContainer": _sm43_container()},
+            },
+            object_reads=False,
+        )
+        assert _sm43_statuses(rows) == ["N/A", "Passed"]
+        assert rows[0]["Finding_Details"].count("ep-2") == 1
+        assert "ep-1" not in rows[0]["Finding_Details"]
+        assert "1 InService endpoint(s)" in rows[1]["Finding_Details"]
+        assert ": ep-1." in rows[1]["Finding_Details"]
 
     def test_object_reads_on_reads_each_object(self):
         rows = _sm43_rows(object_reads=True)
@@ -30511,18 +30677,47 @@ class TestServiceAvailabilityClassifier:
         assert sagemaker_app._is_service_unavailable(_unavailable(kind))
 
     @pytest.mark.parametrize(
-        "kind", ["AccessDeniedException", "ThrottlingException", "ValidationException"]
+        "kind",
+        [
+            "AccessDeniedException",
+            "ThrottlingException",
+            "ValidationException",
+            # The Region already answered the SageMaker probe, so a credential
+            # error from another service there is a failed read, not a
+            # missing service.
+            "UnrecognizedClientException",
+            "InvalidClientTokenId",
+            "AuthFailure",
+        ],
     )
     def test_denied_and_other_errors_are_not_unavailable(self, kind):
         assert not sagemaker_app._is_service_unavailable(_unavailable(kind))
         assert not sagemaker_app._is_service_unavailable(RuntimeError(kind))
 
-    def test_security_hub_not_enabled_is_matched_on_code_or_message(self):
+    def test_a_credential_error_leaves_the_population_unread(self):
+        notes = []
+        with self._paging_clients(
+            {"lambda-microvms": _unavailable("UnrecognizedClientException")}
+        ):
+            result = sagemaker_app._microvm_networks("us-east-1", notes)
+        assert notes == []
+        assert any("UnrecognizedClientException" in item for item in result[-1])
+
+    def test_security_hub_not_enabled_needs_the_code_and_the_message(self):
+        def error(code, message):
+            return ClientError({"Error": {"Code": code, "Message": message}}, "Get")
+
+        not_subscribed = "Account 111122223333 is not subscribed to AWS Security Hub"
         assert sagemaker_app._is_security_hub_not_enabled(
-            _unavailable("InvalidAccessException")
+            error("InvalidAccessException", not_subscribed)
+        )
+        # Security Hub also answers InvalidAccessException for a caller it
+        # does not permit, which is not a configuration gap.
+        assert not sagemaker_app._is_security_hub_not_enabled(
+            error("InvalidAccessException", "The account doesn't have permission")
         )
         assert not sagemaker_app._is_security_hub_not_enabled(
-            _unavailable("AccessDeniedException")
+            error("AccessDeniedException", not_subscribed)
         )
         assert not sagemaker_app._is_security_hub_not_enabled({"Administrator": {}})
 
@@ -30635,3 +30830,187 @@ class TestServiceAvailabilityClassifier:
         assert all(
             "is not available in us-east-1" in r["Finding_Details"] for r in rows
         )
+
+
+# ===================================================================
+# Review #73 round 2: the long reads inside one check stop at the run
+# deadline and report what they read, so one check cannot overrun the
+# margin the handler keeps to write the CSV.
+# ===================================================================
+
+
+def _trip_deadline_after(count):
+    """A side effect that trips the run deadline after `count` calls."""
+    seen = [0]
+
+    def trip(*_, **__):
+        seen[0] += 1
+        if seen[0] >= count:
+            sagemaker_app._DEADLINE = 0.0
+
+    return trip
+
+
+class TestLongReadsStopAtTheDeadline:
+    @staticmethod
+    def _training_client(mock_client, jobs, processing=None):
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        mock_sm.describe_key.return_value = {"KeyMetadata": {"KeyManager": "CUSTOMER"}}
+        pages = {
+            "list_training_jobs": [
+                {"TrainingJobSummaries": [{"TrainingJobName": n}]} for n in jobs
+            ],
+            "list_processing_jobs": [
+                {"ProcessingJobSummaries": [{"ProcessingJobName": n}]}
+                for n in (processing or {})
+            ],
+        }
+
+        def get_paginator(name):
+            paginator = MagicMock()
+            paginator.paginate.side_effect = lambda **_: iter(pages.get(name, [{}]))
+            return paginator
+
+        mock_sm.get_paginator.side_effect = get_paginator
+        return mock_sm
+
+    OPEN_JOB = {
+        "OutputDataConfig": {},
+        "EnableInterContainerTrafficEncryption": True,
+        "ResourceConfig": {"InstanceType": "ml.m5.large"},
+    }
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm03_stops_describing_training_jobs_at_the_deadline(self, mock_client):
+        mock_sm = self._training_client(
+            mock_client, {"job-a": self.OPEN_JOB, "job-b": self.OPEN_JOB}
+        )
+        trip = _trip_deadline_after(1)
+
+        def describe(TrainingJobName):
+            trip()
+            return self.OPEN_JOB
+
+        mock_sm.describe_training_job.side_effect = describe
+        with patch.object(sagemaker_app, "_DEADLINE", None):
+            rows = _rows(sagemaker_app.check_sagemaker_data_protection("us-east-1"))
+        assert mock_sm.describe_training_job.call_count == 1
+        # The job read before the deadline is still reported.
+        assert any(
+            r["Status"] == "Failed" and "'job-a'" in r["Finding_Details"] for r in rows
+        )
+        assert not any("job-b" in r["Finding_Details"] for r in rows)
+        incomplete = [r for r in rows if r["Finding"].endswith("Incomplete")]
+        assert len(incomplete) == 1
+        assert (
+            "sagemaker:DescribeTrainingJob stopped at the run deadline"
+            in incomplete[0]["Finding_Details"]
+        )
+        assert "after 1 item(s)" in incomplete[0]["Finding_Details"]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm03_deadline_after_the_last_job_reads_as_complete(self, mock_client):
+        mock_sm = self._training_client(mock_client, {"job-a": self.OPEN_JOB})
+        trip = _trip_deadline_after(1)
+
+        def describe(TrainingJobName):
+            trip()
+            return self.OPEN_JOB
+
+        mock_sm.describe_training_job.side_effect = describe
+        with patch.object(sagemaker_app, "_DEADLINE", None):
+            rows = _rows(sagemaker_app.check_sagemaker_data_protection("us-east-1"))
+        assert not any("run deadline" in r["Finding_Details"] for r in rows)
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm33_stops_describing_training_jobs_at_the_deadline(self, mock_client):
+        mock_sm = self._training_client(mock_client, {"job-a": {}, "job-b": {}})
+        trip = _trip_deadline_after(1)
+
+        def describe(TrainingJobName):
+            trip()
+            return {}
+
+        mock_sm.describe_training_job.side_effect = describe
+        with patch.object(sagemaker_app, "_DEADLINE", None):
+            rows = _rows(
+                sagemaker_app.check_sagemaker_training_job_network_boundary(
+                    region="us-east-1"
+                )
+            )
+        assert mock_sm.describe_training_job.call_count == 1
+        failed = [r for r in rows if r["Status"] == "Failed"]
+        assert [r["Finding_Details"].split("'")[1] for r in failed] == ["job-a"]
+        incomplete = [r for r in rows if r["Finding"].endswith("Incomplete")]
+        assert [r["Status"] for r in incomplete] == ["N/A"]
+        assert (
+            "sagemaker:DescribeTrainingJob stopped at the run deadline"
+            in incomplete[0]["Finding_Details"]
+        )
+        assert not any(r["Status"] == "Passed" for r in rows)
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm33_stops_describing_processing_jobs_at_the_deadline(self, mock_client):
+        in_vpc = {"NetworkConfig": {"VpcConfig": {"Subnets": ["subnet-a"]}}}
+        mock_sm = self._training_client(
+            mock_client, {}, processing={"proc-a": in_vpc, "proc-b": in_vpc}
+        )
+        trip = _trip_deadline_after(1)
+
+        def describe(ProcessingJobName):
+            trip()
+            return in_vpc
+
+        mock_sm.describe_processing_job.side_effect = describe
+        mock_sm.describe_subnets.return_value = {"Subnets": []}
+        mock_sm.describe_route_tables.return_value = {"RouteTables": []}
+        with patch.object(sagemaker_app, "_DEADLINE", None):
+            rows = _rows(
+                sagemaker_app.check_sagemaker_training_job_network_boundary(
+                    region="us-east-1"
+                )
+            )
+        assert mock_sm.describe_processing_job.call_count == 1
+        processing = [
+            r
+            for r in rows
+            if r["Finding"] == sagemaker_app.PROCESSING_NETWORK_BOUNDARY_FINDING
+        ]
+        assert not any(r["Status"] == "Passed" for r in processing)
+        stopped = [r for r in processing if "run deadline" in r["Finding_Details"]]
+        assert [(r["Status"], r["Severity"]) for r in stopped] == [
+            ("N/A", "Informational")
+        ]
+        assert "proc-a" in stopped[0]["Finding_Details"]
+
+    def test_sm40_rotation_history_stops_paging_at_the_deadline(self):
+        history = TestSM40RotationHistoryAndPropagation()
+        # A stalled rotation is in the first page; nothing proves the other
+        # secret clean once the paging stopped.
+        other = "arn:aws:secretsmanager:us-east-1:111122223333:secret:api-XyZ123"
+        trip = _trip_deadline_after(1)
+        real = sagemaker_app._deadline_reached
+
+        def deadline():
+            reached = real()
+            trip()
+            return reached
+
+        with (
+            patch.object(sagemaker_app, "_DEADLINE", None),
+            patch.object(sagemaker_app, "_deadline_reached", side_effect=deadline),
+        ):
+            rows = history._history(
+                history._run(
+                    secrets=[history._secret(), history._secret("api", other)],
+                    events=[history._event("RotationStarted", 1.5)],
+                )
+            )
+        assert sorted(r["Status"] for r in rows) == ["Failed", "N/A"]
+        stopped = next(r for r in rows if r["Status"] == "N/A")
+        assert (
+            "cloudtrail:LookupEvents stopped at the run deadline"
+            in stopped["Finding_Details"]
+        )
+        assert not any(r["Status"] == "Passed" for r in rows)

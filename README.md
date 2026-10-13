@@ -327,7 +327,7 @@ enforced by default.
 | `AgentCoreTokenVaultId` | `default` | AC-14 | Selects the regional AgentCore Identity token vault whose customer-managed KMS encryption is assessed. |
 | `ApprovedExternalAccountIds` | Empty | SM-30 | Comma-separated 12-digit AWS account IDs approved to receive SageMaker Model Registry access. Accounts outside the configured boundary fail. |
 | `ApprovedOrganizationIds` | Empty | SM-30 | Comma-separated AWS Organizations IDs approved to receive SageMaker Model Registry access. Organizations outside the configured boundary fail. |
-| `EnableSageMakerArtifactObjectReads` | `false` | SM-43 | When `true`, the SageMaker Lambda role gets `s3:GetObject` on every object (`arn:<partition>:s3:::*/*`) so SM-43 can call `HeadObject` on each single-object model artifact and compare its current `ETag` and own encryption. That grant also allows downloading any object the bucket policy does not deny. When `false`, the grant is absent and the per-object leg is an informational `N/A` row naming this parameter. |
+| `EnableSageMakerArtifactObjectReads` | `false` | SM-43 | When `true`, the SageMaker Lambda role gets `s3:GetObject` on every object (`arn:<partition>:s3:::*/*`) so SM-43 can call `HeadObject` on each single-object model artifact and compare its current `ETag` and own encryption. That grant also allows downloading any object the bucket policy does not deny. When `false`, the grant is absent and the per-object leg is an informational `N/A` row naming this parameter; an endpoint whose artifact objects were not read is `N/A` there, not `Passed`. |
 
 For the approved-account and approved-organization lists, do not include spaces.
 Leaving both lists empty means SM-30 still detects public access, but external

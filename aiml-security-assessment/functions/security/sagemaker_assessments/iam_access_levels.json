@@ -1007,6 +1007,25 @@
      "UpdateCluster"
     ]
    },
+   "training-session": {
+    "arns": [
+     "arn:*:sagemaker:*:*:training-session/*"
+    ],
+    "read": [
+     "DescribeTrainingSession",
+     "GetSamplingOperationResult",
+     "GetTrainingOperationResult"
+    ],
+    "write": [
+     "CreateTrainingSession",
+     "DeleteTrainingSession",
+     "ExecuteSamplingOperation",
+     "ExecuteTrainingOperation",
+     "SampleTrainingSession",
+     "SampleTrainingSessionWithResponseStream",
+     "StopTrainingSession"
+    ]
+   },
    "transform-job": {
     "arns": [
      "arn:*:sagemaker:*:*:transform-job/*"

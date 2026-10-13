@@ -94,12 +94,18 @@ the listed text become OW rows:
 
 | Source | OW rows | Mapped source findings | Not mapped |
 | --- | --- | --- | --- |
-| `SM-10` | OW-03 | `SageMaker Notebook ...` | Studio domain network boundary and subnet exposure rows |
+| `SM-10` | OW-03 | `SageMaker Notebook ...`, which includes `SageMaker Notebook Subnet Internet Exposure` and `SageMaker Notebook Direct Internet Access in VPC` | `SageMaker Studio Domain Network Boundary` and `SageMaker Studio Domain Subnet Internet Exposure` |
 | `SM-11` | OW-03, OW-10 | `SageMaker Model Network Isolation ...` | AI Lambda function network boundary, endpoint config encryption and subnet exposure, model VPC attachment, endpoint model network path, private invoke path and invocation source network rows |
 | `SM-22` | OW-04, OW-09 | `Model Approval Workflow ...`, `Deployed Model Registration` | Model Registry cross-account visibility and lifecycle stage rows |
 
 A `SageMaker Check Incomplete` row, written when a SageMaker check stops on an
-unexpected error, maps to no OW row.
+unexpected error, and a `SageMaker Check Not Assessed (Timeout)` row match none
+of these prefixes, so for `SM-10`, `SM-11` and `SM-22` they map to no OW row.
+Every other mapped SageMaker check ID (`SM-01`, `SM-03`, `SM-06`, `SM-07`,
+`SM-14`, `SM-15`, `SM-21`, `SM-23`, `SM-25`, `SM-26`, `SM-27`, `SM-28`, `SM-30`)
+has no prefix filter, so such a row becomes an `N/A` `Informational` row under
+each OW ID that source maps to: an `SM-14` incomplete row, for example, yields
+an `N/A` OW-03 row.
 
 ## Extensibility
 

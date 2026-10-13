@@ -125,13 +125,16 @@ investigation and remediation.
 
 ## Amazon SageMaker AI Security Checks (42)
 
-A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker Check Incomplete` row for its check ID, naming the check function, and the other checks still run. The SageMaker Lambda stops starting checks 120 seconds before its 900-second timeout; each check ID it did not reach gets one `N/A` `SageMaker Check Not Assessed (Timeout)` row that begins "Timeout, not assessed" and names the skipped functions, and every row collected before the deadline is still written.
+A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker Check Incomplete` row for its check ID, naming the check function, and the other checks still run. The SageMaker Lambda stops starting checks 120 seconds before its 900-second timeout; each check ID it did not reach gets one `N/A` `SageMaker Check Not Assessed (Timeout)` row that begins "Timeout, not assessed" and names the skipped functions, and every row collected before the deadline is still written. No check has its own time cap. The checks with the longest single reads, the SM-03 and SM-33 training and processing job describes and the SM-40 CloudTrail `LookupEvents` paging (2 requests per second), stop at the same deadline: the items not read are named in an `N/A` incomplete row that withholds `Passed`, and the rows already collected are kept.
 
 ### SM-01: Internet Access
 
 - **Severity:** High
 - **AWS Security Hub Control:** SageMaker.2
 - **Description:** Checks for direct internet access on notebooks and domains.
+- **Rows emitted:**
+  - `Direct Internet Access Enabled` and `SageMaker Internet Access Check`: a notebook instance with `DirectInternetAccess` `Enabled`, or a Studio domain whose `AppNetworkAccessType` is not `VpcOnly`.
+  - `Notebook Instance Outside VPC`: fails a notebook instance with no `SubnetId`, because it runs outside a customer VPC.
 
 ### SM-02: AWS IAM Permissions
 
@@ -162,12 +165,22 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 
 - **Severity:** High
 - **AWS Security Hub Control:** SageMaker.1
-- **Description:** Verifies encryption at rest and in transit for notebooks and domains.
+- **Description:** Verifies encryption at rest and in transit for notebooks, domains and training jobs, and the protection of the buckets training jobs read from and write to (AIR-SGM-TRN-02).
+- **Rows emitted:**
+  - `Missing Encryption Configuration`, `AWS Managed Key Usage`, `Missing VPC Encryption`, `SageMaker Data Protection Check` and `Data Protection Check`: KMS keys on notebooks, domains and training job output, and inter-container traffic encryption on multi-instance training jobs.
+  - `Customer Managed Key Not Enabled`: fails a resource whose customer managed key has a `kms:DescribeKey` `KeyState` other than `Enabled`.
+  - `Training Job Volume Encryption`: fails each training job with no `ResourceConfig.VolumeKmsKeyId`, because the ML storage volume that holds the downloaded training data then uses the EBS default key. More than 20 such jobs are summarized in one extra row. A training channel on Amazon EFS or FSx for Lustre is read for the file system's encryption at rest, and one that cannot be read is named as not read.
+  - `Training Job Data Bucket Protection`: every S3 bucket a training job's input channels or `S3OutputPath` name must default to SSE-KMS with a customer managed key (a named `KMSMasterKeyID` whose `kms:DescribeKey` reports `KeyManager` `CUSTOMER` and `KeyState` `Enabled`) and have a bucket policy that denies requests when `aws:SecureTransport` is `false`. A bucket read error withholds `Passed` and is named.
+  - Training jobs are described one at a time. When the run deadline (120 seconds before the Lambda timeout) is reached during that loop, the jobs not described are named in an `N/A` incomplete row and the rows already collected are kept.
 
 ### SM-04: Amazon GuardDuty Integration
 
 - **Severity:** High
-- **Description:** Verifies Amazon GuardDuty runtime threat detection is enabled. `GuardDuty Findings Routed to Security Hub` passes when Security Hub in the Region imports GuardDuty findings (product subscription `aws/guardduty`). Security Hub not enabled in the Region (`InvalidAccessException`, "not subscribed to AWS Security Hub") fails, with a resolution to enable Security Hub and then its GuardDuty integration; Security Hub not offered in the Region is `N/A`. Any other read error, access denied among them, is `N/A` as `GuardDuty Findings Routed to Security Hub Incomplete`. `GuardDuty Findings Reviewed in Security Hub` is then `N/A` naming the routing row, and is `Incomplete` only when the routing row is.
+- **Description:** Verifies Amazon GuardDuty runtime threat detection is enabled. `GuardDuty Findings Routed to Security Hub` passes when Security Hub in the Region imports GuardDuty findings (product subscription `aws/guardduty`). Security Hub not enabled in the Region (`InvalidAccessException`, "not subscribed to AWS Security Hub") fails, with a resolution to enable Security Hub and then its GuardDuty integration; Security Hub not offered in the Region is `N/A`. Any other read error, access denied among them, is `N/A` as `GuardDuty Findings Routed to Security Hub Incomplete`. `GuardDuty Findings Reviewed in Security Hub` is then `N/A` naming the routing row, and is `Incomplete` only when the routing row is. Security Hub also answers `InvalidAccessException` to a caller it does not permit, so that code without the "not subscribed" message is read as a failed read, not as Security Hub disabled.
+- **Rows emitted:**
+  - `GuardDuty Enabled`, `GuardDuty Detector Disabled`, `GuardDuty Not Enabled` and `GuardDuty Check Error`: the detector leg.
+  - `GuardDuty Findings Routed to Security Hub` and `GuardDuty Findings Reviewed in Security Hub`: the Security Hub legs above.
+  - `GuardDuty Findings Routed to Alerting`: passes when an `ENABLED` rule on the default event bus names source `aws.guardduty`, with no `detail-type` or with `GuardDuty Finding` among them, and has at least one target. No such rule fails. An `events:ListRules` error is `N/A` as `GuardDuty Findings Routed to Alerting Incomplete`, and a target read error is named.
 
 ### SM-05: MLOps Features
 
@@ -193,13 +206,24 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 
 - **Severity:** High
 - **AWS Security Hub Control:** SageMaker.3
-- **Description:** Validates root access is disabled on notebooks.
+- **Description:** Validates root access is disabled on notebooks, and that notebook and Studio development environments run with a scoped role, are logged, are evaluated by AWS Config and are guarded at creation (AIR-SGM-TRN-05).
+- **Rows emitted:**
+  - `SageMaker Notebook Root Access Enabled` and `SageMaker Notebook Root Access Check`: each notebook instance's `RootAccess`.
+  - `SageMaker Development Environment Execution Role`: the role of each notebook instance, Studio domain default and default space, and Studio user profile is read from the IAM permissions cache. A role that holds `AmazonSageMakerFullAccess`, `AdministratorAccess`, `PowerUserAccess` or a grant of every SageMaker action fails, unless its permissions boundary does not allow every SageMaker action. A role missing from the cache, or no cache, is `N/A` and withholds `Passed`.
+  - `SageMaker Development Environment API Logging`: passes when one trail that is logging and covers the Region records SageMaker management events, read and write, and delivers them to CloudWatch Logs with no delivery error. A trail read error is `N/A`.
+  - `SageMaker Notebook Config Rules`: passes when the AWS managed Config rules `sagemaker-notebook-no-direct-internet-access` and `sagemaker-notebook-instance-kms-key-configured` are both active and not scoped to named resources or tags, and the KMS rule sets `kmsKeyArns`. A missing or narrowed rule fails.
+  - `SageMaker Notebook Access Guardrail`: for notebook instance, domain and user profile create and update actions on `sagemaker:RootAccess`, `sagemaker:DirectInternetAccess`, `sagemaker:VpcSubnets`, `sagemaker:VpcSecurityGroupIds`, `sagemaker:VolumeKmsKeyArn` and `sagemaker:AppNetworkAccessType`, and for `CreatePresignedNotebookInstanceUrl` and `CreatePresignedDomainUrl` on `aws:SourceIp` or `aws:SourceVpce`, requires a service control policy Deny attached on this account's path to the root. A condition in every identity policy that grants the action still fails, because the account root user is bound by no identity policy. Runs once, on the primary Region, tagged `Global`.
 
 ### SM-10: Notebook Amazon VPC Deployment
 
 - **Severity:** High
 - **AWS Security Hub Control:** SageMaker.2
 - **Description:** Ensures notebooks are deployed within an Amazon VPC, and fails a notebook whose subnet's route table routes to an internet gateway. A notebook list or describe error is `N/A` and withholds the all-in-VPC `Passed`. The same check reads every SageMaker Studio domain (AIR-FND-NET-01): `DescribeDomain` reporting `AppNetworkAccessType` `PublicInternetOnly`, or omitting it (the default is `PublicInternetOnly`), fails `SageMaker Studio Domain Network Boundary`, because that mode sends non-EFS traffic through a SageMaker-managed VPC that allows direct internet access. A `VpcOnly` domain's `SubnetIds` go through the same route-table read under `SageMaker Studio Domain Subnet Internet Exposure`. A domain list or describe error, or a `VpcOnly` domain with no `SubnetIds`, is `N/A`.
+- **Rows emitted:**
+  - `SageMaker Notebook Not in VPC` and `SageMaker Notebook VPC Deployment Check`: each notebook instance's `SubnetId`.
+  - `SageMaker Notebook Direct Internet Access in VPC`: a notebook in a VPC whose `DirectInternetAccess` is not `Disabled`, because SageMaker then gives it internet access outside the VPC's routing and security groups.
+  - `SageMaker Notebook Subnet Internet Exposure`: a notebook whose subnet's route table routes to an internet gateway.
+  - `SageMaker Studio Domain Network Boundary` and `SageMaker Studio Domain Subnet Internet Exposure`: the domain legs above.
 
 ### SM-11: Model Network Isolation
 
@@ -212,7 +236,7 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
   - `SageMaker Endpoint Model Network Path` and `SageMaker Endpoint Config Subnet Internet Exposure` (AIR-SGM-EP-01, EP-03): isolation and `VpcConfig` of the models each endpoint serves, inference components included. A model the endpoint names that could not be described leaves that endpoint `N/A`.
   - `SageMaker Endpoint Config Storage Encryption` (AIR-SGM-EP-03): the endpoint config `KmsKeyId`. No endpoint API field turns on inter-container traffic encryption, and the row says so.
   - `SageMaker Runtime Private Invoke Path` (AIR-SGM-EP-01): where the Region hosts an endpoint, an available `sagemaker.runtime` interface endpoint with private DNS, in a VPC with `enableDnsSupport` and `enableDnsHostnames` true.
-  - `SageMaker Endpoint Invocation Source Network` (AIR-SGM-EP-01): each principal that can invoke an endpoint must be held to `aws:SourceVpce` or `aws:SourceVpc`. An attached service control policy Deny on every invoke action passes on its own; without one the account root user fails the leg. The service control policies are read once per invocation and shared with SM-34, SM-39, SM-09 and SM-42 on the primary Region.
+  - `SageMaker Endpoint Invocation Source Network` (AIR-SGM-EP-01): each principal that can invoke an endpoint must be held to `aws:SourceVpce` or `aws:SourceVpc`. An attached service control policy Deny on every invoke action passes on its own; without one the account root user fails the leg. On the primary Region the service control policies are read once and shared with SM-34, SM-39, SM-09 and SM-42. Each other Region runs in its own Lambda invocation, so this leg reads them once more in each other Region that hosts a SageMaker endpoint; a Region with no endpoint does not read them.
   - `AI Lambda Function Network Boundary` (AIR-FND-NET-01): every Lambda function an agent action group or AgentCore gateway target invokes, and every Lambda function and ECS awsvpc workload whose role is granted an AI invoke action, must run in VPC subnets with no route to an internet gateway. Bedrock Agents or AgentCore not offered in the Region adds a note and is not a failed read.
 
 ### SM-12: Endpoint Instance Count
@@ -249,7 +273,13 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 ### SM-18: Transform Job Encryption
 
 - **Severity:** Medium
-- **Description:** Checks transform job volume encryption.
+- **Description:** Checks transform job volume encryption, and the output key, model network boundary and buckets of each batch transform job (AIR-SGM-EP-08).
+- **Rows emitted:**
+  - `SageMaker Transform Job Volume Encryption Missing` and `SageMaker Transform Job Encryption Check`: each job's `TransformResources.VolumeKmsKeyId`.
+  - `SageMaker Transform Job Output Key and Model Boundary`: each job must set `TransformOutput.KmsKeyId` and `TransformResources.VolumeKmsKeyId` to customer managed keys, and the model it names (`ModelName`, read with `DescribeModel`) must have a `VpcConfig` with subnets and security groups and `EnableNetworkIsolation` true, because a transform job takes its network posture from its model. An AWS managed key fails; a key or model that cannot be read is named and withholds `Passed`.
+  - `SageMaker Transform Job Model Subnet Exposure`: the subnets of each such model whose route table routes to an internet gateway.
+  - `SageMaker Transform Job S3 VPC Endpoint`: each VPC those models run in needs an available S3 gateway endpoint, or an S3 interface endpoint with private DNS, whose policy does not grant object reads and writes on every bucket to any principal.
+  - `SageMaker Transform Job Bucket Protection`: the input and output buckets of each job are judged like `Training Job Data Bucket Protection` in SM-03.
 
 ### SM-19: Hyperparameter Tuning Encryption
 
@@ -269,12 +299,24 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 ### SM-22: Model Approval Workflow
 
 - **Severity:** Medium
-- **Description:** Checks model approval and governance workflow.
+- **Description:** Checks model approval and governance workflow (AIR-SGM-GOV-01).
+- **Rows emitted:**
+  - `Model Approval Workflow Check`, `Model Approval Workflow - Auto-Approval Suspected` and `Model Approval Workflow - Stale Pending Models`: the `ModelApprovalStatus` of each model package version.
+  - `Model Approval Workflow - Approver Attribution`: fails an approved version whose `LastModifiedBy` names no user profile, source identity or IAM ARN, because approval is applied with `UpdateModelPackage` and SageMaker records the caller there. `CreatedBy` names the registrant and is not read as the approver; `ApprovalDescription` is free text and is not an identity.
+  - `Model Registry Lifecycle Stage`: fails an approved version with no `ModelLifeCycle` `Stage` and `StageStatus`.
+  - `Model Registry Cross-Account Visibility`: passes when a model package group is shared from this account or with it through AWS RAM (`sagemaker:ModelPackageGroup`), and fails (Low) when none is, because the registry is then visible only inside this account. A RAM read error is `N/A`.
+  - `Deployed Model Registration`: every model serving on an endpoint or run by a batch transform job must have been created from an `Approved` version in a model package group: each container needs a `ModelPackageName` whose package belongs to a group and is `Approved`. A model or package that cannot be read is named and withholds `Passed`.
+  - A failed model package read leaves the version rows `N/A` naming the number not read.
 
 ### SM-23: Model Drift Detection
 
 - **Severity:** Medium
-- **Description:** Validates model drift monitoring configuration.
+- **Description:** Validates model drift monitoring configuration, and for each monitoring schedule on an `InService` endpoint, its baseline, its recent reports and its alarm (AIR-SGM-EP-06).
+- **Rows emitted:**
+  - `Model Drift Detection Not Configured`, `Model Drift Detection - Missing Data Quality Monitoring`, `Model Drift Detection - Missing Model Quality Monitoring` and `Model Drift Detection Check`: whether endpoints have data quality and model quality monitoring schedules.
+  - `Model Monitor Baseline Constraints`: fails a schedule whose job definition names no baseline constraints file. A job definition that cannot be described is `N/A`.
+  - `Model Monitor Recent Report`: fails a schedule that has never run, whose latest finished execution is not `Completed` or `CompletedWithViolations`, or whose latest report was scheduled more than twice its cadence ago.
+  - `Model Monitor Violation Alarm`: fails a schedule with no CloudWatch alarm whose `ALARM` state reaches an enabled action, its own or an OR composite alarm's, on a metric in that schedule's monitoring-type namespace with both its endpoint and schedule dimensions. A data quality alarm must read a `feature_baseline_drift_` metric with a rising threshold below 1. A `cloudwatch:DescribeAlarms` error is `N/A`.
 
 ### SM-24: A/B Testing and Shadow Deployment
 
@@ -300,6 +342,9 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 
 - **Severity:** Medium
 - **Description:** Verifies each HyperPod instance group's effective VPC configuration has subnets and security groups, honoring `OverrideVpcConfig` before the cluster-level `VpcConfig`.
+- **Rows emitted:**
+  - `HyperPod VPC Configuration`: the leg above.
+  - `HyperPod Subnet Internet Exposure`: an instance group whose subnet's route table routes to an internet gateway.
 
 `SM-29` is reserved for SageMaker Unified Studio private networking. It is not currently emitted because the available domain APIs do not expose a sufficient domain-level networking configuration.
 
@@ -312,16 +357,28 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 
 - **Severity:** Medium
 - **Description:** Requires each SageMaker endpoint to capture inference requests and responses. `DescribeEndpoint` reports the live capture state as `DataCaptureConfig.EnableCapture` plus `CaptureStatus`, so an endpoint whose configuration enables capture but whose `CaptureStatus` is `Stopped` is reported as a failure and not as compliant.
+- **Rows emitted:**
+  - `Endpoint Inference Data Capture`: the capture leg above.
+  - `Data Capture Disk Utilization Alarm`: each instance-backed variant of a capturing endpoint needs an enabled CloudWatch alarm whose `ALARM` state reaches an action, on `DiskUtilization` with its `EndpointName` and `VariantName` dimensions, at 75% or lower. Serverless variants are left out. `Data Capture Disk Utilization Alarm Not Judged` (`N/A`) names variants whose only such alarm evaluates a metric math expression or another account's metric.
 
 ### SM-32: SageMaker Configuration Compliance Evaluation
 
 - **Severity:** Medium
 - **Description:** Two independent legs, each with its own finding. `SageMaker Configuration Recording` requires an AWS Config recorder whose recording group covers SageMaker resource types. `SageMaker Config Rule Compliance` requires at least one active Config rule evaluating SageMaker and reports that rule's current compliance result. Neither verdict implies the other: a recorder with no rules evaluates nothing, and a rule with no recorder cannot see configuration changes. Service-linked rules, which carry `CreatedBy` (for example `securityhub.amazonaws.com`), are reported `N/A` naming the owning service, because AWS Config returns their compliance results to no caller.
+- **Rows emitted:**
+  - `SageMaker Configuration Recording` and `SageMaker Config Rule Compliance`: the two legs above.
+  - `SageMaker Required Config Rules`: passes when the AWS managed rules `sagemaker-endpoint-configuration-kms-key-configured` (with `kmsKeyArns` set), `sagemaker-notebook-instance-kms-key-configured` and `sagemaker-notebook-no-direct-internet-access` are all active and not scoped to named resources or tags. A missing or narrowed rule fails.
+  - `SageMaker Config Conformance Pack`: passes only when a conformance pack created by `config-multiaccountsetup.amazonaws.com` (an organization conformance pack) carries all three of those rules. A pack read error is named and withholds `Passed`.
 
 ### SM-33: Training Job Network Boundary
 
 - **Severity:** Medium
-- **Description:** Requires training jobs to run inside a customer VPC. Network isolation and `VpcConfig` are reported separately, because a job can set `EnableNetworkIsolation` with no VPC attachment, and an isolated job without a VPC attachment still has no private path to Amazon S3 or Amazon ECR. SM-21 asserts the same VPC boundary for AutoML jobs only. Every training job is listed and described, with no item cap. The same check lists and describes every processing job (AIR-FND-NET-01): a job whose `NetworkConfig` names no `VpcConfig` fails `Processing Job Network Boundary`, and the subnets of the others go through the route-table read under `SageMaker Processing Job Subnet Internet Exposure`. A list or describe error is `N/A`, and `No SageMaker training or processing jobs found` appears only when both lists read empty. In an estate with many jobs this check makes one describe call per job.
+- **Description:** Requires training jobs to run inside a customer VPC. Network isolation and `VpcConfig` are reported separately, because a job can set `EnableNetworkIsolation` with no VPC attachment, and an isolated job without a VPC attachment still has no private path to Amazon S3 or Amazon ECR. SM-21 asserts the same VPC boundary for AutoML jobs only. Every training job is listed and described, with no item cap. The same check lists and describes every processing job (AIR-FND-NET-01): a job whose `NetworkConfig` names no `VpcConfig` fails `Processing Job Network Boundary`, and the subnets of the others go through the route-table read under `SageMaker Processing Job Subnet Internet Exposure`. A list or describe error is `N/A`, and `No SageMaker training or processing jobs found` appears only when both lists read empty. In an estate with many jobs this check makes one describe call per job, and when the run deadline is reached during either describe loop, the jobs not described are named in an `N/A` row that withholds `Passed` for that job type.
+- **Rows emitted:**
+  - `Training Job Network Boundary` and `Training Job Network Isolation`: each training job's `VpcConfig` and `EnableNetworkIsolation`, reported apart.
+  - `SageMaker Training Job Subnet Internet Exposure`: a training job's subnets whose route table routes to an internet gateway.
+  - `Training Job VPC Endpoint Coverage` (AIR-SGM-TRN-01): each VPC a training job ran in needs an available endpoint for S3 (gateway, or interface with private DNS), CloudWatch Logs, the SageMaker API, `ecr.api` and `ecr.dkr`. An interface endpoint counts only with private DNS on, and a VPC that relies on one fails when `enableDnsSupport` or `enableDnsHostnames` is false.
+  - `Processing Job Network Boundary` and `SageMaker Processing Job Subnet Internet Exposure`: the processing job legs above.
 
 ### SM-34: SageMaker Creation Guardrails
 
@@ -331,12 +388,19 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 ### SM-35: Security Service Delegated Administrator
 
 - **Severity:** High
-- **Description:** Emits one row per security service principal from a fixed list (Amazon GuardDuty, AWS Security Hub, Amazon Inspector, Amazon Macie, AWS Config through `config.amazonaws.com`, AWS Config multi-account setup through `config-multiaccountsetup.amazonaws.com`, IAM Access Analyzer, AWS CloudTrail, Amazon Detective, Amazon Security Lake, AWS Firewall Manager, AWS Audit Manager), each row naming the list. A service passes when an `ACTIVE` delegated administrator other than the organization management account is registered and the service principal is among the organization's trusted-access principals (`ListAWSServiceAccessForOrganization`). It fails when none is registered, when the only active one is the management account, or when trusted access for the principal is not enabled. That failure for `macie.amazonaws.com`, `detective.amazonaws.com`, `fms.amazonaws.com` or `auditmanager.amazonaws.com` says the principal name is not confirmed by a live read. When the trusted-access list cannot be read, every service with such an administrator is `N/A`. `ListDelegatedAdministrators` is readable only from the management account or a delegated administrator account, so an access denial for one service is `N/A` for that service alone. An account outside AWS Organizations produces one `N/A` row. Runs once, on the primary region, tagged `Global`. A second row, `Security Service Regional Delegated Administrator`, runs per Region and passes when GuardDuty, Security Hub, Amazon Inspector, Amazon Macie and Amazon Detective are all administered there from one account other than the organization management account. A service not enabled in the Region (no GuardDuty detector, Security Hub `InvalidAccessException`, Macie "not enabled") fails. A service not offered in the Region is left out with a note on the row, and access denied is `N/A` naming the service.
+- **Description:** Emits one row per security service principal from a fixed list (Amazon GuardDuty, AWS Security Hub, Amazon Inspector, Amazon Macie, AWS Config through `config.amazonaws.com`, AWS Config multi-account setup through `config-multiaccountsetup.amazonaws.com`, IAM Access Analyzer, AWS CloudTrail, Amazon Detective, Amazon Security Lake, AWS Firewall Manager, AWS Audit Manager), each row naming the list. A service passes when an `ACTIVE` delegated administrator other than the organization management account is registered and the service principal is among the organization's trusted-access principals (`ListAWSServiceAccessForOrganization`). It fails when none is registered, when the only active one is the management account, or when trusted access for the principal is not enabled. That failure for `macie.amazonaws.com`, `detective.amazonaws.com`, `fms.amazonaws.com` or `auditmanager.amazonaws.com` says the principal name is not confirmed by a live read. When the trusted-access list cannot be read, every service with such an administrator is `N/A`. `ListDelegatedAdministrators` is readable only from the management account or a delegated administrator account, so an access denial for one service is `N/A` for that service alone. An account outside AWS Organizations produces one `N/A` row. Runs once, on the primary region, tagged `Global`. A second row, `Security Service Regional Delegated Administrator`, runs per Region and passes when GuardDuty, Security Hub, Amazon Inspector, Amazon Macie and Amazon Detective are all administered there from one account other than the organization management account. A service not enabled in the Region (no GuardDuty detector, Security Hub `InvalidAccessException` with the "not subscribed to AWS Security Hub" message, Macie "not enabled") fails. A service not offered in the Region is left out with a note on the row, and access denied is `N/A` naming the service. The regional row is judged only in the management account and in an account that is an `ACTIVE` delegated administrator for one of those five services, because a delegated administrator is an organization-level setting made in the management account. In any other account the regional rows are not emitted; one `N/A` `Informational` `Security Service Regional Delegated Administrator` row tagged `Global` says the account is a member account, and names an access-denied `ListDelegatedAdministrators` when that is how it was established. A failed read of the account's own role leaves each regional row `N/A`.
+- **Rows emitted:**
+  - `Security Service Delegated Administrator`: one row per service principal, as above.
+  - `Security Service Delegated Administrator Consolidation`: passes when every security service checked is administered from the one account other than the management account. Services administered from different accounts fail, because administrator-member relationships do not carry across services; a service with no non-management administrator fails, and a service whose administrators could not be listed is `N/A` as `Security Service Delegated Administrator Consolidation Incomplete`.
+  - `Security Service Regional Delegated Administrator`: the regional row, or the member-account row, above.
 
 ### SM-36: Security Hub AI Security Standard
 
 - **Severity:** High
-- **Description:** Requires the AWS Security Hub AI Security Best Practices v1.0.0 standard (`standards/ai-security-best-practices/v/1.0.0`) to be enabled in the region. `READY` passes; `INCOMPLETE` passes with a note to review the standard's `StatusReason`; any other subscription status fails. Security Hub not enabled in the region (`InvalidAccessException`) fails, because no standard is evaluating anything.
+- **Description:** Requires the AWS Security Hub AI Security Best Practices v1.0.0 standard (`standards/ai-security-best-practices/v/1.0.0`) to be enabled in the region. `READY` passes; `INCOMPLETE` passes with a note to review the standard's `StatusReason`; any other subscription status fails. Security Hub not enabled in the region (`InvalidAccessException` with the "not subscribed to AWS Security Hub" message) fails, because no standard is evaluating anything; the same code with any other message is `N/A`, because Security Hub also answers it to a caller it does not permit.
+- **Rows emitted:**
+  - `Security Hub AI Security Best Practices Standard`: the standard leg above.
+  - `Security Hub Central Configuration`: passes when Security Hub's organization configuration is `CENTRAL` and `ENABLED` and this account is associated with a configuration policy that enables Security Hub and lists the AI Security Best Practices and AWS Foundational Security Best Practices standards. A self-managed association, an association in `AssociationStatus` `FAILED`, or a policy without those standards fails. `DescribeOrganizationConfiguration`, `GetConfigurationPolicyAssociation` and `GetConfigurationPolicy` answer only for the Security Hub delegated administrator, so a denied read is `N/A` as `Security Hub Central Configuration Incomplete`.
 
 ### SM-37: GuardDuty Lambda Protection
 
@@ -388,6 +452,11 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 
 - **Severity:** High
 - **Description:** For each AWS IoT policy attached to a certificate or other principal, fails an Allow statement that reaches `Publish`, `Subscribe`, `Receive` or `Connect` on `*`, on all topics, topic filters or client IDs, or through `NotResource`, unless the resource embeds `${iot:Connection.Thing.ThingName}` as a whole path segment, with no wildcard or other text before or after it in that segment. `NotAction` Allow statements are expanded to the device actions they reach. A statement allowing `Connect` also needs a `Bool` condition requiring `iot:Connection.Thing.IsAttached` to be `true`. Unattached policies are skipped. No attached policy produces `N/A`. For a policy attached to a thing group, the unique-certificate row lists the group's things with child groups included (`iot:ListThingsInThingGroup` with `recursive`) and each thing's certificate principals (`iot:ListThingPrincipals`), and judges each such certificate like one attached directly; an unread group or thing is `N/A` and named. An `AWS IoT Role Alias Device Scope` row lists every credentials-provider role alias (`ListRoleAliases`), describes each (`DescribeRoleAlias`) and judges its `roleArn` from the IAM permissions cache: the role fails when no Allow statement in its attached or inline policies names a `credentials-iot:` policy variable in `Resource` or `Condition`, because every device that assumes the alias then gets the same AWS access. Whether every statement of the role is device-scoped is not judged. A describe error, a missing `roleArn`, a role absent from the cache, a cache read error or no cache is `N/A`. A Region with no role alias gets no row.
+- **Rows emitted:**
+  - `AWS IoT Device-Scoped Policy`: the policy leg above.
+  - `AWS IoT Unique Device Certificate`: fails a certificate a device policy reaches that `ListPrincipalThings` attaches to more than one thing.
+  - `AWS IoT Role Alias Device Scope`: the role alias leg above.
+  - `AWS IoT Device Defender Audit`: passes when `DEVICE_CERTIFICATE_SHARED_CHECK` is enabled in the account audit configuration, a scheduled audit runs it, a run of that audit completed the check in the last 31 days, and the latest such run holds no unsuppressed finding. A read error is named and withholds `Passed`.
 
 ### SM-42: Batch Transform Creation Guardrail
 
@@ -397,7 +466,7 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 ### SM-43: Model Artifact Integrity
 
 - **Severity:** Medium
-- **Description:** Judges every container each InService endpoint serves, including the containers of a model package the model names and of each inference component. The image passes when it is pinned by digest (`@sha256:`) or by a tag that its Amazon ECR repository holds immutable: `IMMUTABLE`, `IMMUTABLE_WITH_EXCLUSION` for a tag no exclusion filter matches, or `MUTABLE_WITH_EXCLUSION` for a tag an exclusion filter matches. An untagged image is read as `latest`. When a managed signing rule of the registry covers the repository (a rule with no filters covers every repository), the image also needs a `COMPLETE` status from `DescribeImageSigningStatus`, read by the digest `DescribeEndpoint` reports the image resolved to; no status, or a `FAILED` one, fails. S3 model data passes when `ModelDataSource.S3DataSource` records an `ETag` or `ManifestEtag`, when a model package container records `ModelDataETag`, or when the source names SageMaker hub content (`HubAccessConfig.HubContentArn`). A bare `ModelDataUrl` fails, as does each `AdditionalModelDataSources` entry with no ETag, and a container whose environment sets `HF_MODEL_ID` with no model data. Only environment keys are read, never values. Each artifact bucket must default to SSE-KMS with a named `KMSMasterKeyID` that `kms:DescribeKey` reports as `KeyManager` `CUSTOMER`; an `alias/aws/` alias or an AWS managed key fails. A repository in another account, an image outside ECR with a tag, or any denied read leaves the endpoint `N/A` naming the permission. A recorded value means an expected value is recorded: whether it was compared at load time is not returned by any API this check reads, and weights fetched by startup code, and models loaded on ECS, EKS or EC2, are not read. Inference components are listed per variant with `ListInferenceComponents`; only `InService` components hosted on the endpoint are judged, every entry of a multi-specification component is judged, and a component that returns no model name, image or artifact URL reads `N/A`. The per-object leg (`HeadObject` on each artifact named as one S3 object, to compare its current `ETag` and its own server-side encryption) runs only when the `EnableSageMakerArtifactObjectReads` deployment parameter is `true`, because `HeadObject` is authorized by `s3:GetObject`, which also allows downloading any object. It defaults to `false`, and an `N/A` row then names the parameter and the number of objects not read; image pinning, recorded expected values, bucket default encryption and role read scope are still judged.
+- **Description:** Judges every container each InService endpoint serves, including the containers of a model package the model names and of each inference component. The image passes when it is pinned by digest (`@sha256:`) or by a tag that its Amazon ECR repository holds immutable: `IMMUTABLE`, `IMMUTABLE_WITH_EXCLUSION` for a tag no exclusion filter matches, or `MUTABLE_WITH_EXCLUSION` for a tag an exclusion filter matches. An untagged image is read as `latest`. When a managed signing rule of the registry covers the repository (a rule with no filters covers every repository), the image also needs a `COMPLETE` status from `DescribeImageSigningStatus`, read by the digest `DescribeEndpoint` reports the image resolved to; no status, or a `FAILED` one, fails. S3 model data passes when `ModelDataSource.S3DataSource` records an `ETag` or `ManifestEtag`, when a model package container records `ModelDataETag`, or when the source names SageMaker hub content (`HubAccessConfig.HubContentArn`). A bare `ModelDataUrl` fails, as does each `AdditionalModelDataSources` entry with no ETag, and a container whose environment sets `HF_MODEL_ID` with no model data. Only environment keys are read, never values. Each artifact bucket must default to SSE-KMS with a named `KMSMasterKeyID` that `kms:DescribeKey` reports as `KeyManager` `CUSTOMER`; an `alias/aws/` alias or an AWS managed key fails. A repository in another account, an image outside ECR with a tag, or any denied read leaves the endpoint `N/A` naming the permission. A recorded value means an expected value is recorded: whether it was compared at load time is not returned by any API this check reads, and weights fetched by startup code, and models loaded on ECS, EKS or EC2, are not read. Inference components are listed per variant with `ListInferenceComponents`; only `InService` components hosted on the endpoint are judged, every entry of a multi-specification component is judged, and a component that returns no model name, image or artifact URL reads `N/A`. The per-object leg (`HeadObject` on each artifact named as one S3 object, to compare its current `ETag` and its own server-side encryption) runs only when the `EnableSageMakerArtifactObjectReads` deployment parameter is `true`, because `HeadObject` is authorized by `s3:GetObject`, which also allows downloading any object. It defaults to `false`, and an `N/A` row then names the parameter and the number of objects not read; image pinning, recorded expected values, bucket default encryption and role read scope are still judged. An endpoint that meets every other leg but has an artifact object that was not read is named in that row and is `N/A`, not `Passed`, because the object's current `ETag` and encryption were not compared; an endpoint with no S3 object to read can still pass.
 
 ---
 

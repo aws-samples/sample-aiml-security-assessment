@@ -123,6 +123,14 @@ section.
     not read, instead of running the Lambda into its timeout. When the
     deadline stops `BR-54`, its row for the compliant functions read is
     Informational `N/A`, not `Passed`.
+  - `SM-35`'s `Security Service Regional Delegated Administrator` is judged
+    per Region only in the organization management account and in an account
+    that is an active delegated administrator for GuardDuty, Security Hub,
+    Amazon Inspector, Amazon Macie or Amazon Detective, because a delegated
+    administrator is set from the management account. Any other account gets
+    one `N/A` Informational row tagged `Global` that says it is a member
+    account, so a multi-account run does not fail every member in every
+    Region.
   - An unexpected error in one Bedrock check no longer ends the Bedrock
     assessment. That check reports one `N/A` row named
     `<Check_ID> Check Incomplete`, and every other check still writes its rows
@@ -137,7 +145,9 @@ section.
   - `SM-43` reads model artifact objects with `HeadObject` and records whether
     an expected value is stored, never that it was compared at load time.
     Weights fetched by container startup code and models served from ECS, EKS
-    or EC2 are not read.
+    or EC2 are not read. While `EnableSageMakerArtifactObjectReads` is
+    `false`, an endpoint whose artifact objects were not read is `N/A`, not
+    `Passed`, even when it meets every other leg.
 - Added the `EnableSageMakerArtifactObjectReads` deployment parameter (default
   `false`) to both AWS SAM templates and both deployment templates, passed to
   CodeBuild as `ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS`. `SM-43` calls
@@ -227,12 +237,26 @@ back `Passed` names what it could not read.
     collected before the deadline are still reported.
   - A service or API not offered in a Region (an endpoint connection error,
     `UnknownEndpoint` or an opt-in error code) is a note on the row, not an
-    unread inventory. Access denied is still reported as not read.
-  - `SM-04` and `SM-35` fail a Region where Security Hub is not enabled
-    (`InvalidAccessException`), where they used to report `N/A`.
-  - The service control policies are read once per run and shared by `SM-34`,
-    `SM-39`, `SM-09`, `SM-42` and `SM-11`. `SM-42` runs once, on the primary
-    Region, with rows tagged `Global`, where it used to run in every Region.
+    unread inventory. Access denied is still reported as not read, and so is
+    an invalid or unrecognized credential (`UnrecognizedClientException`,
+    `InvalidClientTokenId`, `AuthFailure`) on a read made after the Region
+    answered.
+  - `SM-03` and `SM-33` describe training and processing jobs one at a time,
+    and `SM-40` pages CloudTrail `LookupEvents` at 2 requests per second.
+    These loops now stop at the same deadline. The jobs or pages not read are
+    named in an `N/A` row that holds back `Passed`, and the rows already
+    collected are kept.
+  - `SM-04` fails a Region where Security Hub is not enabled, where it used to
+    report `N/A`. It, `SM-35` and `SM-36` read Security Hub as not enabled
+    only when `InvalidAccessException` carries the "not subscribed to AWS
+    Security Hub" message. Security Hub returns the same code to a caller it
+    does not permit, which is reported as not read.
+  - On the primary Region the service control policies are read once and
+    shared by `SM-34`, `SM-39`, `SM-09`, `SM-42` and `SM-11`. Each other Region
+    runs in its own Lambda invocation, so `SM-11` reads them again in each
+    other Region that hosts a SageMaker endpoint. `SM-42` runs once, on the
+    primary Region, with rows tagged `Global`, where it used to run in every
+    Region.
   - `SM-32`'s row for a rule with no current evaluation is `Informational`,
     down from `Medium`.
   - A resource-wide grant in the caller's partition (for example `aws-us-gov`)
@@ -416,6 +440,11 @@ run above deploys the SAM template change.
 **Lambda timeouts.** The AWS SAM templates raise the Bedrock and SageMaker AI
 assessment functions' `Timeout` to 900. A CodeBuild run of this revision
 deploys it. No IAM permission changes.
+
+**SageMaker AI deadline stops and status corrections.** The `SM-03`, `SM-33`,
+`SM-35`, `SM-36`, `SM-40` and `SM-43` changes above are in the SageMaker AI
+function code only. A CodeBuild run of this revision deploys them. No template,
+IAM permission or member-role StackSet change.
 
 **SageMaker AI artifact object reads.** A CodeBuild run of this revision
 deploys the SageMaker AI role without `s3:GetObject`, because
