@@ -39307,7 +39307,10 @@ def check_bedrock_prompt_pii_screening(
                         f"in {region}, so prompt PII screening was not judged. "
                         f"{nothing_applies}.{scope}",
                     ),
-                    "No action required",
+                    # An unknown footprint is an assessment gap, not an absence.
+                    COULD_NOT_ASSESS_RESOLUTION
+                    if footprint is None
+                    else "No action required",
                     "Informational",
                     "N/A",
                 )
@@ -40461,12 +40464,13 @@ _BUCKET_REGIONS: Dict[str, str] = {}
 
 def _bucket_home_region(s3_client, bucket: str, region: str) -> Tuple[str, str]:
     """
-    Return (Region, note) for a data path bucket's BR-47 and BR-52 rows.
+    Return (home Region, note) for a data path bucket's BR-47 and BR-52 rows.
 
     Buckets are account-global, and every assessed Region that references one
-    reports it. Giving each row the bucket's own Region and Region-free text
-    lets the report collapse the copies. When GetBucketLocation fails the row
-    keeps the assessing Region and the note says why.
+    reports it. Giving each row a Region derived from the bucket's own Region
+    (_bucket_row_region) and Region-free text lets the report collapse the
+    copies. When GetBucketLocation fails the home is the assessing Region and
+    the note says why.
     """
     if bucket in _BUCKET_REGIONS:
         return _BUCKET_REGIONS[bucket], ""
@@ -40491,6 +40495,24 @@ def _bucket_home_region(s3_client, bucket: str, region: str) -> Tuple[str, str]:
         home = constraint
     _BUCKET_REGIONS[bucket] = home
     return home, ""
+
+
+def _bucket_row_region(home: str, region: str) -> Tuple[str, str]:
+    """
+    Return (Region, note) for the report row of a bucket homed in ``home``.
+
+    The report shows only the assessed Regions, so a bucket homed outside them
+    is reported in the first assessed Region, the same one from every assessing
+    Region, and the note names its home Region.
+    """
+    assessed = _assessed_regions(region)
+    if home == region or home in assessed:
+        return home, ""
+    row_region = assessed[0] if assessed else region
+    return row_region, (
+        f" Its home Region {home} is not assessed, so this row is reported in "
+        f"{row_region}, the first assessed Region."
+    )
 
 
 def _data_path_reference_detail(buckets: Dict[str, Any], region: str) -> str:
@@ -40608,7 +40630,6 @@ def check_bedrock_data_path_bucket_tls(region: str = "") -> Dict[str, Any]:
         plaintext = []
         enforced_rows = []
         indeterminate_rows = []
-        incomplete = bool(inventory["errors"])
 
         def bucket_row(home, note, details, resolution, severity, status):
             return create_finding(
@@ -40624,6 +40645,8 @@ def check_bedrock_data_path_bucket_tls(region: str = "") -> Dict[str, Any]:
 
         for bucket in sorted(inventory["buckets"]):
             home, note = _bucket_home_region(s3_client, bucket, region)
+            home, moved = _bucket_row_region(home, region)
+            note += moved
             unread = None
             try:
                 policy = s3_client.get_bucket_policy(Bucket=bucket)
@@ -40687,20 +40710,10 @@ def check_bedrock_data_path_bucket_tls(region: str = "") -> Dict[str, Any]:
                     f"Bucket {bucket} is on the Bedrock data path and denies "
                     f"{denied}: {assessment['detail']}."
                 )
+                # The bucket's verdict rests on its own policy. An incomplete
+                # bucket list is reported once, in the Region's N/A row above.
                 enforced_rows.append(
                     bucket_row(
-                        home,
-                        note,
-                        details
-                        + " It is N/A because the bucket list is incomplete, so "
-                        "this is not a verdict on the whole data path.",
-                        "Resolve the incomplete reads reported for this check, "
-                        "then re-run it to judge every data path bucket.",
-                        "Informational",
-                        "N/A",
-                    )
-                    if incomplete
-                    else bucket_row(
                         home,
                         note,
                         details,
@@ -41128,16 +41141,9 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
             )
             return findings
 
+        # A bucket's verdict rests on its own lock. An incomplete bucket list
+        # is reported once, in the Region's N/A row above.
         def locked_row(details, note, home):
-            if gaps:
-                return row(
-                    details + " It is N/A because the bucket list is incomplete, "
-                    "so this is not a verdict on the whole data path." + note,
-                    COULD_NOT_ASSESS_RESOLUTION,
-                    "Informational",
-                    "N/A",
-                    home,
-                )
             return row(details + note, "No action required", "Medium", "Passed", home)
 
         now = datetime.now(timezone.utc)
@@ -41152,6 +41158,8 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
         backup_unread_rows = []
         for bucket in sorted(inventory["buckets"]):
             home, note = _bucket_home_region(s3_client, bucket, region)
+            row_region, moved = _bucket_row_region(home, region)
+            note += moved
             if home not in backup_clients:
                 backup_clients[home] = boto3.client(
                     "backup", config=boto3_config, region_name=home
@@ -41185,7 +41193,7 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
                         f"Bucket {bucket} is on the Bedrock data path and locks its "
                         f"objects in COMPLIANCE mode by default. {evidence}",
                         note,
-                        home,
+                        row_region,
                     )
                 )
                 continue
@@ -41199,7 +41207,7 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
                         "newest backup in a compliance-mode Vault Lock: "
                         f"{backup['detail']}. {evidence}",
                         note,
-                        home,
+                        row_region,
                     )
                 )
                 continue
@@ -41213,7 +41221,7 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
                         COULD_NOT_ASSESS_RESOLUTION,
                         "Informational",
                         "N/A",
-                        home,
+                        row_region,
                     )
                 )
                 continue
@@ -41227,7 +41235,7 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
                         COULD_NOT_ASSESS_RESOLUTION,
                         "Informational",
                         "N/A",
-                        home,
+                        row_region,
                     )
                 )
                 continue
@@ -41243,7 +41251,7 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
                     "record-retention requirement.",
                     "Medium",
                     "Failed",
-                    home,
+                    row_region,
                 )
             )
         findings["csv_data"].extend(locked_rows)
@@ -42672,9 +42680,11 @@ def check_lambda_public_invoke_configuration(
         compliant = []
         indeterminate = []
         not_reached = 0
+        stopped = False
         for position, function in enumerate(functions):
             if _deadline_reached():
                 not_reached = len(functions) - position
+                stopped = True
                 break
             name = function.get("FunctionName") or function.get("FunctionArn")
             problems = []
@@ -42722,6 +42732,7 @@ def check_lambda_public_invoke_configuration(
                     if number and number != "$LATEST":
                         public[number] = read_policy(name, number)
             except TimeoutError:
+                stopped = True
                 indeterminate.append(
                     f"{name}: its alias and version policies were not all read, "
                     f"the read stopped {DEADLINE_STOP}"
@@ -42784,19 +42795,30 @@ def check_lambda_public_invoke_configuration(
             )
 
         if compliant:
+            compliant_detail = (
+                "{} of the {} Lambda function(s) read have no function URL with "
+                "AuthType NONE or a wildcard CORS origin, and no resource-based "
+                "policy statement on the function, an alias or a version "
+                "letting every principal invoke them without a source "
+                "condition that names one source.".format(
+                    len(compliant), len(functions) - not_reached
+                )
+            )
+            # One row speaks for every function read, so a read the deadline
+            # cut short holds it at N/A. A Failed row stands on its own function.
+            if stopped and findings["status"] == "PASS":
+                findings["status"] = "N/A"
             findings["csv_data"].append(
                 row(
-                    "{} of the {} Lambda function(s) read have no function URL with "
-                    "AuthType NONE or a wildcard CORS origin, and no resource-based "
-                    "policy statement on the function, an alias or a version "
-                    "letting every principal invoke them without a source "
-                    "condition that names one source.".format(
-                        len(compliant), len(functions) - not_reached
-                    ),
-                    "No action required",
-                    "High",
-                    "Passed",
+                    f"{compliant_detail} It is N/A because the read stopped "
+                    f"{DEADLINE_STOP}, so this is not a verdict on every "
+                    "function in the Region.",
+                    COULD_NOT_ASSESS_RESOLUTION,
+                    "Informational",
+                    "N/A",
                 )
+                if stopped
+                else row(compliant_detail, "No action required", "High", "Passed")
             )
         if indeterminate:
             findings["csv_data"].append(
@@ -46483,21 +46505,6 @@ def _statement_invoke_actions(statement: Dict[str, Any]) -> List[str]:
     ]
 
 
-def _allow_requires_guardrail_identifier(statement: Dict[str, Any]) -> bool:
-    """
-    Return True when an Allow matches only a request that names a guardrail:
-    a positive, non-IfExists test on bedrock:GuardrailIdentifier whose values
-    are not all a bare *. Such an Allow grants no unguarded call.
-    """
-    return any(
-        key == GUARDRAIL_CONDITION_KEY
-        and _condition_is_positive_match(operator)
-        and values
-        and not all(str(value).strip() == "*" for value in values)
-        for operator, key, values in _condition_keys_by_operator(statement)
-    )
-
-
 def _allow_reaches_a_model(statement: Dict[str, Any], action: str) -> bool:
     """Return True when an Allow's Resource or NotResource can name a model."""
     if "NotResource" in statement:
@@ -46517,11 +46524,12 @@ def _identity_guardrail_deny_coverage(
     ``allowed`` is what the identity may invoke and ``denied`` is what a
     conditioned Deny takes back, so the gap between ``denied`` and the actions
     an Allow grants with no guardrail condition is the set of actions the
-    identity can still call with no guardrail attached. An Allow counts only
+    identity can still call without an approved guardrail. An Allow counts only
     when its Resource can name a model; one that matches only a request naming
-    a guardrail is listed in ``pinned``. When ``permissions`` carries a
-    permissions boundary, an action the boundary does not allow is not
-    granted, and a Deny in the boundary counts as a Deny.
+    an approved guardrail, as BR-10 judges it (_guardrail_allow_binding: every
+    value names one guardrail with no wildcard), is listed in ``pinned``. When
+    ``permissions`` carries a permissions boundary, an action the boundary does
+    not allow is not granted, and a Deny in the boundary counts as a Deny.
     """
     allowed = set()
     unpinned = set()
@@ -46570,14 +46578,22 @@ def _identity_guardrail_deny_coverage(
 
             effect = str(statement.get("Effect", "")).upper()
             if effect == "ALLOW":
-                for action in set(covered) - boundary_denied:
-                    if not _allow_reaches_a_model(statement, action.lower()):
-                        continue
-                    allowed.add(action)
-                    if _allow_requires_guardrail_identifier(statement):
-                        pinned.add(action)
-                    else:
-                        unpinned.add(action)
+                binding = _guardrail_allow_binding(statement)
+                granted = sorted(
+                    action
+                    for action in set(covered) - boundary_denied
+                    if _allow_reaches_a_model(statement, action.lower())
+                )
+                allowed.update(granted)
+                (pinned if binding["bound"] else unpinned).update(granted)
+                if granted and "carries a wildcard" in binding["reason"]:
+                    uncredited.append(
+                        "an Allow of {} tests {}, but {}".format(
+                            ", ".join(granted),
+                            GUARDRAIL_CONDITION_KEY,
+                            binding["reason"],
+                        )
+                    )
                 continue
             if effect != "DENY":
                 continue
@@ -46638,7 +46654,8 @@ def check_bedrock_guardrail_invocation_deny(
     permitting the same call with no guardrail at all. An action is therefore
     guarded when a conditioned Deny covers it, or when every Allow of it that
     can name a model requires a positive, non-IfExists
-    bedrock:GuardrailIdentifier test. An Allow whose Resource names no model
+    bedrock:GuardrailIdentifier test whose every value names one guardrail with
+    no wildcard. An Allow whose Resource names no model
     grants no invocation and is not counted. BR-41 asserts
     the account and organization enforcement surfaces
     (ListEnforcedGuardrailsConfiguration and the Organizations Bedrock policy),
@@ -46742,7 +46759,7 @@ def check_bedrock_guardrail_invocation_deny(
                     check_id="BR-49",
                     finding_name=check_name,
                     finding_details=(
-                        "{} may call {} with no guardrail attached, because no policy "
+                        "{} may call {} without an approved guardrail, because no policy "
                         "on it denies {} unless the request carries an approved "
                         "bedrock:GuardrailIdentifier{}. {}".format(
                             entry["label"],

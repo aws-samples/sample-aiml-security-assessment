@@ -36,20 +36,15 @@ SOURCE = "https://servicereference.us-east-1.amazonaws.com/v1/{0}/{0}.json"
 
 REGISTRY_RESOURCE_TYPES = {"registry", "registry-record"}
 
-# package -> [(namespace, resource-type filter)]. None keeps every type.
+# package -> [(namespace, resource-type filter)]. None keeps every type. A
+# package is listed here only with its committed iam_access_levels.json, because
+# --check opens the file of every entry.
 PACKAGES = {
     "bedrock_assessments": [
         ("bedrock", None),
         ("s3", None),
         ("dynamodb", None),
         ("s3vectors", None),
-    ],
-    "sagemaker_assessments": [("sagemaker", None)],
-    # AR-01 reads the registry resource types under both namespaces.
-    "agentcore_assessments": [("bedrock-agentcore", "exclude-registry")],
-    "agent_registry_assessments": [
-        ("agent-registry", None),
-        ("bedrock-agentcore", "registry-only"),
     ],
 }
 

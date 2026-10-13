@@ -82,23 +82,39 @@ section.
     `N/A` row, not as `Failed`.
   - `BR-46` adds a `Prompt PII Screening` row. With no guardrail applied, it
     fails only in a Region that has a Bedrock footprint and whose invocation
-    logging is not shown to be off; otherwise it is `N/A`.
+    logging is not shown to be off; otherwise it is `N/A`. When the footprint
+    could not be determined, the `N/A` row says so and carries the
+    could-not-assess resolution.
   - `BR-49` passes an identity allowed a guardrail-capable action only under a
     `bedrock:GuardrailIdentifier` condition that names an approved guardrail,
     and does not treat a wildcard Allow on resources that name no model as an
-    invoker.
+    invoker. A condition value with a wildcard, such as
+    `arn:aws:bedrock:*:*:guardrail/*`, admits any guardrail and is not
+    credited, as in `BR-10`.
   - `BR-52` reports a bucket without a `COMPLIANCE` Object Lock whose AWS Backup
     recovery points were not read as `N/A`, not as `Failed`.
   - `BR-47` and `BR-52` report each data path bucket once. Each bucket gets its
-    own row in the bucket's Region, read with `s3:GetBucketLocation`, and the
-    row text does not depend on the assessed Region, so a bucket that
-    resources in several Regions reference is no longer repeated in the report.
-    `BR-52` reads AWS Backup in the bucket's Region. The resources that
-    reference each bucket move from the verdict rows to one Informational
-    `N/A` row per assessed Region. A check with several enforcing buckets now
-    has one `Passed` row per bucket instead of one shared row.
+    own row, and the row text does not depend on the assessed Region, so a
+    bucket that resources in several Regions reference is no longer repeated
+    in the report. The row is in the bucket's Region, read with
+    `s3:GetBucketLocation`, when that Region is assessed. A bucket homed in a
+    Region the run does not assess is reported in the first assessed Region,
+    and its text names the home Region, so the report's Region filter and
+    "Risk by Region" list only assessed Regions. `BR-52` reads AWS Backup in
+    the bucket's Region. The resources that reference each bucket move from
+    the verdict rows to one Informational `N/A` row per assessed Region, which
+    raises each Region's `N/A` count by up to two. A check with several
+    enforcing buckets now has one `Passed` row per bucket instead of one
+    shared row.
+  - `BR-47` and `BR-52` judge each bucket read on its own evidence when the
+    bucket list is incomplete: an enforcing bucket is `Passed`, and the
+    failed reads are one Informational `N/A` row for the Region. Before, the
+    bucket was held at `N/A`, so a bucket that one Region listed completely
+    and another did not got both a `Passed` and an `N/A` row.
   - `BR-54` and `BR-57` stop at the invocation deadline and name what they did
-    not read, instead of running the Lambda into its timeout.
+    not read, instead of running the Lambda into its timeout. When the
+    deadline stops `BR-54`, its row for the compliant functions read is
+    Informational `N/A`, not `Passed`.
   - An unexpected error in one Bedrock check no longer ends the Bedrock
     assessment. That check reports one `N/A` row named
     `<Check_ID> Check Incomplete`, and every other check still writes its rows
@@ -106,7 +122,10 @@ section.
   - The first "Changes since last assessment" report after upgrading lists
     Bedrock findings whose text was rewritten as "No longer reported" beside
     the same finding as "New", because findings are matched on their text.
-    Later reports compare like with like.
+    `BR-47` and `BR-52` bucket rows also move to the bucket's Region, or to
+    the first assessed Region for a bucket homed outside the assessed
+    Regions, so a customer filtering by Region sees them under a different
+    Region than before. Later reports compare like with like.
 
 ### Changed
 

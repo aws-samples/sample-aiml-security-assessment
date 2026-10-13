@@ -1013,7 +1013,8 @@
      "CreateIndex",
      "DeleteIndex",
      "DeleteVectors",
-     "PutVectors"
+     "PutVectors",
+     "UpdateIndexMode"
     ]
    },
    "VectorBucket": {
@@ -1030,6 +1031,7 @@
      "CreateVectorBucket",
      "DeleteVectorBucket",
      "DeleteVectorBucketPolicy",
+     "PutVectorBucketDefaultIndexMode",
      "PutVectorBucketPolicy"
     ]
    }

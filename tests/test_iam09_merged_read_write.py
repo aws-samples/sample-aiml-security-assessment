@@ -452,10 +452,33 @@ class TestUnreadPopulation:
         )
 
 
+def _access_level_generator():
+    spec = importlib.util.spec_from_file_location(
+        "generate_iam_access_levels",
+        os.path.join(_SECURITY, "..", "..", "..", "generate_iam_access_levels.py"),
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_every_generated_package_has_a_committed_table():
+    """Review #72 item 17: --check opens one table per PACKAGES entry, so an
+    entry with no committed table crashes it instead of reporting it stale."""
+    generator = _access_level_generator()
+    for package, namespaces in generator.PACKAGES.items():
+        path = os.path.join(generator.SECURITY, package, "iam_access_levels.json")
+        assert os.path.isfile(path), path
+        with open(path, encoding="utf-8") as handle:
+            table = json.load(handle)
+        assert sorted(table["versions"]) == sorted(ns for ns, _ in namespaces)
+        assert sorted(table["services"]) == sorted(ns for ns, _ in namespaces)
+
+
 def test_the_access_level_tables_are_generated_from_the_service_reference():
     """Every type carries the three keys the leg reads, and every ARN glob has
     no unreplaced ${Variable}."""
-    for package in ("bedrock_assessments",):
+    for package in _access_level_generator().PACKAGES:
         with open(
             os.path.join(_SECURITY, package, "iam_access_levels.json"), encoding="utf-8"
         ) as handle:
