@@ -756,6 +756,32 @@ Most day-to-day contributions add or update individual security checks inside th
 
 ### 1. Local Testing
 
+Run the offline API-to-IAM coverage gate after adding boto3 calls or editing a
+function policy:
+
+```bash
+.venv/bin/python -m pytest tests/test_iam_call_coverage.py tests/test_sagemaker_template_permissions.py -q
+```
+
+The gate resolves client service strings from source, checks operation names
+against the pinned botocore models, and compares the derived actions with that
+Lambda's inline policies and attached local managed policies in **both** SAM
+templates. It covers direct calls, aliases/factories, literal paginators, and
+string-operation helpers used by the assessment packages. Failures name the
+function, source file/line, operation, and missing action. Mutation tests remove
+each discovered required action and add an ungranted WAF call; a sibling
+function's grant, a comment, or an unattached managed policy cannot satisfy them.
+
+This is a static declared-action coverage check, not an IAM authorization
+simulator: resource ARN scope, explicit Deny, conditions, permissions boundaries,
+SCPs, external managed-policy contents, and runtime-computed Python values still
+need review. Conditional statements are checked as declared possibilities, not
+as grants present in every deployment configuration. Keep operation/action
+exceptions small, documented, and independent of the templates being tested.
+Unknown SDK operations fail the gate. Refresh the local environment from the
+current requirements before diagnosing a missing model; do not bypass a stale
+SDK with invented operation names.
+
 ```bash
 # Test an individual SAM function
 cd aiml-security-assessment
