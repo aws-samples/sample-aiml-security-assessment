@@ -94,6 +94,11 @@ Metadata:
         default: Read SageMaker model artifact object metadata
 
 Parameters:
+  EnableSecurityHubExport:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Export assessment snapshots to Security Hub CSPM in each assessed account's deployment region. Enable Security Hub there first.
   EnableBedrockAssessment:
     Type: String
     Default: "true"
@@ -656,6 +661,9 @@ Resources:
             Type: PLAINTEXT
           - Name: ENABLE_OWASP
             Value: !Ref EnableOWASPAssessment
+            Type: PLAINTEXT
+          - Name: ENABLE_SECURITY_HUB_EXPORT
+            Value: !Ref EnableSecurityHubExport
             Type: PLAINTEXT
           - Name: ENABLE_ASSESSMENT_HISTORY
             Value: !Ref EnableAssessmentHistory

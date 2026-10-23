@@ -12,6 +12,11 @@ section.
 
 ### Added
 
+- Added opt-in `EnableSecurityHubExport` (default `false`) in both deployment
+  modes and both SAM templates. The report Lambda imports execution-scoped
+  check/region summaries in ASFF, with conditional product-scoped IAM, bounded
+  batching and visible partial-failure handling. See `docs/SECURITY_HUB_EXPORT.md`.
+
 - Added independent, default-enabled switches for Bedrock, SageMaker AI,
   AgentCore, and AWS Agent Registry assessments in both deployment modes.
   Disabled services skip their assessment Lambda and CSV requirements; reports
@@ -521,6 +526,12 @@ back `Passed` names what it could not read.
 
 ### Deployment impact
 
+- **Security Hub export:** update `deployment/aiml-security-single-account.yaml`
+  or `deployment/2-aiml-security-codebuild.yaml`, then run CodeBuild to redeploy
+  the SAM stack(s). Direct SAM users update the corresponding SAM template.
+  No member-role StackSet update is needed. Enable Security Hub in each
+  assessed account's deployment region before opting in. Disabled deployments
+  make no Security Hub calls and receive no import permission.
 - **Service selection:** Update `deployment/aiml-security-single-account.yaml`
   for single-account deployments or `deployment/2-aiml-security-codebuild.yaml`
   for multi-account central infrastructure, set the desired service switches,

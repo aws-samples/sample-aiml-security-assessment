@@ -1533,6 +1533,9 @@ def _listbucket_prefix_patterns():
         "Properties"
     ]["Policies"]
     for policy in policies:
+        # Conditional Security Hub policies grant no S3 inventory access.
+        if not isinstance(policy, dict):
+            continue
         for statement in policy.get("Statement", []):
             if statement.get("Sid") == "AssessmentReportInventory":
                 return list(statement["Condition"]["StringLike"]["s3:prefix"])

@@ -9,6 +9,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from aisf_mappings import aisf_scope, derive_aisf_findings
+from securityhub_export import build_findings, export_findings
 from report_template import (
     COMPLIANCE_STANDARDS,
     core_service_selection,
@@ -528,7 +529,8 @@ def lambda_handler(event, context):
             )
         # Get account ID using STS GetCallerIdentity
         sts_client = boto3.client("sts", config=boto3_config)
-        account_id = sts_client.get_caller_identity()["Account"]
+        identity = sts_client.get_caller_identity()
+        account_id = identity["Account"]
 
         # The state machine now forces Responsible AI GRC to run whenever
         # OWASP is enabled (OWASP's FS→OW mappings need the Responsible AI
@@ -566,6 +568,20 @@ def lambda_handler(event, context):
 
         if not s3_key:
             raise Exception("Failed to write HTML report to S3")
+
+        if _flag_is_true(os.environ.get("ENABLE_SECURITY_HUB_EXPORT")):
+            region = os.environ.get("AWS_REGION") or os.environ["AWS_DEFAULT_REGION"]
+            partition = identity["Arn"].split(":")[1]
+            findings = build_findings(
+                assessment_results,
+                account_id,
+                region,
+                partition,
+                event["Execution"],
+                core_service_selection(original_input.get("ServiceSelection")),
+                show_finserv,
+            )
+            export_findings(findings, region)
 
         # Note: Multi-account consolidation is handled by consolidate_html_reports.py
         # in the CodeBuild post-build phase, not here. This Lambda only generates

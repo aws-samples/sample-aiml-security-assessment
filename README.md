@@ -6,6 +6,12 @@
 
 **Open-source automated security scanner for generative AI and machine learning workloads on AWS.** It brings together separate assessments for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry. Core checks are guided by the [AWS Well-Architected Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html). The optional **Responsible AI GRC** module adds technical checks for AI governance, risk, and compliance, drawing on the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf). Optional **OWASP Top 10 for LLM** checks extend coverage across common LLM security risks.
 
+Optional [Security Hub CSPM export](docs/SECURITY_HUB_EXPORT.md) sends
+execution-scoped ASFF assessment snapshots to each assessed account's default
+custom product. Set `EnableSecurityHubExport=true` after enabling Security Hub
+in the deployment region. Export is disabled by default and does not remediate
+resources or reconcile the lifecycle of older snapshots.
+
 Run **[277 checks](docs/SECURITY_CHECKS.md)** across AWS accounts and regions:
 
 - **162 core checks** for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry; each service can be [selected individually](#selecting-service-assessments) and all four run by default
