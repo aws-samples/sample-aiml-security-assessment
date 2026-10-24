@@ -270,7 +270,8 @@ def _tile_note(comparison, parts: PageParts) -> str:
         )
         note += f" {_join(left_out)} {verb} not selected in both runs, so {pronoun} counted."
     return note + (
-        " Agentic AI Security and OWASP rows are mostly derived from those findings, "
+        " Agentic AI Security, OWASP and AWS AI Security Framework rows are mostly "
+        "derived from those findings, "
         "so one change can appear in several areas. The table below includes all "
         "assessment areas."
     )
@@ -303,6 +304,7 @@ def _notes(comparison, parts: PageParts) -> str:
             "Check IDs found in only one run: "
             + _listing(comparison.single_run_check_ids, str)
         )
+    items += comparison.notes
     if not items:
         return ""
     listed = "".join(f"<li>{parts.escape_text(item)}</li>" for item in items)

@@ -14,6 +14,7 @@ from assessment_history.discover import FINDINGS_COLUMNS, PREFIX_TO_MODULE
 from assessment_history.models import (
     CORE_MODULES,
     CURRENT_RUN,
+    DERIVED_MODULE,
     FAILED,
     PREVIOUS_RUN,
     Finding,
@@ -110,7 +111,8 @@ def changes(comparison):
 def assert_invariants(previous, current, comparison):
     """Every row of each run appears in the comparison, and no row is paired
     twice, except the one row a check-level pair shares: in the other run it's
-    the check's only row, and it isn't Failed."""
+    the check's only row, and it isn't Failed. Rows the comparison derived
+    (AISF) are in no run's findings, so they're left out of the count."""
     for side, run, attribute in (
         (PREVIOUS_RUN, previous, "previous"),
         (CURRENT_RUN, current, "current"),
@@ -120,6 +122,7 @@ def assert_invariants(previous, current, comparison):
             getattr(row, attribute)
             for row in comparison.rows
             if getattr(row, attribute) is not None
+            and getattr(row, attribute).module != DERIVED_MODULE
         )
         for row in comparison.rows:
             shared = getattr(row, attribute)
@@ -127,7 +130,11 @@ def assert_invariants(previous, current, comparison):
                 assert row.match_rule is MatchRule.CHECK_LEVEL, f"{side}: used twice"
                 assert shared.status != FAILED, f"{side}: a Failed row shared"
         seen = Counter(set(uses))
-        seen.update(item.finding for item in comparison.excluded if item.side == side)
+        seen.update(
+            item.finding
+            for item in comparison.excluded
+            if item.side == side and item.finding.module != DERIVED_MODULE
+        )
         assert seen == expected, f"{side}: rows lost or used twice"
 
 

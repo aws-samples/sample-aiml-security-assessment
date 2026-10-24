@@ -84,6 +84,9 @@ SAMPLE_CHANGES_PAGE = "security_assessment_changes.html"
 # Areas whose rows are derived from core checks; their details end with
 # "Source check <ID>: <that row's details>".
 DERIVED_AREAS = ("agentic", "owasp")
+# Check ID prefixes the report derives at consolidation time. No scanner writes
+# them to a findings CSV, so a run's CSVs never hold them.
+REPORT_DERIVED_PREFIXES = ("AISF",)
 
 PREVIOUS_ID = "2f6c1a7e-5b3d-4e8a-9c0f-000000000903"
 CURRENT_ID = "2f6c1a7e-5b3d-4e8a-9c0f-000000000927"
@@ -151,13 +154,18 @@ def _text(value: str) -> str:
 
 
 def parse_report(text: str) -> list[SampleRow]:
-    """Read the findings table of a report written by report_template.py."""
+    """Read the findings table of a report written by report_template.py.
+
+    Rows the report derives itself (REPORT_DERIVED_PREFIXES) are left out.
+    """
     body = _TABLE_BODY.search(text)
     if body is None:
         raise ValueError("no findings table in the report")
     rows = []
     for attributes, cells in _ROW.findall(body.group(1)):
         account_id, region, check_id = _CODE_CELL.findall(cells)[:3]
+        if _text(check_id).split("-", 1)[0].upper() in REPORT_DERIVED_PREFIXES:
+            continue
         parts = dict(_PART.findall(cells))
         link = _LINK.search(parts.get("Reference", ""))
         rows.append(
@@ -194,16 +202,110 @@ GENERATED_VALUE_KINDS = (
     ),
     (
         "AWS resource ID",
-        r"\b(?:vpc|subnet|sg|eni|igw|rtb|vpce|nat|acl|i|ami|vol|snap|lt|tgw|pcx"
-        r"|eipalloc)-(?P<v>[0-9a-f]{17}|[0-9a-f]{8})\b",
+        r"\b(?:vpc|subnet|sgr|sg|eni|eigw|igw|rtbassoc|rtb|vpce|nat|acl|i|ami"
+        r"|vol|snap|lt|tgw-attach|tgw-rtb|tgw|pcx|eipalloc|eipassoc|dopt|pl|vgw"
+        r"|cgw|vpn|fsap|fs)-(?P<v>[0-9a-f]{17}|[0-9a-f]{8})\b",
+    ),
+    # GuardDuty detector and finding IDs, and the hash in a StackSets
+    # execution role name ("stacksets-exec-<32 hex>").
+    ("32-digit hex ID", r"(?<![0-9A-Za-z])(?P<v>[0-9a-f]{32})(?![0-9A-Za-z])"),
+    # Container image layer digests ("sha256:<64 hex>").
+    ("image digest", r"(?<=sha256:)(?P<v>[0-9a-f]{64})(?![0-9A-Za-z])"),
+    # An account ID that lost its leading zero in a stack name
+    # ("aiml-security-<11 digits>-..."), and the part of it left when
+    # CloudFormation shortens the stack name in a role name.
+    (
+        "account ID without its leading zero",
+        r"(?<=[a-z]-)(?P<v>\d{11})(?=-[A-Za-z])",
+    ),
+    (
+        "shortened account ID in a stack name",
+        r"(?<=-security-)(?P<v>\d{5})(?=-[A-Z])",
+    ),
+    # IAM Identity Center instance and permission set IDs, and the hash in an
+    # AWSReservedSSO_ role name.
+    ("16-digit hex ID", r"(?<![0-9A-Za-z])(?P<v>[0-9a-f]{16})(?![0-9A-Za-z])"),
+    # IAM unique IDs and service-specific credential IDs; the prefix is kept.
+    (
+        "IAM unique ID",
+        r"\b(?:AKIA|ASIA|AROA|AIDA|ANPA|AGPA|ACCA|ANVA|AIPA|APKA|ABIA)"
+        r"(?P<v>[A-Z0-9]{12,20})\b",
+    ),
+    # The ID at the end of an ARN: a Bedrock agent, prompt, knowledge base or
+    # policy, an OpenSearch Serverless collection, an inference profile.
+    (
+        "ID at the end of an ARN",
+        r"(?<=/)(?P<v>(?=[A-Za-z0-9]*[0-9])(?=[A-Za-z0-9]*[A-Za-z])"
+        r"[A-Za-z0-9]{10,20})(?![A-Za-z0-9./_-])",
+    ),
+    # AgentCore runtime and memory IDs ("<name>-<10 characters>").
+    (
+        "AgentCore ID after a name",
+        r"(?<=[A-Za-z0-9_]-)(?P<v>(?=[A-Za-z0-9]*[0-9])(?=[A-Za-z0-9]*[A-Z])"
+        r"(?=[A-Za-z0-9]*[a-z])[A-Za-z0-9]{10})(?![A-Za-z0-9])",
+    ),
+    # AWS Agent Registry IDs ("registry-<16 characters>", or in parentheses).
+    (
+        "Agent Registry ID",
+        r"(?<=[(/-])(?P<v>(?=[A-Za-z0-9]*[0-9])(?=[A-Za-z0-9]*[A-Z])"
+        r"(?=[A-Za-z0-9]*[a-z])[A-Za-z0-9]{16})(?![A-Za-z0-9])",
+    ),
+    (
+        "API Gateway ID in parentheses",
+        r"(?<=\()(?P<v>(?=[a-z0-9]*[0-9])(?=[a-z0-9]*[a-z])[a-z0-9]{10})(?=\))",
+    ),
+    ("guardrail ID", r"(?<=ID: )(?P<v>[a-z0-9]{12})(?![A-Za-z0-9])"),
+    (
+        "Cognito app client ID",
+        r"(?<![A-Za-z0-9])(?P<v>(?=[a-z0-9]*[0-9])(?=[a-z0-9]*[a-z])[a-z0-9]{26})"
+        r"(?![A-Za-z0-9])",
+    ),
+    # The random directory names uv gives its cache in a container image.
+    ("uv cache directory", r"(?<=archive-v0/)(?P<v>[A-Za-z0-9_-]{8,40})(?=/)"),
+    # Names the console generates: a knowledge base's vector store, an Amazon Q
+    # investigation group role, a SageMaker Studio space, a Bedrock API key user.
+    (
+        "console-generated name suffix",
+        r"(?:bedrock-knowledge-base|InvestigationGroup|quickstart-default)-"
+        r"(?P<v>(?=[a-z0-9]*[0-9])[a-z0-9]{6})(?![a-z0-9])",
+    ),
+    # AgentCore gateway IDs ("<name>gateway-<10>", "<name>-gw-<10>").
+    (
+        "AgentCore gateway ID",
+        r"(?:gateway|-gw)-(?P<v>[a-z0-9]{10})(?![A-Za-z0-9-])",
+    ),
+    # The random part of a CloudTrail bucket name the console creates.
+    (
+        "CloudTrail bucket suffix",
+        r"(?<=cloudtrail-awslogs-\d{12}-)(?P<v>[a-z0-9]{8})(?=-)",
+    ),
+    ("API key user suffix", r"(?<=BedrockAPIKey-)(?P<v>[a-z0-9]{4})(?![a-z0-9])"),
+    ("Organizations ID", r"\bo-(?P<v>[a-z0-9]{10,32})\b"),
+    (
+        "Organizations root ID",
+        r"\br-(?P<v>(?=[a-z0-9]*[0-9])[a-z0-9]{4,32})\b",
+    ),
+    (
+        "Cognito user pool ID",
+        r"\b[a-z]{2}(?:-[a-z]+)+-\d_(?P<v>[A-Za-z0-9]{9})(?![A-Za-z0-9])",
     ),
     ("Bedrock ID", r"(?<=ID: )(?P<v>[A-Z0-9]{10})(?![A-Za-z0-9])"),
     ("Bedrock ID in parentheses", r"(?<=\()(?P<v>[A-Z0-9]{10})(?=\))"),
-    ("Bedrock ID in a role name", r"(?<=[a-z]_)(?P<v>[A-Z0-9]{10})(?![A-Za-z0-9])"),
+    (
+        "Bedrock ID in a role name",
+        r"(?<=[a-z]_)(?P<v>[A-Z0-9]{10,11})(?![A-Za-z0-9])",
+    ),
     (
         "CloudFormation name suffix",
         r"(?<=[-_])(?P<v>(?=[A-Za-z0-9]*[0-9])(?=[A-Za-z0-9]*[A-Za-z])"
         r"[A-Za-z0-9]{12,13})(?![A-Za-z0-9])",
+    ),
+    # The same suffixes, and AgentCore memory IDs, when they hold no digit:
+    # letters only, switching case at least three times.
+    (
+        "generated suffix without a digit",
+        r"(?<=-)(?P<v>(?=(?:[A-Za-z]*?[a-z]+[A-Z]+){3})[A-Za-z]{10,13})"
+        r"(?![A-Za-z0-9])",
     ),
     ("CloudFormation logical ID hash", r"(?<=[a-z])(?P<v>[0-9A-F]{8})(?=-)"),
     (
@@ -230,19 +332,41 @@ GENERATED_VALUE_KINDS = (
     ),
     ("quick-start suffix", r"(?<=quick-start-)(?P<v>[a-z0-9]{4,8})(?![a-z0-9])"),
     (
+        # Not a 12-digit account ID, as in "sagemaker-us-east-2-<account ID>":
+        # account IDs are placeholders already, and the comparison keys on them.
         "suffix after a Region",
-        r"(?<=-[0-9]-)(?P<v>(?=[a-z0-9]*[0-9])[a-z0-9]{4,12})(?![a-z0-9])",
+        # Nor the date in a model ID, as in "claude-sonnet-4-5-20250929-v1:0".
+        r"(?<=-[0-9]-)(?!\d{12}(?![a-z0-9]))(?!20\d{6}-v\d)"
+        r"(?P<v>(?=[a-z0-9]*[0-9])[a-z0-9]{4,12})(?![a-z0-9])",
     ),
 )
 # Matches of the patterns above that are fixed names, not generated: the CDK
-# bootstrap's default qualifier, a service name, and part of a stack name.
-NOT_GENERATED = frozenset({"hnb659fds", "s3express", "PATTERN1STACK"})
-# SHA-256 of personal names in the sample reports (one is part of a bucket
-# name), kept as hashes so this file doesn't repeat them. A word that matches
-# is replaced like a generated value.
+# bootstrap's default qualifier, a service name, part of a stack name, a
+# template's logical resource ID, and status words an API returns.
+NOT_GENERATED = frozenset(
+    {
+        "hnb659fds",
+        "s3express",
+        "PATTERN1STACK",
+        "EmptyS3Bucket",
+        "SUCCESSFUL",
+        "SUPPRESSED",
+        "COMPLIANCE",
+        "MISCONDUCT",
+        "ESSENTIALS",
+        "SATv2Stack",
+    }
+)
+# SHA-256 of personal names in the sample reports (in a bucket name, a role
+# session name and an IAM user name), kept as hashes so this file doesn't
+# repeat them. A word that matches is replaced like a generated value.
 PERSONAL_NAME = "personal name"
 PERSONAL_NAME_SHA256 = frozenset(
-    {"8044948181460cf23c5fd5ad6a432c2fbd8ce1e06cbd4ea1955d37685c81ce6b"}
+    {
+        "56f254089632214490cb5cd0c1760b0b730451077468c758343947063ba285a3",
+        "8044948181460cf23c5fd5ad6a432c2fbd8ce1e06cbd4ea1955d37685c81ce6b",
+        "fcc094d1a916658e04e55a83182a7591ffedb824ac4542c409b2edb57284a750",
+    }
 )
 _GENERATED = tuple(
     (kind, re.compile(pattern)) for kind, pattern in GENERATED_VALUE_KINDS
@@ -312,23 +436,55 @@ def placeholder(value: str) -> str:
         attempt += 1
 
 
-def replace_generated_values(text: str) -> str:
-    """text with each generated value replaced by its placeholder."""
+def known_values(values) -> re.Pattern:
+    """A pattern matching any of values as a whole token."""
+    longest_first = sorted(set(values), key=len, reverse=True)
+    return re.compile(
+        r"(?<![A-Za-z0-9])(?:"
+        + "|".join(re.escape(value) for value in longest_first)
+        + r")(?![A-Za-z0-9])"
+    )
+
+
+def replace_generated_values(text: str, known: re.Pattern | None = None) -> str:
+    """text with each generated value replaced by its placeholder.
+
+    known, from known_values(), also matches values found elsewhere, such as
+    in another row, where no kind's pattern finds them (an ID in parentheses
+    that another row gives as "ID: <value>").
+    """
+    spans = [(start, end) for start, end, _kind in generated_values(text)]
+    if known is not None:
+        spans += [match.span() for match in known.finditer(text)]
     parts, last = [], 0
-    for start, end, _kind in generated_values(text):
+    for start, end in sorted(spans, key=lambda span: (span[0], span[0] - span[1])):
+        if start < last:
+            continue
         parts += [text[last:start], placeholder(text[start:end])]
         last = end
     return "".join(parts) + text[last:]
 
 
 def anonymize(rows: list[SampleRow]) -> list[SampleRow]:
-    """Rows with generated values replaced in the finding, details and resolution."""
+    """Rows with generated values replaced in the finding, details and resolution.
+
+    A value found in any row is replaced wherever it appears in the rows.
+    """
+    texts = [
+        text for row in rows for text in (row.finding, row.details, row.resolution)
+    ]
+    found = {
+        text[start:end]
+        for text in texts
+        for start, end, _kind in generated_values(text)
+    }
+    known = known_values(found) if found else None
     return [
         dataclasses.replace(
             row,
-            finding=replace_generated_values(row.finding),
-            details=replace_generated_values(row.details),
-            resolution=replace_generated_values(row.resolution),
+            finding=replace_generated_values(row.finding, known),
+            details=replace_generated_values(row.details, known),
+            resolution=replace_generated_values(row.resolution, known),
         )
         for row in rows
     ]
@@ -448,22 +604,33 @@ class Edit:
 # Chosen from rows that exist in every account of both sample reports, so the
 # same list applies everywhere. Agentic AI and OWASP rows derived from an
 # edited row change with it (see _derived_rows).
-AR01_REFERENCE = "https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html"
+BR56_REFERENCE = (
+    "https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html"
+)
+BR56_RESOLUTION = (
+    "Confirm the identity is expected to enable model access, accept Marketplace "
+    "agreements and invoke models. If it is not, revoke its active sessions, "
+    "rotate or deactivate its credentials, and review its CloudTrail activity "
+    "for other actions."
+)
 EDITS = (
     Edit(
-        "Regressed (single-row pairing: the title and details changed, as the "
-        "scanner writes them)",
+        "Regressed (single-row pairing: the Passed summary row is replaced by a "
+        "Failed row naming the identity, as the scanner writes it)",
         "update",
-        "SM-04",
+        "BR-56",
         "us-east-1",
         "Passed",
         {
             "status": "Failed",
-            "finding": "GuardDuty Not Enabled",
-            "severity": "High",
-            "details": "Amazon GuardDuty is not enabled, so threats to SageMaker "
-            "workloads in this Region are not monitored.",
-            "resolution": "Enable Amazon GuardDuty in this Region.",
+            "details": "Potential LLM jacking activity from AWS IAMUser "
+            "arn:aws:iam::123456789012:user/sample-ci-user: it called 7 of the 14 "
+            "actions judged (CreateFoundationModelAgreement, "
+            "GetFoundationModelAvailability, InvokeModel, "
+            "ListFoundationModelAgreementOffers, ListFoundationModels, "
+            "PutFoundationModelEntitlement, PutUseCaseForModelAccess) in the last "
+            "24 hours, a share of 0.50, above the 0.4 threshold.",
+            "resolution": BR56_RESOLUTION,
         },
     ),
     Edit(
@@ -482,26 +649,48 @@ EDITS = (
         },
     ),
     Edit(
-        "No longer assessed (Failed to N/A, not counted as Resolved); its two "
-        "OWASP rows (OW-01, OW-10) too",
+        "No longer assessed (Failed to N/A, not counted as Resolved; the title "
+        "gains 'Incomplete', as the scanner writes it); its Agentic AI (AG-28) "
+        "and OWASP (OW-02) rows too",
         "update",
-        "SM-26",
+        "AC-14",
         "us-east-2",
         "Failed",
         {
             "status": "N/A",
+            "finding": "AgentCore Identity Token Vault CMK Encryption Incomplete",
             "severity": "Informational",
-            "details": "GuardDuty AI Protection status could not be read: "
-            "AccessDeniedException.",
-            "resolution": "Grant guardduty:GetDetector and retry the assessment.",
+            "details": "AgentCore token vault 'default' could not be read by "
+            "GetTokenVault: AccessDeniedException, so its encryption is unknown.",
+            "resolution": "Grant bedrock-agentcore:GetTokenVault, check that "
+            "AGENTCORE_TOKEN_VAULT_ID names a vault in this region, and retry.",
         },
     ),
     Edit(
-        "No longer reported (the row is gone); its OWASP row (OW-02) goes too",
+        "No longer reported (the row is gone); its OWASP row (OW-03) goes too",
         "remove",
-        "BR-37",
-        "us-west-2",
+        "BR-39",
+        "us-east-1",
         "Failed",
+    ),
+    Edit(
+        "New (N/A to Failed), flowing through to its OWASP row (OW-08) and to "
+        "the AWS AI Security Framework row (AISF-05) the comparison derives",
+        "update",
+        "BR-20",
+        "us-east-2",
+        "N/A",
+        {
+            "status": "Failed",
+            "finding": "Knowledge Base Data Source Transient Data Key",
+            "severity": "High",
+            "details": "The data source 'sample-docs-source' in knowledge base "
+            "'sample-kb' names no serverSideEncryptionConfiguration.kmsKeyArn, so "
+            "its transient ingestion data is not encrypted with a customer "
+            "managed key.",
+            "resolution": "Set serverSideEncryptionConfiguration.kmsKeyArn on the "
+            "data source (UpdateDataSource) to a customer managed, Enabled KMS key.",
+        },
     ),
     Edit(
         "Resolved, flowing through to its Agentic AI (AG-28) and OWASP (OW-02) rows",
@@ -553,34 +742,40 @@ EDITS = (
     ),
     Edit(
         "Regressed x2 (check-level pairing): the check's Passed summary row is "
-        "replaced by two Failed rows with their own titles, as the scanner writes "
-        "them",
+        "replaced by one Failed row per identity, as the scanner writes them",
         "add",
-        "AR-01",
-        "Global",
+        "BR-56",
+        "us-west-2",
         values={
-            "finding": "AWS Agent Registry IAM Full Access Policy",
-            "details": "The following roles have AWS Agent Registry full-access "
-            "policies: sample-registry-admin-role",
-            "resolution": "Replace full-access policies with least-privilege AWS "
-            "Agent Registry actions and scoped resources.",
-            "reference": AR01_REFERENCE,
+            "finding": "Bedrock LLM Jacking Activity",
+            "details": "Potential LLM jacking activity from AWS AssumedRole "
+            "arn:aws:sts::123456789012:assumed-role/sample-batch-role/sample-session: "
+            "it called 6 of the 14 actions judged (GetFoundationModelAvailability, "
+            "InvokeModel, InvokeModelWithResponseStream, ListFoundationModels, "
+            "PutFoundationModelEntitlement, PutUseCaseForModelAccess) in the last 24 "
+            "hours, a share of 0.43, above the 0.4 threshold.",
+            "resolution": BR56_RESOLUTION,
+            "reference": BR56_REFERENCE,
             "severity": "High",
             "status": "Failed",
         },
     ),
     Edit(
-        "(second AR-01 row; see above)",
+        "(second BR-56 row; see above)",
         "add",
-        "AR-01",
-        "Global",
+        "BR-56",
+        "us-west-2",
         values={
-            "finding": "AWS Agent Registry IAM Wildcard Permissions",
-            "details": "The following roles have wildcard or allow-except AWS Agent "
-            "Registry permissions on all resources: sample-registry-admin-role",
-            "resolution": "Replace wildcard permissions with required AWS Agent "
-            "Registry actions and scoped resources.",
-            "reference": AR01_REFERENCE,
+            "finding": "Bedrock LLM Jacking Activity",
+            "details": "Potential LLM jacking activity from AWS IAMUser "
+            "arn:aws:iam::123456789012:user/sample-ops-user: it called 7 of the 14 "
+            "actions judged (CreateFoundationModelAgreement, "
+            "GetFoundationModelAvailability, InvokeModel, "
+            "ListFoundationModelAgreementOffers, ListFoundationModels, "
+            "PutModelInvocationLoggingConfiguration, SearchAgreements) in the last "
+            "24 hours, a share of 0.50, above the 0.4 threshold.",
+            "resolution": BR56_RESOLUTION,
+            "reference": BR56_REFERENCE,
             "severity": "High",
             "status": "Failed",
         },
@@ -794,8 +989,8 @@ def build(root: Path = REPO_ROOT) -> dict[Path, str]:
             expected[account_id] = summarize(comparison)
             if sample == "single_account":
                 samples = root / "sample-reports"
-                outputs[samples / SAMPLE_CHANGES_CSV] = changes_csv(comparison).decode(
-                    "utf-8"
+                outputs[samples / SAMPLE_CHANGES_CSV] = (
+                    changes_csv(comparison).decode("utf-8").replace("\r\n", "\n")
                 )
                 # The sample main report sits next to it, so its link works.
                 outputs[samples / SAMPLE_CHANGES_PAGE] = render_changes_page(

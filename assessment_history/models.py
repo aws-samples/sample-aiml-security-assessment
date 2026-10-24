@@ -22,6 +22,10 @@ GLOBAL_REGION = "Global"
 CORE_MODULES = ("bedrock", "sagemaker", "agentcore", "agent-registry")
 OPTIONAL_MODULES = ("responsible-ai-grc", "owasp")
 MODULES = CORE_MODULES + OPTIONAL_MODULES
+# The module of a row derived during the comparison rather than read from a
+# findings CSV (the AWS AI Security Framework rows, see derived.py). It is
+# never one of a run's modules.
+DERIVED_MODULE = "derived"
 
 # Assessment areas, in the main report's sidebar order: By Service, By Lens,
 # By Governance Framework, By Compliance Standard. Headline counts use the
@@ -160,7 +164,7 @@ class Finding:
 
     def __post_init__(self) -> None:
         _require_account_id(self.account_id)
-        if self.module not in MODULES:
+        if self.module not in MODULES and self.module != DERIVED_MODULE:
             raise InvalidFindingError(f"Unknown assessment module: {self.module!r}")
         if self.area not in AREAS:
             raise InvalidFindingError(f"Unknown assessment area: {self.area!r}")
@@ -275,10 +279,14 @@ class ComparedRow:
         """Still open only because each run had one row, and the details differ.
 
         The two Failed rows may be about different resources: one fixed, and
-        another now failing (review item F3). The page says so.
+        another now failing (review item F3). The page says so. Not for a
+        derived row: there is one per control per Region, so its pair is
+        certain, and its details count the source findings, which move with
+        the resources while the control stays failed.
         """
         return (
             self.change is Change.STILL_OPEN
+            and self.current.module != DERIVED_MODULE
             and self.match_rule is MatchRule.SINGLE_ROW
             and self.previous.details != self.current.details
         )
@@ -339,6 +347,9 @@ class Comparison:
     # Modules in both runs: the core services selected in both, and the
     # optional modules enabled in both.
     compared_modules: frozenset[str] = frozenset(MODULES)
+    # Problems that left something out of the comparison, such as AISF rows
+    # that couldn't be derived.
+    notes: tuple[str, ...] = ()
 
     @property
     def has_changes(self) -> bool:

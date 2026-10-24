@@ -28663,6 +28663,24 @@ def _sm02_invoke_cache(
     }
 
 
+@pytest.mark.parametrize(
+    ("pattern", "expected"),
+    [
+        (
+            "arn:aws:execute-api:us-east-1:111122223333:api/"
+            "${aws:PrincipalTag/stage}/GET/*",
+            "arn:aws:execute-api:us-east-1:111122223333:api/*/GET/*",
+        ),
+        ("${}${aws:username}", "**"),
+        ("before${outer${inner}after}", "before*after}"),
+        ("${{" * 2_000, "${{" * 2_000),
+        ("prefix${{" * 2_000 + "}suffix", "prefix*suffix"),
+    ],
+)
+def test_iam_resource_variables_keep_glob_semantics(pattern, expected):
+    assert sagemaker_app._expand_iam_resource_variables(pattern) == expected
+
+
 class TestSM02IamAuthorizedMethodGrants:
     """AIR-FND-IAM-09: execute-api:Invoke grants split read from write."""
 
@@ -28713,6 +28731,12 @@ class TestSM02IamAuthorizedMethodGrants:
         )
         assert [r["Status"] for r in rows] == ["Passed"]
         assert "2 IAM-authorized method(s)" in rows[0]["Finding_Details"]
+
+    def test_a_policy_variable_in_the_stage_reaches_both_verbs(self):
+        rows = self._run(
+            self._invoke(f"{self.ARN}/${{aws:PrincipalTag/stage}}/*/models")
+        )
+        assert [r["Status"] for r in rows] == ["Failed"]
 
     @pytest.mark.parametrize(
         "resource",

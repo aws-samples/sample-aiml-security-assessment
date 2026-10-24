@@ -1697,6 +1697,7 @@ def _apply_cache_population_gaps(
         return findings
     for row in passed:
         row["Status"] = "N/A"
+        row["Severity"] = "Informational"
         row["Finding_Details"] = (
             f"{row['Finding_Details']} This is not reported as Passed because "
             f"{len(errored)} principal(s) of the population could not be read."
@@ -4678,7 +4679,7 @@ def _data_path_endpoint_policy_findings(
                     else "",
                 ),
                 "No action required for the endpoint policy.",
-                "Medium",
+                "Informational" if ai_vpcs["unread"] else "Medium",
                 "N/A" if ai_vpcs["unread"] else "Passed",
             )
         )
@@ -6482,7 +6483,7 @@ def _sagemaker_inference_retention_findings(region: str) -> List[Dict[str, Any]]
                     else ""
                 ),
                 COULD_NOT_ASSESS_RESOLUTION if undetermined else "No action required",
-                "Medium",
+                "Informational" if undetermined else "Medium",
                 "N/A" if undetermined else "Passed",
             )
         )
@@ -11270,6 +11271,7 @@ def check_bedrock_custom_model_encryption(region: str = "") -> Dict[str, Any]:
                 held = [row for row in data_rows if row["Status"] == "Passed"]
                 for row in held:
                     row["Status"] = "N/A"
+                    row["Severity"] = "Informational"
                     row["Finding_Details"] += (
                         " This is not reported as Passed because these "
                         f"customization job reads failed: {unread}."
@@ -29411,7 +29413,7 @@ def check_bedrock_job_vpc(
                     else "",
                 ),
                 "No action required",
-                "High",
+                "Informational" if unread else "High",
                 "N/A" if unread else "Passed",
             )
         )
@@ -29579,7 +29581,7 @@ def check_ai_workload_subnet_privacy(
                         else "",
                     ),
                     "No action required",
-                    "High",
+                    "Informational" if unread else "High",
                     "N/A" if unread else "Passed",
                 )
             )
@@ -31222,6 +31224,7 @@ def check_bedrock_model_allow_list(
             )
 
         if scoped:
+            scoped_incomplete = bool(training_errors or unparsed)
             findings["csv_data"].append(
                 create_finding(
                     check_id="BR-42",
@@ -31236,8 +31239,8 @@ def check_bedrock_model_allow_list(
                     ),
                     resolution="No action required. Review the named ARNs whenever the approved model list changes.",
                     reference=MODEL_ALLOW_LIST_REFERENCE,
-                    severity="Medium",
-                    status="Passed",
+                    severity="Informational" if scoped_incomplete else "Medium",
+                    status="N/A" if scoped_incomplete else "Passed",
                     region=region,
                 )
             )
@@ -31245,7 +31248,6 @@ def check_bedrock_model_allow_list(
                 # The training data leg was not fully read, so an unscoped
                 # s3:GetObject grant on an unread job's bucket may be missed.
                 row = findings["csv_data"][-1]
-                row["Status"] = "N/A"
                 row["Finding_Details"] = (
                     f"{row['Finding_Details']} This is not reported as Passed "
                     "because the training data buckets were not all read."
@@ -31253,7 +31255,6 @@ def check_bedrock_model_allow_list(
             if unparsed:
                 # An unparsed policy may allow invocation on '*'.
                 row = findings["csv_data"][-1]
-                row["Status"] = "N/A"
                 row["Finding_Details"] = (
                     f"{row['Finding_Details']} This is not reported as Passed "
                     f"because {len(unparsed)} identity policy document(s) could "
@@ -44692,7 +44693,7 @@ def check_agent_handoff_source_identity(
                         else ""
                     ),
                     "No action required",
-                    "High",
+                    "Informational" if unread else "High",
                     "N/A" if unread else "Passed",
                 )
             )

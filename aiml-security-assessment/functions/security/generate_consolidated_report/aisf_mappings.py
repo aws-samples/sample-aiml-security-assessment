@@ -358,6 +358,9 @@ def _row(
 def derive_aisf_findings(
     source_rows: List[Dict[str, Any]],
     selected_services: Optional[Dict[str, bool]] = None,
+    *,
+    separate_global: bool = False,
+    diagnostics: Optional[List[tuple[str, str, str]]] = None,
 ) -> List[Dict[str, str]]:
     """Restate incumbent verdicts as `AISF-` rows, one per control per join key.
 
@@ -377,9 +380,22 @@ def derive_aisf_findings(
     all belong to a service deselected in `selected_services` (the
     `core_service_selection()` dict) gets no row and no AISF-00 mention.
 
+    `separate_global=True` is for the changes report, which pairs each run's
+    rows by `(Region, Check_ID)`. Whether an account has regional keys is not a
+    property of any one control, so with the default a control sourced only
+    from `Global` rows would move between `Global` and every Region from one run
+    to the next, and its two rows would never pair. With `separate_global`, the
+    `Global` key is retained for controls whose sources have no regional row
+    for that account. A control with any regional source row is emitted only
+    under its regional keys (their verdicts still include the folded `Global`
+    rows). The `Global` key's AISF-00 row is emitted only for an account with
+    no regional key, as with the default: beside regional keys, a control
+    with no `Global` leg is reported, or named as absent, by them.
+
     Per-row work is isolated with try/except, matching
     `owasp_assessments.build_owasp_mapping_findings`, so one malformed source
-    row drops only itself.
+    row drops only itself. When supplied, `diagnostics` records mapping errors
+    as `(Check_ID, Region, error)` so callers can disclose skipped controls.
     """
     selected_services = selected_services or {}
     relevant = _source_check_ids()
@@ -413,11 +429,17 @@ def derive_aisf_findings(
     regional_accounts = {
         account_id for (account_id, region) in legs if region != AISF_GLOBAL_REGION
     }
+    regional_sources: Dict[str, set] = {}
+    for (account_id, region), present in legs.items():
+        if region != AISF_GLOBAL_REGION:
+            regional_sources.setdefault(account_id, set()).update(present)
+    # (account_id, region) -> the source check ids with rows of its own
+    own = {key: set(present) for key, present in legs.items()}
     # (account_id, region) -> source check ids that carry folded Global rows
     folded: Dict[tuple, List[str]] = {}
     for (account_id, region), present in list(legs.items()):
         if region == AISF_GLOBAL_REGION:
-            if account_id in regional_accounts:
+            if account_id in regional_accounts and not separate_global:
                 del legs[(account_id, region)]
             continue
         for cid, statuses in global_legs.get(account_id, {}).items():
@@ -433,6 +455,13 @@ def derive_aisf_findings(
                 sources = mapping["sources"]
                 if not any(_source_selected(c, selected_services) for c in sources):
                     continue
+                if (
+                    separate_global
+                    and region == AISF_GLOBAL_REGION
+                    and regional_sources.get(account_id, set()).intersection(sources)
+                ):
+                    # Regional rows already include these account-wide legs.
+                    continue
                 have = [cid for cid in sources if cid in present]
                 missing = [cid for cid in sources if cid not in present]
                 if not have:
@@ -444,6 +473,13 @@ def derive_aisf_findings(
                         f"{mapping['check_id']} ({mapping['control']}, "
                         f"sources {', '.join(sources)})"
                     )
+                    continue
+                if (
+                    separate_global
+                    and region != AISF_GLOBAL_REGION
+                    and not own[(account_id, region)].intersection(sources)
+                ):
+                    # Only folded Global legs here: the row is the Global key's.
                     continue
                 legs_txt = _legs_txt(present, have)
                 status = _aggregate_status([s for cid in have for s in present[cid]])
@@ -494,13 +530,20 @@ def derive_aisf_findings(
                     )
                 )
             except Exception as e:
+                mapping_id = str(mapping.get("check_id", "<unknown>"))
+                detail = f"{type(e).__name__}: {e}"
                 logger.warning(
-                    f"AISF: skipping mapping {mapping.get('check_id')} for "
-                    f"{account_id}/{region}: {e}"
+                    f"AISF: skipping mapping {mapping_id} for "
+                    f"{account_id}/{region}: {detail}"
                 )
+                if diagnostics is not None:
+                    diagnostics.append((mapping_id, region, detail))
                 continue
 
-        if absent_controls:
+        global_beside_regional = (
+            region == AISF_GLOBAL_REGION and account_id in regional_accounts
+        )
+        if absent_controls and not global_beside_regional:
             findings.append(
                 _row(
                     check_id=AISF_COVERAGE_CHECK_ID,

@@ -88,6 +88,14 @@ The script will:
 5. Optimize and compress images
 6. Save to `sample-reports/` folder
 
+Before capturing, it rewrites the sample reports in place: real account IDs
+become placeholder account IDs, and resource identifiers in finding text (VPC,
+security group and other resource IDs, GuardDuty detector IDs, UUIDs,
+organization IDs) become synthetic placeholders, the same placeholder for the
+same value in every file. A second run changes nothing. To scrub a newly
+generated sample without a browser, run it with `--anonymize-only`, then run
+`build_changes_sample.py`.
+
 ### Configuration
 
 Edit `sample-reports/scripts/capture_screenshots.py` to customize:

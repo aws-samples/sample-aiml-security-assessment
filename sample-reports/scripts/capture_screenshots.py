@@ -17,8 +17,11 @@ The script automatically:
 Usage:
     ./sample-reports/scripts/capture_screenshots.py
     ./sample-reports/scripts/capture_screenshots.py --check-dependencies
+    ./sample-reports/scripts/capture_screenshots.py --anonymize-only
 """
 
+import collections
+import hashlib
 import importlib.util
 import os
 import re
@@ -37,10 +40,12 @@ VIEWPORT_HEIGHT = 900
 JPEG_QUALITY = 85  # Balance between quality and file size
 PNG_OPTIMIZE = True
 
-# Well-known AWS documentation example account IDs (not real accounts). Real
-# account IDs discovered in the sample reports are consistently remapped to
-# these placeholders before screenshots are captured.
-# See: https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-identifiers.html
+# Placeholder account IDs (not real accounts). Real account IDs discovered in
+# the sample reports are consistently remapped to these before screenshots are
+# captured. The first four are the AWS documentation example IDs, see
+# https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-identifiers.html
+# The rest are repeated-digit patterns, so each one reads as synthetic. Keep
+# the existing order: an ID's position decides which discovered ID maps to it.
 ANONYMIZED_ACCOUNT_IDS = [
     "111122223333",
     "444455556666",
@@ -48,7 +53,40 @@ ANONYMIZED_ACCOUNT_IDS = [
     "123456789012",
     "555555555555",
     "666677778888",
+    "222233334444",
+    "333344445555",
+    "555566667777",
+    "888899990000",
+    "999900001111",
+    "111111111111",
+    "222222222222",
+    "333333333333",
+    "444444444444",
+    "666666666666",
+    "777777777777",
+    "888888888888",
+    "999999999999",
+    "000011112222",
 ]
+
+# Resource identifiers in the sample reports are replaced by
+# anonymize_resource_ids(). Hex IDs become zero-padded counters, such as
+# vpc-000000000000000a1 or 00000000-0000-4000-8000-0000000000a1; the marker
+# records that a report has been anonymized, so it isn't done twice.
+ANONYMIZED_MARKER = "<!-- sample-report identifiers anonymized -->"
+ZERO_PADDED_KINDS = (
+    "UUID",
+    "AWS resource ID",
+    "32-digit hex ID",
+    "16-digit hex ID",
+    "image digest",
+)
+UUID_PLACEHOLDER_HEAD = "00000000-0000-4000-8000-"
+# The repository's patterned example organization IDs (without "o-"). The
+# first is f6g7h8i9j0 because a1b2c3d4e5 is part of a made-up VPC ID in
+# tests/test_assessment_history_golden.py, which checks that no sample value
+# appears in its text.
+ANONYMIZED_ORGANIZATION_IDS = ["f6g7h8i9j0", "a1b2c3d4e5"]
 
 # Screenshots to capture
 SCREENSHOTS = [
@@ -273,6 +311,180 @@ def anonymize_account_ids(html_files: list) -> None:
             print(f"  Updated: {html_file.name}")
 
 
+def _load_generated_value_kinds():
+    """Load build_changes_sample.py by path for its GENERATED_VALUE_KINDS."""
+    path = Path(__file__).resolve().parent / "build_changes_sample.py"
+    spec = importlib.util.spec_from_file_location("build_changes_sample_kinds", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclasses look the module up by name
+    spec.loader.exec_module(module)
+    return module
+
+
+def _synthetic_value(kinds, value: str, kind: str, index: int, taken: set) -> str:
+    """The synthetic value for the index-th distinct value of a kind.
+
+    Hex IDs (ZERO_PADDED_KINDS) become a zero-padded counter, so they read as
+    placeholders (vpc-000000000000000a1). Other values become made-up
+    characters of the same shape. Either way the result depends only on the
+    kind, the index and the value's shape, never on the real value, so a
+    placeholder cannot be traced back to the value it replaced.
+    """
+    if kind in ZERO_PADDED_KINDS:
+        # "a" and a decimal counter, padded with zeros: vpc-000000000000000a1.
+        # The "a" keeps it from reading as part of a longer run of digits.
+        tail = value.rpartition("-")[2] if kind == "UUID" else value
+        head = UUID_PLACEHOLDER_HEAD if kind == "UUID" else ""
+        counter = f"a{index}".rjust(len(tail), "0")
+        if len(counter) > len(tail):
+            raise ValueError(f"too many distinct {kind} values to number")
+        return head + counter
+    if kind == "Organizations ID" and len(value) == 10:
+        if index <= len(ANONYMIZED_ORGANIZATION_IDS):
+            return ANONYMIZED_ORGANIZATION_IDS[index - 1]
+    hex_only = kinds._HEX.fullmatch(value.replace("-", "")) is not None
+    attempt = 0
+    while True:
+        seed = f"sample-identifier:{kind}:{index}:{attempt}".encode()
+        stream = hashlib.shake_256(seed).digest(len(value))
+        made_up = "".join(
+            kinds._made_up_character(character, byte, hex_only)
+            for character, byte in zip(value, stream)
+        )
+        if made_up != value and made_up not in taken:
+            return made_up
+        attempt += 1
+
+
+def anonymize_resource_ids(html_files: list) -> dict:
+    """
+    Replace resource IDs and other values AWS generated in the given HTML
+    report files with synthetic placeholders, in place.
+
+    The values are the ones build_changes_sample.py's GENERATED_VALUE_KINDS
+    find in each finding's text: resource IDs (vpc-, sg-, subnet-, i-, ...),
+    GuardDuty detector and finding IDs, UUIDs, Organizations and Cognito IDs,
+    and the random parts of resource names. Each distinct value gets one
+    placeholder, shared across the files anonymized together, so filtering and
+    grouping keep working. A file is marked once anonymized and skipped after
+    that, so running this again changes nothing. A file anonymized later (a
+    regenerated report) keeps the marked files' placeholders it already holds,
+    and its other values get placeholders no marked file uses. A real value it
+    shares with a marked file can't get that file's placeholder, as no mapping
+    back to the real values is kept: regenerate and anonymize the reports
+    together when they must share one. Every file is checked before
+    any is written, so a failure leaves them all as they were.
+
+    Returns the number of replacements made, by kind.
+    """
+    print("\n Anonymizing resource identifiers...")
+    kinds = _load_generated_value_kinds()
+    contents = {}
+    # Placeholders the marked files already use, by kind: new ones are
+    # numbered after them and never repeat them.
+    used: dict = {}
+    for html_file in html_files:
+        if not html_file.exists():
+            print(f"  WARNING: {html_file} not found, skipping...")
+            continue
+        content = html_file.read_text(encoding="utf-8")
+        if ANONYMIZED_MARKER in content:
+            print(f"  Already anonymized: {html_file.name}")
+            for row in kinds.parse_report(content):
+                for text in (row.finding, row.details, row.resolution):
+                    for start, end, kind in kinds.generated_values(text):
+                        used.setdefault(text[start:end], kind)
+            continue
+        contents[html_file] = content
+
+    # Number the distinct values in the order they first appear, file by file.
+    kind_of: dict = {}
+    for content in contents.values():
+        for row in kinds.parse_report(content):
+            for text in (row.finding, row.details, row.resolution):
+                for start, end, kind in kinds.generated_values(text):
+                    kind_of.setdefault(text[start:end], kind)
+    mapping: dict = {}
+    counters: collections.Counter = collections.Counter(used.values())
+    taken = set(kind_of) | set(used)
+    for value, kind in kind_of.items():
+        if value in used:
+            # Already a marked file's placeholder: a report built from the
+            # anonymized reports, such as the changes sample, keeps it.
+            continue
+        placeholder = value
+        while placeholder in taken:
+            counters[kind] += 1
+            placeholder = _synthetic_value(kinds, value, kind, counters[kind], taken)
+        mapping[value] = placeholder
+        taken.add(placeholder)
+
+    if contents and not mapping:
+        print("  No resource identifiers found to anonymize.")
+    # A value found in one context (a resource ID in a finding's text) can also
+    # appear where no kind's pattern finds it (in an ARN, or a role name):
+    # those occurrences are matched as whole tokens.
+    tokens = re.compile(
+        r"(?<![A-Za-z0-9])(?:"
+        + "|".join(re.escape(value) for value in sorted(mapping, key=len)[::-1])
+        + r")(?![A-Za-z0-9])"
+    )
+    replaced: collections.Counter = collections.Counter()
+    updates = {}
+    for html_file, content in contents.items():
+        # Only values found in the rows are replaced, so the page's markup,
+        # styles and scripts are left alone.
+        spans = [
+            (*match.span("v"), match.group("v"))
+            for _kind, pattern in kinds._GENERATED
+            for match in pattern.finditer(content)
+            if match.group("v") in mapping
+        ]
+        spans += [
+            (*match.span(), match.group())
+            for match in kinds._WORD.finditer(content)
+            if match.group() in mapping
+            and kind_of[match.group()] == kinds.PERSONAL_NAME
+        ]
+        if mapping:
+            spans += [
+                (*match.span(), match.group()) for match in tokens.finditer(content)
+            ]
+        parts, last = [], 0
+        for start, end, value in sorted(spans, key=lambda s: (s[0], s[0] - s[1])):
+            if start < last:
+                continue
+            parts += [content[last:start], mapping[value]]
+            replaced[kind_of[value]] += 1
+            last = end
+        updated = "".join(parts) + content[last:]
+        # Whole tokens, as they were replaced: a short value can also occur
+        # inside longer, unrelated text.
+        left = sorted(
+            {kind_of[match.group()] for match in tokens.finditer(updated)}
+            if mapping
+            else set()
+        )
+        if left:
+            print(f"  ERROR: {html_file.name} still holds values of kind(s) {left}")
+            print("  No file was changed.")
+            sys.exit(1)
+        doctype = "<!DOCTYPE html>\n"
+        if updated.startswith(doctype):
+            updated = doctype + ANONYMIZED_MARKER + "\n" + updated[len(doctype) :]
+        else:
+            updated = ANONYMIZED_MARKER + "\n" + updated
+        updates[html_file] = updated
+    for html_file, updated in updates.items():
+        html_file.write_text(updated, encoding="utf-8")
+        print(f"  Updated: {html_file.name}")
+
+    # Kinds and counts only, so the output doesn't repeat the real values.
+    for kind, count in sorted(replaced.items()):
+        print(f"  {kind}: {count} replacement(s)")
+    return dict(replaced)
+
+
 def optimize_png(image_path: Path, max_size_kb: int = 300) -> None:
     """
     Optimize PNG image to reduce file size while maintaining quality.
@@ -480,13 +692,22 @@ def capture_all_screenshots(browser, screenshot_configs=None) -> list[Path]:
 
 def main():
     """Main function to capture all screenshots."""
+    supported_options = ("--check-dependencies", "--anonymize-only")
     unexpected_arguments = [
-        argument for argument in sys.argv[1:] if argument != "--check-dependencies"
+        argument for argument in sys.argv[1:] if argument not in supported_options
     ]
     if unexpected_arguments:
         print(f"ERROR: Unsupported argument(s): {' '.join(unexpected_arguments)}")
-        print("Supported option: --check-dependencies")
+        print(f"Supported options: {', '.join(supported_options)}")
         sys.exit(2)
+
+    report_files = sorted({SAMPLE_REPORTS_DIR / cfg["file"] for cfg in SCREENSHOTS})
+    if "--anonymize-only" in sys.argv[1:]:
+        # No browser needed: anonymize the sample reports and stop.
+        ensure_repo_venv()
+        anonymize_account_ids(report_files)
+        anonymize_resource_ids(report_files)
+        return
 
     check_dependencies_only = "--check-dependencies" in sys.argv[1:]
     bootstrap_screenshot_environment()
@@ -520,12 +741,11 @@ def main():
             print(f" Viewport size: {VIEWPORT_WIDTH}x{VIEWPORT_HEIGHT}")
             print(f" Target: {len(SCREENSHOTS)} screenshots")
 
-            # Anonymize account IDs only after the browser environment has been
-            # verified, so a bootstrap failure cannot modify report files.
-            report_files = sorted(
-                {SAMPLE_REPORTS_DIR / cfg["file"] for cfg in SCREENSHOTS}
-            )
+            # Anonymize account and resource IDs only after the browser
+            # environment has been verified, so a bootstrap failure cannot
+            # modify report files.
             anonymize_account_ids(report_files)
+            anonymize_resource_ids(report_files)
 
             try:
                 captured_files = capture_all_screenshots(browser)

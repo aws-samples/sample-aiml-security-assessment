@@ -24,6 +24,10 @@ Only core services selected, optional modules enabled, and regions scanned,
 in both runs are compared; the rest is returned as excluded with a reason.
 Rows marked Global, or with no region, are always compared.
 
+AWS AI Security Framework (AISF) rows aren't in any findings CSV. They are
+derived from each run's compared findings, as the main report derives them
+(see derived.py), and then compared like any other row.
+
 No AWS calls: runs arrive as ``models.Run`` values.
 """
 
@@ -32,6 +36,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 
+from .derived import DerivationError, derive_aisf, omitted_aisf_control_ids
 from .models import (
     AREAS,
     CORE_MODULES,
@@ -126,6 +131,38 @@ def compare_runs(previous: Run, current: Run) -> Comparison:
     current_rows = _in_scope(
         dedupe(current.findings), shared_modules, shared_regions, CURRENT_RUN, excluded
     )
+    # Before the AISF rows are added: both runs are derived with the same
+    # mapping, so an AISF id in one run only is no scanner catalog change.
+    single_run_check_ids = _one_sided(
+        {f.check_id for f in previous_rows}, {f.check_id for f in current_rows}
+    )
+    notes = []
+    shared_services = shared_modules & frozenset(CORE_MODULES)
+    try:
+        previous_aisf = derive_aisf(
+            previous_rows, previous.account_id, shared_services, notes=notes
+        )
+        current_aisf = derive_aisf(
+            current_rows, current.account_id, shared_services, notes=notes
+        )
+    except DerivationError as error:
+        notes.append(f"AWS AI Security Framework rows not compared: {error}")
+    else:
+        previous_rows += previous_aisf
+        current_rows += current_aisf
+        try:
+            omitted_controls = omitted_aisf_control_ids(shared_services)
+        except DerivationError as error:
+            notes.append(
+                f"AWS AI Security Framework omitted controls could not be listed: {error}"
+            )
+        else:
+            if omitted_controls:
+                notes.append(
+                    "AWS AI Security Framework controls not compared "
+                    "(a source check's service was not selected in both runs): "
+                    f"{', '.join(omitted_controls)}"
+                )
 
     return Comparison(
         account_id=current.account_id,
@@ -135,12 +172,11 @@ def compare_runs(previous: Run, current: Run) -> Comparison:
         excluded=tuple(sorted(excluded, key=_excluded_sort_key)),
         not_compared_modules=_one_sided(previous.modules, current.modules),
         not_compared_regions=not_compared_regions,
-        single_run_check_ids=_one_sided(
-            {f.check_id for f in previous_rows}, {f.check_id for f in current_rows}
-        ),
+        single_run_check_ids=single_run_check_ids,
         previous_saved_at=previous.saved_at,
         current_saved_at=current.saved_at,
         compared_modules=shared_modules,
+        notes=tuple(dict.fromkeys(notes)),
     )
 
 

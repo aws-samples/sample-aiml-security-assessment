@@ -11,6 +11,7 @@ from collections import Counter
 
 import pytest
 
+from assessment_history import derived
 from assessment_history.compare import classify, compare_runs, dedupe
 from assessment_history.models import (
     CORE_MODULES,
@@ -313,10 +314,12 @@ def test_f1_a_title_that_changes_with_the_status_still_pairs(before, after, expe
         )
 
     result = _compare([row(*before)], [row(*after)])
-    assert [(r.change, r.match_rule) for r in result.rows] == [
+    # SM-01 is an AISF source check; its derived AISF rows are tested elsewhere.
+    rows = [r for r in result.rows if r.area != "aisf"]
+    assert [(r.change, r.match_rule) for r in rows] == [
         (expected, MatchRule.SINGLE_ROW)
     ]
-    (compared,) = result.rows
+    (compared,) = rows
     assert (compared.previous.finding, compared.current.finding) == (
         before[3],
         after[3],
@@ -821,6 +824,82 @@ def test_excluded_rows_do_not_count_as_single_run_check_ids():
         [make_finding("BR-01")], [make_finding("BR-01"), make_finding("OW-03")]
     )
     assert result.single_run_check_ids == {}
+
+
+def test_derived_aisf_ids_do_not_count_as_single_run_check_ids():
+    # The same source checks in both runs, split across regions differently:
+    # the previous run gets an AISF-00 coverage row and the current run none.
+    # Both runs are derived with one mapping, so that is no catalog change.
+    sagemaker = ("SM-18", "SM-42", "SM-09", "SM-01", "SM-03")
+    previous = [make_finding("BR-20", "Passed", region="us-east-1")] + [
+        make_finding(check, "Passed", region="eu-west-1") for check in sagemaker
+    ]
+    current = [
+        make_finding(check, "Passed", region=region)
+        for check in ("BR-20", *sagemaker)
+        for region in ("us-east-1", "eu-west-1")
+    ]
+    result = _compare(previous, current)
+    assert "AISF-00" in {row.check_id for row in result.rows}
+    assert result.single_run_check_ids == {}
+
+
+# A control derived from two services, which today's mapping doesn't have yet.
+_CROSS_SERVICE_CONTROLS = [
+    {
+        "check_id": "AISF-90",
+        "control": "AIR-TEST-01",
+        "sources": ["BR-20", "SM-01"],
+        "finding": "AISF AIR-TEST-01: Cross-service control",
+        "risk": "high",
+        "severity": "High",
+        "resolution": "Fix both.",
+        "reference": "https://docs.aws.amazon.com/",
+    },
+]
+
+
+def _use_mappings(monkeypatch, module):
+    monkeypatch.setattr(derived, "aisf_mappings", lambda: module)
+
+
+@pytest.fixture
+def cross_service_mappings(monkeypatch):
+    module = derived.load_aisf_mappings()
+    module.AISF_DERIVED_MAP = module.AISF_DERIVED_MAP + _CROSS_SERVICE_CONTROLS
+    _use_mappings(monkeypatch, module)
+    return module
+
+
+def test_an_aisf_control_with_every_service_in_both_runs_is_compared(
+    cross_service_mappings,
+):
+    region = "us-east-1"
+    previous = [
+        make_finding("BR-20", "Passed", region=region),
+        make_finding("SM-01", "Passed", region=region),
+    ]
+    current = [
+        make_finding("BR-20", "Passed", region=region),
+        make_finding("SM-01", "Failed", region=region),
+    ]
+    result = _compare(previous, current)
+    aisf = {row.check_id: row.change for row in result.rows if row.area == "aisf"}
+    assert aisf["AISF-90"] is Change.REGRESSED
+    assert result.excluded == ()
+    assert result.notes == ()
+
+
+def test_an_unreadable_aisf_mapping_is_a_note(monkeypatch):
+    module = derived.load_aisf_mappings()
+    module.AISF_DERIVED_MAP = [{"check_id": "AISF-90"}]
+    _use_mappings(monkeypatch, module)
+    findings = [make_finding("BR-20", "Passed", region="us-east-1")]
+    result = _compare(findings, findings)
+    assert [row.check_id for row in result.rows] == ["BR-20"]
+    assert result.notes == (
+        "AWS AI Security Framework rows not compared: KeyError: 'sources'",
+    )
 
 
 def test_comparison_carries_run_details():

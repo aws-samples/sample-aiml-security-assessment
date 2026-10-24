@@ -6965,10 +6965,24 @@ def _execute_api_arn_template(
     return tokens
 
 
+def _expand_iam_resource_variables(pattern: str) -> str:
+    """Treat policy variables as wildcards without rescanning unmatched openers."""
+    parts = []
+    position = 0
+    while (start := pattern.find("${", position)) != -1:
+        end = pattern.find("}", start + 2)
+        if end == -1:
+            break
+        parts.extend((pattern[position:start], "*"))
+        position = end + 1
+    parts.append(pattern[position:])
+    return "".join(parts)
+
+
 def _iam_glob_reaches(pattern: str, tokens: List[str]) -> bool:
     """Whether an IAM Resource glob ("*" and "?") matches some ARN the token
     template can take, searched over (pattern index, token index, filled)."""
-    pattern = re.sub(r"\$\{[^}]*\}", "*", pattern.strip())
+    pattern = _expand_iam_resource_variables(pattern.strip())
     pending, seen = [(0, 0, False)], set()
     while pending:
         state = pending.pop()

@@ -244,6 +244,7 @@ def describe(comparison: Comparison) -> list[str]:
             "  Check IDs found in only one run: "
             + _listing(comparison.single_run_check_ids)
         )
+    lines += [f"  {note}" for note in comparison.notes]
     return lines
 
 

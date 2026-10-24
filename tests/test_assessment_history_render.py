@@ -588,6 +588,10 @@ def test_the_area_filter_and_the_sidebar_list_the_same_areas(which):
 
 NOT_COUNTED = "\u2014"
 WITHOUT_SAGEMAKER = ("bedrock", "agentcore", "agent-registry")
+OMITTED_SAGEMAKER_AISF = (
+    "AWS AI Security Framework controls not compared "
+    "(a source check's service was not selected in both runs): AISF-07, AISF-08"
+)
 
 
 def _deselected_page(current_modules):
@@ -633,7 +637,8 @@ def test_a_service_not_selected_in_both_runs_is_not_shown_as_zero():
         "agent-registry": "0",
     }
     assert [li.get_text() for li in page.select("#notes li")] == [
-        "Not compared (not selected in both runs): SageMaker (previous run only)"
+        "Not compared (not selected in both runs): SageMaker (previous run only)",
+        OMITTED_SAGEMAKER_AISF,
     ]
 
 
@@ -655,7 +660,8 @@ def test_a_service_selected_again_is_not_shown_as_zero_either():
     sagemaker = page.select_one('a.nav-item[data-filter-area="sagemaker"] .count')
     assert sagemaker.get_text() == NOT_COUNTED
     assert [li.get_text() for li in page.select("#notes li")] == [
-        "Not compared (not selected in both runs): SageMaker (current run only)"
+        "Not compared (not selected in both runs): SageMaker (current run only)",
+        OMITTED_SAGEMAKER_AISF,
     ]
     assert (
         page.select_one(".tile-note")

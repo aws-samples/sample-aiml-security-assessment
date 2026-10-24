@@ -424,6 +424,7 @@ never fails the build. User-facing behavior is in
 | `assessment_history/models.py` | Record shapes, change states, area routing, CSV columns |
 | `assessment_history/normalize.py` | Day counts and dates blanked out before matching, each tied to the scanner code that writes it |
 | `assessment_history/compare.py` | Pairs two runs' rows and labels each; no AWS calls |
+| `assessment_history/derived.py` | Derives AISF rows from each run's compared findings with the main report's `aisf_mappings.py`; records mapping and unreadable-row notes without losing other controls |
 | `assessment_history/discover.py` | Groups an account folder's CSVs into runs (S3 or local folder), picks the previous usable run (complete files, and a run record that does not say it failed), and reads the CSVs |
 | `assessment_history/render_common.py`, `render_changes.py` | The HTML page, reusing `report_template.py`'s CSS, escaping, names, and icons |
 | `assessment_history/__main__.py` | `python3 -m assessment_history compare`: S3 mode for the build, local-folder mode for people |
@@ -443,6 +444,10 @@ never fails the build. User-facing behavior is in
   unknown prefix are logged and not read.
 - **A new compliance standard:** `COMPLIANCE_PREFIX_TO_AREA` in `models.py`
   must match `COMPLIANCE_STANDARDS` in `report_template.py`; a test checks it.
+- **An AISF mapping change:** the changes report loads
+  `aisf_mappings.py` by file path and derives both runs with the current
+  mapping. Preserve `Global` pairing, selected-service coverage, and visible
+  notes for skipped mappings and unreadable derived rows.
 - **`report_template.py`:** the changes page reuses its styling and helpers;
   guard tests fail if something it relies on moves.
 - **A sample report or a comparison rule:** rebuild the changes sample (below)

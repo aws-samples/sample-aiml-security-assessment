@@ -8,8 +8,8 @@ This directory contains sample AI/ML security assessment reports and documentati
 
 Interactive HTML reports demonstrating the assessment output:
 
-- **[security_assessment_single_account.html](security_assessment_single_account.html)** - Example report for a single AWS account showing 653 finding rows across Bedrock, SageMaker AI, AgentCore, AWS Agent Registry, Agentic AI Security, Responsible AI GRC, and OWASP Top 10 for LLM
-- **[security_assessment_multi_account.html](security_assessment_multi_account.html)** - Example consolidated report for 3 AWS accounts showing 2,072 finding rows
+- **[security_assessment_single_account.html](security_assessment_single_account.html)** - Example report for a single synthetic AWS account showing 1,542 finding rows across Bedrock, SageMaker AI, AgentCore, AWS Agent Registry, Agentic AI Security, Responsible AI GRC, OWASP Top 10 for LLM, and the derived AWS AI Security Framework view
+- **[security_assessment_multi_account.html](security_assessment_multi_account.html)** - Example consolidated report for 3 synthetic AWS accounts showing 5,114 finding rows
 - **[security_assessment_changes.html](security_assessment_changes.html)** and [`.csv`](security_assessment_changes.csv) - Example "Changes since last assessment" report comparing the single-account sample with an edited copy of it (built by `scripts/build_changes_sample.py`; see [Changes Since Last Assessment](../docs/ASSESSMENT_HISTORY.md))
 - **[selection-bedrock.html](selection-bedrock.html)** - Synthetic Bedrock-only selection with GRC and OWASP enabled; [screenshot](selection-bedrock.jpg).
 - **[selection-governance-only.html](selection-governance-only.html)** - Synthetic all-direct-services-disabled selection showing independent GRC findings and OWASP coverage notices; [screenshot](selection-governance-only.jpg).
@@ -21,6 +21,10 @@ Regenerate these two selection examples without AWS access:
 ```
 
 They use fictional findings and a placeholder account ID, and are UI examples rather than live assessment evidence.
+
+The main HTML examples use synthetic account and generated resource identifiers.
+Their findings are representative examples, not a current assessment of any
+account. Bedrock `N/A` rows have `Informational` severity in both reports.
 
 **Features:**
 - Executive dashboard with severity breakdown

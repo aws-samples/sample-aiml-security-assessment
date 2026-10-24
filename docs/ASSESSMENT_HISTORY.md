@@ -187,7 +187,34 @@ Only what ran in both runs is compared:
   scanned in both runs.
 
 Check IDs that appear in only one run (for example, after upgrading the
-framework) are listed in the report as a note.
+framework) are listed in the report as a note. Only scanner check IDs are
+counted; derived AISF IDs never are, because both runs use the same mapping.
+
+**AWS AI Security Framework (AISF) rows** are absent from findings CSVs. The
+changes report derives them from each run's compared findings with the main
+report's `aisf_mappings.py`: only services selected in both runs and regions
+scanned in both runs contribute. Both runs use the current mapping, so a
+mapping update does not appear as a change in findings. An AISF control changes
+when one of its source checks changes.
+
+The changes report retains a `Global` AISF row when that control has no
+regional source row in the account, so it can pair across runs even if
+unrelated regional checks appear. When the control has a regional source row,
+its regional AISF rows incorporate any account-wide source findings and its
+separate `Global` row is omitted. The main report folds account-wide findings
+into every regional key and suppresses the entire `Global` key when an account
+has regional keys, so a `Global` AISF row in the changes report can be absent
+from the main report. A regional AISF row in the changes report appears only
+where that control has a regional source row. `AISF-00` appears under `Global`
+only for an account without regional rows; otherwise each region's `AISF-00`
+names controls with no source there. Each mapped AISF control currently draws
+on one service, so a service not selected in both runs removes its controls
+from the comparison and a note names them.
+
+If AISF rows cannot be derived, the other assessment areas are still
+compared and the report explains why in its notes. An unreadable derived row
+or a mapping error is named in a note while successfully derived controls
+remain in the comparison.
 
 ## Change states
 
@@ -274,8 +301,9 @@ choice carries over between the two reports).
   reported, and No longer assessed, for the four core services only, or for
   those of them selected in both runs; the note under the counts names any
   service left out. With none of the four selected in both runs, the counts
-  show "—". Most Agentic AI Security and OWASP rows are derived from service findings, so one change can appear in
-  several areas; counts are shown per area and not added across areas.
+  show "—". Most Agentic AI Security, OWASP, and AISF rows are derived from
+  service findings, so one change can appear in several areas; counts are
+  shown per area and not added across areas.
 - **Counts by area:** under the main report's headings (By Service, By Lens,
   By Governance Framework, By Compliance Standard).
 - **Changes table:** the main report's columns, with **Change** in place of
@@ -306,7 +334,7 @@ One row per compared finding, in these columns:
 | Column | Contents |
 | --- | --- |
 | `Account_ID` | The account |
-| `Assessment_Area` | `bedrock`, `sagemaker`, `agentcore`, `agent-registry`, `agentic`, `responsible-ai-grc`, or `owasp` |
+| `Assessment_Area` | `bedrock`, `sagemaker`, `agentcore`, `agent-registry`, `agentic`, `responsible-ai-grc`, `owasp`, or `aisf` |
 | `Region`, `Check_ID`, `Finding` | As in the findings CSVs |
 | `Change` | One of the change states above, including `Not failing` |
 | `Previous_Status`, `Current_Status` | `Passed`, `Failed`, `N/A`, or `Not present` |
@@ -346,6 +374,11 @@ messages. If no changes report was written, the message says why.
 | `Not compared (scanned in only one run): <region> (<which run>)` | A region scanned in only one of the two runs |
 | `Check IDs found in only one run: <id> (<which run>)` | For example, checks added or removed by an upgrade |
 | `No core service was selected in both runs, so there are no headline counts; see the changes CSV` | Only Responsible AI GRC or OWASP were compared |
+| `AWS AI Security Framework rows not compared: <reason>` | AISF rows could not be derived; every other area is still compared |
+| `AWS AI Security Framework rows not compared for N derived row(s) (<ids>): <reason>` | The named derived rows could not be read; other AISF rows are still compared |
+| `AWS AI Security Framework rows not compared for N mapping error(s) (<ids>): <reason>` | Mapping failed for the named controls; other AISF controls are still compared |
+| `AWS AI Security Framework controls not compared (a source check's service was not selected in both runs): <ids>` | The named controls draw on a service not selected in both runs |
+| `AWS AI Security Framework omitted controls could not be listed: <reason>` | Other AISF rows are compared, but the omitted-control list could not be determined |
 | `WARNING: ENABLE_<SERVICE>='<value>' is not true or false; the services with CSVs are taken as selected` | A service switch has an unexpected value |
 | `WARNING: ENABLE_<SERVICE> is '<value>', not true or false, so the run record does not list the selected services` | Single-account: the record is still written; later runs judge this run by its files |
 | `WARNING: Could not write the assessment run record s3://...` | Single-account: no record for this run; it will be judged by its files |

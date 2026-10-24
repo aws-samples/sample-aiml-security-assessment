@@ -1488,6 +1488,45 @@ class TestGlobalSourceRows(unittest.TestCase):
         row = self._by_key(rows, "AISF-08")[("111122223333", "us-east-1")]
         self.assertEqual(row["Status"], "Failed")
 
+    def test_separate_global_keeps_the_global_key_beside_regional_ones(self):
+        """A control with only Global sources keeps its own comparison key."""
+        rows = aisf_mappings.derive_aisf_findings(
+            [
+                _source_row("BR-20", "Failed", region="Global"),
+                _source_row("SM-18", "Passed"),
+                _source_row("SM-42", "Passed"),
+            ],
+            separate_global=True,
+        )
+        keys = {(r["Region"], r["Check_ID"]): r for r in rows}
+        self.assertEqual(keys[("Global", "AISF-05")]["Status"], "Failed")
+        self.assertEqual(keys[("us-east-1", "AISF-07")]["Status"], "Passed")
+        # AISF-05's only us-east-1 legs are folded Global rows: its row is the
+        # Global key's. No Global AISF-00 calls AISF-07 unassessed.
+        self.assertNotIn(("us-east-1", "AISF-05"), keys)
+        self.assertNotIn(("Global", "AISF-00"), keys)
+        self.assertIn("AISF-08", keys[("us-east-1", "AISF-00")]["Finding_Details"])
+        self.assertNotIn("AISF-05", keys[("us-east-1", "AISF-00")]["Finding_Details"])
+
+    def test_separate_global_regional_verdict_still_folds_global_rows(self):
+        rows = aisf_mappings.derive_aisf_findings(
+            [
+                _source_row("BR-20", "Failed", region="Global"),
+                _source_row("BR-20", "Passed"),
+            ],
+            separate_global=True,
+        )
+        by_key = self._by_key(rows, "AISF-05")
+        self.assertEqual(by_key[("111122223333", "us-east-1")]["Status"], "Failed")
+        self.assertNotIn(("111122223333", "Global"), by_key)
+
+    def test_separate_global_only_global_rows_match_the_default(self):
+        source = [_source_row("BR-20", "Failed", region="Global")]
+        self.assertEqual(
+            aisf_mappings.derive_aisf_findings(source, separate_global=True),
+            aisf_mappings.derive_aisf_findings(source),
+        )
+
     def test_an_account_with_only_global_rows_keeps_its_global_key(self):
         rows = aisf_mappings.derive_aisf_findings(
             [_source_row("BR-20", "Failed", region="Global")]

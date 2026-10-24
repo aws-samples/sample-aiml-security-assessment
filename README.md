@@ -79,6 +79,7 @@ The framework generates interactive security assessment reports with filtering, 
   - [Changes Since Last Assessment](#changes-since-last-assessment-enableassessmenthistory)
   - [Multi-Region Scanning](#multi-region-scanning)
   - [Optional Security Policy Baselines](#optional-security-policy-baselines)
+  - [Optional Read Permissions](#optional-read-permissions)
 - [Upgrading an Existing Deployment](#upgrading-an-existing-deployment)
 - [How It Works](#how-it-works)
 - [Viewing Results](#viewing-results)
@@ -172,7 +173,7 @@ The standard deployment runs entirely through AWS CloudFormation and AWS CodeBui
 3. Upload the template and provide a stack name.
 4. Optionally, specify an email address to receive notifications.
 5. Optionally, set `TargetRegions` to scan [multiple regions](#multi-region-scanning). Leave it empty to scan only the deployment region.
-6. Review the [service selection](#selecting-service-assessments) and [optional assessment](#configuration) parameters, and the [security policy baselines](#optional-security-policy-baselines). The Marketplace endpoint CMK baseline is enabled by default.
+6. Review the [service selection](#selecting-service-assessments), [optional assessment](#configuration), [security policy baseline](#optional-security-policy-baselines), and [optional read permission](#optional-read-permissions) parameters. The Marketplace endpoint CMK baseline is enabled by default.
 7. Acknowledge the IAM capabilities and choose **Submit**.
 8. When stack creation completes, CodeBuild runs the assessment automatically.
 9. [View the results](#viewing-results).
@@ -198,7 +199,7 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 
 1. Upload the template and set `MultiAccountScan` to `true`.
 2. Optionally, set `TargetRegions` for [multi-region scanning](#multi-region-scanning) and provide an email address for notifications.
-3. Review the [service selection](#selecting-service-assessments), [optional assessment](#configuration), and [security policy baseline](#optional-security-policy-baselines) parameters. The central values are propagated to every per-account deployment.
+3. Review the [service selection](#selecting-service-assessments), [optional assessment](#configuration), [security policy baseline](#optional-security-policy-baselines), and [optional read permission](#optional-read-permissions) parameters. The central values are propagated to every per-account deployment.
 4. Acknowledge the IAM capabilities and submit.
 5. Stack creation automatically starts the assessment across all accounts.
 
@@ -224,7 +225,7 @@ three parameters to `false`. Existing deployments keep all four services
 enabled unless you change these parameters.
 
 - **Deselected services are labeled Not selected.** Their Lambda functions are not invoked and produce no CSV files. The report labels their areas **Not selected** rather than showing an assessed service with zero findings. Selecting no direct services is supported and produces a scope-only report.
-- **Derived views shrink with the selection.** The Agentic AI lens contains only rows from the selected Bedrock, AgentCore, and Agent Registry assessments. OWASP controls that lose a source show an N/A/Informational coverage notice; a control that loses its only source (such as OW-07 when Bedrock is off) remains visible as unassessed.
+- **Derived views shrink with the selection.** The Agentic AI lens and AWS AI Security Framework (AISF) view contain only rows supported by selected services. OWASP controls that lose a source show an N/A/Informational coverage notice; a control that loses its only source (such as OW-07 when Bedrock is off) remains visible as unassessed.
 - **Optional assessments stay independent.** Responsible AI GRC still assesses deselected services when it is enabled, including when it runs as an OWASP dependency. To limit execution to the selected services, disable both `EnableResponsibleAIGRCAssessment` and `EnableOWASPAssessment`.
 - **Compare like with like.** Deselecting a well-configured service can lower the pass rate by removing passing controls from the score. Compare pass rates only across runs with the same selection.
 
@@ -280,8 +281,10 @@ longer reported, or No longer assessed. This is **on by default**; set
 `EnableAssessmentHistory` to `false` to turn it off. The first run of an
 account has nothing to compare with and is skipped. The comparison reads only
 the findings CSVs already in the bucket (plus, in single-account mode, a small
-run record written there) and cannot fail an assessment run. See
-[Changes Since Last Assessment](docs/ASSESSMENT_HISTORY.md).
+run record written there) and cannot fail an assessment run. It derives AISF
+controls from each run's compared findings using the main report's mapping;
+mapping failures are named in report notes while other controls remain.
+See [Changes Since Last Assessment](docs/ASSESSMENT_HISTORY.md).
 
 ### Multi-Region Scanning
 
@@ -316,15 +319,12 @@ these checks advisory, except Marketplace endpoint customer-managed encryption
 
 | CloudFormation parameter | Default | Affected check | Behavior |
 | --- | --- | --- | --- |
-| `RequireBedrockZeroDataRetention` | `false` | BR-37 | Deprecated and still forwarded for stack compatibility. BR-37 judges the account retention mode regardless of this parameter. |
 | `RequireMarketplaceEndpointCMK` | `true` | BR-40 | When `true`, a Bedrock Marketplace model endpoint without a customer-managed KMS key fails. BR-40 uses `kms:DescribeKey` and requires `KeyManager=CUSTOMER`; AWS-managed keys do not pass. When `false`, a missing or AWS-managed key is reported as an informational `N/A` hardening advisory. |
 | `RequireAgentCoreOnlineEvaluation` | `false` | AC-17 | Every runtime without running online evaluation coverage fails regardless of this setting. In a Region with no runtime, `true` requires a running configuration; with `false`, no configuration is informational only when no AgentCore runtime trace log group is found. A stopped configuration or a detected trace log group without running evaluation still fails. |
 | `RequireAgentRegistryCMK` | `false` | AR-05 | When `true`, registries using the default AWS owned encryption key fail. When `false`, AWS owned key encryption is reported as an informational hardening advisory; registries with a customer-managed KMS key pass. |
-| `AgentCoreTokenVaultId` | `default` | AC-14 | Selects the regional AgentCore Identity token vault whose customer-managed KMS encryption is assessed. |
-| `EnableAgentCoreArtifactObjectReads` | `false` | AC-34, AC-35 | When `true`, grants the AgentCore Lambda `s3:GetObject` and `s3:GetObjectVersion` on any object and `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer` on repositories in the assessed account to scan runtime code archives, image layers, and S3 tool schemas. When `false`, these grants are absent and the content rows are informational `N/A`. |
+| `AgentCoreTokenVaultId` | `default` | AC-14 | Selects a regional AgentCore Identity token vault for the encryption check, alongside every vault named by a credential provider ARN. |
 | `ApprovedExternalAccountIds` | Empty | SM-30 | Comma-separated 12-digit AWS account IDs approved to receive SageMaker Model Registry access. Accounts outside the configured boundary fail. |
 | `ApprovedOrganizationIds` | Empty | SM-30 | Comma-separated AWS Organizations IDs approved to receive SageMaker Model Registry access. Organizations outside the configured boundary fail. |
-| `EnableSageMakerArtifactObjectReads` | `false` | SM-43 | When `true`, grants the SageMaker Lambda `s3:GetObject` on every object so SM-43 can call `HeadObject` for model artifacts. This also permits downloading objects allowed by their bucket policies. When `false`, the per-object leg is informational `N/A`, and an endpoint with unread artifact objects is not marked `Passed`. |
 
 Do not include spaces in the approved-account and approved-organization lists.
 If both lists are empty, SM-30 still detects public access, but external
@@ -336,6 +336,12 @@ direct SAM templates. CodeBuild passes the selected values to every deployed
 assessment stack.
 
 </details>
+
+`RequireBedrockZeroDataRetention` (default `false`) is deprecated and still
+forwarded for stack compatibility, but BR-37 judges the account retention mode
+regardless of its value. The CloudFormation console places it and the
+`EnableFinServAssessment` alias under Legacy Compatibility. For the alias,
+see [Migrating from EnableFinServAssessment](docs/RESPONSIBLE_AI_GRC_SCOPE.md#migrating-from-enablefinservassessment).
 
 <details>
 <summary>Setting comma-separated values with the AWS CLI</summary>
@@ -376,6 +382,19 @@ parameter you have changed. The update does not start CodeBuild; start a build
 afterward to apply the new values.
 
 </details>
+
+### Optional Read Permissions
+
+These switches add content-reading IAM grants rather than changing a pass or
+fail threshold. Both default to `false` and appear under Optional Read
+Permissions in the CloudFormation console. They are available in both
+top-level deployment templates and both direct SAM templates. A changed value
+needs a stack update and a new assessment run.
+
+| CloudFormation parameter | Default | Affected check | Behavior |
+| --- | --- | --- | --- |
+| `EnableAgentCoreArtifactObjectReads` | `false` | AC-34, AC-35 | When `true`, grants the AgentCore Lambda `s3:GetObject` and `s3:GetObjectVersion` on any object and `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer` on repositories in the assessed account to scan runtime code archives, image layers, and S3 tool schemas. When `false`, these grants are absent and the content rows are informational `N/A`. |
+| `EnableSageMakerArtifactObjectReads` | `false` | SM-43 | When `true`, grants the SageMaker Lambda `s3:GetObject` on every object so SM-43 can call `HeadObject` for model artifacts. This also permits downloading objects allowed by their bucket policies. When `false`, the per-object leg is informational `N/A`, and an endpoint with unread artifact objects is not marked `Passed`. |
 
 ---
 
@@ -495,7 +514,7 @@ The deployment uses several IAM roles with different trust and permission bounda
   - `logs:FilterLogEvents` (BR-04, BR-27, BR-34) can read model invocation log events from the account's log groups. BR-04 uses an event timestamp; BR-27 and BR-34 inspect recent records. Returned events can contain prompts and completions, although findings report request IDs and scores rather than the content.
   - `s3:GetObject` on `*/*AWSLogs/<account>/BedrockModelInvocationLogs/*` (BR-04, BR-27, BR-34) can read the same invocation records from S3 destinations. `s3:GetObject` on `*/*.metadata.json` (BR-46) reads knowledge base metadata sidecars. These object grants are not limited to configuration metadata.
 
-There is no separate deployment parameter to turn off the Bedrock content-accessing grants. Withholding one requires editing both SAM templates before deployment; checks that need it then report `N/A` or incomplete evidence. The SageMaker Lambda receives the broad object-read grant used by SM-43 only when `EnableSageMakerArtifactObjectReads` is `true`. AgentCore artifact content reads for AC-34 and AC-35 are similarly controlled by `EnableAgentCoreArtifactObjectReads`. Both default to `false`.
+There is no separate deployment parameter to turn off the Bedrock content-accessing grants. Withholding one requires editing both SAM templates before deployment; checks that need it then report `N/A` or incomplete evidence. The SageMaker Lambda receives the broad object-read grant used by SM-43 only when `EnableSageMakerArtifactObjectReads` is `true`. AgentCore artifact content reads for AC-34 and AC-35 are similarly controlled by `EnableAgentCoreArtifactObjectReads`. Both default to `false`; see [Optional Read Permissions](#optional-read-permissions).
 
 <details>
 <summary>Templates that define these roles</summary>

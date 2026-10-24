@@ -3471,6 +3471,7 @@ class TestBR02DataPathEndpointPolicy:
         )
 
         assert [row["Status"] for row in rows] == ["N/A"]
+        assert rows[0]["Severity"] == "Informational"
         assert "not reported as Passed" in rows[0]["Finding_Details"]
 
     def test_no_data_path_endpoint_in_an_ai_vpc_writes_no_row(self):
@@ -12179,6 +12180,9 @@ class TestBR42ModelAllowList:
         )
         statuses = [f["Status"] for f in findings]
         assert "Passed" not in statuses
+        assert all(
+            f["Severity"] == "Informational" for f in findings if f["Status"] == "N/A"
+        )
         unread = [
             f
             for f in findings
@@ -12363,6 +12367,13 @@ class TestBR42ModelAllowList:
                 ]
             }
         )
+
+    def test_br42_complete_scoped_grant_keeps_medium_severity(self):
+        findings = self._run(self._scoped_cache())
+
+        assert [(f["Status"], f["Severity"]) for f in findings] == [
+            ("Passed", "Medium")
+        ]
 
     @staticmethod
     def _policy(**statement):
@@ -12624,6 +12635,9 @@ class TestBR42ModelAllowList:
             },
         )
         assert "Passed" not in [f["Status"] for f in findings]
+        assert all(
+            f["Severity"] == "Informational" for f in findings if f["Status"] == "N/A"
+        )
         details = " ".join(f["Finding_Details"] for f in findings)
         assert "bucket 'train-a' policy was not read with s3:GetBucketPolicy" in (
             details
@@ -34492,7 +34506,10 @@ class TestBR39AIWorkloadSubnetPrivacy:
             ]
         )
 
-        assert [row["Status"] for row in rows] == ["Failed", "Passed"]
+        assert [(row["Status"], row["Severity"]) for row in rows] == [
+            ("Failed", "High"),
+            ("Passed", "High"),
+        ]
         failed = rows[0]["Finding_Details"]
         assert "2 AI workload(s)" in failed
         assert "ECS service 'public-svc' in vpc-1" in failed
@@ -34513,7 +34530,9 @@ class TestBR39AIWorkloadSubnetPrivacy:
             ]
         )
 
-        assert [row["Status"] for row in rows] == ["Passed"]
+        assert [(row["Status"], row["Severity"]) for row in rows] == [
+            ("Passed", "High")
+        ]
         assert "i-web" not in rows[0]["Finding_Details"]
 
     def test_an_unread_inventory_part_or_uncached_role_keeps_it_from_passing(self):
@@ -34525,7 +34544,10 @@ class TestBR39AIWorkloadSubnetPrivacy:
             errors=["ECS clusters were not listed with ecs:ListClusters (Denied)"],
         )
 
-        assert [row["Status"] for row in rows] == ["N/A", "N/A"]
+        assert [(row["Status"], row["Severity"]) for row in rows] == [
+            ("N/A", "Informational"),
+            ("N/A", "Informational"),
+        ]
         assert "not reported as Passed" in rows[0]["Finding_Details"]
         assert "ECS clusters were not listed" in rows[1]["Finding_Details"]
         assert "role 'MissingRole', which the IAM cache" in rows[1]["Finding_Details"]
@@ -34687,6 +34709,9 @@ class TestBR39JobVpc:
         )
 
         assert "Passed" not in [row["Status"] for row in rows]
+        assert all(
+            row["Severity"] == "Informational" for row in rows if row["Status"] == "N/A"
+        )
         assert any(
             phrase in row["Finding_Details"] for row in rows if row["Status"] == "N/A"
         )
@@ -42928,6 +42953,10 @@ class TestIamCacheContract:
         )
 
         assert [f["Status"] for f in findings["csv_data"]] == ["N/A", "N/A"]
+        assert [f["Severity"] for f in findings["csv_data"]] == [
+            "Informational",
+            "Informational",
+        ]
         assert "BrokenRole" in findings["csv_data"][1]["Finding_Details"]
         assert "BrokenUser" in findings["csv_data"][1]["Finding_Details"]
         assert findings["status"] == "N/A"
@@ -47531,6 +47560,7 @@ class TestBR11ValueDepth:
             assert not self._rows(findings, self.DATA_ROW, "Passed")
             held = self._rows(findings, self.DATA_ROW, "N/A")
             assert len(held) == 1
+            assert held[0]["Severity"] == "Informational"
             assert "1 of 1 custom model data bucket(s)" in held[0]["Finding_Details"]
             assert (
                 "This is not reported as Passed because these customization job "
@@ -48123,6 +48153,9 @@ class TestBR57AgentHandoffSourceIdentity:
         rows = extract_csv_data(result)
         assert iam.get_role.call_count == 2
         assert not self._status(rows, "Passed")
+        assert all(
+            row["Severity"] == "Informational" for row in self._status(rows, "N/A")
+        )
         assert any(
             "the trust policies of 1 of 3 role(s) were not read: the read stopped "
             f"{bedrock_app.DEADLINE_STOP}" in row["Finding_Details"]
@@ -52956,6 +52989,10 @@ class TestBR04SageMakerInferenceRetention:
             errors=["endpoint 'ep9' was not read with sagemaker:DescribeEndpoint"],
         )
         assert [r["Status"] for r in rows] == ["N/A", "N/A"]
+        assert [r["Severity"] for r in rows] == [
+            "Informational",
+            "Informational",
+        ]
         assert "This is not reported as Passed" in rows[0]["Finding_Details"]
         assert "endpoint 'ep9' was not read" in rows[1]["Finding_Details"]
 

@@ -36,7 +36,7 @@ from tests.assessment_history_helpers import assert_invariants
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "sample-reports" / "scripts" / "build_changes_sample.py"
 GOLDEN = REPO_ROOT / "tests" / "fixtures" / "assessment_history" / "golden"
-SINGLE = "123456789012"
+SINGLE = "666677778888"
 
 
 def _load_script():
@@ -110,6 +110,31 @@ def test_saved_files_are_up_to_date():
         "Regenerate with: .venv/bin/python sample-reports/scripts/"
         "build_changes_sample.py\n" + "\n".join(stale)
     )
+
+
+@pytest.mark.parametrize("report_name", script.SAMPLES.values())
+def test_main_samples_use_synthetic_ids_and_informational_bedrock_na(report_name):
+    report = (REPO_ROOT / "sample-reports" / report_name).read_text(encoding="utf-8")
+    capture_path = SCRIPT.parent / "capture_screenshots.py"
+    capture_spec = importlib.util.spec_from_file_location(
+        "sample_capture_screenshots", capture_path
+    )
+    capture = importlib.util.module_from_spec(capture_spec)
+    capture_spec.loader.exec_module(capture)
+
+    assert capture.ANONYMIZED_MARKER in report
+    unexpected_ids = set(re.findall(r"\b\d{12}\b", report)) - set(
+        capture.ANONYMIZED_ACCOUNT_IDS
+    )
+    assert not unexpected_ids, f"{len(unexpected_ids)} unrecognized account IDs"
+
+    bedrock_na = [
+        row
+        for row in script.parse_report(report)
+        if row.area == "bedrock" and row.status == "N/A"
+    ]
+    assert bedrock_na
+    assert all(row.severity == "Informational" for row in bedrock_na)
 
 
 def test_no_input_csvs_are_committed():
@@ -216,40 +241,39 @@ def test_single_account_sample_results(folders):
         assert len(changed) == 1, changed
         return changed[0].change, changed[0].match_rule
 
-    assert only("SM-04", "us-east-1") == (Change.REGRESSED, MatchRule.SINGLE_ROW)
+    assert only("BR-56", "us-east-1") == (Change.REGRESSED, MatchRule.SINGLE_ROW)
     assert only("AC-09", "Global") == (Change.RESOLVED, MatchRule.SINGLE_ROW)
-    assert only("SM-26", "us-east-2") == (
+    assert only("AC-14", "us-east-2") == (
         Change.NO_LONGER_ASSESSED,
         MatchRule.SINGLE_ROW,
     )
-    assert only("BR-37", "us-west-2") == (
+    assert only("BR-39", "us-east-1") == (
         Change.NO_LONGER_REPORTED,
         MatchRule.UNMATCHED,
     )
+    assert only("BR-20", "us-east-2") == (Change.NEW, MatchRule.SINGLE_ROW)
     assert only("AR-02", "Global") == (Change.NEW, MatchRule.SINGLE_ROW)
     assert only("AC-14", "us-east-1") == (Change.RESOLVED, MatchRule.SINGLE_ROW)
     assert only("BR-03", "Global") == (Change.NEW, MatchRule.UNMATCHED)
-    # The three roles already in BR-03 are still open, paired by identical details.
+    # The five roles already in BR-03 are still open, paired by identical details.
     assert Counter(
         (row.change, row.match_rule) for row in rows[("BR-03", "Global")]
     ) == Counter(
-        {(Change.STILL_OPEN, MatchRule.EXACT): 3, (Change.NEW, MatchRule.UNMATCHED): 1}
+        {(Change.STILL_OPEN, MatchRule.EXACT): 5, (Change.NEW, MatchRule.UNMATCHED): 1}
     )
     # Titles change with the status, as the scanners write them (review F1).
-    (sm04,) = rows[("SM-04", "us-east-1")]
-    assert (sm04.previous.finding, sm04.current.finding) == (
-        "GuardDuty Enabled",
-        "GuardDuty Not Enabled",
+    (ac14,) = rows[("AC-14", "us-east-2")]
+    assert (ac14.previous.finding, ac14.current.finding) == (
+        "AgentCore Identity Token Vault CMK Encryption",
+        "AgentCore Identity Token Vault CMK Encryption Incomplete",
     )
-    # AR-01: one Passed summary row became two Failed rows with their own
-    # titles; both pair with the summary row (check-level) and show Regressed.
-    ar01 = rows[("AR-01", "Global")]
-    assert Counter((row.change, row.match_rule) for row in ar01) == Counter(
+    # BR-56: one Passed summary row became one Failed row per identity; both
+    # pair with the summary row (check-level) and show Regressed.
+    br56 = rows[("BR-56", "us-west-2")]
+    assert Counter((row.change, row.match_rule) for row in br56) == Counter(
         {(Change.REGRESSED, MatchRule.CHECK_LEVEL): 2}
     )
-    assert {row.previous.finding for row in ar01} == {
-        "AWS Agent Registry IAM Full Access Check"
-    }
+    assert {row.previous.status for row in br56} == {"Passed"}
     # AC-17: one Failed row each, about different things (review item F3). Its
     # Agentic AI row (AG-32) follows it.
     for check_id in ("AC-17", "AG-32"):
@@ -260,19 +284,21 @@ def test_single_account_sample_results(folders):
             True,
         ), check_id
     # The severity shown for a finding no longer assessed is the previous run's.
-    (sm26,) = rows[("SM-26", "us-east-2")]
-    assert sm26.severity == "High"
-    # Previous run: 17 failed By Service rows. AC-09, AC-14, SM-26 and BR-37
-    # changed. Regressed: SM-04 and the two AR-01 rows.
+    assert ac14.severity == "High"
+    # The AISF row the comparison derives from BR-20 changes with it.
+    (aisf05,) = rows[("AISF-05", "us-east-2")]
+    assert (aisf05.change, aisf05.match_rule) == (Change.NEW, MatchRule.SINGLE_ROW)
+    # Previous run: 402 failed By Service rows. AC-09, both AC-14 rows and BR-39
+    # changed. Regressed: BR-56 in us-east-1 and the two BR-56 rows in us-west-2.
     tiles = comparison.tile_counts()
     assert {change: tiles[change] for change in script.CHANGES} == {
         Change.REGRESSED: 3,
-        Change.NEW: 2,
+        Change.NEW: 3,
         Change.RESOLVED: 2,
         Change.NO_LONGER_REPORTED: 1,
         Change.NO_LONGER_ASSESSED: 1,
     }
-    assert tiles[Change.STILL_OPEN] == 17 - 4
+    assert tiles[Change.STILL_OPEN] == 402 - 4
     assert comparison.days_apart == 24
 
 
@@ -283,12 +309,12 @@ def test_multi_account_sample_results(folders):
     (br03,) = _rows_by_check(comparison)[("BR-03", "Global")]
     assert (br03.change, br03.match_rule) == (Change.REGRESSED, MatchRule.SINGLE_ROW)
 
-    # Every account had AR-01's Passed summary row: two Regressed, check-level.
+    # Every account had BR-56's Passed summary row: two Regressed, check-level.
     for account_id in ("111122223333", "444455556666", "777788889999"):
-        ar01 = _rows_by_check(_compared(folders, "multi_account", account_id)[2])[
-            ("AR-01", "Global")
+        br56 = _rows_by_check(_compared(folders, "multi_account", account_id)[2])[
+            ("BR-56", "us-west-2")
         ]
-        assert Counter((row.change, row.match_rule) for row in ar01) == Counter(
+        assert Counter((row.change, row.match_rule) for row in br56) == Counter(
             {(Change.REGRESSED, MatchRule.CHECK_LEVEL): 2}
         ), account_id
 
@@ -311,39 +337,26 @@ def test_multi_account_sample_results(folders):
 @pytest.mark.parametrize("sample, account_id", ACCOUNTS)
 def test_derived_rows_change_with_their_source(folders, sample, account_id):
     # AC-14 us-east-1 resolved: its AG-28 and OW-02 rows are resolved too.
-    # SM-26 us-east-2 no longer assessed: its OW-01 and OW-10 rows too.
-    # BR-37 us-west-2 gone: its OW-02 row too.
+    # AC-14 us-east-2 no longer assessed: its AG-28 and OW-02 rows too.
+    # BR-39 us-east-1 gone: its OW-03 row too.
+    # BR-20 us-east-2 new: its OW-08 row, and the AISF-05 row the comparison
+    # derives, are new too.
     _p, _c, comparison = _compared(folders, sample, account_id)
     derived = Counter(
         (row.area, row.check_id, row.region, row.change, row.match_rule)
         for row in comparison.rows
-        if row.area in script.DERIVED_AREAS and row.change in script.CHANGES
+        if row.area in (*script.DERIVED_AREAS, "aisf") and row.change in script.CHANGES
     )
+    single, unmatched = MatchRule.SINGLE_ROW, MatchRule.UNMATCHED
     assert derived == Counter(
         [
-            ("agentic", "AG-28", "us-east-1", Change.RESOLVED, MatchRule.SINGLE_ROW),
-            ("owasp", "OW-02", "us-east-1", Change.RESOLVED, MatchRule.SINGLE_ROW),
-            (
-                "owasp",
-                "OW-01",
-                "us-east-2",
-                Change.NO_LONGER_ASSESSED,
-                MatchRule.SINGLE_ROW,
-            ),
-            (
-                "owasp",
-                "OW-10",
-                "us-east-2",
-                Change.NO_LONGER_ASSESSED,
-                MatchRule.SINGLE_ROW,
-            ),
-            (
-                "owasp",
-                "OW-02",
-                "us-west-2",
-                Change.NO_LONGER_REPORTED,
-                MatchRule.UNMATCHED,
-            ),
+            ("agentic", "AG-28", "us-east-1", Change.RESOLVED, single),
+            ("owasp", "OW-02", "us-east-1", Change.RESOLVED, single),
+            ("agentic", "AG-28", "us-east-2", Change.NO_LONGER_ASSESSED, single),
+            ("owasp", "OW-02", "us-east-2", Change.NO_LONGER_ASSESSED, single),
+            ("owasp", "OW-03", "us-east-1", Change.NO_LONGER_REPORTED, unmatched),
+            ("owasp", "OW-08", "us-east-2", Change.NEW, single),
+            ("aisf", "AISF-05", "us-east-2", Change.NEW, single),
         ]
     )
 
@@ -351,10 +364,10 @@ def test_derived_rows_change_with_their_source(folders, sample, account_id):
 def test_an_edit_that_matches_no_row_is_an_error(folders):
     previous = _previous(folders, "single_account", SINGLE)
     without = tuple(
-        finding for finding in previous.findings if finding.check_id != "SM-04"
+        finding for finding in previous.findings if finding.check_id != "BR-56"
     )
     with pytest.raises(
-        ValueError, match="edit SM-04 us-east-1 Passed: expected one row"
+        ValueError, match="edit BR-56 us-east-1 Passed: expected one row"
     ):
         script.apply_edits(without)
 
@@ -410,9 +423,11 @@ COMMITTED_FILES = sorted(
 
 
 def test_every_kind_of_generated_value_occurs_in_the_samples():
-    # A pattern that matches nothing is a mistake, or no longer needed.
+    # A pattern that matches nothing is a mistake, or no longer needed. The
+    # sample reports themselves are anonymized (capture_screenshots.py's
+    # anonymize_resource_ids), so personal names no longer occur in them.
     kinds = {kind for kind, _pattern in script.GENERATED_VALUE_KINDS}
-    assert set(SAMPLE_VALUES) == kinds | {script.PERSONAL_NAME}
+    assert set(SAMPLE_VALUES) - {script.PERSONAL_NAME} == kinds
 
 
 @pytest.mark.parametrize(

@@ -53,7 +53,10 @@ AISF branch. `derive_aisf_findings()` in
 runs at consolidation time in both report paths (the
 `generate_consolidated_report` Lambda for single-account runs, and the root
 `consolidate_html_reports.py` for multi-account runs) and restates verdicts the
-incumbent checks already produced under AISF control ids.
+incumbent checks already produced under AISF control ids. The changes since
+last assessment report runs the same function on each of the two runs it
+compares, so its AISF rows change only when a source check does (see
+[ASSESSMENT_HISTORY.md](ASSESSMENT_HISTORY.md#what-is-compared)).
 
 Every control below is covered, meaning one or more incumbent checks assert
 the control exactly. A control its incumbents assert only in part is
@@ -109,7 +112,11 @@ the `Global` Region. An account-wide verdict holds in every Region, so each `Glo
 regional key of the same account, and `Finding_Details` says so. The `Global`
 key gets its own `AISF-` rows only for an account with no regional key.
 Otherwise a `Global` `Failed` would sit beside a regional `Passed` for the same
-control.
+control. The changes report ([ASSESSMENT_HISTORY.md](ASSESSMENT_HISTORY.md#what-is-compared))
+keeps a `Global` AISF row when that control has no regional source row, so it
+can pair across runs despite unrelated regional checks. When the control has
+regional source rows, those rows include the `Global` evidence and its
+separate `Global` AISF row is suppressed.
 
 `AISF-00` is a report-completeness marker, not an AISF control. It lists every
 derived control of a selected service that had no source check for that account

@@ -497,16 +497,23 @@ def test_setting_parameter_defaults_to_on(template):
     assert parameter["Description"]
 
 
-def test_setting_is_listed_with_the_other_assessment_options(template):
+def test_setting_is_listed_with_the_reporting_options(template):
     interface = template["Metadata"]["AWS::CloudFormation::Interface"]
     (group,) = [
         group
         for group in interface["ParameterGroups"]
-        if group["Label"]["default"] == "Assessment Options"
+        if group["Label"]["default"] == "Reporting"
     ]
-    names = group["Parameters"]
-    assert names[names.index("EnableOWASPAssessment") + 1] == "EnableAssessmentHistory"
+    assert group["Parameters"] == ["EnableAssessmentHistory", "EmailAddress"]
     assert interface["ParameterLabels"]["EnableAssessmentHistory"]["default"]
+
+
+def test_every_parameter_is_in_exactly_one_group(template):
+    interface = template["Metadata"]["AWS::CloudFormation::Interface"]
+    grouped = [
+        name for group in interface["ParameterGroups"] for name in group["Parameters"]
+    ]
+    assert sorted(grouped) == sorted(template["Parameters"])
 
 
 def test_setting_reaches_codebuild(template):

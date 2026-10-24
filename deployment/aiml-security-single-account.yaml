@@ -5,18 +5,26 @@ Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
-          default: Assessment Options
+          default: Assessment Scope
         Parameters:
-          - EmailAddress
           - TargetRegions
+      - Label:
+          default: Services to Assess
+        Parameters:
           - EnableBedrockAssessment
           - EnableSageMakerAssessment
           - EnableAgentCoreAssessment
           - EnableAgentRegistryAssessment
+      - Label:
+          default: Optional Assessments (Agentic AI and AWS AI Security Framework results are derived automatically)
+        Parameters:
           - EnableResponsibleAIGRCAssessment
-          - EnableFinServAssessment
           - EnableOWASPAssessment
+      - Label:
+          default: Reporting
+        Parameters:
           - EnableAssessmentHistory
+          - EmailAddress
       - Label:
           default: Advanced Options
         Parameters:
@@ -26,15 +34,22 @@ Metadata:
       - Label:
           default: Optional Security Policy Baselines
         Parameters:
-          - RequireBedrockZeroDataRetention
           - RequireMarketplaceEndpointCMK
           - RequireAgentCoreOnlineEvaluation
           - RequireAgentRegistryCMK
           - AgentCoreTokenVaultId
-          - EnableAgentCoreArtifactObjectReads
           - ApprovedExternalAccountIds
           - ApprovedOrganizationIds
+      - Label:
+          default: Optional Read Permissions
+        Parameters:
+          - EnableAgentCoreArtifactObjectReads
           - EnableSageMakerArtifactObjectReads
+      - Label:
+          default: Legacy Compatibility (leave unchanged)
+        Parameters:
+          - EnableFinServAssessment
+          - RequireBedrockZeroDataRetention
     ParameterLabels:
       EnableBedrockAssessment:
         default: Amazon Bedrock assessment
@@ -51,7 +66,7 @@ Metadata:
       EnableResponsibleAIGRCAssessment:
         default: Responsible AI GRC checks
       EnableFinServAssessment:
-        default: Responsible AI GRC checks (legacy parameter name; see option above)
+        default: Responsible AI GRC checks (legacy parameter name; use the Responsible AI GRC option instead)
       EnableOWASPAssessment:
         default: OWASP Top 10 for LLM checks
       EnableAssessmentHistory:
@@ -86,25 +101,25 @@ Parameters:
     Type: String
     Default: "true"
     AllowedValues: ["true", "false"]
-    Description: Run the direct Amazon Bedrock assessment. Optional lenses are configured separately.
+    Description: Run the direct Amazon Bedrock assessment (BR- checks). When false, the Agentic AI (AG-) and AWS AI Security Framework (AISF-) results derived from Bedrock findings are left out. When OWASP is enabled, the OWASP (OW-) rows mapped from them are replaced by one informational N/A selection-coverage row per affected control. Responsible AI GRC and OWASP are enabled separately.
   EnableSageMakerAssessment:
     Type: String
     Default: "true"
     AllowedValues: ["true", "false"]
-    Description: Run the direct Amazon SageMaker AI assessment. Optional lenses are configured separately.
+    Description: Run the direct Amazon SageMaker AI assessment (SM- checks). When false, the AWS AI Security Framework (AISF-) results derived from SageMaker findings are left out. When OWASP is enabled, the OWASP (OW-) rows mapped from them are replaced by one informational N/A selection-coverage row per affected control. Responsible AI GRC and OWASP are enabled separately.
   EnableAgentCoreAssessment:
     Type: String
     Default: "true"
     AllowedValues: ["true", "false"]
-    Description: Run the direct Amazon Bedrock AgentCore assessment. Optional lenses are configured separately.
+    Description: Run the direct Amazon Bedrock AgentCore assessment (AC- checks). When false, the Agentic AI (AG-) results derived from AgentCore findings, including the native AgentCore gateway checks, are left out. When OWASP is enabled, the OWASP (OW-) rows mapped from them are replaced by one informational N/A selection-coverage row per affected control. Responsible AI GRC and OWASP are enabled separately.
   EnableAgentRegistryAssessment:
     Type: String
     Default: "true"
     AllowedValues: ["true", "false"]
-    Description: Run the direct AWS Agent Registry assessment. Optional lenses are configured separately.
+    Description: Run the direct AWS Agent Registry assessment (AR- checks). When false, the Agentic AI (AG-) results derived from Agent Registry findings are left out. Responsible AI GRC and OWASP are enabled separately.
   GitHubRepoUrl:
     Type: String
-    Description: GitHub repository URL
+    Description: GitHub repository URL to build from.
     Default: https://github.com/aws-samples/sample-aiml-security-assessment
     AllowedPattern: ^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+(\.git)?$
     ConstraintDescription: Must be a valid GitHub repository URL (e.g., https://github.com/owner/repo or https://github.com/owner/repo.git)
@@ -117,7 +132,7 @@ Parameters:
     ConstraintDescription: Must be 1-255 characters with no whitespace.
 
   EmailAddress:
-    Description: "Email address to receive assessment completion notifications (optional)"
+    Description: Email address to receive assessment completion notifications (optional).
     Type: String
     Default: ""
     AllowedPattern: ^$|^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
@@ -134,7 +149,8 @@ Parameters:
       Comma- or space-separated list of AWS regions to scan (e.g.,
       us-east-1,us-west-2,eu-west-1 or us-east-1 us-west-2 eu-west-1).
       Leave empty to scan only the deployment region. Regions must be in the
-      standard AWS commercial partition. GovCloud and China are not currently
+      standard AWS commercial partition. This field accepts AWS GovCloud (US)
+      region names (us-gov-*), but GovCloud and China are not currently
       supported.
     Default: ""
 

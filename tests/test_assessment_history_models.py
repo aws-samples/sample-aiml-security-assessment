@@ -17,6 +17,7 @@ from assessment_history.models import (
     COMPLIANCE_PREFIX_TO_AREA,
     CORE_AREAS,
     CSV_COLUMNS,
+    DERIVED_MODULE,
     NOT_PRESENT,
     Change,
     ComparedRow,
@@ -252,6 +253,31 @@ def test_details_changed_only_for_a_single_row_still_open_pair(
         make_finding("SM-01", details=current_details),
     )
     assert row.details_changed is expected
+
+
+def test_details_changed_is_never_set_for_a_derived_row():
+    # One AISF row per control per Region: its details count the source
+    # findings, which move with the resources while the control stays failed.
+    def aisf(details):
+        return Finding(
+            account_id=ACCOUNT,
+            module=DERIVED_MODULE,
+            area="aisf",
+            region="us-east-1",
+            check_id="AISF-05",
+            finding="AISF AIR-BDR-KB-03",
+            details=details,
+            severity="High",
+            status="Failed",
+        )
+
+    row = ComparedRow(
+        Change.STILL_OPEN,
+        MatchRule.SINGLE_ROW,
+        aisf("BR-20 (3 findings: 3 Failed)"),
+        aisf("BR-20 (4 findings: 4 Failed)"),
+    )
+    assert row.details_changed is False
 
 
 def test_compared_row_one_sided_statuses():
