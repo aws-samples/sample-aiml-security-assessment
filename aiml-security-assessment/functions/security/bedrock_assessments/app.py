@@ -43531,19 +43531,13 @@ LLM_JACKING_REFERENCE = (
     "https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html"
 )
 
-# BR-56 reproduces Prowler's cloudtrail_threat_detection_llm_jacking (Prowler
-# AISF-AI-06) as of prowler-cloud/prowler c2b80924: the same 14 default event
-# names, the same 0.4 threshold compared with a strict greater-than on the
-# unrounded share of those names one identity called, the same 1440-minute
-# window, and the same identity key of userIdentity arn plus type, skipping
-# events that carry no arn. It departs from Prowler in four places. It fails
-# only an identity that also called one of LLM_JACKING_WRITE_ACTIONS. Prowler
-# reads only the first LookupEvents page per event name, discards lookup errors
-# and passes, and looks only in the Region of the account's trails, passing
-# when there is no trail. BR-56 pages up to LLM_JACKING_MAX_PAGES_PER_ACTION,
-# never passes on an event name it could not read in full, and reads event
-# history for the Region under assessment, which holds 90 days of management
-# events whether or not a trail exists.
+# BR-56 groups these 14 event names by userIdentity arn and type over a
+# 1440-minute window, skipping events with no arn. It fails an identity only
+# when its unrounded share is strictly above 0.4 and it called at least one
+# of LLM_JACKING_WRITE_ACTIONS. Each event name is read up to
+# LLM_JACKING_MAX_PAGES_PER_ACTION; an incomplete read is credited to every
+# identity before deciding whether a pass is proven. Event history is read
+# in the Region under assessment, whether or not a trail exists.
 LLM_JACKING_ACTIONS = (
     "PutUseCaseForModelAccess",
     "PutFoundationModelEntitlement",
@@ -43563,10 +43557,9 @@ LLM_JACKING_ACTIONS = (
 
 LLM_JACKING_THRESHOLD = 0.4
 
-# Prowler fails on the share alone. A console user browsing model access calls
-# six or more of the read and invoke actions, so BR-56 fails an identity only
-# when at least one of its calls grants model access, accepts an agreement or
-# rewrites invocation logging.
+# A console user browsing model access can reach the share threshold through
+# read and invoke actions alone. BR-56 also requires a call that grants model
+# access, accepts an agreement or rewrites invocation logging before failing.
 LLM_JACKING_WRITE_ACTIONS = frozenset(
     {
         "PutUseCaseForModelAccess",
@@ -43703,7 +43696,7 @@ def check_bedrock_llm_jacking_activity(region: str = "") -> Dict[str, Any]:
                 except (KeyError, TypeError, ValueError, AttributeError):
                     unseen.setdefault(event_name, "an event could not be parsed")
                     continue
-                # Prowler skips an event with no identity arn as an AWS service.
+                # Skip events that cannot be attributed to an identity ARN.
                 if not arn:
                     continue
                 identities.setdefault((arn, identity_type), set()).add(event_name)
@@ -43722,10 +43715,9 @@ def check_bedrock_llm_jacking_activity(region: str = "") -> Dict[str, Any]:
             )
             return findings
 
-        # Prowler fails an identity when the share of actions it called is
-        # strictly above the threshold. A truncated action may hide a call, so
-        # an identity is proven below the threshold only if it stays below it
-        # after crediting it with every unseen action.
+        # A truncated action may hide a call. An identity stays within the
+        # share threshold only if crediting it with every unseen action still
+        # does not exceed that threshold.
         limit = LLM_JACKING_THRESHOLD * total
         indeterminate = []
         read_only = []

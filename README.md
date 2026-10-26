@@ -528,6 +528,10 @@ There is no separate deployment parameter to turn off the Bedrock content-access
 | [Developer Guide](docs/DEVELOPER_GUIDE.md) | Architecture, adding checks and services, local testing, and CI/CD |
 | [Changelog](CHANGELOG.md) | User-facing changes and required deployment actions |
 
+For a related learning resource, see the
+[AWS AI Security Framework workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/5263e272-4d68-40e2-93da-592efeeb9537)
+on Workshop Studio.
+
 ---
 
 <a id="cicd"></a>

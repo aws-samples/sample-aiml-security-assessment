@@ -43338,7 +43338,7 @@ COGNITO_DISCOVERY_URL_PATTERN = re.compile(
 # Each app client costs one DescribeUserPoolClient call, so a pool with more
 # clients than this is judged on the ones read and the rest are reported.
 AC52_MAX_CLIENTS_PER_POOL = 100
-# Prowler cognito_user_pool_temporary_password_expiration fails above 7 days.
+# Assessment baseline: temporary passwords are valid for at most 7 days.
 AC52_MAX_TEMPORARY_PASSWORD_DAYS = 7
 # A client that authorizes only machine-to-machine requests. The auth flow set
 # is non-empty because CreateUserPoolClient gives a client with no
@@ -43473,25 +43473,17 @@ def _ac52_pool_legs(
 def check_agentcore_cognito_user_pool_authentication() -> List[Dict[str, Any]]:
     """AC-52: Judge the Cognito user pools that issue tokens to AgentCore.
 
-    Answers Prowler AISF-IAM-07 for the user pools an AI application uses: the
-    pools named by the CUSTOM_JWT inbound authorizer discoveryUrl of an
-    AgentCore gateway or runtime. Each pool is judged once however many
-    resources name it. The legs reproduce these Prowler checks as of
-    prowler-cloud/prowler c2b80924: cognito_user_pool_mfa_enabled (MFA ON),
-    cognito_user_pool_advanced_security_enabled (ENFORCED, AUDIT fails),
-    cognito_user_pool_self_registration_disabled,
-    cognito_user_pool_deletion_protection_enabled,
-    cognito_user_pool_temporary_password_expiration (7 days or fewer),
-    cognito_user_pool_client_token_revocation_enabled and
-    cognito_user_pool_client_prevent_user_existence_errors. Prowler reads MFA
-    from GetUserPoolMfaConfig; this reads MfaConfiguration from
-    DescribeUserPool.
+    Assesses pools named by the CUSTOM_JWT inbound authorizer discoveryUrl of
+    an AgentCore gateway or runtime. Each pool is judged once however many
+    resources name it. Pool checks require MFA ON (MfaConfiguration from
+    DescribeUserPool), threat protection ENFORCED rather than AUDIT, disabled
+    self-registration, active deletion protection and temporary passwords
+    valid for 7 days or fewer. App client checks require token revocation and
+    user existence error prevention.
 
-    Two IAM-07 checks are not reproduced. cognito_user_pool_waf_acl_attached
-    needs a web ACL association lookup per pool, which the approved grants do
-    not include. cognito_identity_pool_guest_access_disabled judges identity
-    pools, which no AgentCore authorizer names, so none can be traced to an AI
-    application.
+    WAF associations are outside this check: the assessment role is not granted
+    the web ACL association lookup per pool. Identity-pool guest access is also
+    outside its scope because no AgentCore authorizer names an identity pool.
 
     A pool whose every app client allows only the client_credentials flow
     signs in no end user, so the MFA, threat protection, self-registration,

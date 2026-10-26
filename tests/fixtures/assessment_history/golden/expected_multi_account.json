@@ -834,8 +834,8 @@
     "previous_status": "Failed",
     "current_status": "Failed",
     "severity": "Medium",
-    "previous_details": "1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 478 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
-    "current_details": "1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 502 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
+    "previous_details": "1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-security-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 478 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
+    "current_details": "1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-security-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 502 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
    },
    {
     "area": "owasp",
@@ -847,8 +847,8 @@
     "previous_status": "Failed",
     "current_status": "Failed",
     "severity": "Medium",
-    "previous_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 478 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
-    "current_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-prowler-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 502 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
+    "previous_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-security-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 478 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently.",
+    "current_details": "OWASP category: LLM09:2025 Misinformation. Source check FS-31: 1 data source(s) not synced in >7 days (a configurable review threshold, NOT an AWS-mandated limit):\n- KB 'knowledge-base-security-findings' source 'knowledge-base-quick-start-3ku88-data-source' last completed ingestion 502 days ago\nConfirm this age is acceptable for each data source's currency requirement — slow-changing reference data may legitimately sync infrequently."
    },
    {
     "area": "owasp",
