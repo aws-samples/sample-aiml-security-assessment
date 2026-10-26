@@ -42494,7 +42494,7 @@ class TestPermissionCacheGroupPolicies:
 
 
 class TestBedrockLlmJackingActivity:
-    """BR-56: Prowler's LLM jacking threshold over CloudTrail event history."""
+    """BR-56: LLM jacking detection over CloudTrail event history."""
 
     ALICE = "arn:aws:iam::123456789012:user/alice"
     BOB = "arn:aws:sts::123456789012:assumed-role/ops/bob"

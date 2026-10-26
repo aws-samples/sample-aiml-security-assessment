@@ -147,7 +147,7 @@ section.
     `AWS::BedrockMantle::*` resource types are selected.
   - `BR-56` reads 24 hours of the Region's CloudTrail event history, which
     holds management events only, and names the Bedrock data events it cannot
-    see. Unlike Prowler, it fails an identity above the 0.4 share only when one
+    see. It fails an identity above the 0.4 share only when one
     of its calls is `PutUseCaseForModelAccess`, `PutFoundationModelEntitlement`,
     `PutModelInvocationLoggingConfiguration`, `CreateFoundationModelAgreement`
     or `AcceptAgreementRequest`. An identity that only read and invoked is named
@@ -409,6 +409,10 @@ back `Passed` names what it could not read.
   register into its methodology guide, and removed the superseded Stage 2b
   design. Added `docs/FAQ.md` and `docs/UPGRADING.md` for product questions and
   deployment guidance.
+- Clarified AWS AI Security Framework control mapping and the standalone
+  descriptions of `BR-56` and `AC-52`, added the related AWS AI Security
+  Framework workshop to the documentation, and standardized example resource
+  names in the multi-account sample report.
 
 ### Deprecated
 
@@ -521,6 +525,8 @@ back `Passed` names what it could not read.
 
 ### Deployment impact
 
+- **AISF guidance and learning resources:** No deployment is required for
+  these documentation, comment, and sample-resource naming changes.
 - **Service selection:** Update `deployment/aiml-security-single-account.yaml`
   for single-account deployments or `deployment/2-aiml-security-codebuild.yaml`
   for multi-account central infrastructure, set the desired service switches,

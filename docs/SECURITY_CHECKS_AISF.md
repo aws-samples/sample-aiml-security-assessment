@@ -5,12 +5,14 @@ Compliance Standard", the AWS AI Security Framework control each one reports on,
 and the shipped BR/SM/AC/AG check every row is derived from.
 
 The report's `AISF-NN` ids (`AISF-05`, `AISF-00`) are this scanner's own row
-ids. They are distinct from Prowler's `AISF-AI-06`-style requirement ids, which
-[Prowler AISF requirements](#prowler-aisf-requirements) covers.
+ids. The per-control tables below map them to AWS AI Security Framework
+control ids.
 
 - **Reference:** [AWS Well-Architected Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html),
   plus the control-specific AWS documentation linked in the per-control tables
   below.
+- **Workshop:** [AWS AI Security Framework workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/5263e272-4d68-40e2-93da-592efeeb9537)
+  is a related learning resource.
 - **Opt-in:** none. AISF is a derived view over checks that already run, so it
   needs no deployment parameter and adds no scan time.
 - **Report location:** the "By Compliance Standard" sidebar section, alongside
@@ -262,35 +264,18 @@ is an empty tag and no `ImportError`, so nothing raises.
   `ValueError` on the first row. `agentcore_assessments` builds its header
   twice, once for the no-findings case, and both lists are asserted.
 
-## Prowler AISF requirements
+## Additional AI workload checks
 
-Prowler publishes its own AWS AI Security Framework compliance mapping, whose
-requirement ids (`AISF-AI-06`, `AISF-IAM-07` and so on) are Prowler's and are
-not AISF catalogue control ids. Two checks answer Prowler requirements that no
-check here asserted:
+Two checks assess AI workload security without an assigned AISF control:
 
-| Prowler requirement | Check | What it reproduces |
-| --------------------- | ------- | -------------------- |
-| AISF-AI-06 Bedrock API Audit Trail | `BR-56` Bedrock LLM Jacking Activity | `cloudtrail_threat_detection_llm_jacking`, with the departures listed in [SECURITY_CHECKS.md](SECURITY_CHECKS.md#br-56-bedrock-llm-jacking-activity) |
-| AISF-IAM-07 Cognito User Authentication for AI Apps | `AC-52` Cognito User Pool Authentication | the user pool and app client checks, for the pools an AgentCore JWT authorizer names |
+| Check | Assessment scope |
+| ------- | ------------------ |
+| [BR-56: Bedrock LLM Jacking Activity](SECURITY_CHECKS.md#br-56-bedrock-llm-jacking-activity) | Bedrock-related activity in the Region's CloudTrail event history |
+| [AC-52: Cognito User Pool Authentication](SECURITY_CHECKS.md#ac-52-cognito-user-pool-authentication) | User pools and app clients referenced by AgentCore JWT authorizers |
 
-Neither check carries a `Compliance_Frameworks` tag. The tag names an AISF
-catalogue control, and a Prowler requirement id is not one, so writing it into a
-map would publish a control the catalogue does not have. Mapping either check to
-a catalogue control it was not assessed against would publish a coverage claim
-nothing backs. The cross-reference lives in this table and in the code comment
-on each check instead.
-
-These Prowler requirements are out of charter and have no check here. Each is
-account hygiene that applies whether or not the account runs an AI workload,
-Prowler already checks it, and this scanner's scope is the AI/ML resources in
-the account:
-
-- `AISF-IAM-04`, root account protection.
-- `AISF-IAM-06`, the IAM password policy.
-- `AISF-IAM-08`, API Gateway authorizers.
-- `AISF-GOV-03`, the account security contact.
-- `AISF-DATA-02`, IAM Access Analyzer enablement.
+Neither check carries a `Compliance_Frameworks` tag or produces a derived
+`AISF-` row. Before assigning either check to an AISF control, validate that
+its implemented predicate supports the control's requirements.
 
 ## Adding a control
 
