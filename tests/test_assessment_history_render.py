@@ -1,8 +1,8 @@
 """The changes page (render_changes.py) and the parts it borrows (render_common.py).
 
 The page is checked with BeautifulSoup. Its script can't run under pytest,
-so a test checks that every element the script looks up exists; open a page
-made by sample-reports/scripts/build_changes_sample.py in a browser to try it.
+so a test checks that every element the script looks up exists; open
+sample-reports/security_assessment_changes.html in a browser to try it.
 """
 
 import re

@@ -46,11 +46,11 @@ The first run of an account has nothing to compare with, so no changes report
 is written for it. Every later run gets one, including runs where nothing
 changed ("No changes since the last assessment").
 
-A sample page and CSV are in [`sample-reports/`](../sample-reports/)
-(`security_assessment_changes.html` and `.csv`), built from the
-single-account sample report. Resource IDs and the random parts of resource
-names in them are made-up values of the same shape, so they don't match the
-sample main report.
+A sample page is in [`sample-reports/`](../sample-reports/)
+(`security_assessment_changes.html`). It comes from a real run, compared with
+the run before it, and was anonymized together with the single-account sample
+report: account IDs, resource IDs, and resource names are synthetic
+placeholders, and the same resource has the same placeholder on both pages.
 
 ![Changes since last assessment: summary counts and counts by area](../sample-reports/changes-overview.png)
 
@@ -470,6 +470,6 @@ is ignored in this mode.
 
 ## For developers
 
-The package layout, tests, coverage bar, and golden sample workflow are
+The package layout, tests, coverage bar, and sample workflow are
 described in the Developer Guide under
 [Assessment History (Changes Since Last Assessment)](DEVELOPER_GUIDE.md#assessment-history-changes-since-last-assessment).

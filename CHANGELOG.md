@@ -49,10 +49,10 @@ section.
   repositories, which `AC-34` needs to scan runtime code archives and
   container image layers and `AC-35` needs to read S3 tool schemas. With the
   default, those rows are informational `N/A` naming the parameter.
-- Added a sample changes report (`sample-reports/security_assessment_changes.html`
-  and `.csv`, with `changes-overview.png`), built from the single-account
-  sample by `sample-reports/scripts/build_changes_sample.py`; the screenshot
-  comes from `sample-reports/scripts/capture_changes_screenshot.py`.
+- Added a sample changes report (`sample-reports/security_assessment_changes.html`,
+  with `changes-overview.png`) from a real run, anonymized together with the
+  single-account sample so both pages show the same placeholders. The
+  screenshot comes from `sample-reports/scripts/capture_changes_screenshot.py`.
 
 - **AWS AI Security Framework (AISF) mapping.** Each producer row now names the
   AISF controls it asserts in a new `Compliance_Frameworks` CSV column, in one

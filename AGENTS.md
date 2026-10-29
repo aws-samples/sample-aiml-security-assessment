@@ -15,7 +15,7 @@ IDs are in [docs/SECURITY_CHECKS.md](docs/SECURITY_CHECKS.md).
   remediation. [docs/SECURITY_CHECKS_AISF.md](docs/SECURITY_CHECKS_AISF.md) defines the
   derived AISF view and its coverage semantics.
 - [docs/ASSESSMENT_HISTORY.md](docs/ASSESSMENT_HISTORY.md) covers comparison behavior,
-  normalization, coverage, and sample regeneration.
+  normalization, coverage, and the changes sample.
 - [docs/RESPONSIBLE_AI_GRC_SCOPE.md](docs/RESPONSIBLE_AI_GRC_SCOPE.md) covers scope and the
   legacy FinServ alias;
   [docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md)
@@ -149,7 +149,10 @@ a check, lens, standard, or report UI changes.
    and filters.
 5. Use only **synthetic** account IDs, organization IDs, ARNs, and resource identifiers in
    tests, examples, fixtures, snapshots, and sample reports. Established example account IDs are
-   `123456789012`, `111122223333`, `444455556666`, and `777788889999`.
+   `123456789012`, `111122223333`, `444455556666`, and `777788889999`. Anonymized sample reports
+   additionally use the repeated-digit placeholders from `ANONYMIZED_ACCOUNT_IDS` in
+   `sample-reports/scripts/capture_screenshots.py`; keep that list's order stable, since an ID's
+   position decides which discovered ID maps to it.
 6. For a catalog change, review `AGENTS.md`, `README.md`, `docs/DEVELOPER_GUIDE.md`,
    `docs/SECURITY_CHECKS.md`, the applicable check catalogs, `docs/TROUBLESHOOTING.md`,
    `CHANGELOG.md`, and affected scope, severity, sample-report, and diagram documentation.
@@ -162,6 +165,7 @@ a check, lens, standard, or report UI changes.
    Follow [docs/UPGRADING.md](docs/UPGRADING.md).
 8. When `responsible_ai_grc_assessments/app.py` or its check catalog changes, run
    `.venv/bin/python generate_provenance.py --check`; if stale, regenerate `provenance.json`
-   with `generate_provenance.py` and commit it. When assessment-history matching or samples
-   change, run its coverage gate and regenerate the changes sample as directed by
-   [docs/ASSESSMENT_HISTORY.md](docs/ASSESSMENT_HISTORY.md).
+   with `generate_provenance.py` and commit it. When assessment-history matching changes, run
+   its coverage gate. Anonymize new sample reports, including the changes sample, with
+   `sample-reports/scripts/capture_screenshots.py --anonymize-only` as described in
+   [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md#updating-the-changes-sample).

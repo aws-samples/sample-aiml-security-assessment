@@ -7,8 +7,8 @@ on:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
       - "assessment_history/**"
-      # The changes-report wiring tests read these, and the golden tests read the
-      # sample reports, so a change to any of them must run the tests.
+      # The changes-report wiring tests read these, and the sample report tests
+      # read the sample reports, so a change to any of them must run the tests.
       - "buildspec.yml"
       - "deployment/**"
       - "sample-reports/**"
@@ -21,8 +21,8 @@ on:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
       - "assessment_history/**"
-      # The changes-report wiring tests read these, and the golden tests read the
-      # sample reports, so a change to any of them must run the tests.
+      # The changes-report wiring tests read these, and the sample report tests
+      # read the sample reports, so a change to any of them must run the tests.
       - "buildspec.yml"
       - "deployment/**"
       - "sample-reports/**"

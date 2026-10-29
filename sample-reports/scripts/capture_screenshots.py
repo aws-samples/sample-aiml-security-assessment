@@ -20,6 +20,7 @@ Usage:
     ./sample-reports/scripts/capture_screenshots.py --anonymize-only
 """
 
+import bisect
 import collections
 import hashlib
 import importlib.util
@@ -83,11 +84,10 @@ ZERO_PADDED_KINDS = (
     "image digest",
 )
 UUID_PLACEHOLDER_HEAD = "00000000-0000-4000-8000-"
-# The repository's patterned example organization IDs (without "o-"). The
-# first is f6g7h8i9j0 because a1b2c3d4e5 is part of a made-up VPC ID in
-# tests/test_assessment_history_golden.py, which checks that no sample value
-# appears in its text.
+# The repository's patterned example organization IDs (without "o-").
 ANONYMIZED_ORGANIZATION_IDS = ["f6g7h8i9j0", "a1b2c3d4e5"]
+
+CHANGES_PAGE = "security_assessment_changes.html"
 
 # Screenshots to capture
 SCREENSHOTS = [
@@ -313,13 +313,59 @@ def anonymize_account_ids(html_files: list) -> None:
 
 
 def _load_generated_value_kinds():
-    """Load build_changes_sample.py by path for its GENERATED_VALUE_KINDS."""
-    path = Path(__file__).resolve().parent / "build_changes_sample.py"
-    spec = importlib.util.spec_from_file_location("build_changes_sample_kinds", path)
+    """Load anonymize_patterns.py by path for its GENERATED_VALUE_KINDS."""
+    path = Path(__file__).resolve().parent / "anonymize_patterns.py"
+    spec = importlib.util.spec_from_file_location("sample_anonymize_patterns", path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module  # dataclasses look the module up by name
     spec.loader.exec_module(module)
     return module
+
+
+# A run's main report link, and its changes CSV link, as a changes page
+# writes them under "Related files".
+_RUN_REPORT_LINK = re.compile(
+    r'<a href="(security_assessment_single_account)_\d{8}_\d{6}\.html">'
+    r"[^<]*</a>"
+)
+_RUN_CSV_LINK = re.compile(
+    r'\s*<p><a href="security_assessment_changes_\d{8}_\d{6}\.csv">[^<]*</a></p>'
+)
+_PAGE_CODE = re.compile(r"<(style|script)\b[^>]*>.*?</\1\s*>", re.S | re.I)
+_PLAIN_WORD = re.compile(r"[a-z]+")
+
+
+def _page_code_test(content: str):
+    """A test of whether a position in content is inside a <style> or <script>."""
+    starts, ends = [], []
+    for match in _PAGE_CODE.finditer(content):
+        starts.append(match.start())
+        ends.append(match.end())
+
+    def in_code(position: int) -> bool:
+        index = bisect.bisect_right(starts, position) - 1
+        return index >= 0 and position < ends[index]
+
+    return in_code
+
+
+def point_changes_links_at_samples(changes_page: Path) -> None:
+    """Link the changes page to the sample report instead of a run's files.
+
+    A changes page links to its run's report and CSV by their saved names
+    ("security_assessment_single_account_<timestamp>.html"). The sample report
+    has no timestamp, and no changes CSV is published with the samples, so
+    that link is removed.
+    """
+    if not changes_page.exists():
+        print(f"  WARNING: {changes_page} not found, skipping...")
+        return
+    content = changes_page.read_text(encoding="utf-8")
+    updated = _RUN_CSV_LINK.sub("", content)
+    updated = _RUN_REPORT_LINK.sub(r'<a href="\1.html">\1.html</a>', updated)
+    if updated != content:
+        changes_page.write_text(updated, encoding="utf-8")
+        print(f"  Linked {changes_page.name} to the sample files")
 
 
 def _synthetic_value(kinds, value: str, kind: str, index: int, taken: set) -> str:
@@ -370,7 +416,7 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
     Replace resource IDs and other values AWS generated in the given HTML
     report files with synthetic placeholders, in place.
 
-    The values are the ones build_changes_sample.py's GENERATED_VALUE_KINDS
+    The values are the ones anonymize_patterns.py's GENERATED_VALUE_KINDS
     find in each finding's text: resource IDs (vpc-, sg-, subnet-, i-, ...),
     GuardDuty detector and finding IDs, UUIDs, Organizations and Cognito IDs,
     and the random parts of resource names. Each distinct value gets one
@@ -440,8 +486,8 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
     taken = set(kind_of) | set(used)
     for value, kind in kind_of.items():
         if value in used:
-            # Already a marked file's placeholder: a report built from the
-            # anonymized reports, such as the changes sample, keeps it.
+            # Already a marked file's placeholder: a file anonymized after
+            # the marked ones keeps the placeholders they gave it.
             continue
         placeholder = value
         while placeholder in taken:
@@ -454,17 +500,28 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
         print("  No resource identifiers found to anonymize.")
     # A value found in one context (a resource ID in a finding's text) can also
     # appear where no kind's pattern finds it (in an ARN, or a role name):
-    # those occurrences are matched as whole tokens.
-    tokens = re.compile(
-        r"(?<![A-Za-z0-9])(?:"
-        + "|".join(re.escape(value) for value in sorted(mapping, key=len)[::-1])
-        + r")(?![A-Za-z0-9])"
+    # those occurrences are matched as whole tokens. A value that is one
+    # lowercase word, such as a policy named 'root', is also an ordinary word
+    # of the page (":root" in its CSS, "the root" in a finding, a docs URL), so
+    # it is replaced only where a kind's pattern finds it.
+    token_values = [value for value in mapping if not _PLAIN_WORD.fullmatch(value)]
+    tokens = (
+        re.compile(
+            r"(?<![A-Za-z0-9])(?:"
+            + "|".join(
+                re.escape(value) for value in sorted(token_values, key=len)[::-1]
+            )
+            + r")(?![A-Za-z0-9])"
+        )
+        if token_values
+        else None
     )
     replaced: collections.Counter = collections.Counter()
     updates = {}
     for html_file, content in contents.items():
-        # Only values found in the rows are replaced, so the page's markup,
-        # styles and scripts are left alone.
+        # The page's own styles and scripts hold no report data: nothing in
+        # them is replaced.
+        in_code = _page_code_test(content)
         spans = [
             (*match.span("v"), match.group("v"))
             for kind, pattern in kinds._GENERATED
@@ -479,10 +536,11 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
                 if match.group() in mapping
                 and kind_of[match.group()] == kinds.PERSONAL_NAME
             ]
-        if mapping:
+        if tokens:
             spans += [
                 (*match.span(), match.group()) for match in tokens.finditer(content)
             ]
+        spans = [span for span in spans if not in_code(span[0])]
         parts, last = [], 0
         for start, end, value in sorted(spans, key=lambda s: (s[0], s[0] - s[1])):
             if start < last:
@@ -493,9 +551,11 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
         updated = "".join(parts) + content[last:]
         # Whole tokens, as they were replaced: a short value can also occur
         # inside longer, unrelated text.
+        # Styles and scripts included: a value there stops the run rather
+        # than being left in place.
         left = sorted(
             {kind_of[match.group()] for match in tokens.finditer(updated)}
-            if mapping
+            if tokens
             else set()
         )
         if left:
@@ -739,13 +799,20 @@ def main():
         print(f"Supported options: {', '.join(supported_options)}")
         sys.exit(2)
 
-    report_files = sorted({SAMPLE_REPORTS_DIR / cfg["file"] for cfg in SCREENSHOTS})
+    # The changes page names the same accounts and resources as the
+    # single-account report, so the three are anonymized together and share
+    # one set of placeholders. It goes last: an account's placeholder depends
+    # on where it is first found, and the main reports keep their assignment.
+    report_files = sorted({SAMPLE_REPORTS_DIR / cfg["file"] for cfg in SCREENSHOTS}) + [
+        SAMPLE_REPORTS_DIR / CHANGES_PAGE
+    ]
     if "--anonymize-only" in sys.argv[1:]:
         # No browser needed: anonymize the sample reports and stop.
         ensure_repo_venv()
         anonymize_account_ids(report_files)
         anonymize_resource_ids(report_files)
         anonymize_resource_names(report_files)
+        point_changes_links_at_samples(SAMPLE_REPORTS_DIR / CHANGES_PAGE)
         return
 
     check_dependencies_only = "--check-dependencies" in sys.argv[1:]
@@ -786,6 +853,7 @@ def main():
             anonymize_account_ids(report_files)
             anonymize_resource_ids(report_files)
             anonymize_resource_names(report_files)
+            point_changes_links_at_samples(SAMPLE_REPORTS_DIR / CHANGES_PAGE)
 
             try:
                 captured_files = capture_all_screenshots(browser)

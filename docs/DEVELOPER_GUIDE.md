@@ -20,7 +20,7 @@
   - [Modules and Files](#modules-and-files)
   - [Keeping Assessment History in Sync](#keeping-assessment-history-in-sync)
   - [Coverage Gate](#coverage-gate)
-  - [Rebuilding the Changes Sample and Golden Files](#rebuilding-the-changes-sample-and-golden-files)
+  - [Updating the Changes Sample](#updating-the-changes-sample)
 - [Report Generation Architecture](#report-generation-architecture)
   - [Shared Template Module](#shared-template-module)
   - [How It Works](#how-it-works)
@@ -429,8 +429,7 @@ never fails the build. User-facing behavior is in
 | `assessment_history/render_common.py`, `render_changes.py` | The HTML page, reusing `report_template.py`'s CSS, escaping, names, and icons |
 | `assessment_history/__main__.py` | `python3 -m assessment_history compare`: S3 mode for the build, local-folder mode for people |
 | `tests/test_assessment_history_*.py` | Tests; `tests/assessment_history_helpers.py` builds test data |
-| `tests/fixtures/assessment_history/` | A hand-written example account folder and the golden saved answers (`golden/expected_*.json`) |
-| `sample-reports/scripts/build_changes_sample.py` | Builds the sample changes page and CSV and the golden saved answers |
+| `tests/fixtures/assessment_history/` | A hand-written example account folder |
 | `sample-reports/scripts/capture_changes_screenshot.py` | Captures `sample-reports/changes-overview.png` from the sample changes page |
 
 ### Keeping Assessment History in Sync
@@ -450,7 +449,7 @@ never fails the build. User-facing behavior is in
   notes for skipped mappings and unreadable derived rows.
 - **`report_template.py`:** the changes page reuses its styling and helpers;
   guard tests fail if something it relies on moves.
-- **A sample report or a comparison rule:** rebuild the changes sample (below)
+- **A changes page change:** replace and anonymize the changes sample (below)
   and review the diff.
 
 ### Coverage Gate
@@ -463,34 +462,55 @@ The package keeps 100% line and branch coverage; CI runs the same check:
   --cov-fail-under=100
 ```
 
-### Rebuilding the Changes Sample and Golden Files
+### Updating the Changes Sample
 
-The golden tests use both sample reports. Each is turned back into the findings
-CSVs the scanners write (in a temporary folder; only the saved answers are
-committed), and a current run is made by applying a short list of edits
-(`EDITS` in the script) that covers every change state and each matching step.
-Values that AWS generated in the sample reports (resource IDs and the random
-parts of resource names) are first replaced with synthetic values of the same
-shape, and a test fails if any of them reaches a committed file.
+`sample-reports/security_assessment_changes.html` comes from a real run. It
+must name the same account and resources as the single-account sample, so
+take both from the same run and anonymize all three sample pages together. The
+repository-root Python 3.12 `.venv` must already exist; the scripts re-launch
+themselves with `.venv/bin/python`.
 
-After changing a sample report or a comparison rule:
-
-1. Regenerate the sample and the golden answers:
+1. Copy the new pages into `sample-reports/`: the run's
+   `security_assessment_changes_<timestamp>.html` as
+   `security_assessment_changes.html`, its main report as
+   `security_assessment_single_account.html`, and the multi-account report as
+   `security_assessment_multi_account.html`. Keep untouched copies outside the
+   repository until the result is reviewed: the copied pages hold real account
+   values.
+2. Anonymize all three in place. This also points the changes page's links at
+   the sample report and removes its link to the changes CSV, which isn't
+   published with the samples:
 
    ```bash
-   .venv/bin/python sample-reports/scripts/build_changes_sample.py
+   ./sample-reports/scripts/capture_screenshots.py --anonymize-only
    ```
 
-   `--check` makes no changes and exits 1 if anything is out of date.
-2. Review the diff under `sample-reports/` and
-   `tests/fixtures/assessment_history/golden/`.
-3. Refresh the screenshot. The script uses the same browser setup as
-   `capture_screenshots.py`, captures only the changes page into
-   `sample-reports/changes-overview.png`, and does not rewrite any report:
+3. Run the sample checks. They fail if a page holds an account ID that isn't
+   a placeholder or a name known to come from the source account, if the
+   page's CSS was changed, or if a changes-page link doesn't resolve:
 
    ```bash
+   .venv/bin/python -m pytest tests/test_sample_reports.py tests/test_capture_screenshots.py tests/test_capture_changes_screenshot.py -q
+   ```
+
+4. Review the diff, and open all three pages in a browser: the single-account
+   report, the multi-account report, and the changes page. Check that names
+   in findings still read sensibly, that the sidebar, filters, and dark mode
+   work, and that the changes page's account ID and placeholders match the
+   single-account report.
+5. Update the finding-row and account counts in `sample-reports/README.md`
+   for the new main reports.
+6. Recapture the screenshots. `capture_screenshots.py` captures the four main
+   report screenshots (it anonymizes first, so a second run changes no
+   report), and `capture_changes_screenshot.py` captures
+   `sample-reports/changes-overview.png` without rewriting any report:
+
+   ```bash
+   ./sample-reports/scripts/capture_screenshots.py
    ./sample-reports/scripts/capture_changes_screenshot.py
    ```
+
+7. Delete the untouched copies from step 1 once the result is committed.
 
 ## Report Generation Architecture
 
@@ -1121,12 +1141,16 @@ reports and screenshots.
 
 #### 1. Generate New Sample Reports
 
-Regenerate sample reports from a fresh assessment run or from the local report
-fixtures with the command in
+The canonical files in `sample-reports/` come from a fresh assessment run:
+download the run's single-account, multi-account, and changes reports, and
+replace and anonymize them together with the procedure in
+[Updating the Changes Sample](#updating-the-changes-sample).
+
+To check rendering before a run, use the local report fixtures with the
+command in
 [Report Verification](#4-report-verification-required-before-opening-a-pr).
-`test_generate_report.py` is a test module, not a standalone CLI. Use the
-fixture output to validate rendering before refreshing the canonical files in
-`sample-reports/`, and keep every identifier synthetic.
+`test_generate_report.py` is a test module, not a standalone CLI, and its
+output is for review only: don't copy it into `sample-reports/`.
 
 #### 2. Capture Screenshots
 
@@ -1154,7 +1178,7 @@ screenshots to `sample-reports/`:
 
 The changes-page screenshot, `changes-overview.png`, comes from
 `capture_changes_screenshot.py`; see
-[Rebuilding the Changes Sample and Golden Files](#rebuilding-the-changes-sample-and-golden-files).
+[Updating the Changes Sample](#updating-the-changes-sample).
 
 <details>
 <summary>Customizing the screenshot script</summary>
@@ -1216,11 +1240,12 @@ After generating new screenshots, confirm that `README.md` references them
 (for example, `sample-reports/dashboard-overview-light.png` and
 `sample-reports/findings-table.png`) with accurate captions.
 
-#### 4. Rebuild the Changes Sample
+#### 4. Update the Changes Sample
 
-After regenerating a sample report, rebuild the changes sample and golden files
-with the procedure in
-[Rebuilding the Changes Sample and Golden Files](#rebuilding-the-changes-sample-and-golden-files).
+Replace the changes sample whenever the main reports are replaced, so the
+three pages come from the same run; the procedure in
+[Updating the Changes Sample](#updating-the-changes-sample) covers all of
+them.
 
 ### Documentation Best Practices
 

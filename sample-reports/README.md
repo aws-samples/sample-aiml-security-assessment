@@ -8,9 +8,9 @@ This directory contains sample AI/ML security assessment reports and documentati
 
 Interactive HTML reports demonstrating the assessment output:
 
-- **[security_assessment_single_account.html](security_assessment_single_account.html)** - Example report for a single synthetic AWS account showing 1,542 finding rows across Bedrock, SageMaker AI, AgentCore, AWS Agent Registry, Agentic AI Security, Responsible AI GRC, OWASP Top 10 for LLM, and the derived AWS AI Security Framework view
-- **[security_assessment_multi_account.html](security_assessment_multi_account.html)** - Example consolidated report for 3 synthetic AWS accounts showing 5,114 finding rows
-- **[security_assessment_changes.html](security_assessment_changes.html)** and [`.csv`](security_assessment_changes.csv) - Example "Changes since last assessment" report comparing the single-account sample with an edited copy of it (built by `scripts/build_changes_sample.py`; see [Changes Since Last Assessment](../docs/ASSESSMENT_HISTORY.md))
+- **[security_assessment_single_account.html](security_assessment_single_account.html)** - Example report for a single anonymized AWS account showing 1,539 finding rows across Bedrock, SageMaker AI, AgentCore, AWS Agent Registry, Agentic AI Security, Responsible AI GRC, OWASP Top 10 for LLM, and the derived AWS AI Security Framework view
+- **[security_assessment_multi_account.html](security_assessment_multi_account.html)** - Example consolidated report for 3 anonymized AWS accounts showing 5,114 finding rows
+- **[security_assessment_changes.html](security_assessment_changes.html)** - Example "Changes since last assessment" report for the single-account sample's account, comparing its run with the run before it (see [Changes Since Last Assessment](../docs/ASSESSMENT_HISTORY.md))
 - **[selection-bedrock.html](selection-bedrock.html)** - Synthetic Bedrock-only selection with GRC and OWASP enabled.
 - **[selection-governance-only.html](selection-governance-only.html)** - Synthetic all-direct-services-disabled selection showing independent GRC findings and OWASP coverage notices.
 
@@ -22,11 +22,13 @@ Regenerate these two selection examples without AWS access:
 
 They use fictional findings and a placeholder account ID, and are UI examples rather than live assessment evidence.
 
-The main HTML examples use synthetic account IDs, resource identifiers, and
-resource names, including IAM, CloudTrail, bucket, session, and Identity Center
-names. The changes HTML and CSV are rebuilt from those cleaned examples.
-Their findings are representative examples, not a current assessment of any
-account. Bedrock `N/A` rows have `Informational` severity in both reports.
+The main HTML examples and the changes page come from real runs, anonymized
+together by `scripts/capture_screenshots.py --anonymize-only`: account IDs,
+resource identifiers, and resource names, including IAM, CloudTrail, bucket,
+session, secret, and Identity Center names, are synthetic placeholders, and a
+resource has the same placeholder on every page. Their findings are
+representative examples, not a current assessment of any account. Bedrock
+`N/A` rows have `Informational` severity in both main reports.
 
 **Features:**
 - Executive dashboard with severity breakdown
@@ -57,6 +59,7 @@ Screenshots used in the main README to showcase report features:
 Automated screenshot capture and optimization tool:
 
 - **[capture_screenshots.py](scripts/capture_screenshots.py)** - Python script to generate screenshots from HTML reports
+- **[anonymize_patterns.py](scripts/anonymize_patterns.py)** - Patterns `capture_screenshots.py` uses to replace source-account values in the samples
 - **[README.md](scripts/README.md)** - Script documentation and usage instructions
 
 #### dev-requirements.txt
@@ -95,13 +98,16 @@ See [Developer Guide](../docs/DEVELOPER_GUIDE.md#documentation-and-screenshots) 
 
 When updating the report template (`aiml-security-assessment/functions/security/generate_consolidated_report/report_template.py`):
 
-1. Regenerate sample reports with your changes
-2. Run the screenshot script to update documentation images
-3. Commit both HTML reports and screenshots together
+1. Run an assessment with your changes and download its single-account,
+   multi-account, and changes reports
+2. Replace and anonymize the three sample pages, then recapture the
+   screenshots, as described in
+   [Updating the Changes Sample](../docs/DEVELOPER_GUIDE.md#updating-the-changes-sample)
+3. Commit the HTML reports and screenshots together
 
 ## Notes
 
-- These are example reports with realistic but fictional findings
+- The main reports and the changes page are anonymized results from real runs; the selection examples use fictional findings
 - Actual assessment results will vary based on your AWS environment
 - Reports are single HTML files with inline CSS and JavaScript; the only external resource is the Google Fonts stylesheet, and the report falls back to system fonts offline
 - Screenshots are automatically optimized to keep file sizes small
