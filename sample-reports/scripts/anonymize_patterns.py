@@ -314,7 +314,8 @@ NAME_KINDS = frozenset(
     }
 )
 # SHA-256 fingerprints of source-specific name stems. Keep the raw names out
-# of this script and the published samples. A stem can begin after "-" or "_".
+# of this script and the published samples. A stem can begin inside a compound
+# token, including after punctuation or a lowercase-to-uppercase transition.
 SOURCE_NAME_FINGERPRINTS = frozenset(
     {
         (8, "8758607d0bcaa8a6efc8f92aa63bf367a6f088001d8fd2f16d1583c356a1a23f"),
@@ -342,18 +343,21 @@ _NAME_TOKEN = re.compile(r"(?<![A-Za-z0-9_.@+=-])[A-Za-z0-9][A-Za-z0-9_.@+=-]+")
 
 def source_account_names(text: str) -> list[tuple[int, int, str]]:
     """Find source-specific names, including ones outside finding rows."""
+    fingerprints: dict[int, set[str]] = {}
+    for width, fingerprint in SOURCE_NAME_FINGERPRINTS:
+        fingerprints.setdefault(width, set()).add(fingerprint)
     found = []
     for match in _NAME_TOKEN.finditer(text):
         value = match.group()
-        starts = (0, *(i + 1 for i, char in enumerate(value) if char in "-_"))
         if any(
             len(value) - start >= width
             and hashlib.sha256(
                 value[start : start + width].lower().encode()
             ).hexdigest()
-            == fingerprint
-            for start in starts
-            for width, fingerprint in SOURCE_NAME_FINGERPRINTS
+            in hashes
+            for start, character in enumerate(value)
+            if character.isalnum()
+            for width, hashes in fingerprints.items()
         ):
             found.append((*match.span(), "source account name"))
     return found

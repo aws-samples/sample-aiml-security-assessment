@@ -75,16 +75,21 @@ resource identifiers, and resource names become synthetic placeholders.
 This includes IAM, CloudTrail, bucket, session, Identity Center, and workload
 names, names given after their resource type ("user build-cli"), secret
 names, and names known to come from the source account (kept in the script as
-SHA-256 fingerprints, not as text). The page's own styles and scripts are never
-changed. `security_assessment_changes.html` is cleaned in the same pass, so the
-same source value gets the same placeholder across the three pages, and its
-links are pointed at the sample single-account report. Reports cleaned by an
-earlier version receive the new name pass without changing their existing ID
-placeholders. A second run changes nothing. To clean newly added samples
-without a browser, copy all three in and run `--anonymize-only`.
+SHA-256 fingerprints, not as text). Discovery covers the full page, including
+notes outside the findings table. The page's own styles, scripts, inline
+handlers, and `style=` attributes are never changed; a source value found
+there stops the run. `security_assessment_changes.html` is cleaned in the same
+pass, so the same source value gets the same placeholder across the three
+pages, and its links are pointed at the sample single-account report. Reports
+cleaned by an earlier version receive the new name pass without changing
+their existing ID placeholders. A second run changes nothing. To clean newly
+added samples without a browser, copy all three in and run `--anonymize-only`.
 
 The patterns are in `anonymize_patterns.py`. `tests/test_sample_reports.py`
-checks that the committed samples hold no source-account values.
+checks source-name fingerprints, personal-name hashes, and the reviewed
+generated-value inventory in the committed sample pages. If an older marked
+report fails a source-name check, regenerate it from the original run and
+anonymize the pages together.
 
 ### Configuration
 

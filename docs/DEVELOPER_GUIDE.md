@@ -487,7 +487,10 @@ themselves with `.venv/bin/python`.
 
 3. Run the sample checks. They fail if a page holds an account ID that isn't
    a placeholder or a name known to come from the source account, if the
-   page's CSS was changed, or if a changes-page link doesn't resolve:
+   reviewed generated-value inventory changes, if the page's CSS was changed,
+   or if a changes-page link doesn't resolve. When intentionally replacing
+   sample pages, review the changed values and update the inventory digests
+   in `tests/test_sample_reports.py` before rerunning the checks:
 
    ```bash
    .venv/bin/python -m pytest tests/test_sample_reports.py tests/test_capture_screenshots.py tests/test_capture_changes_screenshot.py -q

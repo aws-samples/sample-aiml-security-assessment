@@ -271,7 +271,7 @@ def anonymize_account_ids(html_files: list) -> None:
 
     # Collect every distinct 12-digit account ID across all files first so the
     # placeholder assignment is deterministic regardless of processing order.
-    account_id_pattern = re.compile(r"\b\d{12}\b")
+    account_id_pattern = re.compile(r"(?<!\d)\d{12}(?!\d)")
     discovered = []
     file_contents = {}
     for html_file in html_files:
@@ -300,8 +300,8 @@ def anonymize_account_ids(html_files: list) -> None:
     for real_id, placeholder in mapping.items():
         print(f"  {real_id} -> {placeholder}")
 
-    # Apply the mapping to each file. Replace via the same word-boundary regex
-    # to avoid touching digits that happen to embed a 12-digit run.
+    # Apply the mapping to each file, including IDs beside letters or "_".
+    # Digit boundaries avoid touching a 12-digit part of a longer number.
     def _replace(match: "re.Match") -> str:
         return mapping.get(match.group(0), match.group(0))
 
@@ -331,16 +331,32 @@ _RUN_REPORT_LINK = re.compile(
 _RUN_CSV_LINK = re.compile(
     r'\s*<p><a href="security_assessment_changes_\d{8}_\d{6}\.csv">[^<]*</a></p>'
 )
-_PAGE_CODE = re.compile(r"<(style|script)\b[^>]*>.*?</\1\s*>", re.S | re.I)
+_PAGE_CODE = re.compile(r"<(style|script)\b[^>]*>.*?(?:</\1\s*>|\Z)", re.S | re.I)
+_HTML_TAG = re.compile(r"""<[A-Za-z][^>"']*(?:(?:"[^"]*"|'[^']*')[^>"']*)*>""", re.S)
+_HTML_ATTRIBUTE = re.compile(
+    r"""\s+([^\s=/>]+)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)""", re.S
+)
+_INLINE_HANDLER = re.compile(r"on[a-z][\w:-]*", re.I)
 _PLAIN_WORD = re.compile(r"[a-z]+")
 
 
 def _page_code_test(content: str):
-    """A test of whether a position in content is inside a <style> or <script>."""
+    """Test whether a position is in page code, including inline attributes."""
+    spans = [match.span() for match in _PAGE_CODE.finditer(content)]
+    for tag in _HTML_TAG.finditer(content):
+        for attribute in _HTML_ATTRIBUTE.finditer(tag.group()):
+            name = attribute.group(1)
+            if name.lower() == "style" or _INLINE_HANDLER.fullmatch(name):
+                spans.append(
+                    (tag.start() + attribute.start(), tag.start() + attribute.end())
+                )
     starts, ends = [], []
-    for match in _PAGE_CODE.finditer(content):
-        starts.append(match.start())
-        ends.append(match.end())
+    for start, end in sorted(spans):
+        if starts and start <= ends[-1]:
+            ends[-1] = max(ends[-1], end)
+        else:
+            starts.append(start)
+            ends.append(end)
 
     def in_code(position: int) -> bool:
         index = bisect.bisect_right(starts, position) - 1
@@ -417,7 +433,7 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
     report files with synthetic placeholders, in place.
 
     The values are the ones anonymize_patterns.py's GENERATED_VALUE_KINDS
-    find in each finding's text: resource IDs (vpc-, sg-, subnet-, i-, ...),
+    find anywhere outside page code: resource IDs (vpc-, sg-, subnet-, i-, ...),
     GuardDuty detector and finding IDs, UUIDs, Organizations and Cognito IDs,
     and the random parts of resource names. Each distinct value gets one
     placeholder, shared across the files anonymized together, so filtering and
@@ -464,22 +480,23 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
         content = html_file.read_text(encoding="utf-8")
         if marker in content:
             print(f"  Already anonymized: {html_file.name}")
-            for row in kinds.parse_report(content):
-                for text in (row.finding, row.details, row.resolution):
-                    for start, end, kind in values(text):
-                        used.setdefault(text[start:end], kind)
+            if names_only and kinds.source_account_names(content):
+                print(f"  ERROR: {html_file.name} still holds a source account name")
+                print("  No file was changed.")
+                sys.exit(1)
+            in_code = _page_code_test(content)
+            for start, end, kind in values(content):
+                if not in_code(start):
+                    used.setdefault(content[start:end], kind)
             continue
         contents[html_file] = content
 
     # Number the distinct values in the order they first appear, file by file.
     kind_of: dict = {}
     for content in contents.values():
-        for row in kinds.parse_report(content):
-            for text in (row.finding, row.details, row.resolution):
-                for start, end, kind in values(text):
-                    kind_of.setdefault(text[start:end], kind)
-        if names_only:
-            for start, end, kind in kinds.source_account_names(content):
+        in_code = _page_code_test(content)
+        for start, end, kind in values(content):
+            if not in_code(start):
                 kind_of.setdefault(content[start:end], kind)
     mapping: dict = {}
     counters: collections.Counter = collections.Counter(used.values())
@@ -505,6 +522,7 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
     # of the page (":root" in its CSS, "the root" in a finding, a docs URL), so
     # it is replaced only where a kind's pattern finds it.
     token_values = [value for value in mapping if not _PLAIN_WORD.fullmatch(value)]
+    plain_values = [value for value in mapping if _PLAIN_WORD.fullmatch(value)]
     tokens = (
         re.compile(
             r"(?<![A-Za-z0-9])(?:"
@@ -514,6 +532,17 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
             + r")(?![A-Za-z0-9])"
         )
         if token_values
+        else None
+    )
+    plain_tokens = (
+        re.compile(
+            r"(?<![A-Za-z0-9])(?:"
+            + "|".join(
+                re.escape(value) for value in sorted(plain_values, key=len)[::-1]
+            )
+            + r")(?![A-Za-z0-9])"
+        )
+        if plain_values
         else None
     )
     replaced: collections.Counter = collections.Counter()
@@ -529,6 +558,12 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
             for match in pattern.finditer(content)
             if match.group("v") in mapping
         ]
+        if names_only:
+            spans += [
+                (start, end, content[start:end])
+                for start, end, _kind in kinds.source_account_names(content)
+                if content[start:end] in mapping
+            ]
         if not names_only:
             spans += [
                 (*match.span(), match.group())
@@ -558,6 +593,16 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
             if tokens
             else set()
         )
+        if plain_tokens:
+            updated_in_code = _page_code_test(updated)
+            left = sorted(
+                set(left)
+                | {
+                    kind_of[match.group()]
+                    for match in plain_tokens.finditer(updated)
+                    if updated_in_code(match.start())
+                }
+            )
         if left:
             print(f"  ERROR: {html_file.name} still holds values of kind(s) {left}")
             print("  No file was changed.")
