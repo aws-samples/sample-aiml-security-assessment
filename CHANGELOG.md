@@ -49,10 +49,10 @@ section.
   repositories, which `AC-34` needs to scan runtime code archives and
   container image layers and `AC-35` needs to read S3 tool schemas. With the
   default, those rows are informational `N/A` naming the parameter.
-- Added a sample changes report (`sample-reports/security_assessment_changes.html`
-  and `.csv`, with `changes-overview.png`), built from the single-account
-  sample by `sample-reports/scripts/build_changes_sample.py`; the screenshot
-  comes from `sample-reports/scripts/capture_changes_screenshot.py`.
+- Added a sample changes report (`sample-reports/security_assessment_changes.html`,
+  with `changes-overview.png`) from a real run, anonymized together with the
+  single-account sample so both pages show the same placeholders. The
+  screenshot comes from `sample-reports/scripts/capture_changes_screenshot.py`.
 
 - **AWS AI Security Framework (AISF) mapping.** Each producer row now names the
   AISF controls it asserts in a new `Compliance_Frameworks` CSV column, in one
@@ -440,6 +440,11 @@ back `Passed` names what it could not read.
 - Replaced source-account resource, session, and Identity Center names in the
   single-account, multi-account, and changes samples with synthetic values.
   The sample guard now checks the full `sample-reports/` tree for those names.
+- The sample anonymizer now finds generated values in page notes and other
+  text outside finding rows, detects source-name stems inside compound names,
+  and stops if a discovered value remains in page code or a source-name
+  fingerprint remains in an older marked report. Sample tests also check the
+  reviewed generated-value inventory and compare a full-size report with itself.
 - Parse IAM Resource policy variables in the SageMaker AI assessment without
   repeated regex backtracking on malformed `${` sequences.
 - Preserve default-enabled artifact completeness checks when an older CodeBuild

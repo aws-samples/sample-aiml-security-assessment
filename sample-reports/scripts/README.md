@@ -2,25 +2,6 @@
 
 This directory contains utility scripts for development and documentation.
 
-## Changes Sample Builder
-
-`build_changes_sample.py` builds `sample-reports/security_assessment_changes.html`
-and `.csv`, and the golden saved answers for the changes-since-last-assessment
-report (`tests/fixtures/assessment_history/golden/expected_*.json`), from the two
-sample reports. The previous runs' CSVs are built again every time rather than
-saved; the golden tests write them to a temporary folder. Values that AWS
-generated in the sample reports, such as resource IDs and the random parts of
-resource names, are replaced with made-up values of the same shape. It needs
-only the standard library and the repository's `assessment_history` package.
-
-```bash
-# Write the sample and the golden data
-.venv/bin/python sample-reports/scripts/build_changes_sample.py
-
-# Verify only; exits 1 if anything is out of date
-.venv/bin/python sample-reports/scripts/build_changes_sample.py --check
-```
-
 ## Changes Screenshot
 
 `capture_changes_screenshot.py` captures `sample-reports/changes-overview.png`
@@ -33,7 +14,8 @@ one of the placeholder account IDs.
 ./sample-reports/scripts/capture_changes_screenshot.py
 ```
 
-Rerun it after regenerating a sample report, and review the diff.
+Rerun it after replacing and anonymizing the changes sample, and review the
+diff.
 
 ## Selection Examples
 
@@ -91,11 +73,23 @@ The script will:
 Before capturing, it rewrites the sample reports in place: account IDs,
 resource identifiers, and resource names become synthetic placeholders.
 This includes IAM, CloudTrail, bucket, session, Identity Center, and workload
-names. The same source value gets the same placeholder across the two reports.
-Reports cleaned by an earlier version receive the new name pass without
-changing their existing ID placeholders. A second run changes nothing. To
-clean a newly generated sample without a browser, run `--anonymize-only`, then
-run `build_changes_sample.py`.
+names, names given after their resource type ("user build-cli"), secret
+names, and names known to come from the source account (kept in the script as
+SHA-256 fingerprints, not as text). Discovery covers the full page, including
+notes outside the findings table. The page's own styles, scripts, inline
+handlers, and `style=` attributes are never changed; a source value found
+there stops the run. `security_assessment_changes.html` is cleaned in the same
+pass, so the same source value gets the same placeholder across the three
+pages, and its links are pointed at the sample single-account report. Reports
+cleaned by an earlier version receive the new name pass without changing
+their existing ID placeholders. A second run changes nothing. To clean newly
+added samples without a browser, copy all three in and run `--anonymize-only`.
+
+The patterns are in `anonymize_patterns.py`. `tests/test_sample_reports.py`
+checks source-name fingerprints, personal-name hashes, and the reviewed
+generated-value inventory in the committed sample pages. If an older marked
+report fails a source-name check, regenerate it from the original run and
+anonymize the pages together.
 
 ### Configuration
 

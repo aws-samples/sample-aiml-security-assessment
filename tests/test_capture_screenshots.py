@@ -62,6 +62,20 @@ def test_capture_all_screenshots_returns_successful_paths(monkeypatch, tmp_path)
     assert captured == [screenshot_path]
 
 
+def test_account_ids_next_to_letters_and_underscores_are_anonymized(tmp_path):
+    report = tmp_path / "report.html"
+    report.write_text(
+        "Role _987654321098 and X987654321098Y",
+        encoding="utf-8",
+    )
+
+    capture_screenshots.anonymize_account_ids([report])
+
+    assert report.read_text(encoding="utf-8") == (
+        "Role _111122223333 and X111122223333Y"
+    )
+
+
 def _report(details: str) -> str:
     row = (
         '<tr data-service="bedrock"><td><code>111122223333</code></td>'
@@ -189,6 +203,69 @@ def test_source_specific_names_outside_finding_rows_are_cleaned(tmp_path, monkey
     assert capture_screenshots.anonymize_resource_names([report]) == {}
 
 
+def test_a_plain_word_fingerprint_is_replaced_before_marking(tmp_path, monkeypatch):
+    kinds = capture_screenshots._load_generated_value_kinds()
+    monkeypatch.setattr(
+        kinds,
+        "SOURCE_NAME_FINGERPRINTS",
+        {(4, hashlib.sha256(b"acme").hexdigest())},
+    )
+    monkeypatch.setattr(
+        capture_screenshots, "_load_generated_value_kinds", lambda: kinds
+    )
+    report = tmp_path / "report.html"
+    report.write_text(_report("Role acme is present."), encoding="utf-8")
+
+    assert capture_screenshots.anonymize_resource_names([report]) == {
+        "source account name": 1
+    }
+    cleaned = report.read_text(encoding="utf-8")
+    assert "acme" not in cleaned
+    assert capture_screenshots.ANONYMIZED_NAMES_MARKER in cleaned
+
+
+def test_an_old_names_marker_does_not_hide_a_fingerprint(tmp_path, monkeypatch):
+    kinds = capture_screenshots._load_generated_value_kinds()
+    monkeypatch.setattr(
+        kinds,
+        "SOURCE_NAME_FINGERPRINTS",
+        {(4, hashlib.sha256(b"acme").hexdigest())},
+    )
+    monkeypatch.setattr(
+        capture_screenshots, "_load_generated_value_kinds", lambda: kinds
+    )
+    report = tmp_path / "report.html"
+    report.write_text(
+        _report("Role acme is present.").replace(
+            "<!DOCTYPE html>\n",
+            f"<!DOCTYPE html>\n{capture_screenshots.ANONYMIZED_NAMES_MARKER}\n",
+        ),
+        encoding="utf-8",
+    )
+    before = report.read_text(encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        capture_screenshots.anonymize_resource_names([report])
+    assert report.read_text(encoding="utf-8") == before
+
+
+def test_generated_id_only_in_changes_notes_is_replaced(tmp_path):
+    report = tmp_path / "report.html"
+    report.write_text(
+        _report("No resource ID in this finding.").replace(
+            "</body>", "<aside>Notes: vpc-0a1b2c3d4e5f60718</aside></body>"
+        ),
+        encoding="utf-8",
+    )
+
+    assert capture_screenshots.anonymize_resource_ids([report]) == {
+        "AWS resource ID": 1
+    }
+    cleaned = report.read_text(encoding="utf-8")
+    assert "vpc-0a1b2c3d4e5f60718" not in cleaned
+    assert "vpc-000000000000000a1" in cleaned
+
+
 def test_a_failed_check_changes_no_file(tmp_path, monkeypatch):
     first = tmp_path / "first.html"
     second = tmp_path / "second.html"
@@ -206,3 +283,125 @@ def test_a_failed_check_changes_no_file(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         capture_screenshots.anonymize_resource_ids([first, second])
     assert [path.read_text(encoding="utf-8") for path in (first, second)] == before
+
+
+def test_a_one_word_name_is_replaced_only_where_it_was_found(tmp_path):
+    report = tmp_path / "report.html"
+    report.write_text(
+        _report(
+            "Role 'ExampleRole' (policy 'root': denies s3:*); trusts "
+            "arn:aws:iam::111122223333:root. Only SCPs attached to the root apply. "
+            '<a href="https://docs.aws.amazon.com/sagemaker/latest/dg/'
+            'nbi-root-access.html">root access</a>'
+        ).replace("<style>", "<style>:host{--x:1}"),
+        encoding="utf-8",
+    )
+
+    assert capture_screenshots.anonymize_resource_names([report]) == {
+        "quoted resource name": 2
+    }
+    cleaned = report.read_text(encoding="utf-8")
+    assert "'root'" not in cleaned and "ExampleRole" not in cleaned
+    assert "<style>:host{--x:1}" in cleaned
+    assert "arn:aws:iam::111122223333:root." in cleaned
+    assert "attached to the root apply" in cleaned
+    assert "nbi-root-access.html" in cleaned
+
+
+def test_nothing_in_page_styles_or_scripts_is_replaced(tmp_path):
+    report = tmp_path / "report.html"
+    report.write_text(
+        _report("Role 'ExampleRole-1'.").replace(
+            "</body>", "<script>const ok = 'ExampleRole-1';</script></body>"
+        ),
+        encoding="utf-8",
+    )
+    before = report.read_text(encoding="utf-8")
+
+    # A value in the page's code isn't rewritten there, and the leak check
+    # stops the run rather than leave it in place.
+    with pytest.raises(SystemExit):
+        capture_screenshots.anonymize_resource_names([report])
+    assert report.read_text(encoding="utf-8") == before
+
+
+def test_a_plain_word_in_page_code_aborts_without_marking_the_report(tmp_path):
+    report = tmp_path / "report.html"
+    report.write_text(
+        _report("Role 'acme'.").replace(
+            "</body>", "<script>const role = 'acme';</script></body>"
+        ),
+        encoding="utf-8",
+    )
+    before = report.read_text(encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        capture_screenshots.anonymize_resource_names([report])
+    assert report.read_text(encoding="utf-8") == before
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "<button onclick=\"f('vpc-0a1b2c3d4e5f60718')\">Open</button>",
+        '<div style="--resource: vpc-0a1b2c3d4e5f60718">Open</div>',
+        "<script>const resource = 'vpc-0a1b2c3d4e5f60718';",
+    ],
+)
+def test_inline_and_unterminated_page_code_abort_without_edits(tmp_path, code):
+    report = tmp_path / "report.html"
+    report.write_text(
+        _report("Resource vpc-0a1b2c3d4e5f60718.").replace("</body>", f"{code}</body>"),
+        encoding="utf-8",
+    )
+    before = report.read_text(encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        capture_screenshots.anonymize_resource_ids([report])
+    assert report.read_text(encoding="utf-8") == before
+
+
+def test_unquoted_secret_and_lambda_names_are_cleaned(tmp_path):
+    report = tmp_path / "report.html"
+    report.write_text(
+        _report(
+            "Allowed for user build-cli and role web-log-ec2-role; event data "
+            "store Org-Data-DS records events. Secret 'team/app/master-key' has "
+            "no rotation. Invokes arn:aws:lambda:us-east-1:111122223333:function:"
+            "ExampleTracker. The function re-fetches the user ARN; role "
+            "AWSServiceRoleForBatch is AWS managed."
+        ),
+        encoding="utf-8",
+    )
+
+    assert capture_screenshots.anonymize_resource_names([report]) == {
+        "Lambda function name": 1,
+        "quoted secret name": 1,
+        "unquoted resource name": 3,
+    }
+    cleaned = report.read_text(encoding="utf-8")
+    for name in ("build-cli", "web-log-ec2-role", "Org-Data-DS", "team/app"):
+        assert name not in cleaned
+    assert "function:ExampleTracker" not in cleaned
+    assert "The function re-fetches the user ARN" in cleaned
+    assert "role AWSServiceRoleForBatch" in cleaned
+
+
+def test_changes_page_links_to_the_sample_report_and_drops_the_csv(tmp_path):
+    page = tmp_path / "security_assessment_changes.html"
+    page.write_text(
+        "<p><strong>Related files</strong></p>\n"
+        '<p><a href="security_assessment_single_account_20260901_101112.html">'
+        "security_assessment_single_account_20260901_101112.html</a></p>\n"
+        '<p><a href="security_assessment_changes_20260901_101130.csv">'
+        "security_assessment_changes_20260901_101130.csv</a></p>\n",
+        encoding="utf-8",
+    )
+
+    capture_screenshots.point_changes_links_at_samples(page)
+
+    assert page.read_text(encoding="utf-8") == (
+        "<p><strong>Related files</strong></p>\n"
+        '<p><a href="security_assessment_single_account.html">'
+        "security_assessment_single_account.html</a></p>\n"
+    )

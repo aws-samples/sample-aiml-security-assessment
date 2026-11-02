@@ -554,7 +554,7 @@ def test_ci_runs_when_the_package_or_its_inputs_change(workflow):
     for event in ("push", "pull_request"):
         paths = triggers[event]["paths"]
         # The package, the build step and templates the wiring tests read, and
-        # the sample reports the golden tests read.
+        # the sample reports the sample report tests read.
         for path in (
             "assessment_history/**",
             "buildspec.yml",

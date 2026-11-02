@@ -3,14 +3,14 @@
 Screenshot of the "Changes since last assessment" sample page.
 
 Captures sample-reports/changes-overview.png from
-sample-reports/security_assessment_changes.html (built by
-build_changes_sample.py). It reuses capture_screenshots.py's environment
+sample-reports/security_assessment_changes.html. It reuses
+capture_screenshots.py's environment
 setup, capture, and image optimization, but is a separate script so it never
 touches the other sample reports or screenshots:
 
-    - It doesn't rewrite any report. The changes sample is built from the
-      already-anonymized single-account sample, so instead of replacing
-      account IDs it stops if the page holds any 12-digit number that isn't a
+    - It doesn't rewrite any report. capture_screenshots.py --anonymize-only
+      anonymizes the changes page together with the other sample reports;
+      this script stops if the page holds any 12-digit number that isn't a
       documented placeholder.
     - It captures only its own screenshot.
 
@@ -100,15 +100,16 @@ def main(argv=None) -> int:
         if not page_path.is_file():
             print(f"ERROR: {page_path} not found.")
             print(
-                "Build it first: .venv/bin/python sample-reports/scripts/build_changes_sample.py"
+                "Add a changes page from a real run, then anonymize it: "
+                "./sample-reports/scripts/capture_screenshots.py --anonymize-only"
             )
             return 1
         unexpected_ids = unexpected_account_ids(page_path.read_text(encoding="utf-8"))
         if unexpected_ids:
             print(
                 "ERROR: The changes sample holds account IDs that aren't documented "
-                f"placeholders: {', '.join(unexpected_ids)}. Rebuild it from the "
-                "anonymized single-account sample."
+                f"placeholders: {', '.join(unexpected_ids)}. Anonymize it with "
+                "./sample-reports/scripts/capture_screenshots.py --anonymize-only."
             )
             return 1
 
