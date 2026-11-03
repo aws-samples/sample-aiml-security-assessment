@@ -46,6 +46,11 @@ Metadata:
         default: Read AgentCore artifact objects
 
 Parameters:
+  EnableSecurityHubExport:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Export assessment snapshots to Security Hub CSPM in this account and deployment region. Security Hub must already be enabled.
   EnableBedrockAssessment:
     Type: String
     Default: "true"
@@ -136,6 +141,7 @@ Parameters:
     Description: Let SM-43 call HeadObject on each single-object model artifact, which needs s3:GetObject on any object. When false, that leg is reported N/A.
 
 Conditions:
+  SecurityHubExportEnabled: !Equals [!Ref EnableSecurityHubExport, "true"]
   SageMakerArtifactObjectReadsEnabled:
     !Equals [!Ref EnableSageMakerArtifactObjectReads, "true"]
   AgentCoreArtifactObjectReadsEnabled: !Equals [!Ref EnableAgentCoreArtifactObjectReads, "true"]
@@ -300,7 +306,15 @@ Resources:
       Environment:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+          ENABLE_SECURITY_HUB_EXPORT: !Ref EnableSecurityHubExport
       Policies:
+        - !If
+          - SecurityHubExportEnabled
+          - Statement:
+              - Effect: Allow
+                Action: [securityhub:BatchImportFindings]
+                Resource: !Sub 'arn:${AWS::Partition}:securityhub:${AWS::Region}:${AWS::AccountId}:product/${AWS::AccountId}/default'
+          - !Ref AWS::NoValue
         - Statement:
             - Sid: AssessmentReportInventory
               Effect: Allow
