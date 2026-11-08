@@ -11,6 +11,35 @@
                 "agent-registry": "${EnableAgentRegistryAssessment}"
             },
             "ResultPath": "$.ServiceSelection",
+            "Next": "Configure AISF Assessment"
+        },
+        "Configure AISF Assessment": {
+            "Type": "Pass",
+            "Result": "${EnableAISFAssessment}",
+            "ResultPath": "$.enableAISF",
+            "Next": "Is AISF Assessment Enabled"
+        },
+        "Is AISF Assessment Enabled": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.enableAISF",
+                    "StringEquals": "true",
+                    "Next": "Enable AISF GRC Evidence"
+                }
+            ],
+            "Default": "Cleanup S3 Bucket"
+        },
+        "Enable AISF GRC Evidence": {
+            "Type": "Pass",
+            "Result": "true",
+            "ResultPath": "$.enableResponsibleAIGRC",
+            "Next": "Enable AISF OWASP Evidence"
+        },
+        "Enable AISF OWASP Evidence": {
+            "Type": "Pass",
+            "Result": "true",
+            "ResultPath": "$.enableOWASP",
             "Next": "Cleanup S3 Bucket"
         },
         "Cleanup S3 Bucket": {
@@ -166,17 +195,24 @@
                                                 "Next": "Bedrock Assessment Incomplete"
                                             }
                                         ],
+                                        "ResultSelector": {
+                                            "service": "bedrock",
+                                            "statusCode.$": "$.Payload.statusCode"
+                                        },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     },
                                     "Bedrock Assessment Incomplete": {
                                         "Type": "Pass",
-                                        "Result": {
+                                        "Parameters": {
+                                            "service": "bedrock",
                                             "statusCode": 207,
                                             "incomplete": true,
-                                            "body": {
-                                                "findings": []
-                                            }
+                                            "error.$": "$.assessmentError"
                                         },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     },
                                     "Bedrock Assessment Not Selected": {
@@ -187,6 +223,8 @@
                                             "reason": "not-selected",
                                             "service": "bedrock"
                                         },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     }
                                 }
@@ -240,17 +278,24 @@
                                                 "Next": "Sagemaker Assessment Incomplete"
                                             }
                                         ],
+                                        "ResultSelector": {
+                                            "service": "sagemaker",
+                                            "statusCode.$": "$.Payload.statusCode"
+                                        },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     },
                                     "Sagemaker Assessment Incomplete": {
                                         "Type": "Pass",
-                                        "Result": {
+                                        "Parameters": {
+                                            "service": "sagemaker",
                                             "statusCode": 207,
                                             "incomplete": true,
-                                            "body": {
-                                                "findings": []
-                                            }
+                                            "error.$": "$.assessmentError"
                                         },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     },
                                     "Sagemaker Assessment Not Selected": {
@@ -261,6 +306,8 @@
                                             "reason": "not-selected",
                                             "service": "sagemaker"
                                         },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     }
                                 }
@@ -315,17 +362,24 @@
                                                 "Next": "AgentCore Assessment Incomplete"
                                             }
                                         ],
+                                        "ResultSelector": {
+                                            "service": "agentcore",
+                                            "statusCode.$": "$.Payload.statusCode"
+                                        },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     },
                                     "AgentCore Assessment Incomplete": {
                                         "Type": "Pass",
-                                        "Result": {
+                                        "Parameters": {
+                                            "service": "agentcore",
                                             "statusCode": 207,
                                             "incomplete": true,
-                                            "body": {
-                                                "findings": []
-                                            }
+                                            "error.$": "$.assessmentError"
                                         },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     },
                                     "AgentCore Assessment Not Selected": {
@@ -336,6 +390,8 @@
                                             "reason": "not-selected",
                                             "service": "agentcore"
                                         },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     }
                                 }
@@ -389,17 +445,24 @@
                                                 "Next": "AWS Agent Registry Assessment Incomplete"
                                             }
                                         ],
+                                        "ResultSelector": {
+                                            "service": "agent-registry",
+                                            "statusCode.$": "$.Payload.statusCode"
+                                        },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     },
                                     "AWS Agent Registry Assessment Incomplete": {
                                         "Type": "Pass",
-                                        "Result": {
+                                        "Parameters": {
+                                            "service": "agent-registry",
                                             "statusCode": 207,
                                             "incomplete": true,
-                                            "body": {
-                                                "findings": []
-                                            }
+                                            "error.$": "$.assessmentError"
                                         },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     },
                                     "AWS Agent Registry Assessment Not Selected": {
@@ -410,6 +473,8 @@
                                             "reason": "not-selected",
                                             "service": "agent-registry"
                                         },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     }
                                 }
@@ -515,34 +580,42 @@
                                                 "Next": "Responsible AI GRC Assessment Incomplete"
                                             }
                                         ],
+                                        "ResultSelector": {
+                                            "service": "responsible-ai-grc",
+                                            "statusCode.$": "$.Payload.statusCode"
+                                        },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     },
                                     "Responsible AI GRC Assessment Incomplete": {
                                         "Type": "Pass",
-                                        "Result": {
+                                        "Parameters": {
+                                            "service": "responsible-ai-grc",
                                             "statusCode": 207,
                                             "incomplete": true,
-                                            "body": {
-                                                "findings": []
-                                            }
+                                            "error.$": "$.responsibleAIGRCError"
                                         },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     },
                                     "Responsible AI GRC Assessment Skipped": {
                                         "Type": "Pass",
                                         "Result": {
+                                            "service": "responsible-ai-grc",
                                             "statusCode": 200,
                                             "skipped": true,
-                                            "body": {
-                                                "findings": []
-                                            }
+                                            "reason": "not-selected-or-secondary-region"
                                         },
+                                        "ResultPath": "$.AssessmentResult",
+                                        "OutputPath": "$.AssessmentResult",
                                         "End": true
                                     }
                                 }
                             }
                         ],
-                        "ResultPath": null,
+                        "ResultPath": "$.ServiceResults",
                         "Next": "OWASP Enabled?"
                     },
                     "OWASP Enabled?": {
@@ -600,33 +673,51 @@
                                 "Next": "OWASP Assessment Incomplete"
                             }
                         ],
-                        "End": true
+                        "ResultSelector": {
+                            "service": "owasp",
+                            "statusCode.$": "$.Payload.statusCode"
+                        },
+                        "ResultPath": "$.OWASPResult",
+                        "Next": "Record Region Results"
                     },
                     "OWASP Assessment Incomplete": {
                         "Type": "Pass",
-                        "Result": {
+                        "Parameters": {
+                            "service": "owasp",
                             "statusCode": 207,
                             "incomplete": true,
-                            "body": {
-                                "findings": []
-                            }
+                            "error.$": "$.owaspError"
                         },
-                        "End": true
+                        "ResultPath": "$.OWASPResult",
+                        "Next": "Record Region Results"
                     },
                     "OWASP Assessment Skipped": {
                         "Type": "Pass",
                         "Result": {
+                            "service": "owasp",
                             "statusCode": 200,
                             "skipped": true,
-                            "body": {
-                                "findings": []
-                            }
+                            "reason": "not-selected"
                         },
+                        "ResultPath": "$.OWASPResult",
+                        "Next": "Record Region Results"
+                    },
+                    "Record Region Results": {
+                        "Type": "Pass",
+                        "Parameters": {
+                            "Region.$": "$.Region",
+                            "RegionIndex.$": "$.RegionIndex",
+                            "ExecutionId.$": "$.Execution.Name",
+                            "ServiceResults.$": "$.ServiceResults",
+                            "OWASPResult.$": "$.OWASPResult"
+                        },
+                        "ResultPath": "$.RegionResult",
+                        "OutputPath": "$.RegionResult",
                         "End": true
                     }
                 }
             },
-            "ResultPath": null,
+            "ResultPath": "$.AssessmentResults",
             "Next": "Generate Consolidated Report"
         },
         "Generate Consolidated Report": {

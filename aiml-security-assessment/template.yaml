@@ -12,6 +12,7 @@ Metadata:
           default: Assessment Options
         Parameters:
           - TargetRegions
+          - EnableAISFAssessment
           - EnableBedrockAssessment
           - EnableSageMakerAssessment
           - EnableAgentCoreAssessment
@@ -30,6 +31,8 @@ Metadata:
           - ApprovedOrganizationIds
           - EnableSageMakerArtifactObjectReads
     ParameterLabels:
+      EnableAISFAssessment:
+        default: AWS AI Security Framework (AISF) assessment preset
       EnableBedrockAssessment:
         default: Amazon Bedrock assessment
       EnableSageMakerAssessment:
@@ -46,26 +49,31 @@ Metadata:
         default: Read AgentCore artifact objects
 
 Parameters:
+  EnableAISFAssessment:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Run all existing AI service, Responsible AI GRC, and OWASP collectors for the AISF control register. Overrides individual assessment switches; manual evidence and optional artifact object reads remain separate.
   EnableBedrockAssessment:
     Type: String
     Default: "true"
     AllowedValues: ["true", "false"]
-    Description: Run the direct Amazon Bedrock assessment. Optional lenses are configured separately.
+    Description: Run the direct Amazon Bedrock assessment when the AISF preset is disabled. Optional lenses are configured separately.
   EnableSageMakerAssessment:
     Type: String
     Default: "true"
     AllowedValues: ["true", "false"]
-    Description: Run the direct Amazon SageMaker AI assessment. Optional lenses are configured separately.
+    Description: Run the direct Amazon SageMaker AI assessment when the AISF preset is disabled. Optional lenses are configured separately.
   EnableAgentCoreAssessment:
     Type: String
     Default: "true"
     AllowedValues: ["true", "false"]
-    Description: Run the direct Amazon Bedrock AgentCore assessment. Optional lenses are configured separately.
+    Description: Run the direct Amazon Bedrock AgentCore assessment when the AISF preset is disabled. Optional lenses are configured separately.
   EnableAgentRegistryAssessment:
     Type: String
     Default: "true"
     AllowedValues: ["true", "false"]
-    Description: Run the direct AWS Agent Registry assessment. Optional lenses are configured separately.
+    Description: Run the direct AWS Agent Registry assessment when the AISF preset is disabled. Optional lenses are configured separately.
   TargetRegions:
     Type: String
     Default: ""
@@ -136,6 +144,7 @@ Parameters:
     Description: Let SM-43 call HeadObject on each single-object model artifact, which needs s3:GetObject on any object. When false, that leg is reported N/A.
 
 Conditions:
+  AISFAssessmentEnabled: !Equals [!Ref EnableAISFAssessment, "true"]
   SageMakerArtifactObjectReadsEnabled:
     !Equals [!Ref EnableSageMakerArtifactObjectReads, "true"]
   AgentCoreArtifactObjectReadsEnabled: !Equals [!Ref EnableAgentCoreArtifactObjectReads, "true"]
@@ -146,10 +155,11 @@ Resources:
     Properties:
       DefinitionUri: statemachine/assessments.asl.json
       DefinitionSubstitutions:
-        EnableBedrockAssessment: !Ref EnableBedrockAssessment
-        EnableSageMakerAssessment: !Ref EnableSageMakerAssessment
-        EnableAgentCoreAssessment: !Ref EnableAgentCoreAssessment
-        EnableAgentRegistryAssessment: !Ref EnableAgentRegistryAssessment
+        EnableAISFAssessment: !Ref EnableAISFAssessment
+        EnableBedrockAssessment: !If [AISFAssessmentEnabled, "true", !Ref EnableBedrockAssessment]
+        EnableSageMakerAssessment: !If [AISFAssessmentEnabled, "true", !Ref EnableSageMakerAssessment]
+        EnableAgentCoreAssessment: !If [AISFAssessmentEnabled, "true", !Ref EnableAgentCoreAssessment]
+        EnableAgentRegistryAssessment: !If [AISFAssessmentEnabled, "true", !Ref EnableAgentRegistryAssessment]
         CleanupBucketFunction: !GetAtt CleanupBucketFunction.Arn
         IAMPermissionCachingFunction: !GetAtt IAMPermissionCachingFunction.Arn
         ResolveRegionsFunction: !GetAtt ResolveRegionsFunction.Arn

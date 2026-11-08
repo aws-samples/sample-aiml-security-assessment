@@ -1,0 +1,2 @@
+Check_ID,Region,Finding,Status,Severity,Finding_Details,Resolution,Reference,Account_ID,Execution_ID,Resource_ID
+AR-03,us-west-2,Registry Publication Approval Governance,N/A,Informational,AccessDenied reading synthetic registry approval configuration.,Restore scoped read access and repeat registry approval discovery.,https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/,444455556666,synthetic-two,synthetic-registry

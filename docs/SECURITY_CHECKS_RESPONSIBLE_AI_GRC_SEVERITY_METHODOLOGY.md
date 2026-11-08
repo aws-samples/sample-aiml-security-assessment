@@ -174,13 +174,13 @@ a default band. Per-control I×L may refine within ±1 with a documented reason.
 | --- | --- | --- | --- |
 | **Safety-guardrail / content safety** | harmful output, guardrail bypass, PII leak | **High** | FS-36 content, FS-45 PII, FS-47 grounding threshold, FS-51 prompt-attack, FS-53 injection, FS-27 contextual grounding; FS-56 XSS is refined to **Medium** because request-side WAF rules cannot inspect model output (output encoding, FS-57, is the root control) |
 | **Sensitive-data exposure / integrity** | PII exposure or training-data, image, or knowledge-base tampering | **High** | FS-16 image scanning, FS-21 training-data versioning, FS-25 KB encryption, FS-33/FS-65 deleted data-source bucket, FS-43 log data-protection, FS-44 Macie |
-| **Excessive agency / access control / isolation** | unauthorized action, over-broad permissions, regulated-decision breach | **High** | FS-07, FS-08, FS-10, FS-12, FS-22, FS-26, FS-39 bias, FS-41 explainability, FS-66, FS-67 |
+| **Excessive agency / access control / isolation** | unauthorized action, over-broad permissions, regulated-decision breach | **High** | FS-07, FS-08, FS-10, FS-12, FS-22, FS-26, FS-39 bias, FS-41 explainability, FS-67 |
 | **Regulated-output controls** | non-compliant / off-regulatory output | **High** (denied topics) / **Medium** (softer: word filters, topic allowlist, relevance) | FS-28 (High), FS-38/FS-59/FS-50 (Medium) |
 | **Unbounded consumption / cost / rate-limiting** | cost exhaustion, DoS — compensating controls exist, no breach | **Medium** | FS-01 WAF, FS-02, FS-03, FS-05, FS-06, FS-09, FS-11, FS-68 |
 | **Governance / model-risk / monitoring / currency** | weakened oversight/assurance, not a breach | **Medium** | FS-04, FS-13, FS-14, FS-15, FS-20, FS-31, FS-33 versioning, FS-34, FS-42, FS-46, FS-48, FS-52, FS-55, FS-61, FS-63, FS-65 notifications, FS-69 |
 | **Premium-cost defense-in-depth** | residual DDoS risk; Shield Standard + WAF compensate; ~$3k/mo | **Low** | FS-01 Shield Advanced |
 | **Emerging/advanced control** | formal-verification gap; contextual grounding partly compensates | **Medium** | FS-27 Automated Reasoning |
-| **Non-verifiable advisory** | app-layer; no API | **Informational** | FS-24, FS-29, FS-30, FS-32, FS-35, FS-37, FS-40, FS-49, FS-54, FS-57, FS-58, FS-60, FS-62 |
+| **Non-verifiable advisory** | app-layer behavior is not established by available configuration APIs | **Informational** | FS-24, FS-29, FS-30, FS-32, FS-35, FS-37, FS-40, FS-49, FS-54, FS-57, FS-58, FS-60, FS-62, FS-66 |
 
 The per-finding assignments are in the [Severity Register](#severity-register).
 
@@ -343,8 +343,8 @@ rule (§3.4).
 | FS-07 | Agent Action Boundaries Look Appropriate | PASS | 3 | 2 | **High** |  |
 | FS-08 | AgentCore Runtime Inbound Authorizer — Access Check | NA-CouldNotAssess | – | – | **Low** |  |
 | FS-08 | No AgentCore Runtimes Found | NA-NotApplicable | – | – | **Informational** |  |
-| FS-08 | AgentCore Runtimes Without Inbound Authorizer | FAIL | 3 | 2 | **High** |  |
-| FS-08 | AgentCore Runtimes With Inbound Authorizer Configured | PASS | 3 | 2 | **High** |  |
+| FS-08 | AgentCore Runtimes Using Default IAM Authentication | PASS | 3 | 2 | **High** | Supported mode configuration only; successful `GetAgentRuntime` omits `authorizerConfiguration`. Request enforcement and tool authorization require separate validation. |
+| FS-08 | AgentCore Runtimes With JWT Authentication Configured | PASS | 3 | 2 | **High** | Supported mode configuration only; does not prove JWT claim validation, every invocation path, or downstream tool authorization. |
 | FS-08 | COULD NOT ASSESS: AgentCore Runtime Inbound Authorizer Check | NA-CouldNotAssess | – | – | **Low** |  |
 | FS-09 | Agent Lambda Functions Without Concurrency Limits | FAIL | 2 | 2 | **Medium** |  |
 | FS-09 | Agent Lambda Concurrency Limits Present | PASS (computed) | 2 | 2 | **Medium** | `Passed` when agent-related functions all have reserved concurrency; `N/A` (still Medium) when no function matches |
@@ -630,8 +630,8 @@ rule (§3.4).
 | FS-65 | KB Data Source S3 Event Notifications Configured | PASS | 2 | 2 | **Medium** |  |
 | FS-66 | AgentCore Identity Propagation — Access Check | NA-CouldNotAssess | – | – | **Low** |  |
 | FS-66 | No AgentCore Runtimes Found | NA-NotApplicable | – | – | **Informational** |  |
-| FS-66 | AgentCore Runtimes Without JWT Authorizer | FAIL | 3 | 2 | **High** | Reads `authorizerConfiguration`, which shows whether inbound JWT authorization is configured, not whether an end-user identity reaches downstream calls |
-| FS-66 | AgentCore Runtimes With JWT Authorizer Configured | PASS | 3 | 2 | **High** | Same scope limit as the FAIL row above |
+| FS-66 | AgentCore IAM Runtime Identity Propagation — Manual Review Required | NA-ManualReview | – | – | **Informational** | Default IAM mode alone neither proves nor disproves workload-required end-user identity propagation. |
+| FS-66 | AgentCore JWT Runtime Identity Propagation — Manual Review Required | NA-ManualReview | – | – | **Informational** | Configured JWT mode alone neither proves nor disproves end-user identity propagation to downstream tool services. |
 | FS-66 | COULD NOT ASSESS: AgentCore End-User Identity Propagation Check | NA-CouldNotAssess | – | – | **Low** | Emitted when the runtime detail cannot be read (distinct from the inbound-authorizer access check above) |
 | FS-67 | No Agent Action-Group Lambda Functions Found | NA-NotApplicable | – | – | **Informational** |  |
 | FS-67 | Agent Action-Group Lambdas May Lack Transaction Thresholds | FAIL | 3 | 2 | **High** |  |

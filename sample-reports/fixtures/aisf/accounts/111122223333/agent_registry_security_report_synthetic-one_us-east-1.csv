@@ -1,0 +1,2 @@
+Check_ID,Region,Finding,Status,Severity,Finding_Details,Resolution,Reference,Account_ID,Execution_ID,Resource_ID
+AR-03,us-east-1,Registry Publication Approval Governance,Failed,Medium,Synthetic READY registry uses APPROVE_ALL auto-approval.,Remove automatic approval rules and verify independent publication review.,https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/,111122223333,synthetic-one,synthetic-registry

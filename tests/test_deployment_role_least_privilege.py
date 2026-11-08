@@ -233,10 +233,22 @@ def test_multi_account_build_fails_when_any_account_has_incomplete_coverage():
     # test_service_selection.py; the checks here cover the failure ledger.
     assert "required_artifact_prefixes+=(responsible_ai_grc)" in buildspec
     assert "required_artifact_prefixes+=(owasp)" in buildspec
+    assert '--write-scope-manifest "$ASSESSMENT_SCOPE_MANIFEST"' in buildspec
+    assert '--accounts-file "$EXPECTED_ACCOUNTS_FILE"' in buildspec
+    assert '--failures-file "$ASSESSMENT_FAILURES_FILE"' in buildspec
+    report = buildspec.index("if ! python3 ../consolidate_html_reports.py; then")
+    failure_gate = buildspec.index(
+        'if [[ -s "$ASSESSMENT_FAILURES_FILE" ]]; then', report
+    )
+    success = buildspec.index(
+        'echo "Multi-account assessment completed successfully!"', failure_gate
+    )
+    assert report < failure_gate < success
+    assert "exit 1" in buildspec[failure_gate:success]
     assert (
-        "Skipping the consolidated report because one or more accounts have "
-        "incomplete coverage."
-    ) in buildspec
+        "Incomplete assessment evidence or report upload failure"
+        in (buildspec[report:failure_gate])
+    )
     assert 'done < "$ASSESSMENT_FAILURES_FILE"' in buildspec
 
     # A transient shell array must not be the source of truth across phases.

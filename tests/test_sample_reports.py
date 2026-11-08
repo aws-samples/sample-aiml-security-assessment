@@ -150,6 +150,8 @@ def test_sample_pages_match_reviewed_generated_value_inventory():
     # (kind, value) inventory without printing or saving any value. A new
     # value in Notes, navigation, or any other page text changes its digest.
     expected = {
+        "aisf_multi_account.html": "776536872f19450c8f49a2f18eac3c8d5e1246b4fd1281caf884d6a72ce6f5d1",
+        "aisf_single_account.html": "776536872f19450c8f49a2f18eac3c8d5e1246b4fd1281caf884d6a72ce6f5d1",
         "index.html": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "security_assessment_changes.html": "8eb81dcf0f6c10c713634cceffb0718736c105e7eb159248ffd8946f6152e9ea",
         "security_assessment_multi_account.html": "2d9c52fa4031a150d00d5f750fdc9adf73c58ad8d7cca5786251f164f67f2dda",

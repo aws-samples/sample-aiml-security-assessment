@@ -1,0 +1,2 @@
+Check_ID,Region,Finding,Status,Severity,Finding_Details,Resolution,Reference,Account_ID,Execution_ID,Resource_ID
+AR-03,us-west-2,Registry Publication Approval Governance,N/A,Informational,Complete synthetic discovery found no registries.,Confirm registry applicability and provide scoped publication review evidence.,https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/,111122223333,synthetic-one,

@@ -700,11 +700,11 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "Agent Action Boundary Check": "Informational",
     "Bedrock Agent Overly Broad Action Permissions": "High",
     "Agent Action Boundaries Look Appropriate": "High",
-    # --- FS-08 (AgentCore runtime inbound authorizer = High) ---
+    # --- FS-08 (supported runtime authentication mode = High) ---
     "AgentCore Runtime Inbound Authorizer — Access Check": "Low",
     "No AgentCore Runtimes Found": "Informational",
-    "AgentCore Runtimes Without Inbound Authorizer": "High",
-    "AgentCore Runtimes With Inbound Authorizer Configured": "High",
+    "AgentCore Runtimes Using Default IAM Authentication": "High",
+    "AgentCore Runtimes With JWT Authentication Configured": "High",
     "COULD NOT ASSESS: AgentCore Runtime Inbound Authorizer Check": "Low",
     # --- FS-09 ---
     "Agent Lambda Functions Without Concurrency Limits": "Medium",
@@ -895,10 +895,10 @@ SEVERITY_REGISTER: Dict[str, str] = {
     # --- FS-65 (distinct risks) ---
     "KB Data Source Buckets Missing S3 Event Notifications": "Medium",
     "KB Data Source S3 Event Notifications Configured": "Medium",
-    # --- FS-66 (identity propagation = High) ---
+    # --- FS-66 (identity propagation requires manual review = Informational) ---
     "AgentCore Identity Propagation — Access Check": "Low",
-    "AgentCore Runtimes Without JWT Authorizer": "High",
-    "AgentCore Runtimes With JWT Authorizer Configured": "High",
+    "AgentCore IAM Runtime Identity Propagation — Manual Review Required": "Informational",
+    "AgentCore JWT Runtime Identity Propagation — Manual Review Required": "Informational",
     "COULD NOT ASSESS: AgentCore End-User Identity Propagation Check": "Low",
     # --- FS-67 (transaction thresholds = High) ---
     "No Agent Action-Group Lambda Functions Found": "Informational",
@@ -1053,11 +1053,14 @@ def check_waf_shield_on_bedrock_endpoints(inventory) -> Dict[str, Any]:
                     ),
                     resolution=(
                         "1. Subscribe to AWS Shield Advanced for DDoS protection.\n"
-                        "2. After subscribing, explicitly add resource protections in the "
-                        "Shield Advanced console for each Bedrock-facing resource "
-                        "(API Gateway stages, ALBs, CloudFront distributions, Route 53 hosted zones). "
+                        "2. After subscribing, explicitly add Shield Advanced protections for eligible "
+                        "customer-managed resources fronting the GenAI workload, such as Application "
+                        "Load Balancers, CloudFront distributions, or Route 53 hosted zones. "
+                        "API Gateway stages are not directly supported Shield Advanced resources. "
+                        "For Regional API Gateway endpoints, use a customer-managed CloudFront "
+                        "distribution in front of the API and protect that distribution. "
                         "Shield Advanced subscription alone does NOT automatically protect resources — "
-                        "each resource must be individually added to receive protection.\n"
+                        "each eligible resource must be individually added to receive protection.\n"
                         "3. Enable Shield Response Team (SRT) access and configure proactive engagement.\n"
                         "4. Alternatively, use AWS Firewall Manager with a Shield Advanced policy "
                         "to automate resource protection based on tags or resource types."
@@ -1802,8 +1805,8 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
 
 def check_agentcore_runtime_inbound_authorizer() -> Dict[str, Any]:
     """
-    FS-08 — Report whether each Bedrock AgentCore runtime has an inbound
-    authorizer configured.
+    FS-08 — Report the supported inbound authentication mode configured for
+    each Bedrock AgentCore runtime, including the documented IAM SigV4 default.
 
     Evidence collected: ListAgentRuntimes (paginated) for the runtime
     inventory, then GetAgentRuntime per runtime to read
@@ -1815,16 +1818,20 @@ def check_agentcore_runtime_inbound_authorizer() -> Dict[str, Any]:
       - that an AgentCore Policy Engine resource exists,
       - that policies are associated with every relevant tool,
       - that individual tool calls receive action-level authorization.
-    An inbound authorizer gates *callers of the runtime endpoint*; it is not a
-    tool-level authorization control. Policy semantics require manual review.
+    A successful read with no authorizerConfiguration uses the documented IAM
+    SigV4 default; a custom JWT authorizer selects OAuth/JWT authentication.
+    Passed means a supported mode was observed, not that requests, JWT claims,
+    workload-specific requirements, or tool authorization were tested.
 
     COMPLIANCE_PLACEHOLDER: [SR 11-7, MAS TRM 9.1]
     """
     check_name = "AgentCore Runtime Inbound Authorizer Check"
-    reference = "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html"
+    reference = "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-security-best-practices.html#runtime-security-authentication"
     manual_review = (
-        "Inbound authorizer presence does not prove tool-level authorization; "
-        "review authorizer and policy semantics manually."
+        "Passed is limited to observing a supported authentication mode. Manually "
+        "verify the mode suits the workload, reject unauthorized requests, test "
+        "signed requests or JWT issuer/audience/expiry as applicable, and validate "
+        "authorization on every invocation path and downstream tool action."
     )
     findings = _empty_findings(check_name)
     try:
@@ -1853,8 +1860,8 @@ def check_agentcore_runtime_inbound_authorizer() -> Dict[str, Any]:
                 create_finding(
                     check_id="FS-08",
                     finding_name="No AgentCore Runtimes Found",
-                    finding_details="No AgentCore runtimes found; inbound authorizer check not applicable.",
-                    resolution="If using AgentCore, configure an inbound authorizer on each runtime.",
+                    finding_details="No AgentCore runtimes found; inbound authentication mode check not applicable.",
+                    resolution="If using AgentCore, select IAM SigV4 or OAuth/JWT authentication appropriate to the workload.",
                     reference=reference,
                     severity="Informational",
                     status="N/A",
@@ -1866,8 +1873,8 @@ def check_agentcore_runtime_inbound_authorizer() -> Dict[str, Any]:
         # authorizerConfiguration is only returned by GetAgentRuntime, so the
         # runtime must be described individually. A runtime we cannot describe
         # is reported as un-assessed rather than silently counted either way.
-        with_authorizer: List[str] = []
-        without_authorizer: List[str] = []
+        with_jwt: List[str] = []
+        with_iam: List[str] = []
         undetermined: List[str] = []
 
         for runtime in runtimes:
@@ -1884,44 +1891,57 @@ def check_agentcore_runtime_inbound_authorizer() -> Dict[str, Any]:
             except Exception as e:  # noqa: BLE001 - per-runtime isolation
                 undetermined.append(f"{name} ({type(e).__name__})")
                 continue
-            if detail.get("authorizerConfiguration"):
-                with_authorizer.append(name)
+            if not isinstance(detail, dict):
+                undetermined.append(f"{name} (unrecognized GetAgentRuntime response)")
+                continue
+            if "authorizerConfiguration" not in detail:
+                with_iam.append(name)
+                continue
+            authorizer = detail["authorizerConfiguration"]
+            jwt = (
+                authorizer.get("customJWTAuthorizer")
+                if isinstance(authorizer, dict)
+                and set(authorizer) == {"customJWTAuthorizer"}
+                else None
+            )
+            if (
+                isinstance(jwt, dict)
+                and isinstance(jwt.get("discoveryUrl"), str)
+                and jwt["discoveryUrl"].strip()
+            ):
+                with_jwt.append(name)
             else:
-                without_authorizer.append(name)
+                undetermined.append(f"{name} (unrecognized authorizerConfiguration)")
 
-        if without_authorizer:
-            findings["status"] = "WARN"
+        if with_iam:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-08",
-                    finding_name="AgentCore Runtimes Without Inbound Authorizer",
+                    finding_name="AgentCore Runtimes Using Default IAM Authentication",
                     finding_details=(
-                        f"Runtimes with no authorizerConfiguration: {', '.join(without_authorizer)}. "
-                        "Requests to these runtime endpoints are not gated by an inbound authorizer. "
+                        f"Successfully retrieved runtimes with no authorizerConfiguration: {', '.join(with_iam)}. "
+                        "These use the documented default IAM SigV4 authentication mode. "
                         + manual_review
                     ),
-                    resolution=(
-                        "Configure an inbound authorizer (for example a custom JWT authorizer) on each "
-                        "AgentCore runtime, and separately verify tool-level authorization policies."
-                    ),
+                    resolution="No action required for supported inbound authentication mode configuration.",
                     reference=reference,
                     severity="High",
-                    status="Failed",
+                    status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-08"],
                 )
             )
 
-        if with_authorizer:
+        if with_jwt:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-08",
-                    finding_name="AgentCore Runtimes With Inbound Authorizer Configured",
+                    finding_name="AgentCore Runtimes With JWT Authentication Configured",
                     finding_details=(
-                        f"{len(with_authorizer)} of {len(runtimes)} runtime(s) have an "
-                        f"authorizerConfiguration: {', '.join(with_authorizer)}. "
+                        f"{len(with_jwt)} of {len(runtimes)} runtime(s) have a "
+                        f"custom JWT authorizer selecting OAuth/JWT authentication: {', '.join(with_jwt)}. "
                         + manual_review
                     ),
-                    resolution="No action required for inbound authorizer presence.",
+                    resolution="No action required for supported inbound authentication mode configuration.",
                     reference=reference,
                     severity="High",
                     status="Passed",
@@ -1935,10 +1955,10 @@ def check_agentcore_runtime_inbound_authorizer() -> Dict[str, Any]:
                     check_id="FS-08",
                     finding_name=f"{COULD_NOT_ASSESS_PREFIX}{check_name}",
                     finding_details=(
-                        "Could not read authorizerConfiguration for: "
+                        "Could not assess inbound authentication mode for: "
                         f"{', '.join(undetermined)}."
                     ),
-                    resolution="Ensure the assessment role has bedrock-agentcore:GetAgentRuntime permission.",
+                    resolution="Resolve the reported read or configuration error and rerun. For AccessDenied, grant bedrock-agentcore:GetAgentRuntime on the affected runtime.",
                     reference=reference,
                     severity="Low",
                     status="N/A",
@@ -7190,9 +7210,8 @@ def check_kb_datasource_s3_event_notifications(inventory) -> Dict[str, Any]:
 
 def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
     """
-    FS-66 — Report whether each AgentCore runtime has a custom JWT authorizer,
-    the configuration prerequisite for carrying an end-user identity into the
-    runtime.
+    FS-66 — Record each AgentCore runtime authentication mode as context for
+    manual determination of end-user identity propagation.
 
     Evidence collected: ListAgentRuntimes (paginated), then GetAgentRuntime per
     runtime to read ``authorizerConfiguration.customJWTAuthorizer``. As with
@@ -7203,16 +7222,21 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
         services (an application behavior, not a runtime property),
       - that tool services validate a propagated identity,
       - that tokens are not over-shared.
-    Note also that ``authorizerConfiguration`` exposes only
-    ``customJWTAuthorizer``; there is no ``iamAuthorizer`` member, so no
-    IAM-authorizer claim is made.
+    A successful GetAgentRuntime with no authorizerConfiguration uses the
+    documented IAM SigV4 default. JWT configuration and default IAM are both
+    N/A observations: neither proves that end-user identity propagates or that
+    it is absent. Trusted upstream user binding can be application-managed.
 
     COMPLIANCE_PLACEHOLDER: [SR 11-7, NYDFS 500.06, MAS TRM 9.1]
     """
     check_name = "AgentCore End-User Identity Propagation Check"
     manual_review = (
-        "A JWT authorizer is a prerequisite, not proof of propagation; verify "
-        "downstream token forwarding and validation manually."
+        "Manual review required: neither authentication mode proves propagation "
+        "or its absence. For user-delegated workloads, verify end-user identity "
+        "is bound to an authenticated principal (validated JWT claims or a "
+        "trusted upstream identity), downstream tools enforce that user's "
+        "authorization, and identity tokens are not over-shared. Service-to-service "
+        "workloads may use IAM SigV4 without an end-user identity."
     )
     findings = _empty_findings(check_name)
     try:
@@ -7227,7 +7251,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                         finding_name="AgentCore Identity Propagation — Access Check",
                         finding_details="Unable to enumerate AgentCore runtimes (access denied or service unavailable in region).",
                         resolution="Ensure assessment role has bedrock-agentcore:ListAgentRuntimes permission.",
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
+                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/get-workload-access-token.html",
                         severity="Low",
                         status="N/A",
                         compliance_frameworks=COMPLIANCE_MAP["FS-66"],
@@ -7243,10 +7267,10 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                     finding_name="No AgentCore Runtimes Found",
                     finding_details="No AgentCore runtimes found; identity propagation check not applicable.",
                     resolution=(
-                        "If using AgentCore, configure token propagation so end-user identities "
-                        "are forwarded to tool services."
+                        "If using AgentCore for user-delegated access, verify trusted end-user "
+                        "identity binding and downstream tool authorization."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/get-workload-access-token.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-66"],
@@ -7256,7 +7280,7 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
 
         # authorizerConfiguration comes from GetAgentRuntime only.
         with_jwt: List[str] = []
-        without_jwt: List[str] = []
+        with_iam: List[str] = []
         undetermined: List[str] = []
 
         for runtime in runtimes:
@@ -7273,34 +7297,43 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
             except Exception as e:  # noqa: BLE001 - per-runtime isolation
                 undetermined.append(f"{name} ({type(e).__name__})")
                 continue
-            authorizer = detail.get("authorizerConfiguration") or {}
-            if authorizer.get("customJWTAuthorizer"):
+            if not isinstance(detail, dict):
+                undetermined.append(f"{name} (unrecognized GetAgentRuntime response)")
+                continue
+            if "authorizerConfiguration" not in detail:
+                with_iam.append(name)
+                continue
+            authorizer = detail["authorizerConfiguration"]
+            jwt = (
+                authorizer.get("customJWTAuthorizer")
+                if isinstance(authorizer, dict)
+                and set(authorizer) == {"customJWTAuthorizer"}
+                else None
+            )
+            if (
+                isinstance(jwt, dict)
+                and isinstance(jwt.get("discoveryUrl"), str)
+                and jwt["discoveryUrl"].strip()
+            ):
                 with_jwt.append(name)
             else:
-                without_jwt.append(name)
+                undetermined.append(f"{name} (unrecognized authorizerConfiguration)")
 
-        if without_jwt:
-            findings["status"] = "WARN"
+        if with_iam:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-66",
-                    finding_name="AgentCore Runtimes Without JWT Authorizer",
+                    finding_name="AgentCore IAM Runtime Identity Propagation — Manual Review Required",
                     finding_details=(
-                        "The following runtimes have no customJWTAuthorizer, so no end-user "
-                        "identity can reach the runtime and tool calls are authorized only by "
-                        "the agent execution role:\n"
-                        + "\n".join(f"- {r}" for r in without_jwt[:10])
+                        "Successfully retrieved runtimes use the documented default IAM SigV4 "
+                        "authentication mode; end-user identity propagation is not determined:\n"
+                        + "\n".join(f"- {r}" for r in with_iam[:10])
                         + f"\n{manual_review}"
                     ),
-                    resolution=(
-                        "1. Configure a custom JWT authorizer on each AgentCore runtime.\n"
-                        "2. Propagate the end-user's identity token to downstream tool services.\n"
-                        "3. Ensure tool services validate the propagated identity before executing actions.\n"
-                        "4. Do not expose propagated identity tokens to unauthorized third parties."
-                    ),
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
-                    severity="High",
-                    status="Failed",
+                    resolution=manual_review,
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/get-workload-access-token.html",
+                    severity="Informational",
+                    status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-66"],
                 )
             )
@@ -7309,15 +7342,15 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-66",
-                    finding_name="AgentCore Runtimes With JWT Authorizer Configured",
+                    finding_name="AgentCore JWT Runtime Identity Propagation — Manual Review Required",
                     finding_details=(
                         f"{len(with_jwt)} of {len(runtimes)} runtime(s) have a "
                         f"customJWTAuthorizer: {', '.join(with_jwt)}. " + manual_review
                     ),
-                    resolution="No action required for JWT authorizer presence.",
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
-                    severity="High",
-                    status="Passed",
+                    resolution=manual_review,
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/get-workload-access-token.html",
+                    severity="Informational",
+                    status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-66"],
                 )
             )
@@ -7328,11 +7361,11 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
                     check_id="FS-66",
                     finding_name=f"{COULD_NOT_ASSESS_PREFIX}{check_name}",
                     finding_details=(
-                        "Could not read authorizerConfiguration for: "
+                        "Could not assess inbound authentication mode for: "
                         f"{', '.join(undetermined)}."
                     ),
-                    resolution="Ensure the assessment role has bedrock-agentcore:GetAgentRuntime permission.",
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html",
+                    resolution="Resolve the reported read or configuration error and rerun. For AccessDenied, grant bedrock-agentcore:GetAgentRuntime on the affected runtime.",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/get-workload-access-token.html",
                     severity="Low",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-66"],

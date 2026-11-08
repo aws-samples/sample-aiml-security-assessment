@@ -1,0 +1,1536 @@
+{
+  "artifact_issues": [
+    {
+      "account": "111122223333",
+      "artifact": "agentcore_security_report_synthetic-one_us-west-2.csv",
+      "kind": "missing",
+      "message": "Restore and rerun selected assessment artifact agentcore_security_report_synthetic-one_us-west-2.csv.",
+      "owner": "agentcore",
+      "region": "us-west-2"
+    }
+  ],
+  "catalog_sha256": "f2d44380f1859c204d13caf093b6e73a0aa2bea55e6f9cd6862971db12e362be",
+  "checks": [
+    {
+      "account": "111122223333",
+      "action_required": "Remove automatic approval rules and verify independent publication review.",
+      "aisf_control_ids": [
+        "AIR-ACR-REG-02"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-ACR-REG-02",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks registry readiness and absence of automatic approval rules."
+          ],
+          "limitations": "Disabling auto-approval does not show that curator review happens or that approved entries are the only discoverable ones.",
+          "question": "Do registry entries require curator approval before they become discoverable, and is the approval action restricted to curators with its events monitored?"
+        }
+      ],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Registry Publication Approval Governance",
+      "finding_details": "Synthetic READY registry uses APPROVE_ALL auto-approval.",
+      "limitations": [
+        "Disabling auto-approval does not show that curator review happens or that approved entries are the only discoverable ones."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "AR-03",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Registry Publication Approval Governance",
+        "Finding_Details": "Synthetic READY registry uses APPROVE_ALL auto-approval.",
+        "Reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/",
+        "Region": "us-east-1",
+        "Resolution": "Remove automatic approval rules and verify independent publication review.",
+        "Resource_ID": "synthetic-registry",
+        "Severity": "Medium",
+        "Status": "Failed",
+        "_artifact": "agent_registry_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "agent-registry",
+        "_service": "agent-registry",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "unavailable": false
+      },
+      "predicate": "Checks registry readiness and absence of automatic approval rules.",
+      "reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/",
+      "region": "us-east-1",
+      "resource": "synthetic-registry",
+      "result_id": "518d181a2603b755bed303e934825892ddff724196b2db9c09d6ed71e69be668",
+      "result_kind": "source-result",
+      "severity": "Medium",
+      "source_check_id": "AR-03",
+      "source_owner": "agent-registry",
+      "status": "Failed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Confirm registry applicability and provide scoped publication review evidence.",
+      "aisf_control_ids": [
+        "AIR-ACR-REG-02"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-ACR-REG-02",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks registry readiness and absence of automatic approval rules."
+          ],
+          "limitations": "Disabling auto-approval does not show that curator review happens or that approved entries are the only discoverable ones.",
+          "question": "Do registry entries require curator approval before they become discoverable, and is the approval action restricted to curators with its events monitored?"
+        }
+      ],
+      "evidence_kind": "inconclusive",
+      "execution_id": "synthetic-one",
+      "finding": "Registry Publication Approval Governance",
+      "finding_details": "Complete synthetic discovery found no registries.",
+      "limitations": [
+        "Disabling auto-approval does not show that curator review happens or that approved entries are the only discoverable ones."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "AR-03",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Registry Publication Approval Governance",
+        "Finding_Details": "Complete synthetic discovery found no registries.",
+        "Reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/",
+        "Region": "us-west-2",
+        "Resolution": "Confirm registry applicability and provide scoped publication review evidence.",
+        "Resource_ID": "",
+        "Severity": "Informational",
+        "Status": "N/A",
+        "_artifact": "agent_registry_security_report_synthetic-one_us-west-2.csv",
+        "_artifact_region": "us-west-2",
+        "_owner": "agent-registry",
+        "_service": "agent-registry",
+        "evidence_kind": "inconclusive",
+        "observed_failure": false,
+        "unavailable": false
+      },
+      "predicate": "Checks registry readiness and absence of automatic approval rules.",
+      "reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/",
+      "region": "us-west-2",
+      "resource": "",
+      "result_id": "ab24b9080765762d5f40593422eb9186d540109e142dd67a313f0024d22427e5",
+      "result_kind": "source-result",
+      "severity": "Informational",
+      "source_check_id": "AR-03",
+      "source_owner": "agent-registry",
+      "status": "N/A",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Configure log data protection and verify application redaction before export.",
+      "aisf_control_ids": [
+        "AIR-ACR-EVAL-07",
+        "AIR-ACR-GW-10",
+        "AIR-ACR-OBS-04"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-ACR-EVAL-07",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks account/log-group activated data-protection masking identifiers and customer-managed enabled encryption keys."
+          ],
+          "limitations": "Masking after ingestion is not SDK/ADOT redaction before export; synthetic sensitive-marker tests are absent.",
+          "question": "Are evaluation results treated as sensitive data — encrypted with organization-controlled keys, retained to a compliance schedule, and free of PII in tags or free-form fields?"
+        },
+        {
+          "control_id": "AIR-ACR-GW-10",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks account/log-group activated data-protection masking identifiers and customer-managed enabled encryption keys."
+          ],
+          "limitations": "Masking after ingestion is not SDK/ADOT redaction before export; synthetic sensitive-marker tests are absent.",
+          "question": "Is every call made through the gateway logged with enough detail (caller, target, parameters, result) to support a security investigation, with the encryption of that data under organization control?"
+        },
+        {
+          "control_id": "AIR-ACR-OBS-04",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks account/log-group activated data-protection masking identifiers and customer-managed enabled encryption keys."
+          ],
+          "limitations": "Masking after ingestion is not SDK/ADOT redaction before export; synthetic sensitive-marker tests are absent.",
+          "question": "Is sensitive agent data redacted before telemetry export, with ingestion masking, encryption, and access restrictions on the resulting logs and traces?"
+        }
+      ],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Log protection",
+      "finding_details": "Synthetic log group lacks a data protection policy; export behavior is untested.",
+      "limitations": [
+        "Masking after ingestion is not SDK/ADOT redaction before export; synthetic sensitive-marker tests are absent."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "AC-20",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Log protection",
+        "Finding_Details": "Synthetic log group lacks a data protection policy; export behavior is untested.",
+        "Reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability.html",
+        "Region": "us-east-1",
+        "Resolution": "Configure log data protection and verify application redaction before export.",
+        "Resource_ID": "synthetic-unprotected-log-group",
+        "Severity": "Medium",
+        "Status": "Failed",
+        "_artifact": "agentcore_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "agentcore",
+        "_service": "agentcore",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "unavailable": false
+      },
+      "predicate": "Checks account/log-group activated data-protection masking identifiers and customer-managed enabled encryption keys.",
+      "reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability.html",
+      "region": "us-east-1",
+      "resource": "synthetic-unprotected-log-group",
+      "result_id": "6bb9999a2f42e76a73fc28423d6bad9729643a08955230221f87e9596a567757",
+      "result_kind": "source-result",
+      "severity": "Medium",
+      "source_check_id": "AC-20",
+      "source_owner": "agentcore",
+      "status": "Failed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "",
+      "aisf_control_ids": [
+        "AIR-ACR-EVAL-07",
+        "AIR-ACR-GW-10",
+        "AIR-ACR-OBS-04"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-ACR-EVAL-07",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks account/log-group activated data-protection masking identifiers and customer-managed enabled encryption keys."
+          ],
+          "limitations": "Masking after ingestion is not SDK/ADOT redaction before export; synthetic sensitive-marker tests are absent.",
+          "question": "Are evaluation results treated as sensitive data — encrypted with organization-controlled keys, retained to a compliance schedule, and free of PII in tags or free-form fields?"
+        },
+        {
+          "control_id": "AIR-ACR-GW-10",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks account/log-group activated data-protection masking identifiers and customer-managed enabled encryption keys."
+          ],
+          "limitations": "Masking after ingestion is not SDK/ADOT redaction before export; synthetic sensitive-marker tests are absent.",
+          "question": "Is every call made through the gateway logged with enough detail (caller, target, parameters, result) to support a security investigation, with the encryption of that data under organization control?"
+        },
+        {
+          "control_id": "AIR-ACR-OBS-04",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks account/log-group activated data-protection masking identifiers and customer-managed enabled encryption keys."
+          ],
+          "limitations": "Masking after ingestion is not SDK/ADOT redaction before export; synthetic sensitive-marker tests are absent.",
+          "question": "Is sensitive agent data redacted before telemetry export, with ingestion masking, encryption, and access restrictions on the resulting logs and traces?"
+        }
+      ],
+      "evidence_kind": "passed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Log protection",
+      "finding_details": "Synthetic log group masking and encryption observed; export redaction is untested.",
+      "limitations": [
+        "Masking after ingestion is not SDK/ADOT redaction before export; synthetic sensitive-marker tests are absent."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "AC-20",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Log protection",
+        "Finding_Details": "Synthetic log group masking and encryption observed; export redaction is untested.",
+        "Reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability.html",
+        "Region": "us-east-1",
+        "Resolution": "",
+        "Resource_ID": "synthetic-log-group",
+        "Severity": "Medium",
+        "Status": "Passed",
+        "_artifact": "agentcore_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "agentcore",
+        "_service": "agentcore",
+        "evidence_kind": "passed predicate",
+        "observed_failure": false,
+        "unavailable": false
+      },
+      "predicate": "Checks account/log-group activated data-protection masking identifiers and customer-managed enabled encryption keys.",
+      "reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability.html",
+      "region": "us-east-1",
+      "resource": "synthetic-log-group",
+      "result_id": "688b4ff6bfa59ed1b5aa72425057e80177fcaab5c5496ddc06c5ba40dc66fa89",
+      "result_kind": "source-result",
+      "severity": "Medium",
+      "source_check_id": "AC-20",
+      "source_owner": "agentcore",
+      "status": "Passed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Restore read access; test pre-export redaction with synthetic markers.",
+      "aisf_control_ids": [
+        "AIR-ACR-OBS-04"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-ACR-OBS-04",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Reviews IAM logs:Unmask grants for resource and principal scope."
+          ],
+          "limitations": "Scoped Unmask access does not redact application telemetry or verify exported traces and logs.",
+          "question": "Is sensitive agent data redacted before telemetry export, with ingestion masking, encryption, and access restrictions on the resulting logs and traces?"
+        }
+      ],
+      "evidence_kind": "unavailable",
+      "execution_id": "synthetic-one",
+      "finding": "Unmask permission",
+      "finding_details": "AccessDenied reading synthetic unmask permissions.",
+      "limitations": [
+        "Scoped Unmask access does not redact application telemetry or verify exported traces and logs."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "AC-21",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Unmask permission",
+        "Finding_Details": "AccessDenied reading synthetic unmask permissions.",
+        "Reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability.html",
+        "Region": "us-east-1",
+        "Resolution": "Restore read access; test pre-export redaction with synthetic markers.",
+        "Resource_ID": "synthetic-log-group",
+        "Severity": "Medium",
+        "Status": "N/A",
+        "_artifact": "agentcore_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "agentcore",
+        "_service": "agentcore",
+        "evidence_kind": "unavailable",
+        "observed_failure": false,
+        "unavailable": true
+      },
+      "predicate": "Reviews IAM logs:Unmask grants for resource and principal scope.",
+      "reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability.html",
+      "region": "us-east-1",
+      "resource": "synthetic-log-group",
+      "result_id": "05bfa9a9abeb7423817c250174a2ed3e9595b5c6fe9efde5b3d929e09507b856",
+      "result_kind": "unavailable",
+      "severity": "Medium",
+      "source_check_id": "AC-21",
+      "source_owner": "agentcore",
+      "status": "N/A",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Review scoped gateway policies and enable enforcement.",
+      "aisf_control_ids": [
+        "AIR-ACR-POL-01",
+        "AIR-ACR-POL-07",
+        "AIR-FND-NET-06"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-ACR-POL-01",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks attached enforcing policy engine with nonempty non-allow-all Cedar policies or a delegating request interceptor."
+          ],
+          "limitations": "Presence of policies or an interceptor does not prove deterministic default-deny semantics, enforcement decisions or interceptor behavior.",
+          "question": "Are agent-to-tool authorization decisions made by a deterministic, default-deny policy engine outside the agent's own reasoning, rather than trusting the model to only request permitted actions?"
+        },
+        {
+          "control_id": "AIR-ACR-POL-07",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks attached enforcing policy engine with nonempty non-allow-all Cedar policies or a delegating request interceptor."
+          ],
+          "limitations": "Presence of policies or an interceptor does not prove deterministic default-deny semantics, enforcement decisions or interceptor behavior.",
+          "question": "For risks that are only visible across a sequence of actions — an unverified payee, a skipped prerequisite, a reused approval, a cumulative overspend — are those rules enforced as session-aware policy at the gateway, rather than as state tracking inside the agent or tool code?"
+        },
+        {
+          "control_id": "AIR-FND-NET-06",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks attached enforcing policy engine with nonempty non-allow-all Cedar policies or a delegating request interceptor."
+          ],
+          "limitations": "Presence of policies or an interceptor does not prove deterministic default-deny semantics, enforcement decisions or interceptor behavior.",
+          "question": "Can an autonomous agent's ability to reach arbitrary network destinations or invoke arbitrary tools be constrained to an explicit allow-list, rather than open-ended reachability?"
+        }
+      ],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Agentic AI Gateway Tool Policy Not Enforced",
+      "finding_details": "Synthetic gateway policy engine uses LOG_ONLY mode.",
+      "limitations": [
+        "Presence of policies or an interceptor does not prove deterministic default-deny semantics, enforcement decisions or interceptor behavior."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "AG-25",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Agentic AI Gateway Tool Policy Not Enforced",
+        "Finding_Details": "Synthetic gateway policy engine uses LOG_ONLY mode.",
+        "Reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/",
+        "Region": "us-east-1",
+        "Resolution": "Review scoped gateway policies and enable enforcement.",
+        "Resource_ID": "synthetic-gateway",
+        "Severity": "High",
+        "Status": "Failed",
+        "_artifact": "agentcore_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "agentcore",
+        "_service": "agentic",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "unavailable": false
+      },
+      "predicate": "Checks attached enforcing policy engine with nonempty non-allow-all Cedar policies or a delegating request interceptor.",
+      "reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/",
+      "region": "us-east-1",
+      "resource": "synthetic-gateway",
+      "result_id": "edfdc53713cc0f573870996aa069f4d045c43c97bdf05a917f728672bfcc84f6",
+      "result_kind": "source-result",
+      "severity": "High",
+      "source_check_id": "AG-25",
+      "source_owner": "agentcore",
+      "status": "Failed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Disable detailed debug responses for production callers.",
+      "aisf_control_ids": [],
+      "aisf_links": [],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Agentic AI Gateway Error Detail Exposure",
+      "finding_details": "Synthetic gateway returns DEBUG exception details.",
+      "limitations": [
+        "Gateway error-detail exposure is distinct from AIR-ACR-OBS-04 pre-export telemetry redaction and synthetic-marker verification; neither required predicate is inspected."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "AG-26",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Agentic AI Gateway Error Detail Exposure",
+        "Finding_Details": "Synthetic gateway returns DEBUG exception details.",
+        "Reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/",
+        "Region": "us-east-1",
+        "Resolution": "Disable detailed debug responses for production callers.",
+        "Resource_ID": "synthetic-gateway",
+        "Severity": "Medium",
+        "Status": "Failed",
+        "_artifact": "agentcore_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "agentcore",
+        "_service": "agentic",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "unavailable": false
+      },
+      "predicate": "Checks AgentCore gateway exceptionLevel for DEBUG detail.",
+      "reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/",
+      "region": "us-east-1",
+      "resource": "synthetic-gateway",
+      "result_id": "d6448c21fd6f0843fd58b2f016cc322df27a26b7f11b10592d4cd0e88116b90d",
+      "result_kind": "source-result",
+      "severity": "Medium",
+      "source_check_id": "AG-26",
+      "source_owner": "agentcore",
+      "status": "Failed",
+      "unmapped_reason": "Gateway error-detail exposure is distinct from AIR-ACR-OBS-04 pre-export telemetry redaction and synthetic-marker verification; neither required predicate is inspected."
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Confirm applicability and provide process evidence for this scope.",
+      "aisf_control_ids": [
+        "AIR-BDR-KB-03",
+        "AIR-FND-DAT-01"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-BDR-KB-03",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks knowledge-base source, index and supported vector-store customer-managed encryption configurations."
+          ],
+          "limitations": "Encryption is not equivalent access restriction; unsupported/external stores and source/index policy parity remain unproven.",
+          "question": "Is the underlying vector store / index for a knowledge base encrypted and access-restricted the same way as the source data it was built from?"
+        },
+        {
+          "control_id": "AIR-FND-DAT-01",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks knowledge-base source, index and supported vector-store customer-managed encryption configurations."
+          ],
+          "limitations": "Encryption is not equivalent access restriction; unsupported/external stores and source/index policy parity remain unproven.",
+          "question": "Is data used to train, fine-tune, or ground AI models encrypted at rest with keys the organization controls?"
+        }
+      ],
+      "evidence_kind": "no resource observation",
+      "execution_id": "synthetic-one",
+      "finding": "Knowledge base discovery",
+      "finding_details": "Complete synthetic discovery found no resources.",
+      "limitations": [
+        "Encryption is not equivalent access restriction; unsupported/external stores and source/index policy parity remain unproven."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "BR-20",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Knowledge base discovery",
+        "Finding_Details": "Complete synthetic discovery found no resources.",
+        "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html",
+        "Region": "us-west-2",
+        "Resolution": "Confirm applicability and provide process evidence for this scope.",
+        "Resource_ID": "",
+        "Severity": "Info",
+        "Status": "N/A",
+        "_artifact": "bedrock_security_report_synthetic-one_us-west-2.csv",
+        "_artifact_region": "us-west-2",
+        "_owner": "bedrock",
+        "_service": "bedrock",
+        "evidence_kind": "no resource observation",
+        "observed_failure": false,
+        "unavailable": false
+      },
+      "predicate": "Checks knowledge-base source, index and supported vector-store customer-managed encryption configurations.",
+      "reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html",
+      "region": "us-west-2",
+      "resource": "",
+      "result_id": "525feb8b2ad57dbba8516b1b4a2feaca2177d6b9991f6b7049a770fd78145412",
+      "result_kind": "source-result",
+      "severity": "Info",
+      "source_check_id": "BR-20",
+      "source_owner": "bedrock",
+      "status": "N/A",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "",
+      "aisf_control_ids": [
+        "AIR-BDR-KB-03",
+        "AIR-FND-DAT-01"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-BDR-KB-03",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks knowledge-base source, index and supported vector-store customer-managed encryption configurations."
+          ],
+          "limitations": "Encryption is not equivalent access restriction; unsupported/external stores and source/index policy parity remain unproven.",
+          "question": "Is the underlying vector store / index for a knowledge base encrypted and access-restricted the same way as the source data it was built from?"
+        },
+        {
+          "control_id": "AIR-FND-DAT-01",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks knowledge-base source, index and supported vector-store customer-managed encryption configurations."
+          ],
+          "limitations": "Encryption is not equivalent access restriction; unsupported/external stores and source/index policy parity remain unproven.",
+          "question": "Is data used to train, fine-tune, or ground AI models encrypted at rest with keys the organization controls?"
+        }
+      ],
+      "evidence_kind": "passed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Knowledge base encryption",
+      "finding_details": "Synthetic vector store encryption observed; policy parity is unproven.",
+      "limitations": [
+        "Encryption is not equivalent access restriction; unsupported/external stores and source/index policy parity remain unproven."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "BR-20",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Knowledge base encryption",
+        "Finding_Details": "Synthetic vector store encryption observed; policy parity is unproven.",
+        "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html",
+        "Region": "us-east-1",
+        "Resolution": "",
+        "Resource_ID": "synthetic-kb-east",
+        "Severity": "High",
+        "Status": "Passed",
+        "_artifact": "bedrock_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "bedrock",
+        "_service": "bedrock",
+        "evidence_kind": "passed predicate",
+        "observed_failure": false,
+        "unavailable": false
+      },
+      "predicate": "Checks knowledge-base source, index and supported vector-store customer-managed encryption configurations.",
+      "reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html",
+      "region": "us-east-1",
+      "resource": "synthetic-kb-east",
+      "result_id": "9817fef02d03d0ef6d28ef830e5415b6369cb005d44f26b93cb7bb28f93311d7",
+      "result_kind": "source-result",
+      "severity": "High",
+      "source_check_id": "BR-20",
+      "source_owner": "bedrock",
+      "status": "Passed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Restrict the synthetic vector store policy and verify source policy parity.",
+      "aisf_control_ids": [
+        "AIR-BDR-GRD-07",
+        "AIR-FND-IAM-01",
+        "AIR-FND-IAM-09"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-BDR-GRD-07",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Reviews action-group Lambda execution-role full-access policies and wildcard grants."
+          ],
+          "limitations": "Lambda execution-role bounds are an action authorization component, not proof that each caller/tool request receives independent authorization.",
+          "question": "For agentic use cases, is there a guardrail or policy check applied to the agent's intended action, independent of the content-safety check on its language output?"
+        },
+        {
+          "control_id": "AIR-FND-IAM-01",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Reviews action-group Lambda execution-role full-access policies and wildcard grants."
+          ],
+          "limitations": "Lambda execution-role bounds are an action authorization component, not proof that each caller/tool request receives independent authorization.",
+          "question": "Is access to AI models, training data, and inference endpoints restricted to specific, named identities rather than broad wildcard grants?"
+        },
+        {
+          "control_id": "AIR-FND-IAM-09",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Reviews action-group Lambda execution-role full-access policies and wildcard grants."
+          ],
+          "limitations": "Lambda execution-role bounds are an action authorization component, not proof that each caller/tool request receives independent authorization.",
+          "question": "Does the authorization model distinguish action-level permissions on the same resource type — for example, an identity that can read records but not delete them — rather than granting all-or-nothing access to a resource?"
+        }
+      ],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Knowledge base access",
+      "finding_details": "Synthetic vector store access policy includes an overly broad principal.",
+      "limitations": [
+        "Lambda execution-role bounds are an action authorization component, not proof that each caller/tool request receives independent authorization."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "BR-21",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Knowledge base access",
+        "Finding_Details": "Synthetic vector store access policy includes an overly broad principal.",
+        "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html",
+        "Region": "us-east-1",
+        "Resolution": "Restrict the synthetic vector store policy and verify source policy parity.",
+        "Resource_ID": "synthetic-kb-east",
+        "Severity": "High",
+        "Status": "Failed",
+        "_artifact": "bedrock_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "bedrock",
+        "_service": "bedrock",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "unavailable": false
+      },
+      "predicate": "Reviews action-group Lambda execution-role full-access policies and wildcard grants.",
+      "reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html",
+      "region": "us-east-1",
+      "resource": "synthetic-kb-east",
+      "result_id": "978734df34343a6a89cd6167d36578f07b1e7bbe50e9ad63953d0642e6e39ae6",
+      "result_kind": "source-result",
+      "severity": "High",
+      "source_check_id": "BR-21",
+      "source_owner": "bedrock",
+      "status": "Failed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "",
+      "aisf_control_ids": [
+        "AIR-FND-IAM-02"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-FND-IAM-02",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks AI-write human identities for IAM/console/role/federated MFA controls and Identity Center settings."
+          ],
+          "limitations": "Invoke-only humans can fall outside the AI-write population; external IdP/session behavior, registration blocking and actual sign-in tests remain unobserved.",
+          "question": "Is multi-factor authentication enforced for every human identity with direct AI model-invocation or AI-administration access?"
+        }
+      ],
+      "evidence_kind": "passed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Organizational governance",
+      "finding_details": "Synthetic account-level policy observation; process proof is still required.",
+      "limitations": [
+        "Invoke-only humans can fall outside the AI-write population; external IdP/session behavior, registration blocking and actual sign-in tests remain unobserved."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "BR-51",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Organizational governance",
+        "Finding_Details": "Synthetic account-level policy observation; process proof is still required.",
+        "Reference": "https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies.html",
+        "Region": "Global",
+        "Resolution": "",
+        "Resource_ID": "synthetic-policy",
+        "Severity": "Medium",
+        "Status": "Passed",
+        "_artifact": "bedrock_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "bedrock",
+        "_service": "bedrock",
+        "evidence_kind": "passed predicate",
+        "observed_failure": false,
+        "unavailable": false
+      },
+      "predicate": "Checks AI-write human identities for IAM/console/role/federated MFA controls and Identity Center settings.",
+      "reference": "https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies.html",
+      "region": "Global",
+      "resource": "synthetic-policy",
+      "result_id": "538edee56b8ab1542b72c07b097c3be826c970ab1238dd78d649acbdeedcca40",
+      "result_kind": "source-result",
+      "severity": "Medium",
+      "source_check_id": "BR-51",
+      "source_owner": "bedrock",
+      "status": "Passed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Review the prompt location and use controlled versioned prompt management where applicable.",
+      "aisf_control_ids": [
+        "AIR-BDR-MDL-08"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-BDR-MDL-08",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Scans Lambda environment-variable names/values using the system-prompt heuristic."
+          ],
+          "limitations": "Environment text is a candidate unmanaged-prompt signal only: actual Bedrock invocation, production use, central access controls, prompt versions and change history are unproved.",
+          "question": "Are the production prompts that drive model behavior managed as controlled, versioned artifacts in a central catalog, rather than hardcoded ad hoc in application code?"
+        }
+      ],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "System Prompt Embedded in Lambda Environment",
+      "finding_details": "Synthetic Lambda environment contains a system-prompt-like value; production usage is unproven.",
+      "limitations": [
+        "Environment text is a candidate unmanaged-prompt signal only: actual Bedrock invocation, production use, central access controls, prompt versions and change history are unproved."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "OW-11",
+        "Execution_ID": "synthetic-one",
+        "Finding": "System Prompt Embedded in Lambda Environment",
+        "Finding_Details": "Synthetic Lambda environment contains a system-prompt-like value; production usage is unproven.",
+        "Reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+        "Region": "us-east-1",
+        "Resolution": "Review the prompt location and use controlled versioned prompt management where applicable.",
+        "Resource_ID": "synthetic-prompt-function",
+        "Severity": "High",
+        "Status": "Failed",
+        "_artifact": "owasp_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "owasp",
+        "_service": "owasp",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "unavailable": false
+      },
+      "predicate": "Scans Lambda environment-variable names/values using the system-prompt heuristic.",
+      "reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+      "region": "us-east-1",
+      "resource": "synthetic-prompt-function",
+      "result_id": "8d7b4a739162bf9cf5690a0ee66001de3d33df0f578100c0b382d91d6a33f76f",
+      "result_kind": "source-result",
+      "severity": "High",
+      "source_check_id": "OW-11",
+      "source_owner": "owasp",
+      "status": "Failed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Review disclosure defenses and test the scoped application against prompt extraction.",
+      "aisf_control_ids": [
+        "AIR-BDR-GRD-02"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-BDR-GRD-02",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Contextual system-prompt-disclosure topic defense only; no dedicated PROMPT_ATTACK predicate is covered."
+          ],
+          "limitations": "This is contextual disclosure defense only. It does not satisfy the canonical dedicated PROMPT_ATTACK input detection predicate, preventive action or production invocation binding.",
+          "question": "Are attempts to bypass safety controls through prompt injection or jailbreak techniques specifically detected, not just generic harmful-content filtering?"
+        }
+      ],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "System Prompt Disclosure Topic Protection",
+      "finding_details": "Synthetic guardrail has no DENY topic matching prompt disclosure; dedicated prompt attack detection is a separate check.",
+      "limitations": [
+        "This is contextual disclosure defense only. It does not satisfy the canonical dedicated PROMPT_ATTACK input detection predicate, preventive action or production invocation binding."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "OW-12",
+        "Execution_ID": "synthetic-one",
+        "Finding": "System Prompt Disclosure Topic Protection",
+        "Finding_Details": "Synthetic guardrail has no DENY topic matching prompt disclosure; dedicated prompt attack detection is a separate check.",
+        "Reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+        "Region": "us-east-1",
+        "Resolution": "Review disclosure defenses and test the scoped application against prompt extraction.",
+        "Resource_ID": "synthetic-guardrail",
+        "Severity": "Medium",
+        "Status": "Failed",
+        "_artifact": "owasp_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "owasp",
+        "_service": "owasp",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "unavailable": false
+      },
+      "predicate": "Checks available Bedrock guardrail DENY topics for system-prompt-disclosure keywords.",
+      "reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+      "region": "us-east-1",
+      "resource": "synthetic-guardrail",
+      "result_id": "cd4defcce34a56b5bdf8fd51556c6f25ab975fca4b10f129ff7685ec05257c28",
+      "result_kind": "source-result",
+      "severity": "Medium",
+      "source_check_id": "OW-12",
+      "source_owner": "owasp",
+      "status": "Failed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Configure relevant PII filters and test input and output handling.",
+      "aisf_control_ids": [
+        "AIR-BDR-GRD-03"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-BDR-GRD-03",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks guardrail sensitiveInformationPolicy PII entity configuration."
+          ],
+          "limitations": "PII entities alone do not prove output actions, deployed version, all sensitive categories or real production egress enforcement.",
+          "question": "Is leakage of sensitive data types (PII, secrets, credentials) through model output specifically checked for and blocked or redacted?"
+        }
+      ],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Guardrail Sensitive Information Policy",
+      "finding_details": "Synthetic guardrail has no PII entity policy.",
+      "limitations": [
+        "PII entities alone do not prove output actions, deployed version, all sensitive categories or real production egress enforcement."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "FS-45",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Guardrail Sensitive Information Policy",
+        "Finding_Details": "Synthetic guardrail has no PII entity policy.",
+        "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+        "Region": "us-east-1",
+        "Resolution": "Configure relevant PII filters and test input and output handling.",
+        "Resource_ID": "synthetic-guardrail",
+        "Severity": "High",
+        "Status": "Failed",
+        "_artifact": "responsible_ai_grc_security_report_synthetic-one.csv",
+        "_artifact_region": "",
+        "_owner": "responsible-ai-grc",
+        "_service": "responsible-ai-grc",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "unavailable": false
+      },
+      "predicate": "Checks guardrail sensitiveInformationPolicy PII entity configuration.",
+      "reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+      "region": "us-east-1",
+      "resource": "synthetic-guardrail",
+      "result_id": "486a0b76cf1c7be14f2de62d5c7dd518c979d5ce8717416dccb902584a51133e",
+      "result_kind": "source-result",
+      "severity": "High",
+      "source_check_id": "FS-45",
+      "source_owner": "responsible-ai-grc",
+      "status": "Failed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Set a justified grounding threshold and test grounded and ungrounded answers.",
+      "aisf_control_ids": [
+        "AIR-BDR-GRD-09"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-BDR-GRD-09",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks contextual GROUNDING filter thresholds against 0.7."
+          ],
+          "limitations": "A configured threshold is not measured groundedness, appropriate calibrated thresholds, source provenance or production invocation.",
+          "question": "Is model output validated for factual grounding in its provided source context, so ungrounded or off-topic (hallucinated) responses are detected or blocked rather than returned as authoritative?"
+        }
+      ],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Guardrail Grounding Threshold",
+      "finding_details": "Synthetic guardrail GROUNDING threshold is 0.2.",
+      "limitations": [
+        "A configured threshold is not measured groundedness, appropriate calibrated thresholds, source provenance or production invocation."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "FS-47",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Guardrail Grounding Threshold",
+        "Finding_Details": "Synthetic guardrail GROUNDING threshold is 0.2.",
+        "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+        "Region": "us-east-1",
+        "Resolution": "Set a justified grounding threshold and test grounded and ungrounded answers.",
+        "Resource_ID": "synthetic-guardrail",
+        "Severity": "High",
+        "Status": "Failed",
+        "_artifact": "responsible_ai_grc_security_report_synthetic-one.csv",
+        "_artifact_region": "",
+        "_owner": "responsible-ai-grc",
+        "_service": "responsible-ai-grc",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "unavailable": false
+      },
+      "predicate": "Checks contextual GROUNDING filter thresholds against 0.7.",
+      "reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+      "region": "us-east-1",
+      "resource": "synthetic-guardrail",
+      "result_id": "72bd801a4cecccfb1f348cda6942fb1cb909484eaf1b5458acd6f1a12ae79c48",
+      "result_kind": "source-result",
+      "severity": "High",
+      "source_check_id": "FS-47",
+      "source_owner": "responsible-ai-grc",
+      "status": "Failed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Configure relevance filtering and validate it against representative queries.",
+      "aisf_control_ids": [
+        "AIR-BDR-GRD-09"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-BDR-GRD-09",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks guardrail contextual RELEVANCE filter presence."
+          ],
+          "limitations": "Presence does not prove threshold suitability, source quality, actual retrieved relevance or production enforcement.",
+          "question": "Is model output validated for factual grounding in its provided source context, so ungrounded or off-topic (hallucinated) responses are detected or blocked rather than returned as authoritative?"
+        }
+      ],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Guardrail Relevance Filter",
+      "finding_details": "Synthetic guardrail lacks a RELEVANCE filter.",
+      "limitations": [
+        "Presence does not prove threshold suitability, source quality, actual retrieved relevance or production enforcement."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "FS-50",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Guardrail Relevance Filter",
+        "Finding_Details": "Synthetic guardrail lacks a RELEVANCE filter.",
+        "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+        "Region": "us-east-1",
+        "Resolution": "Configure relevance filtering and validate it against representative queries.",
+        "Resource_ID": "synthetic-guardrail",
+        "Severity": "High",
+        "Status": "Failed",
+        "_artifact": "responsible_ai_grc_security_report_synthetic-one.csv",
+        "_artifact_region": "",
+        "_owner": "responsible-ai-grc",
+        "_service": "responsible-ai-grc",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "unavailable": false
+      },
+      "predicate": "Checks guardrail contextual RELEVANCE filter presence.",
+      "reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+      "region": "us-east-1",
+      "resource": "synthetic-guardrail",
+      "result_id": "4b1d75a83851948e39d472d41ef1b07e49828e572e04b6f126f38610b11a50d8",
+      "result_kind": "source-result",
+      "severity": "High",
+      "source_check_id": "FS-50",
+      "source_owner": "responsible-ai-grc",
+      "status": "Failed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Configure prompt attack detection and test application input tagging.",
+      "aisf_control_ids": [
+        "AIR-BDR-GRD-02"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-BDR-GRD-02",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks guardrail PROMPT_ATTACK filter presence and STANDARD tier."
+          ],
+          "limitations": "The dedicated detector is relevant, but exact strength, preventive input action, deployed version and all application paths remain unproved.",
+          "question": "Are attempts to bypass safety controls through prompt injection or jailbreak techniques specifically detected, not just generic harmful-content filtering?"
+        }
+      ],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Guardrail Prompt Attack Filter",
+      "finding_details": "Synthetic guardrail lacks a PROMPT_ATTACK filter.",
+      "limitations": [
+        "The dedicated detector is relevant, but exact strength, preventive input action, deployed version and all application paths remain unproved."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "FS-51",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Guardrail Prompt Attack Filter",
+        "Finding_Details": "Synthetic guardrail lacks a PROMPT_ATTACK filter.",
+        "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+        "Region": "us-east-1",
+        "Resolution": "Configure prompt attack detection and test application input tagging.",
+        "Resource_ID": "synthetic-guardrail",
+        "Severity": "High",
+        "Status": "Failed",
+        "_artifact": "responsible_ai_grc_security_report_synthetic-one.csv",
+        "_artifact_region": "",
+        "_owner": "responsible-ai-grc",
+        "_service": "responsible-ai-grc",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "source_presentations": [
+          {
+            "Account_ID": "111122223333",
+            "Check_ID": "OW-01",
+            "Execution_ID": "synthetic-one",
+            "Finding": "LLM01: Prompt Injection",
+            "Finding_Details": "Source check FS-51: Synthetic guardrail lacks a PROMPT_ATTACK filter.",
+            "Reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+            "Region": "us-east-1",
+            "Resolution": "Configure prompt attack detection and test application input tagging.",
+            "Resource_ID": "synthetic-guardrail",
+            "Severity": "High",
+            "Status": "Failed",
+            "_artifact": "owasp_security_report_synthetic-one_us-east-1.csv",
+            "_artifact_region": "us-east-1",
+            "_owner": "owasp",
+            "_service": "owasp"
+          }
+        ],
+        "unavailable": false
+      },
+      "predicate": "Checks guardrail PROMPT_ATTACK filter presence and STANDARD tier.",
+      "reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+      "region": "us-east-1",
+      "resource": "synthetic-guardrail",
+      "result_id": "15759e6b57db4a3ac285770b0e00bb8ba67e3589b552897f872d958e11f2238b",
+      "result_kind": "source-result",
+      "severity": "High",
+      "source_check_id": "FS-51",
+      "source_owner": "responsible-ai-grc",
+      "status": "Failed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Provide context-specific output encoding tests for the scoped agent tool path.",
+      "aisf_control_ids": [
+        "AIR-ACR-RT-05"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-ACR-RT-05",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Emits N/A manual instructions for HTML/JSON encoding, parameterized SQL, and output length/format checks."
+          ],
+          "limitations": "Tool-path applicability is unproved. If this output feeds AgentCore tools, manual schema review and negative tests are required; no application behavior is automatically observed.",
+          "question": "Is tool input/output validated against an expected schema before being passed between the model and the tool, to prevent malformed or malicious payloads?"
+        }
+      ],
+      "evidence_kind": "manual evidence required",
+      "execution_id": "synthetic-one",
+      "finding": "ADVISORY: Output Encoding — Manual Review Required",
+      "finding_details": "Synthetic application output encoding has not been tested; tool-path association is unproven.",
+      "limitations": [
+        "Tool-path applicability is unproved. If this output feeds AgentCore tools, manual schema review and negative tests are required; no application behavior is automatically observed."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "FS-57",
+        "Execution_ID": "synthetic-one",
+        "Finding": "ADVISORY: Output Encoding — Manual Review Required",
+        "Finding_Details": "Synthetic application output encoding has not been tested; tool-path association is unproven.",
+        "Reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+        "Region": "us-east-1",
+        "Resolution": "Provide context-specific output encoding tests for the scoped agent tool path.",
+        "Resource_ID": "synthetic-app",
+        "Severity": "Informational",
+        "Status": "N/A",
+        "_artifact": "responsible_ai_grc_security_report_synthetic-one.csv",
+        "_artifact_region": "",
+        "_owner": "responsible-ai-grc",
+        "_service": "responsible-ai-grc",
+        "evidence_kind": "manual evidence required",
+        "observed_failure": false,
+        "unavailable": false
+      },
+      "predicate": "Emits N/A manual instructions for HTML/JSON encoding, parameterized SQL, and output length/format checks.",
+      "reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+      "region": "us-east-1",
+      "resource": "synthetic-app",
+      "result_id": "6c35c2ff9b7c503261011a125f1bbc7caef4757b73fa575f7fbb5648e4510a98",
+      "result_kind": "source-advisory",
+      "severity": "Informational",
+      "source_check_id": "FS-57",
+      "source_owner": "responsible-ai-grc",
+      "status": "N/A",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Provide schema validation and malformed-output rejection tests for the scoped tool path.",
+      "aisf_control_ids": [
+        "AIR-ACR-RT-05"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-ACR-RT-05",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Counts schema/validate/parse/format-named Lambdas and always emits N/A instructions for JSON-schema rejection and failure logging."
+          ],
+          "limitations": "Function names do not prove validation or an AgentCore tool path. Manual input/output schema and fail-closed negative tests are required before this contextual request can establish tool behavior.",
+          "question": "Is tool input/output validated against an expected schema before being passed between the model and the tool, to prevent malformed or malicious payloads?"
+        }
+      ],
+      "evidence_kind": "manual evidence required",
+      "execution_id": "synthetic-one",
+      "finding": "ADVISORY: Output Schema Validation — Manual Review Required",
+      "finding_details": "Synthetic application output schema validation requires manual review; tool-path association is unproven.",
+      "limitations": [
+        "Function names do not prove validation or an AgentCore tool path. Manual input/output schema and fail-closed negative tests are required before this contextual request can establish tool behavior."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "FS-58",
+        "Execution_ID": "synthetic-one",
+        "Finding": "ADVISORY: Output Schema Validation — Manual Review Required",
+        "Finding_Details": "Synthetic application output schema validation requires manual review; tool-path association is unproven.",
+        "Reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+        "Region": "us-east-1",
+        "Resolution": "Provide schema validation and malformed-output rejection tests for the scoped tool path.",
+        "Resource_ID": "synthetic-app",
+        "Severity": "Informational",
+        "Status": "N/A",
+        "_artifact": "responsible_ai_grc_security_report_synthetic-one.csv",
+        "_artifact_region": "",
+        "_owner": "responsible-ai-grc",
+        "_service": "responsible-ai-grc",
+        "evidence_kind": "manual evidence required",
+        "observed_failure": false,
+        "unavailable": false
+      },
+      "predicate": "Counts schema/validate/parse/format-named Lambdas and always emits N/A instructions for JSON-schema rejection and failure logging.",
+      "reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+      "region": "us-east-1",
+      "resource": "synthetic-app",
+      "result_id": "7a342b88da417dc3b61dbf121e2505c48c4787409ba9ea68329917accb3e0cda",
+      "result_kind": "source-advisory",
+      "severity": "Informational",
+      "source_check_id": "FS-58",
+      "source_owner": "responsible-ai-grc",
+      "status": "N/A",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Configure and test the endpoint network isolation path.",
+      "aisf_control_ids": [
+        "AIR-SGM-EP-08"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-SGM-EP-08",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks batch transform volume/output CMKs, model network configuration and associated bucket protections."
+          ],
+          "limitations": "Does not prove every input/output object and alternate batch path meets the full real-time control baseline.",
+          "question": "Are batch (offline) inference jobs that process data in bulk held to the same private-network and encryption standard as real-time inference?"
+        }
+      ],
+      "evidence_kind": "failed predicate",
+      "execution_id": "synthetic-one",
+      "finding": "Endpoint network",
+      "finding_details": "Synthetic endpoint has no configured private network path.",
+      "limitations": [
+        "Does not prove every input/output object and alternate batch path meets the full real-time control baseline."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "SM-18",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Endpoint network",
+        "Finding_Details": "Synthetic endpoint has no configured private network path.",
+        "Reference": "https://docs.aws.amazon.com/sagemaker/latest/dg/host-vpc.html",
+        "Region": "us-east-1",
+        "Resolution": "Configure and test the endpoint network isolation path.",
+        "Resource_ID": "synthetic-endpoint-east",
+        "Severity": "High",
+        "Status": "Failed",
+        "_artifact": "sagemaker_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "sagemaker",
+        "_service": "sagemaker",
+        "evidence_kind": "failed predicate",
+        "observed_failure": true,
+        "unavailable": false
+      },
+      "predicate": "Checks batch transform volume/output CMKs, model network configuration and associated bucket protections.",
+      "reference": "https://docs.aws.amazon.com/sagemaker/latest/dg/host-vpc.html",
+      "region": "us-east-1",
+      "resource": "synthetic-endpoint-east",
+      "result_id": "9578fd2e1bc199b1ecd1abdc3627f1a0a8cb87328bb02d314cc455f02d0cbd35",
+      "result_kind": "source-result",
+      "severity": "High",
+      "source_check_id": "SM-18",
+      "source_owner": "sagemaker",
+      "status": "Failed",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Confirm endpoint applicability for this region.",
+      "aisf_control_ids": [
+        "AIR-SGM-EP-08"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-SGM-EP-08",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks batch transform volume/output CMKs, model network configuration and associated bucket protections."
+          ],
+          "limitations": "Does not prove every input/output object and alternate batch path meets the full real-time control baseline.",
+          "question": "Are batch (offline) inference jobs that process data in bulk held to the same private-network and encryption standard as real-time inference?"
+        }
+      ],
+      "evidence_kind": "no resource observation",
+      "execution_id": "synthetic-one",
+      "finding": "Endpoint discovery",
+      "finding_details": "Complete synthetic discovery found no resources.",
+      "limitations": [
+        "Does not prove every input/output object and alternate batch path meets the full real-time control baseline."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "SM-18",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Endpoint discovery",
+        "Finding_Details": "Complete synthetic discovery found no resources.",
+        "Reference": "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+        "Region": "us-west-2",
+        "Resolution": "Confirm endpoint applicability for this region.",
+        "Resource_ID": "",
+        "Severity": "Info",
+        "Status": "N/A",
+        "_artifact": "sagemaker_security_report_synthetic-one_us-west-2.csv",
+        "_artifact_region": "us-west-2",
+        "_owner": "sagemaker",
+        "_service": "sagemaker",
+        "evidence_kind": "no resource observation",
+        "observed_failure": false,
+        "unavailable": false
+      },
+      "predicate": "Checks batch transform volume/output CMKs, model network configuration and associated bucket protections.",
+      "reference": "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+      "region": "us-west-2",
+      "resource": "",
+      "result_id": "8f76fa932194a6545328e4a2c3bcb511c8025a2bf2834569635818568e3f1c08",
+      "result_kind": "source-result",
+      "severity": "Info",
+      "source_check_id": "SM-18",
+      "source_owner": "sagemaker",
+      "status": "N/A",
+      "unmapped_reason": ""
+    },
+    {
+      "account": "111122223333",
+      "action_required": "Restore read access and repeat endpoint discovery.",
+      "aisf_control_ids": [
+        "AIR-SGM-TRN-02"
+      ],
+      "aisf_links": [
+        {
+          "control_id": "AIR-SGM-TRN-02",
+          "coverage": "partial",
+          "covered_predicates": [
+            "Checks training-job EnableInterContainerTrafficEncryption."
+          ],
+          "limitations": "The source proves only the configured inter-container flag, not encrypted source storage, output artifacts, keys or all transport paths.",
+          "question": "Is training data encrypted at rest and in transit throughout the pipeline, from source storage through to the training job?"
+        }
+      ],
+      "evidence_kind": "unavailable",
+      "execution_id": "synthetic-one",
+      "finding": "Endpoint discovery",
+      "finding_details": "AccessDenied during synthetic endpoint inspection; earlier findings were retained.",
+      "limitations": [
+        "The source proves only the configured inter-container flag, not encrypted source storage, output artifacts, keys or all transport paths."
+      ],
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "SM-21",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Endpoint discovery",
+        "Finding_Details": "AccessDenied during synthetic endpoint inspection; earlier findings were retained.",
+        "Reference": "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+        "Region": "us-east-1",
+        "Resolution": "Restore read access and repeat endpoint discovery.",
+        "Resource_ID": "synthetic-endpoint-east",
+        "Severity": "High",
+        "Status": "Failed",
+        "_artifact": "sagemaker_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "sagemaker",
+        "_service": "sagemaker",
+        "evidence_kind": "unavailable",
+        "observed_failure": true,
+        "unavailable": true
+      },
+      "predicate": "Checks training-job EnableInterContainerTrafficEncryption.",
+      "reference": "https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+      "region": "us-east-1",
+      "resource": "synthetic-endpoint-east",
+      "result_id": "904122bcde36749f1092a06e2f70c2ef57a3b8b01cd8cbc8ad4ab3b5cc5dbc17",
+      "result_kind": "unavailable",
+      "severity": "High",
+      "source_check_id": "SM-21",
+      "source_owner": "sagemaker",
+      "status": "Failed",
+      "unmapped_reason": ""
+    }
+  ],
+  "gaps": [
+    {
+      "account": "111122223333",
+      "execution_id": "synthetic-one",
+      "kind": "unavailable-observation",
+      "message": "The source reports unavailable or incomplete evidence; its original status is retained.",
+      "owner": "agentcore",
+      "region": "us-east-1",
+      "result_id": "05bfa9a9abeb7423817c250174a2ed3e9595b5c6fe9efde5b3d929e09507b856",
+      "source_check_id": "AC-21"
+    },
+    {
+      "account": "111122223333",
+      "execution_id": "synthetic-one",
+      "kind": "unavailable-observation",
+      "message": "The source reports unavailable or incomplete evidence; its original status is retained.",
+      "owner": "sagemaker",
+      "region": "us-east-1",
+      "result_id": "904122bcde36749f1092a06e2f70c2ef57a3b8b01cd8cbc8ad4ab3b5cc5dbc17",
+      "source_check_id": "SM-21"
+    },
+    {
+      "account": "111122223333",
+      "execution_id": "synthetic-one",
+      "kind": "source-absent",
+      "message": "No accepted source observations were delivered for this selected collector and scope. Check its execution and artifacts; absence is not a Passed or N/A result.",
+      "owner": "agentcore",
+      "region": "us-west-2"
+    },
+    {
+      "account": "111122223333",
+      "execution_id": "synthetic-one",
+      "kind": "source-absent",
+      "message": "No accepted source observations were delivered for this selected collector and scope. Check its execution and artifacts; absence is not a Passed or N/A result.",
+      "owner": "owasp",
+      "region": "us-west-2"
+    },
+    {
+      "account": "111122223333",
+      "issue": {
+        "account": "111122223333",
+        "artifact": "agentcore_security_report_synthetic-one_us-west-2.csv",
+        "kind": "missing",
+        "message": "Restore and rerun selected assessment artifact agentcore_security_report_synthetic-one_us-west-2.csv.",
+        "owner": "agentcore",
+        "region": "us-west-2"
+      },
+      "kind": "artifact-issue",
+      "message": "Restore and rerun selected assessment artifact agentcore_security_report_synthetic-one_us-west-2.csv.",
+      "owner": "agentcore",
+      "region": "us-west-2"
+    },
+    {
+      "kind": "rejected-observation",
+      "message": "Lens/category observation has no verified native source marker.",
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "OW-01",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Application review",
+        "Finding_Details": "Synthetic application evidence is missing.",
+        "Reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+        "Region": "us-east-1",
+        "Resolution": "Supply application tests and review evidence.",
+        "Resource_ID": "synthetic-app",
+        "Severity": "Medium",
+        "Status": "N/A",
+        "_artifact": "owasp_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "owasp",
+        "_service": "owasp"
+      }
+    },
+    {
+      "kind": "rejected-observation",
+      "message": "Lens/category observation has no verified native source marker.",
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "OW-01",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Application review",
+        "Finding_Details": "Synthetic application evidence is missing.",
+        "Reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+        "Region": "us-west-2",
+        "Resolution": "Supply application tests and review evidence.",
+        "Resource_ID": "synthetic-app",
+        "Severity": "Medium",
+        "Status": "N/A",
+        "_artifact": "owasp_security_report_synthetic-one_us-west-2.csv",
+        "_artifact_region": "us-west-2",
+        "_owner": "owasp",
+        "_service": "owasp"
+      }
+    }
+  ],
+  "mapping_sha256": "c6cf9d7e20bc7f9234898c620c08b807b1a0e2fa72fb62be312a4f481b37ef8d",
+  "rejected_observations": [
+    {
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "OW-01",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Application review",
+        "Finding_Details": "Synthetic application evidence is missing.",
+        "Reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+        "Region": "us-east-1",
+        "Resolution": "Supply application tests and review evidence.",
+        "Resource_ID": "synthetic-app",
+        "Severity": "Medium",
+        "Status": "N/A",
+        "_artifact": "owasp_security_report_synthetic-one_us-east-1.csv",
+        "_artifact_region": "us-east-1",
+        "_owner": "owasp",
+        "_service": "owasp"
+      },
+      "reason": "Lens/category observation has no verified native source marker."
+    },
+    {
+      "observation": {
+        "Account_ID": "111122223333",
+        "Check_ID": "OW-01",
+        "Execution_ID": "synthetic-one",
+        "Finding": "Application review",
+        "Finding_Details": "Synthetic application evidence is missing.",
+        "Reference": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+        "Region": "us-west-2",
+        "Resolution": "Supply application tests and review evidence.",
+        "Resource_ID": "synthetic-app",
+        "Severity": "Medium",
+        "Status": "N/A",
+        "_artifact": "owasp_security_report_synthetic-one_us-west-2.csv",
+        "_artifact_region": "us-west-2",
+        "_owner": "owasp",
+        "_service": "owasp"
+      },
+      "reason": "Lens/category observation has no verified native source marker."
+    }
+  ],
+  "schema_version": 2,
+  "scope": {
+    "accounts": [
+      "111122223333"
+    ],
+    "enable_aisf": true,
+    "enable_grc": true,
+    "enable_owasp": true,
+    "regions": [
+      "us-east-1",
+      "us-west-2"
+    ],
+    "service_selection": {
+      "agent-registry": true,
+      "agentcore": true,
+      "bedrock": true,
+      "sagemaker": true
+    },
+    "source_selection": {
+      "agent-registry": true,
+      "agentcore": true,
+      "bedrock": true,
+      "owasp": true,
+      "responsible-ai-grc": true,
+      "sagemaker": true
+    }
+  },
+  "source_revision": "5df3295024713ac3ce88130c549bbc4fb2cebd53",
+  "summary": {
+    "check_results": 22,
+    "distinct_source_checks": 18,
+    "gap_count": 7,
+    "mapped_results": 21,
+    "source_advisories": 2,
+    "source_results": 18,
+    "statuses": {
+      "Failed": 13,
+      "N/A": 6,
+      "Passed": 3
+    },
+    "unavailable_results": 2,
+    "unmapped_results": 1
+  },
+  "view": "automated-check-results"
+}

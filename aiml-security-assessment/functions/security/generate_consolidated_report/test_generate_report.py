@@ -47,9 +47,10 @@ class TestHtmlReportGeneration(unittest.TestCase):
 
         self.test_assessment_results = {
             "account_id": "123456789012",
+            "execution_id": "report-fixture",
             "timestamp": "2026-04-17 10:00:00 UTC",
             "bedrock": {
-                "bedrock_security_report": [
+                "bedrock_security_report_report-fixture_us-east-1": [
                     {
                         "Account_ID": "123456789012",
                         "Check_ID": "BR-01",
@@ -83,7 +84,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
                 ]
             },
             "sagemaker": {
-                "sagemaker_security_report": [
+                "sagemaker_security_report_report-fixture_us-east-1": [
                     {
                         "Account_ID": "123456789012",
                         "Check_ID": "SM-01",
@@ -117,7 +118,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
                 ]
             },
             "agentcore": {
-                "agentcore_security_report": [
+                "agentcore_security_report_report-fixture_us-east-1": [
                     {
                         "Account_ID": "123456789012",
                         "Check_ID": "AC-01",
@@ -191,11 +192,31 @@ class TestHtmlReportGeneration(unittest.TestCase):
                 ]
             },
         }
+        agentcore = self.test_assessment_results["agentcore"][
+            "agentcore_security_report_report-fixture_us-east-1"
+        ]
+        self.test_assessment_results["agent-registry"] = {
+            "agent_registry_security_report_report-fixture_us-east-1": [
+                row for row in agentcore if row["Check_ID"].startswith("AR-")
+            ]
+        }
+        agentcore[:] = [row for row in agentcore if row["Check_ID"].startswith("AC-")]
+        for service in (
+            "bedrock",
+            "sagemaker",
+            "agentcore",
+            "agent-registry",
+        ):
+            for rows in self.test_assessment_results[service].values():
+                for row in rows:
+                    row["Region"] = "us-east-1"
 
     def test_generate_viewable_report(self):
         """Generate a viewable HTML report with test data"""
         report_data = copy.deepcopy(self.test_assessment_results)
-        report_data["agentcore"]["agentcore_security_report"].extend(
+        report_data["agent-registry"][
+            "agent_registry_security_report_report-fixture_us-east-1"
+        ].extend(
             [
                 {
                     "Account_ID": "123456789012",
@@ -259,6 +280,10 @@ class TestHtmlReportGeneration(unittest.TestCase):
                 },
             ]
         )
+        for row in report_data["agent-registry"][
+            "agent_registry_security_report_report-fixture_us-east-1"
+        ]:
+            row["Region"] = "us-east-1"
         html_content = generate_html_report(report_data)
 
         # Save the HTML content to a file
@@ -469,11 +494,10 @@ class TestHtmlReportGeneration(unittest.TestCase):
                 "<h3>By Governance Framework</h3>", 1
             )[0]
             self.assertNotIn("Responsible AI GRC", by_service_nav)
-            self.assertNotIn("Financial Services", content)
+            self.assertNotIn("Financial Services", by_service_nav)
 
     def test_multi_account_report_renders_compliance_standards(self):
-        """A multi-account report renders the AISF and OWASP sections only when
-        their derived rows are present."""
+        """AISF inventory stays visible; optional OWASP requires selected rows."""
         source = {
             "account_id": "111122223333",
             "region": "us-east-1",
@@ -527,8 +551,9 @@ class TestHtmlReportGeneration(unittest.TestCase):
             f.write(with_derived)
         print(f"\nMulti-account compliance report generated at: {report_path}")
 
-        self.assertNotIn("By Compliance Standard", without_derived)
-        self.assertNotIn('id="aisf"', without_derived)
+        self.assertIn("By Compliance Standard", without_derived)
+        self.assertIn('id="aisf"', without_derived)
+        self.assertNotIn('id="owasp"', without_derived)
         self.assertIn("2 Accounts", with_derived)
         self.assertIn("By Compliance Standard", with_derived)
         self.assertIn('id="aisf"', with_derived)
@@ -585,7 +610,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
         in the HTML."""
         data = dict(self.test_assessment_results)
         data["responsible-ai-grc"] = {
-            "responsible_ai_grc_security_report": [
+            "responsible_ai_grc_security_report_report-fixture": [
                 {
                     "Account_ID": "123456789012",
                     "Check_ID": "FS-01",
@@ -655,23 +680,61 @@ class TestHtmlReportGeneration(unittest.TestCase):
     def test_finserv_omitted_when_absent(self):
         """REQ-1/REQ-7: with no Responsible AI GRC data the section is
         omitted cleanly."""
+        import json
+
+        from bs4 import BeautifulSoup
+
         html = generate_html_report(self.test_assessment_results)
-        self.assertNotIn('id="responsible-ai-grc"', html)
+        soup = BeautifulSoup(html, "html.parser")
+        self.assertIsNone(soup.select_one("section#responsible-ai-grc"))
+        self.assertIsNone(soup.select_one('a[href="#responsible-ai-grc"]'))
         self.assertNotIn("<h3>By Governance Framework</h3>", html)
-        self.assertNotIn('<option value="responsible-ai-grc">', html)
-        self.assertNotIn('data-scope-service="responsible-ai-grc"', html)
-        # scope-governance is the shared class for three scope groups: agentic,
-        # Responsible AI GRC, and compliance standards. This test is about the
-        # Responsible AI GRC one, so it asserts on that group specifically. The
-        # bare class is no longer absent here: the fixture carries SM-01 and
-        # SM-03, two of the three source checks AISF control AIR-SGM-TRN-05
-        # derives from, so the derived AISF standard reports incomplete coverage
-        # and renders the compliance scope group.
-        self.assertNotIn(
-            '<div class="scope-governance" data-scope-service="responsible-ai-grc">',
-            html,
+        self.assertIsNone(
+            soup.select_one('#serviceFilter option[value="responsible-ai-grc"]')
         )
-        self.assertNotIn("Responsible AI GRC", html)
+        self.assertIsNone(soup.select_one('[data-scope-service="responsible-ai-grc"]'))
+        self.assertIsNotNone(soup.select_one("section#aisf"))
+        self.assertIsNotNone(soup.select_one('a[href="#aisf"]'))
+        self.assertFalse(
+            soup.select('#findingsTable tbody tr[data-service="responsible-ai-grc"]')
+        )
+        results = json.loads(soup.select_one("script#aisf-data").string)
+        self.assertEqual(results["view"], "automated-check-results")
+        self.assertNotIn("controls", results)
+        self.assertFalse(soup.select(".aisf-control"))
+        self.assertCountEqual(
+            [
+                row["data-check-id"]
+                for row in soup.select(
+                    '#findingsTable tbody tr[data-aisf-result="true"]'
+                )
+            ],
+            [check["source_check_id"] for check in results["checks"]],
+        )
+        expected = {
+            finding["Check_ID"]: finding
+            for service in ("bedrock", "sagemaker", "agentcore", "agent-registry")
+            for findings in self.test_assessment_results[service].values()
+            for finding in findings
+        }
+        self.assertEqual(
+            {check["source_check_id"] for check in results["checks"]}, set(expected)
+        )
+        for check in results["checks"]:
+            original = expected[check["source_check_id"]]
+            self.assertEqual(check["status"], original["Status"])
+            self.assertEqual(check["action_required"], original["Resolution"])
+            self.assertNotEqual(check["source_owner"], "responsible-ai-grc")
+        self.assertTrue(
+            any(
+                gap["kind"] == "source-absent"
+                and gap["owner"] == "responsible-ai-grc"
+                and gap["account"] == self.test_assessment_results["account_id"]
+                and gap["execution_id"] == self.test_assessment_results["execution_id"]
+                and gap["region"] == ""
+                for gap in results["gaps"]
+            )
+        )
         self.assertIn(
             "wellarchitected/latest/generative-ai-lens/generative-ai-lens.html", html
         )
@@ -687,7 +750,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
         """Agentic AI Security AG-* rows render as a first-class assessment area."""
         data = dict(self.test_assessment_results)
         data["bedrock"] = {
-            "bedrock_security_report": [
+            "bedrock_security_report_report-fixture_us-east-1": [
                 {
                     "Account_ID": "123456789012",
                     "Check_ID": "BR-28",
@@ -888,6 +951,36 @@ class TestReportFailureHandling(unittest.TestCase):
                 "enableResponsibleAIGRC": "false",
                 "enableOWASP": "false",
                 "ResolvedRegions": {"regions": ["us-east-1"]},
+                "AssessmentResults": [
+                    {
+                        "Region": "us-east-1",
+                        "RegionIndex": 0,
+                        "ExecutionId": "synthetic-execution-id",
+                        "ServiceResults": [
+                            {"service": service, "statusCode": 200}
+                            for service in (
+                                "bedrock",
+                                "sagemaker",
+                                "agentcore",
+                                "agent-registry",
+                            )
+                        ]
+                        + [
+                            {
+                                "service": "responsible-ai-grc",
+                                "statusCode": 200,
+                                "skipped": True,
+                                "reason": "not-selected-or-secondary-region",
+                            }
+                        ],
+                        "OWASPResult": {
+                            "service": "owasp",
+                            "statusCode": 200,
+                            "skipped": True,
+                            "reason": "not-selected",
+                        },
+                    }
+                ],
             },
         }
         self.assessment_results = {

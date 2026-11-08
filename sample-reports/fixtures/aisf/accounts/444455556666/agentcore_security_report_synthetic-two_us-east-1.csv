@@ -1,0 +1,2 @@
+Check_ID,Region,Finding,Status,Severity,Finding_Details,Resolution,Reference,Account_ID,Execution_ID,Resource_ID
+AC-20,us-east-1,Log protection,Passed,Medium,Synthetic log protection does not establish pre-export redaction.,,https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability.html,444455556666,synthetic-two,synthetic-log-group

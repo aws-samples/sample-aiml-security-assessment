@@ -802,7 +802,9 @@ class TestFS08AgentCoreRuntimeInboundAuthorizer:
         c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
         c.get_agent_runtime.return_value = {
             **self.LIST_ITEM,
-            "authorizerConfiguration": {"customJWTAuthorizer": {}},
+            "authorizerConfiguration": {
+                "customJWTAuthorizer": {"discoveryUrl": "https://issuer.example.com"}
+            },
         }
         mock_client.return_value = c
         result = app.check_agentcore_runtime_inbound_authorizer()
@@ -812,14 +814,19 @@ class TestFS08AgentCoreRuntimeInboundAuthorizer:
         assert any(r["Status"] == "Passed" for r in result["csv_data"])
 
     @patch("finserv_app.boto3.client")
-    def test_warn_runtimes_without_authorizer(self, mock_client):
+    def test_successful_read_without_authorizer_uses_iam_sigv4(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
         c.get_agent_runtime.return_value = dict(self.LIST_ITEM)
         mock_client.return_value = c
         result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_finding_structure(result)
-        assert result["status"] == "WARN"
+        assert result["status"] == "PASS"
+        [row] = result["csv_data"]
+        assert row["Status"] == "Passed"
+        assert row["Severity"] == "High"
+        assert "default IAM SigV4" in row["Finding_Details"]
+        assert "not gated" not in row["Finding_Details"]
 
     @patch("finserv_app.boto3.client")
     def test_passed_is_reachable_with_realistic_list_shape(self, mock_client):
@@ -862,7 +869,9 @@ class TestFS08AgentCoreRuntimeInboundAuthorizer:
         )
         assert "invoke any registered tool" not in blob
         assert "Policy Engine" not in blob
-        assert "review authorizer and policy semantics manually" in blob
+        assert "Manually verify" in blob
+        assert "downstream tool action" in blob
+        assert "Passed is limited to observing a supported authentication mode" in blob
 
     @patch("finserv_app.boto3.client")
     def test_list_call_is_paginated(self, mock_client):
@@ -874,7 +883,9 @@ class TestFS08AgentCoreRuntimeInboundAuthorizer:
         ]
         c.get_agent_runtime.return_value = {
             **self.LIST_ITEM,
-            "authorizerConfiguration": {"customJWTAuthorizer": {}},
+            "authorizerConfiguration": {
+                "customJWTAuthorizer": {"discoveryUrl": "https://issuer.example.com"}
+            },
         }
         mock_client.return_value = c
         result = app.check_agentcore_runtime_inbound_authorizer()
@@ -2940,7 +2951,7 @@ class TestFS66AgentcoreEndUserIdentityPropagation:
 
     Same API constraint as FS-08: authorizerConfiguration is returned by
     GetAgentRuntime, not by ListAgentRuntimes. Fixtures use the realistic list
-    item shape so the previous unreachable-Passed defect cannot return.
+    item shape so identity propagation is never inferred from list metadata.
     """
 
     LIST_ITEM = {
@@ -2953,7 +2964,7 @@ class TestFS66AgentcoreEndUserIdentityPropagation:
     }
 
     @patch("finserv_app.boto3.client")
-    def test_pass_authorizer_configured(self, mock_client):
+    def test_jwt_configuration_is_identity_context_only(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
         c.get_agent_runtime.return_value = {
@@ -2967,9 +2978,13 @@ class TestFS66AgentcoreEndUserIdentityPropagation:
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
         c.get_agent_runtime.assert_called_once_with(agentRuntimeId="rt1-id")
+        [row] = result["csv_data"]
+        assert row["Status"] == "N/A"
+        assert row["Severity"] == "Informational"
+        assert "Manual review required" in row["Finding_Details"]
 
     @patch("finserv_app.boto3.client")
-    def test_warn_no_authorizer(self, mock_client):
+    def test_explicit_empty_configuration_is_unassessed(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
         c.get_agent_runtime.return_value = {
@@ -2979,11 +2994,14 @@ class TestFS66AgentcoreEndUserIdentityPropagation:
         mock_client.return_value = c
         result = app.check_agentcore_end_user_identity_propagation()
         _assert_finding_structure(result)
-        assert result["status"] == "WARN"
+        [row] = result["csv_data"]
+        assert row["Status"] == "N/A"
+        assert row["Severity"] == "Low"
+        assert row["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
 
     @patch("finserv_app.boto3.client")
-    def test_passed_is_reachable_with_realistic_list_shape(self, mock_client):
-        """Regression guard: Passed must not depend on a fabricated list item."""
+    def test_jwt_presence_does_not_prove_identity_propagation(self, mock_client):
+        """A supported JWT mode does not establish downstream application behavior."""
         c = MagicMock()
         c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
         c.get_agent_runtime.return_value = {
@@ -2995,27 +3013,33 @@ class TestFS66AgentcoreEndUserIdentityPropagation:
         mock_client.return_value = c
         result = app.check_agentcore_end_user_identity_propagation()
         statuses = {r["Status"] for r in result["csv_data"]}
-        assert "Passed" in statuses
-        assert "Failed" not in statuses
+        assert statuses == {"N/A"}
+        [row] = result["csv_data"]
+        assert row["Severity"] == "Informational"
+        assert (
+            "neither authentication mode proves propagation" in row["Finding_Details"]
+        )
 
     @patch("finserv_app.boto3.client")
-    def test_makes_no_iam_authorizer_claim(self, mock_client):
-        """authorizerConfiguration has no iamAuthorizer member in the API."""
+    def test_default_iam_does_not_imply_identity_cannot_propagate(self, mock_client):
+        """A successful absent field is IAM mode, with identity behavior still manual."""
         c = MagicMock()
         c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
-        c.get_agent_runtime.return_value = {
-            **self.LIST_ITEM,
-            "authorizerConfiguration": {},
-        }
+        c.get_agent_runtime.return_value = dict(self.LIST_ITEM)
         mock_client.return_value = c
         result = app.check_agentcore_end_user_identity_propagation()
         blob = " ".join(
             f"{r['Finding']} {r['Finding_Details']} {r['Resolution']}"
             for r in result["csv_data"]
         )
-        assert "IAM authorizer" not in blob
-        assert "JWT or IAM" not in blob
-        assert "not proof of propagation" in blob
+        [row] = result["csv_data"]
+        assert row["Status"] == "N/A"
+        assert row["Severity"] == "Informational"
+        assert "default IAM SigV4" in blob
+        assert "trusted upstream identity" in blob
+        assert "no end-user identity can reach" not in blob
+        assert "not gated" not in blob
+        assert "iamAuthorizer" not in blob
 
     @patch("finserv_app.boto3.client")
     def test_list_call_is_paginated(self, mock_client):
@@ -4212,3 +4236,192 @@ class TestGenerateCsvReport:
         csv_content = app.generate_csv_report(findings)
         lines = csv_content.strip().split("\n")
         assert len(lines) == 4  # header + 3 data rows
+
+
+@pytest.mark.parametrize(
+    "function_name,check_id",
+    [
+        ("check_agentcore_runtime_inbound_authorizer", "FS-08"),
+        ("check_agentcore_end_user_identity_propagation", "FS-66"),
+    ],
+)
+@pytest.mark.parametrize(
+    "configuration",
+    [
+        None,
+        {},
+        [],
+        "JWT",
+        {"customJWTAuthorizer": None},
+        {"customJWTAuthorizer": {}},
+        {"customJWTAuthorizer": {"discoveryUrl": ""}},
+        {"customJWTAuthorizer": {"discoveryUrl": "   "}},
+        {"customJWTAuthorizer": {"discoveryUrl": 1}},
+        {"iamAuthorizer": {}},
+        {
+            "customJWTAuthorizer": {"discoveryUrl": "https://issuer.example.com"},
+            "unknown": {},
+        },
+    ],
+)
+@patch("finserv_app.boto3.client")
+def test_live_auth_unknown_configuration_is_never_treated_as_default_iam_or_jwt(
+    mock_client, configuration, function_name, check_id
+):
+    client = mock_client.return_value
+    item = dict(TestFS08AgentCoreRuntimeInboundAuthorizer.LIST_ITEM)
+    client.list_agent_runtimes.return_value = {"agentRuntimes": [item]}
+    client.get_agent_runtime.return_value = {
+        **item,
+        "authorizerConfiguration": configuration,
+    }
+    result = getattr(app, function_name)()
+    _assert_finding_structure(result)
+    [row] = result["csv_data"]
+    assert row["Check_ID"] == check_id
+    assert row["Status"] == "N/A"
+    assert row["Severity"] == "Low"
+    assert row["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+    assert "rt1" in row["Finding_Details"]
+    client.get_agent_runtime.assert_called_once_with(agentRuntimeId="rt1-id")
+
+
+@pytest.mark.parametrize(
+    "function_name",
+    [
+        "check_agentcore_runtime_inbound_authorizer",
+        "check_agentcore_end_user_identity_propagation",
+    ],
+)
+@pytest.mark.parametrize("get_response", [None, [], "unrecognized"])
+@patch("finserv_app.boto3.client")
+def test_live_auth_malformed_get_response_is_unassessed(
+    mock_client, get_response, function_name
+):
+    client = mock_client.return_value
+    client.list_agent_runtimes.return_value = {
+        "agentRuntimes": [dict(TestFS08AgentCoreRuntimeInboundAuthorizer.LIST_ITEM)]
+    }
+    client.get_agent_runtime.return_value = get_response
+    result = getattr(app, function_name)()
+    [row] = result["csv_data"]
+    assert row["Status"] == "N/A"
+    assert row["Severity"] == "Low"
+    assert row["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+
+
+@pytest.mark.parametrize(
+    "function_name",
+    [
+        "check_agentcore_runtime_inbound_authorizer",
+        "check_agentcore_end_user_identity_propagation",
+    ],
+)
+@patch("finserv_app.boto3.client")
+def test_live_auth_missing_runtime_id_cannot_be_a_supported_mode(
+    mock_client, function_name
+):
+    client = mock_client.return_value
+    item = dict(TestFS08AgentCoreRuntimeInboundAuthorizer.LIST_ITEM)
+    item.pop("agentRuntimeId")
+    client.list_agent_runtimes.return_value = {"agentRuntimes": [item]}
+    result = getattr(app, function_name)()
+    [row] = result["csv_data"]
+    assert row["Status"] == "N/A"
+    assert row["Severity"] == "Low"
+    assert row["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+    client.get_agent_runtime.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "function_name,supported_status,supported_severity",
+    [
+        ("check_agentcore_runtime_inbound_authorizer", "Passed", "High"),
+        ("check_agentcore_end_user_identity_propagation", "N/A", "Informational"),
+    ],
+)
+@patch("finserv_app.boto3.client")
+def test_live_auth_mixed_runtime_modes_do_not_hide_unassessed_resources(
+    mock_client, function_name, supported_status, supported_severity
+):
+    client = mock_client.return_value
+    base = TestFS08AgentCoreRuntimeInboundAuthorizer.LIST_ITEM
+    items = [
+        dict(base, agentRuntimeId=name, agentRuntimeName=name)
+        for name in ("rt-iam", "rt-jwt", "rt-denied", "rt-unknown")
+    ]
+    missing = dict(base, agentRuntimeName="rt-missing-id")
+    missing.pop("agentRuntimeId")
+    client.list_agent_runtimes.side_effect = [
+        {"agentRuntimes": items[:2], "nextToken": "page2"},
+        {"agentRuntimes": items[2:] + [missing]},
+    ]
+
+    def detail(agentRuntimeId):
+        if agentRuntimeId == "rt-denied":
+            raise _client_error("AccessDeniedException")
+        if agentRuntimeId == "rt-jwt":
+            return {
+                "authorizerConfiguration": {
+                    "customJWTAuthorizer": {
+                        "discoveryUrl": "https://issuer.example.com"
+                    }
+                }
+            }
+        if agentRuntimeId == "rt-unknown":
+            return {"authorizerConfiguration": {}}
+        return {"agentRuntimeId": agentRuntimeId}
+
+    client.get_agent_runtime.side_effect = detail
+    result = getattr(app, function_name)()
+    _assert_finding_structure(result)
+    rows = result["csv_data"]
+    assert len(rows) == 3
+    [unassessed] = [
+        r for r in rows if r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+    ]
+    supported = [r for r in rows if r is not unassessed]
+    assert {(r["Status"], r["Severity"]) for r in supported} == {
+        (supported_status, supported_severity)
+    }
+    assert any("rt-iam" in r["Finding_Details"] for r in supported)
+    assert any("rt-jwt" in r["Finding_Details"] for r in supported)
+    for name in ("rt-denied", "rt-unknown", "rt-missing-id"):
+        assert name in unassessed["Finding_Details"]
+        assert all(name not in r["Finding_Details"] for r in supported)
+    assert (unassessed["Status"], unassessed["Severity"]) == ("N/A", "Low")
+    assert client.list_agent_runtimes.call_count == 2
+    assert {
+        c.kwargs["agentRuntimeId"] for c in client.get_agent_runtime.call_args_list
+    } == {i["agentRuntimeId"] for i in items}
+
+
+@patch("finserv_app.boto3.client")
+def test_live_fs01_shield_guidance_names_eligible_fronting_resources(mock_client):
+    inventory = make_resource_inventory(
+        web_acls=app.WebAclInventory(summaries=[], detail_by_id={})
+    )
+    shield = mock_client.return_value
+    shield.describe_subscription.side_effect = _client_error(
+        "ResourceNotFoundException"
+    )
+    shield.exceptions.ResourceNotFoundException = type(
+        "ResourceNotFoundException", (ClientError,), {}
+    )
+    result = app.check_waf_shield_on_bedrock_endpoints(inventory)
+    [row] = [
+        r
+        for r in result["csv_data"]
+        if r["Finding"] == "AWS Shield Advanced Not Enabled"
+    ]
+    assert row["Status"] == "Failed"
+    assert row["Severity"] == "Low"
+    assert "eligible" in row["Resolution"]
+    assert "Application Load Balancers" in row["Resolution"]
+    assert "CloudFront distributions" in row["Resolution"]
+    assert "Route 53 hosted zones" in row["Resolution"]
+    assert (
+        "API Gateway stages are not directly supported Shield Advanced resources"
+        in row["Resolution"]
+    )
+    assert "protect that distribution" in row["Resolution"]

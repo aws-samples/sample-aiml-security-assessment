@@ -2,6 +2,7 @@ import boto3
 import csv
 import os
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Dict, List, Any
 from io import StringIO
@@ -9,6 +10,18 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from aisf_mappings import aisf_scope, derive_aisf_findings
+from aisf_results import build_aisf_register
+from assessment_artifacts import (
+    REGION_PATTERN,
+    SOURCE_IDS,
+    artifact_identity,
+    artifact_issue,
+    bucket_observation_region_matches,
+    coverage_issues,
+    equivalent_observation_key,
+    parse_csv_artifact,
+    scoped_issues,
+)
 from report_template import (
     COMPLIANCE_STANDARDS,
     core_service_selection,
@@ -67,76 +80,231 @@ def _flag_is_true(value: Any) -> bool:
     return False
 
 
+def _assessment_receipt_issues(
+    original_input: Dict[str, Any],
+    *,
+    account: str,
+    execution_id: str,
+    regions: List[str],
+    selected_services: Dict[str, bool],
+    enable_grc: bool,
+    enable_owasp: bool,
+    require_receipts: bool,
+) -> List[Dict[str, Any]]:
+    """Validate compact region receipts without replacing useful CSV evidence."""
+    if "AssessmentResults" not in original_input and not require_receipts:
+        return []
+    receipts = original_input.get("AssessmentResults")
+    if not isinstance(receipts, list):
+        return [
+            artifact_issue(
+                "missing-receipts",
+                "Restore the region assessment receipts and rerun this execution.",
+                account=account,
+            )
+        ]
+    issues = []
+    observed = set()
+    owners = {*selected_services, "responsible-ai-grc", "owasp"}
+    expected = {
+        (region, owner)
+        for region in regions
+        for owner, selected in selected_services.items()
+        if selected
+    }
+    if regions and (enable_grc or enable_owasp):
+        expected.add((regions[0], "responsible-ai-grc"))
+    if enable_owasp:
+        expected.update((region, "owasp") for region in regions)
+    for receipt in receipts:
+        if not isinstance(receipt, dict):
+            issues.append(
+                artifact_issue(
+                    "invalid-receipt",
+                    "Restore a valid region assessment receipt and rerun.",
+                    account=account,
+                    observation=receipt,
+                )
+            )
+            continue
+        region = receipt.get("Region", "")
+        if (
+            region not in regions
+            or receipt.get("ExecutionId") != execution_id
+            or receipt.get("Account", account) != account
+            or type(receipt.get("RegionIndex")) is not int
+            or receipt.get("RegionIndex") != regions.index(region)
+        ):
+            issues.append(
+                artifact_issue(
+                    "scope-mismatch",
+                    "A region receipt belongs to another scope; restore the expected receipt.",
+                    account=account,
+                    observation=receipt,
+                )
+            )
+            continue
+        service_results = receipt.get("ServiceResults")
+        if not isinstance(service_results, list):
+            service_results = []
+            issues.append(
+                artifact_issue(
+                    "invalid-receipt",
+                    "Restore the service assessment receipts for this region.",
+                    account=account,
+                    region=region,
+                    observation=receipt,
+                )
+            )
+        wrappers = [(wrapper, False) for wrapper in service_results]
+        if "OWASPResult" in receipt:
+            wrappers.append((receipt["OWASPResult"], True))
+        for wrapper, is_owasp in wrappers:
+            if (
+                not isinstance(wrapper, dict)
+                or not isinstance(wrapper.get("service"), str)
+                or wrapper["service"] not in owners
+            ):
+                issues.append(
+                    artifact_issue(
+                        "invalid-receipt",
+                        "Restore a receipt with a known assessment owner.",
+                        account=account,
+                        region=region,
+                        observation=wrapper,
+                    )
+                )
+                continue
+            owner = wrapper["service"]
+            if (
+                is_owasp != (owner == "owasp")
+                or wrapper.get("Region", region) != region
+                or wrapper.get("Account", account) != account
+                or wrapper.get("ExecutionId", execution_id) != execution_id
+            ):
+                issues.append(
+                    artifact_issue(
+                        "scope-mismatch",
+                        "An assessment receipt belongs to another owner or execution scope.",
+                        account=account,
+                        region=region,
+                        owner=owner,
+                        observation=wrapper,
+                    )
+                )
+                continue
+            if (region, owner) not in expected:
+                continue
+            observed.add((region, owner))
+            if (
+                wrapper.get("statusCode") != 200
+                or _flag_is_true(wrapper.get("incomplete"))
+                or _flag_is_true(wrapper.get("skipped"))
+                or wrapper.get("error")
+            ):
+                issues.append(
+                    artifact_issue(
+                        "failed-assessment",
+                        f"Restore the failed {owner} assessment in {region} and rerun; "
+                        "valid CSV observations remain evidence, but do not prove completion.",
+                        account=account,
+                        region=region,
+                        owner=owner,
+                        observation=wrapper,
+                        error=wrapper.get("error", ""),
+                    )
+                )
+    for region, owner in sorted(expected - observed):
+        issues.append(
+            artifact_issue(
+                "missing-receipt",
+                f"Restore the selected {owner} assessment receipt in {region} and rerun.",
+                account=account,
+                region=region,
+                owner=owner,
+            )
+        )
+    return issues
+
+
 def validate_assessment_artifacts(
     assessment_results: Dict[str, Any],
     execution_id: str,
     original_input: Dict[str, Any],
+    *,
+    require_receipts: bool = False,
 ) -> None:
-    """Require a non-empty report artifact for every expected assessment run."""
+    """Record incomplete input scopes, then fail the completion gate."""
     resolved_regions = (original_input.get("ResolvedRegions") or {}).get("regions")
+    selected_services = core_service_selection(original_input.get("ServiceSelection"))
+    enable_grc = _flag_is_true(original_input.get("enableResponsibleAIGRC"))
+    enable_owasp = _flag_is_true(original_input.get("enableOWASP"))
+    issues = scoped_issues(
+        assessment_results.get("artifact_issues", []),
+        selected_services,
+        enable_grc=enable_grc,
+        enable_owasp=enable_owasp,
+    )
+    account = assessment_results.get("account_id") or "Unknown"
     if (
         not isinstance(resolved_regions, list)
         or not resolved_regions
-        or not all(isinstance(region, str) and region for region in resolved_regions)
+        or not all(
+            isinstance(region, str) and re.fullmatch(REGION_PATTERN, region)
+            for region in resolved_regions
+        )
     ):
-        raise ValueError(
-            "ResolvedRegions.regions is required to validate assessment coverage"
+        resolved_regions = []
+        issues.append(
+            artifact_issue(
+                "missing-regions",
+                "ResolvedRegions.regions is required to validate assessment coverage",
+                account=account,
+            )
         )
-
-    per_region_categories = {
-        "bedrock": "bedrock",
-        "sagemaker": "sagemaker",
-        "agentcore": "agentcore",
-        "agent-registry": "agent_registry",
-    }
-    selected_services = core_service_selection(original_input.get("ServiceSelection"))
-    per_region_categories = {
-        category: fragment
-        for category, fragment in per_region_categories.items()
-        if selected_services[category]
-    }
-    owasp_enabled = _flag_is_true(original_input.get("enableOWASP"))
-    responsible_ai_grc_enabled = _flag_is_true(
-        original_input.get("enableResponsibleAIGRC")
+    assessment_results["expected_regions"] = list(resolved_regions)
+    assessment_results["scopes"] = [
+        {"account": account, "region": region, "execution_id": execution_id}
+        for region in resolved_regions or ["Unspecified"]
+    ]
+    assessment_results["enable_owasp"] = enable_owasp
+    issues.extend(
+        _assessment_receipt_issues(
+            original_input,
+            account=account,
+            execution_id=execution_id,
+            regions=resolved_regions,
+            selected_services=selected_services,
+            enable_grc=enable_grc,
+            enable_owasp=enable_owasp,
+            require_receipts=require_receipts,
+        )
     )
-    if owasp_enabled:
-        per_region_categories["owasp"] = "owasp"
-
-    expected_artifacts = []
-    for category, fragment in per_region_categories.items():
-        for region in resolved_regions:
-            expected_artifacts.append(
-                (
-                    category,
-                    f"{fragment}_security_report_{execution_id}_{region}".lower(),
-                )
-            )
-
-    # Responsible AI GRC runs once on RegionIndex 0. It is also required when
-    # OWASP is enabled because its FS-* rows feed the OWASP mappings even when
-    # the Responsible AI GRC section is hidden from the customer-facing report.
-    if responsible_ai_grc_enabled or owasp_enabled:
-        expected_artifacts.append(
-            (
-                "responsible-ai-grc",
-                f"responsible_ai_grc_security_report_{execution_id}".lower(),
-            )
+    issues.extend(
+        coverage_issues(
+            assessment_results,
+            account=account,
+            execution_id=execution_id,
+            regions=resolved_regions,
+            service_selection=selected_services,
+            enable_grc=enable_grc,
+            enable_owasp=enable_owasp,
         )
-
-    incomplete_artifacts = []
-    for category, assessment_type in expected_artifacts:
-        rows = (assessment_results.get(category) or {}).get(assessment_type)
-        if not isinstance(rows, list) or not rows:
-            incomplete_artifacts.append(f"{assessment_type}.csv")
-
-    if incomplete_artifacts:
+    )
+    assessment_results["artifact_issues"] = issues
+    if issues:
         raise ValueError(
             f"Incomplete assessment artifacts for execution {execution_id}: "
-            + ", ".join(incomplete_artifacts)
+            + "; ".join(issue["message"] for issue in issues)
         )
 
 
-def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[str, Any]:
+def get_assessment_results(
+    execution_id: str,
+    account_id: str = None,
+    *,
+    expected_regions: List[str] | None = None,
+) -> Dict[str, Any]:
     """
     Download and parse Bedrock, SageMaker, AgentCore, and Responsible AI GRC assessment CSV files for a given execution
 
@@ -193,13 +361,25 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         ]
 
         all_objects = []
-        for prefix in prefixes:
-            for page in paginator.paginate(Bucket=s3_bucket, Prefix=prefix):
-                all_objects.extend(page.get("Contents", []))
+        issues = []
+        for slug, prefix in zip(category_slugs, prefixes):
+            try:
+                for page in paginator.paginate(Bucket=s3_bucket, Prefix=prefix):
+                    all_objects.extend(page.get("Contents", []))
+            except Exception as error:
+                issues.append(
+                    artifact_issue(
+                        "discovery-failed",
+                        "Restore artifact discovery and rerun; earlier pages were retained.",
+                        account=account_id or "Unknown",
+                        owner=slug,
+                        artifact=prefix,
+                        error=str(error),
+                    )
+                )
 
         if not all_objects:
             logger.warning(f"No assessment files found for execution {execution_id}")
-            return {}
 
         # Categories the report understands: per-service (bedrock/sagemaker/
         # agentcore/responsible-ai-grc), the reconstructed agentic lens, and
@@ -215,49 +395,91 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         assessment_results = {
             "execution_id": execution_id,
             "account_id": account_id,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": os.environ.get("AISF_REPORT_TIMESTAMP")
+            or datetime.now(timezone.utc).isoformat(),
+            "artifact_issues": issues,
         }
+        if expected_regions is not None:
+            assessment_results["expected_regions"] = list(expected_regions)
         for cat in report_categories:
             assessment_results[cat] = {}
+
+        producer_regions = {slug: set() for slug in category_slugs}
+        for obj in all_objects:
+            identity = artifact_identity(obj["Key"], execution_id)
+            if identity and identity["matches_execution"] and identity["region"]:
+                producer_regions[identity["owner"]].add(identity["region"])
 
         # Process each CSV file. Match category by filename prefix (e.g.
         # `owasp_security_report_...`); no substring collisions exist among
         # the registered slugs so first-match wins is safe.
+        seen_objects = set()
         for obj in all_objects:
             s3_key = obj["Key"]
 
             # Skip if not a CSV file
-            if not s3_key.endswith(".csv"):
+            if not s3_key.endswith(".csv") or s3_key in seen_objects:
                 continue
+            seen_objects.add(s3_key)
 
+            file_name = os.path.basename(s3_key)
+            identity = artifact_identity(file_name, execution_id)
+            if (
+                not identity
+                or not identity["matches_execution"]
+                or (
+                    expected_regions is not None
+                    and identity["region"]
+                    and identity["region"] not in expected_regions
+                )
+            ):
+                issues.append(
+                    artifact_issue(
+                        "scope-mismatch",
+                        "Isolate the CSV with an unknown producer or a different execution or region.",
+                        account=account_id or "Unknown",
+                        artifact=file_name,
+                        owner=(identity or {}).get("owner", ""),
+                    )
+                )
+                continue
+            category = identity["owner"]
+            assessment_type = file_name[:-4]
+            assessment_results[category].setdefault(assessment_type, [])
             try:
                 response = s3_client.get_object(Bucket=s3_bucket, Key=s3_key)
-                csv_content = response["Body"].read().decode("utf-8")
-                parsed_data = parse_csv_content(csv_content)
-
-                if account_id:
-                    for row in parsed_data:
-                        row["Account_ID"] = account_id
-
-                file_name = os.path.basename(s3_key)
-                category = None
-                for slug in category_slugs:
-                    fragment = category_to_csv_fragment.get(slug, slug)
-                    if file_name.lower().startswith(f"{fragment}_security_report_"):
-                        category = slug
-                        break
-                if category is None:
-                    logger.warning(f"Unknown assessment type for file: {s3_key}")
-                    continue
-
-                assessment_type = file_name.replace(".csv", "").lower()
-                assessment_results[category][assessment_type] = parsed_data
+                parsed = parse_csv_artifact(
+                    response["Body"].read(),
+                    artifact=file_name,
+                    account=account_id or "",
+                    region=identity["region"],
+                    selected_regions=(
+                        expected_regions
+                        if expected_regions is not None
+                        else sorted(producer_regions[category])
+                    ),
+                    owner=category,
+                    execution_id=execution_id,
+                )
+                issues.extend(parsed["issues"])
+                assessment_results[category][assessment_type].extend(parsed["rows"])
                 logger.info(
                     f"Successfully processed {file_name} for {category} assessment"
                 )
 
             except Exception as e:
                 logger.error(f"Error processing file {s3_key}: {str(e)}", exc_info=True)
+                issues.append(
+                    artifact_issue(
+                        "unreadable",
+                        "Restore access to the selected assessment CSV and rerun.",
+                        account=account_id or "Unknown",
+                        region=identity["region"],
+                        owner=category,
+                        artifact=file_name,
+                        error=str(e),
+                    )
+                )
                 continue
 
         assessment_results["summary"] = {
@@ -294,6 +516,7 @@ def generate_html_report(
     assessment_results: Dict[str, Any],
     show_finserv: bool = True,
     service_selection=None,
+    enable_aisf: bool = False,
 ) -> str:
     """
     Generate HTML report from assessment results.
@@ -304,11 +527,9 @@ def generate_html_report(
     Args:
         assessment_results: Dict containing bedrock, sagemaker, agentcore,
             responsible-ai-grc findings
-        show_finserv: When False, Responsible AI GRC (FS-*) rows are excluded
-            from the report entirely. Used when Responsible AI GRC was
-            executed only as an OWASP dependency
-            (enableResponsibleAIGRC=false, enableOWASP=true) so its rows
-            still power OW-* mappings but are not surfaced in the UI.
+        show_finserv: When False, hide the standalone Responsible AI GRC
+            (FS-*) section. When OWASP is enabled, its GRC dependency still
+            supplies source evidence for the canonical AISF register.
 
     Returns:
         HTML report string
@@ -328,6 +549,19 @@ def generate_html_report(
         "responsible-ai-grc",
     ] + compliance_slugs
     all_findings = []
+    evidence_findings = []
+    enable_owasp = assessment_results.get(
+        "enable_owasp", bool(assessment_results.get("owasp"))
+    )
+    artifact_issues = scoped_issues(
+        assessment_results.get("artifact_issues", []),
+        selected_services,
+        enable_grc=show_finserv,
+        enable_owasp=enable_owasp,
+    )
+    account_id = assessment_results.get("account_id") or "Unknown"
+    execution_id = assessment_results.get("execution_id", "")
+    expected_regions = assessment_results.get("expected_regions")
     service_stats = {
         slug: {"passed": 0, "failed": 0, "na": 0} for slug in all_report_slugs
     }
@@ -358,10 +592,102 @@ def generate_html_report(
     for service in csv_source_slugs:
         if not selected_services.get(service, True):
             continue
+        if service == "owasp" and not enable_owasp:
+            continue
+        if service == "responsible-ai-grc" and not (show_finserv or enable_owasp):
+            continue
         if service in assessment_results:
+            producer_regions = (
+                expected_regions
+                if expected_regions is not None
+                else [
+                    identity["region"]
+                    for report_type in assessment_results[service]
+                    if (
+                        identity := artifact_identity(
+                            report_type + ".csv", execution_id
+                        )
+                    )
+                    and identity["owner"] == service
+                    and identity["matches_execution"]
+                    and identity["region"]
+                ]
+            )
             for report_type, findings in assessment_results[service].items():
-                for finding in findings:
+                identity = artifact_identity(report_type + ".csv", execution_id)
+                if (
+                    not identity
+                    or identity["owner"] != service
+                    or not identity["matches_execution"]
+                    or (
+                        expected_regions is not None
+                        and identity["region"]
+                        and identity["region"] not in expected_regions
+                    )
+                ):
+                    artifact_issues.append(
+                        artifact_issue(
+                            "scope-mismatch",
+                            "Isolate the artifact from another producer, execution, or region.",
+                            account=account_id,
+                            owner=service,
+                            artifact=report_type,
+                            observations=findings,
+                        )
+                    )
+                    continue
+                for original in findings:
+                    finding = dict(original)
                     check_id_upper = finding.get("Check_ID", "").upper()
+                    owner = SOURCE_IDS.get(check_id_upper)
+                    if (
+                        owner != service
+                        or finding.get("Account_ID", account_id) != account_id
+                        or finding.get("account_id", account_id) != account_id
+                        or (
+                            execution_id
+                            and finding.get("Execution_ID", execution_id)
+                            != execution_id
+                        )
+                        or (
+                            execution_id
+                            and finding.get("execution_id", execution_id)
+                            != execution_id
+                        )
+                        or (
+                            identity["region"]
+                            and finding.get("Region")
+                            not in (identity["region"], "Global")
+                            and not bucket_observation_region_matches(
+                                finding,
+                                owner=service,
+                                artifact_region=identity["region"],
+                                selected_regions=producer_regions,
+                            )
+                        )
+                        or (
+                            expected_regions is not None
+                            and finding.get("Region")
+                            not in (*expected_regions, "Global")
+                        )
+                        or finding.get("Status") not in ("Passed", "Failed", "N/A")
+                    ):
+                        artifact_issues.append(
+                            artifact_issue(
+                                "scope-mismatch",
+                                "Isolate unknown/retired checks and cross-account, region, owner, or execution observations.",
+                                account=account_id,
+                                owner=service,
+                                artifact=report_type,
+                                observation=finding,
+                            )
+                        )
+                        continue
+                    finding.setdefault("Account_ID", account_id)
+                    finding.setdefault("Execution_ID", execution_id)
+                    finding.setdefault("_owner", owner)
+                    finding.setdefault("_artifact", report_type + ".csv")
+                    finding.setdefault("_artifact_region", identity["region"])
                     if check_id_upper.startswith("AG-"):
                         output_service = "agentic"
                     elif check_id_upper.startswith("AR-"):
@@ -375,23 +701,15 @@ def generate_html_report(
                         ]
                     else:
                         output_service = service
-                    # When Responsible AI GRC ran only as an OWASP dependency
-                    # (customer did not enable it explicitly), drop FS-* rows
-                    # so the UI shows a clean OWASP-only view. FS rows still
-                    # fed the OW-* mappings inside the OWASP Lambda upstream.
-                    if not show_finserv and output_service == "responsible-ai-grc":
-                        continue
-                    dedup_key = (
-                        finding.get("Account_ID", ""),
-                        output_service,
-                        finding.get("Check_ID", ""),
-                        finding.get("Region", ""),
-                        finding.get("Finding_Details", ""),
-                    )
+                    dedup_key = equivalent_observation_key(finding)
                     if dedup_key in seen_findings:
                         continue
                     seen_findings.add(dedup_key)
-
+                    evidence_findings.append(finding)
+                    # OWASP's GRC dependency supplies AISF evidence without
+                    # adding a standalone GRC section when GRC is not selected.
+                    if not show_finserv and output_service == "responsible-ai-grc":
+                        continue
                     finding["_service"] = output_service
                     all_findings.append(finding)
                     service_findings[output_service].append(finding)
@@ -416,13 +734,7 @@ def generate_html_report(
     derived_aisf_findings = derive_aisf_findings(all_findings, selected_services)
     for finding in derived_aisf_findings:
         output_service = finding["_service"]
-        dedup_key = (
-            finding.get("Account_ID", ""),
-            output_service,
-            finding.get("Check_ID", ""),
-            finding.get("Region", ""),
-            finding.get("Finding_Details", ""),
-        )
+        dedup_key = equivalent_observation_key(finding)
         if dedup_key in seen_findings:
             continue
         seen_findings.add(dedup_key)
@@ -436,9 +748,21 @@ def generate_html_report(
         elif status == "n/a":
             service_stats[output_service]["na"] += 1
 
-    account_id = assessment_results.get("account_id", "Unknown")
-    timestamp = assessment_results.get(
+    timestamp = os.environ.get("AISF_REPORT_TIMESTAMP") or assessment_results.get(
         "timestamp", datetime.now(timezone.utc).strftime("%B %d, %Y %H:%M:%S UTC")
+    )
+    assessment_results["artifact_issues"] = artifact_issues
+    register = build_aisf_register(
+        evidence_findings,
+        accounts=[account_id],
+        regions=expected_regions if expected_regions is not None else sorted(regions),
+        service_selection=selected_services,
+        artifact_issues=artifact_issues,
+        execution_id=execution_id,
+        scopes=assessment_results.get("scopes"),
+        enable_grc=show_finserv,
+        enable_owasp=enable_owasp,
+        enable_aisf=enable_aisf,
     )
 
     return generate_report_from_template(
@@ -450,7 +774,14 @@ def generate_html_report(
         mode="single",
         account_id=account_id,
         timestamp=timestamp,
-        regions=sorted(regions) if regions else None,
+        regions=(
+            expected_regions
+            if expected_regions is not None
+            else sorted(regions)
+            if regions
+            else None
+        ),
+        aisf_register=register,
     )
 
 
@@ -533,14 +864,27 @@ def lambda_handler(event, context):
         # The state machine now forces Responsible AI GRC to run whenever
         # OWASP is enabled (OWASP's FS→OW mappings need the Responsible AI
         # GRC CSV). Show the Responsible AI GRC UI only when the customer
-        # asked for it explicitly. When OWASP is on but Responsible AI GRC
+        # selected it explicitly or through the AISF preset. When OWASP is on
+        # but Responsible AI GRC
         # is off, FS-* rows are consumed silently by OWASP and hidden from
         # the report.
         original_input = event.get("OriginalInput") or {}
         show_finserv = _flag_is_true(original_input.get("enableResponsibleAIGRC"))
+        resolved_regions = original_input.get("ResolvedRegions")
+        expected_regions = (
+            resolved_regions.get("regions")
+            if isinstance(resolved_regions, dict)
+            else None
+        )
 
         # Get assessment results
-        assessment_results = get_assessment_results(execution_id, account_id)
+        assessment_results = get_assessment_results(
+            execution_id,
+            account_id,
+            expected_regions=(
+                expected_regions if isinstance(expected_regions, list) else []
+            ),
+        )
         # Even an empty selection produces an explicit scope report. Coverage
         # validation below still rejects missing artifacts for selected areas.
         if not assessment_results:
@@ -548,17 +892,23 @@ def lambda_handler(event, context):
                 "execution_id": execution_id,
                 "account_id": account_id,
             }
-        validate_assessment_artifacts(
-            assessment_results,
-            execution_id,
-            original_input,
-        )
+        incomplete_error = None
+        try:
+            validate_assessment_artifacts(
+                assessment_results,
+                execution_id,
+                original_input,
+                require_receipts=True,
+            )
+        except ValueError as error:
+            incomplete_error = error
 
         # Generate HTML report
         html_content = generate_html_report(
             assessment_results,
             show_finserv=show_finserv,
             service_selection=original_input.get("ServiceSelection"),
+            enable_aisf=_flag_is_true(original_input.get("enableAISF")),
         )
 
         # Write HTML report to S3
@@ -566,6 +916,10 @@ def lambda_handler(event, context):
 
         if not s3_key:
             raise Exception("Failed to write HTML report to S3")
+        if incomplete_error or assessment_results.get("artifact_issues"):
+            raise incomplete_error or ValueError(
+                "Incomplete assessment artifacts: input scope validation failed"
+            )
 
         # Note: Multi-account consolidation is handled by consolidate_html_reports.py
         # in the CodeBuild post-build phase, not here. This Lambda only generates

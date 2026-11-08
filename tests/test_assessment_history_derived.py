@@ -1,7 +1,7 @@
 """AWS AI Security Framework (AISF) rows in the changes report.
 
 No findings CSV holds AISF rows; the comparison derives them from each run's
-compared findings with the main report's own aisf_mappings.py.
+compared findings with the legacy partial-evidence aliases in aisf_mappings.py.
 """
 
 import html
@@ -71,32 +71,27 @@ def test_an_aisf_row_changes_with_its_source():
     result = _compare(_sources(), _sources(br20="Failed"))
     rows = _aisf(result)
     assert sorted(rows) == ["AISF-05", "AISF-07", "AISF-08"]
-    regressed = rows["AISF-05"]
-    assert regressed.change is Change.REGRESSED
-    assert regressed.match_rule is MatchRule.SINGLE_ROW
-    assert (regressed.previous_status, regressed.current_status) == (
-        "Passed",
-        "Failed",
-    )
-    assert regressed.previous.module == regressed.current.module == DERIVED_MODULE
-    assert regressed.region == REGION
-    assert regressed.finding.startswith("AISF AIR-BDR-KB-03")
+    alias = rows["AISF-05"]
+    assert alias.change is Change.NEW
+    assert alias.match_rule is MatchRule.SINGLE_ROW
+    assert (alias.previous_status, alias.current_status) == ("N/A", "Failed")
+    assert alias.previous.module == alias.current.module == DERIVED_MODULE
+    assert alias.region == REGION
+    assert alias.finding.startswith("AISF AIR-BDR-KB-03")
     assert rows["AISF-07"].change is Change.NOT_FAILING
     assert result.notes == ()
 
 
 def test_aisf_rows_are_not_in_the_headline_counts():
     result = _compare(_sources(), _sources(br20="Failed"))
-    assert result.counts_by_area()["aisf"][Change.REGRESSED] == 1
+    assert result.counts_by_area()["aisf"][Change.NEW] == 1
     assert result.tile_counts()[Change.REGRESSED] == 1  # BR-20 only
 
 
 def test_aisf_rows_are_written_to_the_changes_csv():
     result = _compare(_sources(), _sources(br20="Failed"))
     records = [r for r in result.to_csv_records() if r["Check_ID"] == "AISF-05"]
-    assert [(r["Assessment_Area"], r["Change"]) for r in records] == [
-        ("aisf", "Regressed")
-    ]
+    assert [(r["Assessment_Area"], r["Change"]) for r in records] == [("aisf", "New")]
 
 
 def test_a_service_selected_in_one_run_derives_none_of_its_controls():
@@ -241,7 +236,7 @@ def test_unreadable_omitted_controls_keep_other_aisf_rows(monkeypatch):
 
     monkeypatch.setattr(compare_module, "omitted_aisf_control_ids", broken)
     result = _compare(_sources(), _sources(br20="Failed"))
-    assert _aisf(result)["AISF-05"].change is Change.REGRESSED
+    assert _aisf(result)["AISF-05"].change is Change.NEW
     assert result.notes == (
         "AWS AI Security Framework omitted controls could not be listed: "
         "missing sources",
@@ -305,8 +300,8 @@ def _aisf_sides(result):
 
 def test_a_global_only_control_keeps_its_region_when_regional_rows_appear():
     # BR-20 reports under Global in both runs and doesn't change. The current
-    # run also has a regional SageMaker row, which in the main report moves
-    # the account's Global rows into that Region.
+    # run also has a regional SageMaker row, which must not relocate the
+    # account's Global evidence.
     previous = [make_finding("BR-20", "Passed")]
     current = [
         make_finding("BR-20", "Passed"),
@@ -335,7 +330,7 @@ def test_no_global_coverage_row_beside_regional_rows():
         (row.region, row.check_id): row for row in _compare(findings, findings).rows
     }
     assert rows[("Global", "AISF-05")].current_status == "Failed"
-    assert rows[(REGION, "AISF-07")].current_status == "Passed"
+    assert rows[(REGION, "AISF-07")].current_status == "N/A"
     assert ("Global", "AISF-00") not in rows
     assert "AISF-07" not in rows[(REGION, "AISF-00")].current.details
     assert "AISF-08" in rows[(REGION, "AISF-00")].current.details
@@ -349,14 +344,14 @@ def test_no_global_coverage_row_beside_regional_rows():
     ],
 )
 @pytest.mark.parametrize(
-    ("before", "after", "change"),
+    ("before", "after", "alias_change", "source_change"),
     [
-        ("Failed", "Passed", Change.RESOLVED),
-        ("Passed", "Failed", Change.REGRESSED),
+        ("Failed", "Passed", Change.NO_LONGER_ASSESSED, Change.RESOLVED),
+        ("Passed", "Failed", Change.NEW, Change.REGRESSED),
     ],
 )
-def test_global_source_change_has_only_regional_aisf_changes(
-    global_check, regional_checks, before, after, change
+def test_global_source_change_preserves_regional_partial_evidence(
+    global_check, regional_checks, before, after, alias_change, source_change
 ):
     def findings(global_status):
         return [
@@ -370,20 +365,33 @@ def test_global_source_change_has_only_regional_aisf_changes(
 
     control = "AISF-07" if global_check == "SM-42" else "AISF-08"
     result = _compare(findings(before), findings(after))
-    rows = [
-        row for row in result.rows if row.area == "aisf" and row.check_id == control
-    ]
-    assert {(row.region, row.change) for row in rows} == {
-        (REGION, change),
-        ("eu-west-1", change),
+    rows = {
+        row.region: row
+        for row in result.rows
+        if row.area == "aisf" and row.check_id == control
     }
-    assert all(row.previous_status == before for row in rows)
-    assert all(row.current_status == after for row in rows)
+    assert set(rows) == {"Global", REGION, "eu-west-1"}
+    assert rows["Global"].change is alias_change
+    assert (rows["Global"].previous_status, rows["Global"].current_status) == (
+        "Failed" if before == "Failed" else "N/A",
+        "Failed" if after == "Failed" else "N/A",
+    )
+    for region in (REGION, "eu-west-1"):
+        assert rows[region].change is Change.NOT_FAILING
+        assert (rows[region].previous_status, rows[region].current_status) == (
+            "N/A",
+            "N/A",
+        )
+    native = next(
+        row
+        for row in result.rows
+        if row.check_id == global_check and row.region == "Global"
+    )
+    assert native.change is source_change
+    assert (native.previous_status, native.current_status) == (before, after)
 
 
-def test_a_regional_row_still_includes_the_global_verdict():
-    # A Global Failed for BR-20 still fails the regional AISF-05, as in the
-    # main report. Its Global row is suppressed because BR-20 ran regionally.
+def test_the_same_check_keeps_global_and_regional_evidence_separate():
     findings = [
         make_finding("BR-20", "Failed"),
         make_finding("BR-20", "Passed", region=REGION),
@@ -391,9 +399,10 @@ def test_a_regional_row_still_includes_the_global_verdict():
     rows = {
         (row.region, row.check_id): row for row in _compare(findings, findings).rows
     }
-    assert rows[(REGION, "AISF-05")].current_status == "Failed"
-    assert ("Global", "AISF-05") not in rows
-    assert rows[(REGION, "AISF-05")].change is Change.STILL_OPEN
+    assert rows[("Global", "AISF-05")].current_status == "Failed"
+    assert rows[("Global", "AISF-05")].change is Change.STILL_OPEN
+    assert rows[(REGION, "AISF-05")].current_status == "N/A"
+    assert rows[(REGION, "AISF-05")].change is Change.NOT_FAILING
 
 
 def test_derive_aisf_keeps_the_global_key_separate():

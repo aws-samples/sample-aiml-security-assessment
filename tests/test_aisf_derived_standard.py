@@ -24,6 +24,7 @@ import ast
 import csv
 import fnmatch
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -48,6 +49,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 import aisf_mappings  # noqa: E402
+import aisf_results  # noqa: E402
 import consolidate_html_reports as multi_account  # noqa: E402
 import report_template  # noqa: E402
 
@@ -158,6 +160,20 @@ def _derived_by_id(rows):
     return {r["Check_ID"]: r for r in rows}
 
 
+def _register_from_html(html):
+    match = re.search(r'<script[^>]+id="aisf-data"[^>]*>(.*?)</script>', html, re.S)
+    assert match, "Every report must render the accepted AISF source check results."
+    return json.loads(match.group(1))
+
+
+def _checks_from_html(html):
+    results = _register_from_html(html)
+    assert results["view"] == "automated-check-results"
+    assert "controls" not in results
+    assert "whole_control_passes" not in results["summary"]
+    return results["checks"]
+
+
 def _all_mappings_derived(status):
     """Every mapping's emitted row, with all source checks present at `status`.
 
@@ -208,39 +224,13 @@ class TestRegistryEntry(unittest.TestCase):
         """OWASP produces a CSV. Flagging it derived would stop it being read."""
         self.assertFalse(_entry("owasp").get("derived", False))
 
-    def test_scope_text_states_the_denominator_and_it_reconciles(self):
+    def test_scope_text_describes_native_results_without_a_canonical_denominator(self):
         scope = _entry("aisf")["scope_text"]
-        derivable, in_scope, remaining = (
-            int(n)
-            for n in re.search(
-                r"(\d+) of the (\d+) in-scope AISF controls.*?the remaining (\d+)",
-                scope,
-                re.S,
-            ).groups()
-        )
-        controls = [
-            m
-            for m in aisf_mappings.AISF_DERIVED_MAP
-            if m["check_id"] != aisf_mappings.AISF_COVERAGE_CHECK_ID
-        ]
-        self.assertEqual(derivable, len(controls))
-        self.assertEqual(derivable + remaining, in_scope)
-        self.assertIn("not evidence of compliance", scope)
-        self.assertIn("<strong>not</strong> counted", scope)
-        # The catalog total changes with every new check, so pin the sentence's
-        # shape here and not the figure. A literal here goes stale.
-        self.assertRegex(scope, r"framework's \d+-check total")
-        covered, covered_denominator, covered_no_row = (
-            int(n)
-            for n in re.search(
-                r"(\d+) of the (\d+) are covered by checks.*?"
-                r"the (\d+) covered controls without a row",
-                scope,
-                re.S,
-            ).groups()
-        )
-        self.assertEqual(covered_denominator, in_scope)
-        self.assertEqual(derivable + covered_no_row, covered)
+        self.assertNotIn("218", scope)
+        self.assertNotIn("All 218 canonical AISF controls", scope)
+        self.assertIn("check", scope.lower())
+        self.assertIn("source", scope.lower())
+        self.assertNotIn("canonical controls", scope.lower())
 
     def test_ids_are_unique_and_the_coverage_id_is_not_allocated(self):
         ids = [m["check_id"] for m in aisf_mappings.AISF_DERIVED_MAP]
@@ -408,38 +398,34 @@ class TestSectionRendering(unittest.TestCase):
             "regions": ["us-east-1"],
         }
 
-    def test_no_aisf_rows_renders_no_aisf_ui(self):
+    def test_no_source_rows_renders_gaps_without_manufacturing_canonical_tasks(self):
         html = report_template.generate_html_report(**self._kwargs())
-        self.assertNotIn('id="aisf"', html)
-        self.assertNotIn('value="aisf"', html)
-        self.assertNotIn("AWS AI Security Framework", html)
+        self.assertIn('id="aisf"', html)
+        self.assertIn("AWS AI Security Framework", html)
+        self.assertEqual(_checks_from_html(html), [])
+        self.assertTrue(_register_from_html(html)["gaps"])
+        self.assertNotIn("218 canonical", html)
+        self.assertNotIn("Manual assessment required", html)
 
-    def test_one_derived_row_renders_nav_item_card_and_section(self):
+    def test_legacy_derived_rows_do_not_manufacture_native_check_results(self):
         kwargs = self._kwargs()
-        row = aisf_mappings.derive_aisf_findings([_source_row("BR-20", "Failed")])
-        aisf_rows = [r for r in row if r["_service"] == "aisf"]
+        rows = aisf_mappings.derive_aisf_findings([_source_row("BR-20", "Failed")])
+        aisf_rows = [r for r in rows if r["_service"] == "aisf"]
         self.assertTrue(aisf_rows)
         kwargs["all_findings"] = aisf_rows
         kwargs["service_findings"]["aisf"] = aisf_rows
         kwargs["service_stats"]["aisf"] = {
             "passed": 0,
-            "failed": sum(1 for r in aisf_rows if r["Status"] == "Failed"),
-            "na": sum(1 for r in aisf_rows if r["Status"] == "N/A"),
+            "failed": len(aisf_rows),
+            "na": 0,
         }
-
         html = report_template.generate_html_report(**kwargs)
-
-        # Sidebar nav item, filter option, service card, section.
         self.assertIn('class="nav-section compliance-nav"', html)
         self.assertIn('value="aisf"', html)
         self.assertIn('id="aisf"', html)
-        self.assertIn("AWS AI Security Framework Findings", html)
-        self.assertIn('data-filter-service="aisf"', html)
-        self.assertIn('data-scope-service="aisf"', html)
-        # The scope text is injected unescaped so the emphasis renders.
-        self.assertIn("<strong>not</strong> counted", html)
-        # The row itself reaches the findings table.
-        self.assertIn("AIR-BDR-KB-03", html)
+        for element in ("searchInput", "statusFilter", "aisf-json", "aisf-csv"):
+            self.assertIn(f'id="{element}"', html)
+        self.assertEqual(_checks_from_html(html), [])
 
     def test_derived_rows_do_not_inflate_open_action_items(self):
         """AISF rows are contextual, like OWASP: they restate other verdicts."""
@@ -510,7 +496,7 @@ class TestDerivedRowShape(unittest.TestCase):
         )
         rows = _derived_by_id(
             aisf_mappings.derive_aisf_findings(
-                [_source_row("BR-20", "Passed") | {"Severity": "Low"}]
+                [_source_row("BR-20", "Failed") | {"Severity": "Low"}]
             )
         )
         self.assertEqual(rows["AISF-05"]["Severity"], expected)
@@ -609,7 +595,7 @@ class TestSeverityCollapseDisclosure(unittest.TestCase):
         note = aisf_mappings.SEVERITY_COLLAPSE_NOTE["critical"]
         self.assertEqual(self._critical(), [self.SYNTHETIC])
         for status, expected_severity in (
-            ("Passed", "High"),
+            ("Passed", "Informational"),
             ("Failed", "High"),
             ("N/A", "Informational"),
         ):
@@ -705,7 +691,7 @@ class TestBatchGuardrailLeg(unittest.TestCase):
 
     def test_both_legs_passed_is_passed(self):
         row = self._ai07({"SM-18": "Passed", "SM-42": "Passed"})
-        self.assertEqual(row["Status"], "Passed")
+        self.assertEqual(row["Status"], "N/A")
 
 
 class TestMultiLegAggregation(unittest.TestCase):
@@ -721,7 +707,7 @@ class TestMultiLegAggregation(unittest.TestCase):
 
     def test_every_leg_passed_is_passed(self):
         row = self._ai08({cid: "Passed" for cid in self.LEGS})
-        self.assertEqual(row["Status"], "Passed")
+        self.assertEqual(row["Status"], "N/A")
 
     def test_any_leg_failed_is_failed(self):
         for failing in self.LEGS:
@@ -752,8 +738,7 @@ class TestFailedSourceBeatsMissingSource(unittest.TestCase):
     """A present leg that failed decides the control even when another is absent."""
 
     def test_a_global_failure_with_missing_regional_legs_is_failed(self):
-        """The reviewer's shape: Global SM-09 Failed folds into a Region with no
-        SM-01 or SM-03 rows."""
+        """A Global failure stays visible without borrowing regional evidence."""
         rows = aisf_mappings.derive_aisf_findings(
             [
                 _source_row("SM-09", "Failed", region="Global"),
@@ -761,7 +746,7 @@ class TestFailedSourceBeatsMissingSource(unittest.TestCase):
             ]
         )
         row = next(
-            r for r in rows if r["Check_ID"] == "AISF-08" and r["Region"] == "us-west-2"
+            r for r in rows if r["Check_ID"] == "AISF-08" and r["Region"] == "Global"
         )
         self.assertEqual(row["Status"], "Failed")
         self.assertEqual(row["Severity"], "Medium")
@@ -794,7 +779,7 @@ class TestDeselectedServices(unittest.TestCase):
         )
         by_id = _derived_by_id(rows)
         self.assertEqual(set(by_id), {"AISF-05"})
-        self.assertEqual(by_id["AISF-05"]["Status"], "Passed")
+        self.assertEqual(by_id["AISF-05"]["Status"], "N/A")
 
     def test_bedrock_off_reports_no_coverage_gap_for_aisf_05(self):
         rows = aisf_mappings.derive_aisf_findings(
@@ -995,11 +980,7 @@ class TestAgenticSourceAttribution(unittest.TestCase):
 
 
 class TestScopeTextNamesOmittedControls(unittest.TestCase):
-    """The AISF scope text says which controls a deselected service removed."""
-
-    SAGEMAKER_NOTE = (
-        "AISF-07 and AISF-08 are omitted because Amazon SageMaker AI was not selected"
-    )
+    """Deselected legacy aliases never remove canonical inventory or scope."""
 
     def _html(self, selection):
         kwargs = TestSectionRendering._kwargs(self)
@@ -1020,14 +1001,12 @@ class TestScopeTextNamesOmittedControls(unittest.TestCase):
             [("AISF-07", ["sagemaker"]), ("AISF-08", ["sagemaker"])],
         )
 
-    def test_sagemaker_off_names_aisf_07_and_08_and_counts_what_is_shown(self):
+    def test_sagemaker_off_preserves_scope_without_manual_control_rows(self):
         html = self._html({"sagemaker": False})
-        self.assertIn(self.SAGEMAKER_NOTE, html)
-        self.assertIn(
-            "3 of the 105 in-scope AISF controls carry a derived AISF- row, "
-            "and 1 of them is in scope for this report",
-            html,
+        self.assertFalse(
+            _register_from_html(html)["scope"]["source_selection"]["sagemaker"]
         )
+        self.assertEqual(_checks_from_html(html), [])
 
     def test_all_services_selected_omits_nothing(self):
         html = self._html({})
@@ -1035,7 +1014,7 @@ class TestScopeTextNamesOmittedControls(unittest.TestCase):
         self.assertNotIn("is omitted because", html)
         self.assertIn(_entry("aisf")["scope_text"], html)
 
-    def test_a_single_omitted_control_reads_in_the_singular(self):
+    def test_bedrock_off_preserves_scope_without_manual_control_rows(self):
         html = report_template.generate_html_report(
             **{
                 **self._kwargs_with_rows(),
@@ -1045,10 +1024,10 @@ class TestScopeTextNamesOmittedControls(unittest.TestCase):
                 },
             }
         )
-        self.assertIn(
-            "AISF-05 is omitted because Amazon Bedrock was not selected", html
+        self.assertFalse(
+            _register_from_html(html)["scope"]["source_selection"]["bedrock"]
         )
-        self.assertIn("and 2 of them are in scope for this report", html)
+        self.assertEqual(_checks_from_html(html), [])
 
     def _kwargs_with_rows(self):
         kwargs = TestSectionRendering._kwargs(self)
@@ -1061,19 +1040,25 @@ class TestScopeTextNamesOmittedControls(unittest.TestCase):
         kwargs["service_stats"]["aisf"] = {"passed": len(rows), "failed": 0, "na": 0}
         return kwargs
 
-    def test_single_account_report_names_the_omitted_controls(self):
+    def test_single_account_report_preserves_selected_native_results_only(self):
         html = single_account.generate_html_report(
             {
                 "account_id": "111122223333",
                 "bedrock": {
                     "bedrock_security_report_exec_us-east-1": [
-                        _source_row("BR-20", "Passed"),
+                        _source_row("BR-20", "Passed")
                     ]
                 },
             },
             service_selection={"sagemaker": "false"},
         )
-        self.assertIn(self.SAGEMAKER_NOTE, html)
+        checks = _checks_from_html(html)
+        self.assertEqual(
+            [(c["source_check_id"], c["status"]) for c in checks], [("BR-20", "Passed")]
+        )
+        self.assertFalse(
+            _register_from_html(html)["scope"]["source_selection"]["sagemaker"]
+        )
 
 
 FOURTH_DERIVED_CONTROL = {
@@ -1131,13 +1116,7 @@ def _read(*parts):
 
 
 class TestScopeTextCountsComeFromTheData(unittest.TestCase):
-    """Every figure in the AISF scope text is computed from, or pinned to, its source.
-
-    The derived count comes from `AISF_DERIVED_MAP` through the callers, because
-    `report_template.py` is loaded by path and cannot import `aisf_mappings`.
-    The catalog figures are constants pinned to the producers' tag maps, and the
-    documents that repeat them are pinned to the same constants.
-    """
+    """Canonical inventory is independent of legacy aliases and producer tags."""
 
     def _html(self, selection):
         rows = aisf_mappings.derive_aisf_findings(
@@ -1151,97 +1130,61 @@ class TestScopeTextCountsComeFromTheData(unittest.TestCase):
         kwargs["compliance_scope"] = {"aisf": aisf_mappings.aisf_scope(selection)}
         return report_template.generate_html_report(**kwargs)
 
-    def test_a_fourth_derived_control_moves_every_derived_count(self):
+    def test_an_unknown_legacy_alias_cannot_manufacture_native_check_results(self):
         with _with_fourth_derived_control():
             html = self._html({})
-        self.assertIn(
-            "Scope: 4 of the 105 in-scope AISF controls carry a derived AISF- "
-            "row; the remaining 101 are not yet rendered as rows",
-            html,
-        )
-        self.assertIn("the 60 covered controls without a row", html)
+        self.assertEqual(_checks_from_html(html), [])
+        self.assertNotIn("AIR-TEST-02", json.dumps(_register_from_html(html)))
 
-    def test_a_fourth_derived_control_moves_the_count_shown_with_sagemaker_off(self):
+    def test_unknown_legacy_alias_cannot_change_actual_source_selection(self):
         with _with_fourth_derived_control():
             html = self._html({"sagemaker": False})
-        self.assertIn(
-            "4 of the 105 in-scope AISF controls carry a derived AISF- row, "
-            "and 2 of them are in scope for this report",
-            html,
+        self.assertEqual(_checks_from_html(html), [])
+        self.assertFalse(
+            _register_from_html(html)["scope"]["source_selection"]["sagemaker"]
         )
-        self.assertIn("The remaining 101 are not yet rendered", html)
 
-    def test_the_single_account_report_passes_the_derived_count(self):
+    def test_single_account_keeps_native_result_with_an_unknown_legacy_alias(self):
         with _with_fourth_derived_control():
             html = single_account.generate_html_report(
                 {
                     "account_id": "111122223333",
                     "bedrock": {
                         "bedrock_security_report_exec_us-east-1": [
-                            _source_row("BR-20", "Passed"),
+                            _source_row("BR-20", "Passed")
                         ]
                     },
                 },
                 service_selection={"sagemaker": "false"},
             )
-        self.assertIn(
-            "4 of the 105 in-scope AISF controls carry a derived AISF- row, "
-            "and 2 of them are in scope for this report",
-            html,
-        )
-
-    def test_the_catalog_figures_match_the_producer_tag_maps(self):
-        covered, partial = _aisf_tag_sets()
-        self.assertFalse(covered & partial, sorted(covered & partial))
-        self.assertEqual(report_template.AISF_COVERED_CONTROLS, len(covered))
-        self.assertEqual(report_template.AISF_PARTIAL_CONTROLS, len(partial))
+        checks = _checks_from_html(html)
         self.assertEqual(
-            report_template.AISF_IN_SCOPE_CONTROLS,
-            len(covered) + len(partial) + report_template.AISF_UNIMPLEMENTABLE_CONTROLS,
+            [(c["source_check_id"], c["status"]) for c in checks], [("BR-20", "Passed")]
         )
-        # "Covered controls without a row" is covered minus derived, which holds
-        # only while every derived control is one the tags call covered.
-        for mapping in aisf_mappings.AISF_DERIVED_MAP:
-            self.assertIn(mapping["control"], covered, mapping["check_id"])
+        self.assertNotIn(
+            "AIR-TEST-02",
+            {cid for check in checks for cid in check["aisf_control_ids"]},
+        )
 
-    def _expected(self):
-        derived = len(aisf_mappings.AISF_DERIVED_MAP)
-        in_scope = report_template.AISF_IN_SCOPE_CONTROLS
-        return {
-            "derived": derived,
-            "in_scope": in_scope,
-            "remaining": in_scope - derived,
-            "covered": report_template.AISF_COVERED_CONTROLS,
-            "partial": report_template.AISF_PARTIAL_CONTROLS,
-            "unimplementable": report_template.AISF_UNIMPLEMENTABLE_CONTROLS,
-            "tagged": report_template.AISF_COVERED_CONTROLS
-            + report_template.AISF_PARTIAL_CONTROLS,
-        }
+    def test_tagged_controls_are_reviewed_as_partial_in_the_mapping_ledger(self):
+        covered, partial = _aisf_tag_sets()
+        ledger, _ = aisf_results.load_mapping()
+        mapped = {key for key, mapping in ledger.items() if mapping["source_checks"]}
+        self.assertTrue((covered | partial).issubset(mapped))
+        self.assertEqual({ledger[key]["coverage"] for key in mapped}, {"partial"})
+        self.assertEqual(len(ledger), 218)
+        self.assertFalse(ledger["AIR-ACR-MEM-07"]["source_checks"])
+        self.assertFalse(ledger["AIR-FND-GOV-12"]["source_checks"])
 
     def test_the_aisf_catalog_document_states_the_same_figures(self):
         doc = re.sub(r"\s+", " ", _read("docs", "SECURITY_CHECKS_AISF.md"))
-        found = re.search(
-            r"(\d+) of the (\d+) in-scope AISF controls carry a derived `AISF-` "
-            r"row; the remaining (\d+) are not yet rendered as a row\..*?"
-            r"(\d+) of the (\d+) are covered by checks that already ship and "
-            r"assert the whole control, (\d+) are asserted only in part, and "
-            r"(\d+) are not implementable",
-            doc,
-        )
-        self.assertIsNotNone(found)
-        e = self._expected()
-        self.assertEqual(
-            [int(n) for n in found.groups()],
-            [
-                e["derived"],
-                e["in_scope"],
-                e["remaining"],
-                e["covered"],
-                e["in_scope"],
-                e["partial"],
-                e["unimplementable"],
-            ],
-        )
+        self.assertIn("218", doc)
+        self.assertIn("5df3295024713ac3ce88130c549bbc4fb2cebd53", doc)
+        self.assertIn("Machine-classified controls | 104", doc)
+        self.assertIn("Non-machine controls | 114", doc)
+        self.assertIn("Native source checks reviewed | 233", doc)
+        self.assertIn("Derived presentation IDs reviewed | 44", doc)
+        self.assertNotIn("assert the whole control", doc)
 
     def test_the_changelog_states_the_same_figures(self):
         """Only the Unreleased entry is held to today's figures.
@@ -1252,27 +1195,8 @@ class TestScopeTextCountsComeFromTheData(unittest.TestCase):
         unreleased = _read("CHANGELOG.md").split("\n## Unreleased", 1)[1]
         unreleased = re.split(r"\n## \d", unreleased, maxsplit=1)[0]
         changelog = re.sub(r"\s+", " ", unreleased)
-        if "machine-checkable AISF" not in changelog:
-            self.skipTest("the AISF entry has been released")
-        found = re.search(
-            r"The column names (\d+) of the (\d+) machine-checkable AISF "
-            r"controls\. Of the (\d+), (\d+) are asserted in full, (\d+) in "
-            r"part, and (\d+) are not implementable",
-            changelog,
-        )
-        self.assertIsNotNone(found)
-        e = self._expected()
-        self.assertEqual(
-            [int(n) for n in found.groups()],
-            [
-                e["tagged"],
-                e["in_scope"],
-                e["in_scope"],
-                e["covered"],
-                e["partial"],
-                e["unimplementable"],
-            ],
-        )
+        self.assertIn("218", changelog)
+        self.assertNotIn("64 are asserted in full", changelog)
 
     def test_the_framework_check_total_matches_the_check_catalog(self):
         total = int(
@@ -1281,14 +1205,9 @@ class TestScopeTextCountsComeFromTheData(unittest.TestCase):
                 _read("docs", "SECURITY_CHECKS.md"),
             ).group(1)
         )
-        for text in (
-            _entry("aisf")["scope_text"],
-            re.sub(r"\s+", " ", _read("docs", "SECURITY_CHECKS_AISF.md")),
-        ):
-            self.assertEqual(
-                int(re.search(r"framework's (\d+)-check total", text).group(1)),
-                total,
-            )
+        reference = re.sub(r"\s+", " ", _read("docs", "SECURITY_CHECKS_AISF.md"))
+        self.assertIn(str(total), reference)
+        self.assertNotIn(str(total), _entry("aisf")["scope_text"])
 
 
 class TestSeveralFindingsPerSourceCheck(unittest.TestCase):
@@ -1325,8 +1244,8 @@ class TestSeveralFindingsPerSourceCheck(unittest.TestCase):
         self.assertEqual(row["Status"], "Failed")
         self.assertEqual(row["Severity"], "High")
 
-    def test_every_finding_passed_is_still_a_pass(self):
-        self.assertEqual(self._aisf05(["Passed"] * 3)["Status"], "Passed")
+    def test_every_source_passed_still_leaves_required_proof_missing(self):
+        self.assertEqual(self._aisf05(["Passed"] * 3)["Status"], "N/A")
 
     def test_one_leg_of_a_multi_leg_control_carries_several_findings(self):
         rows = aisf_mappings.derive_aisf_findings(
@@ -1397,7 +1316,7 @@ class TestNotApplicableSeverity(unittest.TestCase):
             ]
         )
         by_region = {r["Region"]: r for r in rows if r["Check_ID"] == "AISF-05"}
-        self.assertEqual(by_region["us-east-1"]["Status"], "Passed")
+        self.assertEqual(by_region["us-east-1"]["Status"], "N/A")
         self.assertEqual(by_region["eu-west-1"]["Status"], "Failed")
 
     def test_accounts_do_not_share_a_join_key(self):
@@ -1408,38 +1327,33 @@ class TestNotApplicableSeverity(unittest.TestCase):
             ]
         )
         by_account = {r["Account_ID"]: r for r in rows if r["Check_ID"] == "AISF-05"}
-        self.assertEqual(by_account["111122223333"]["Status"], "Passed")
+        self.assertEqual(by_account["111122223333"]["Status"], "N/A")
         self.assertEqual(by_account["444455556666"]["Status"], "Failed")
 
 
 class TestGlobalSourceRows(unittest.TestCase):
-    """A source check's `Global` rows are account-wide and reach every Region.
-
-    `SM-09` emits one leg once per account under `Global` and another per Region.
-    The live run `ed125508` produced a `Global` Failed plus a `us-east-1` Passed
-    for `BR-37`, so a join on the literal Region published the then-derived
-    `AISF-06` as Passed for `us-east-1`. That id is retired, and the single-leg
-    cases here run through `AISF-05` (`BR-20`), which takes the same fold.
-    """
+    """Global evidence has its own scope and cannot complete regional proof."""
 
     def _by_key(self, rows, check_id):
         return {
             (r["Account_ID"], r["Region"]): r for r in rows if r["Check_ID"] == check_id
         }
 
-    def test_a_global_failure_fails_the_regional_verdict(self):
+    def test_a_global_failure_remains_visible_in_its_own_scope(self):
         rows = aisf_mappings.derive_aisf_findings(
             [
                 _source_row("BR-20", "Failed", region="Global"),
                 _source_row("BR-20", "Passed", region="us-east-1"),
             ]
         )
-        row = self._by_key(rows, "AISF-05")[("111122223333", "us-east-1")]
-        self.assertEqual(row["Status"], "Failed")
-        self.assertIn("BR-20 (2 findings: 1 Failed, 1 Passed)", row["Finding_Details"])
-        self.assertIn("reported under Global", row["Finding_Details"])
+        by_key = self._by_key(rows, "AISF-05")
+        self.assertEqual(by_key[("111122223333", "Global")]["Status"], "Failed")
+        row = by_key[("111122223333", "us-east-1")]
+        self.assertEqual(row["Status"], "N/A")
+        self.assertIn("BR-20 (Passed)", row["Finding_Details"])
+        self.assertNotIn("2 findings", row["Finding_Details"])
 
-    def test_the_global_row_reaches_every_region_of_the_account(self):
+    def test_global_evidence_is_not_copied_into_regions(self):
         rows = aisf_mappings.derive_aisf_findings(
             [
                 _source_row("BR-20", "Passed", region="us-east-1"),
@@ -1448,8 +1362,9 @@ class TestGlobalSourceRows(unittest.TestCase):
             ]
         )
         by_key = self._by_key(rows, "AISF-05")
-        self.assertEqual(by_key[("111122223333", "us-east-1")]["Status"], "Failed")
-        self.assertEqual(by_key[("111122223333", "eu-west-1")]["Status"], "Failed")
+        self.assertEqual(by_key[("111122223333", "Global")]["Status"], "Failed")
+        self.assertEqual(by_key[("111122223333", "us-east-1")]["Status"], "N/A")
+        self.assertEqual(by_key[("111122223333", "eu-west-1")]["Status"], "N/A")
 
     def test_a_global_pass_leaves_a_regional_failure_failed(self):
         rows = aisf_mappings.derive_aisf_findings(
@@ -1461,10 +1376,10 @@ class TestGlobalSourceRows(unittest.TestCase):
         )
         by_key = self._by_key(rows, "AISF-05")
         self.assertEqual(by_key[("111122223333", "us-east-1")]["Status"], "Failed")
-        self.assertEqual(by_key[("111122223333", "eu-west-1")]["Status"], "Passed")
+        self.assertEqual(by_key[("111122223333", "eu-west-1")]["Status"], "N/A")
+        self.assertEqual(by_key[("111122223333", "Global")]["Status"], "N/A")
 
-    def test_a_global_leg_completes_a_multi_leg_control(self):
-        """The live AISF-08 shape: SM-09 in both, SM-01 and SM-03 regional."""
+    def test_global_and_regional_multi_leg_evidence_stay_separate(self):
         rows = aisf_mappings.derive_aisf_findings(
             [
                 _source_row("SM-09", "Failed", region="Global"),
@@ -1474,9 +1389,10 @@ class TestGlobalSourceRows(unittest.TestCase):
             ]
         )
         by_key = self._by_key(rows, "AISF-08")
-        self.assertEqual(by_key[("111122223333", "us-east-1")]["Status"], "Failed")
+        self.assertEqual(by_key[("111122223333", "Global")]["Status"], "Failed")
+        self.assertEqual(by_key[("111122223333", "us-east-1")]["Status"], "N/A")
 
-    def test_no_global_key_beside_a_regional_one(self):
+    def test_global_key_is_preserved_beside_an_incomplete_regional_one(self):
         rows = aisf_mappings.derive_aisf_findings(
             [
                 _source_row("SM-09", "Failed", region="Global"),
@@ -1484,9 +1400,10 @@ class TestGlobalSourceRows(unittest.TestCase):
                 _source_row("SM-03", "Passed"),
             ]
         )
-        self.assertNotIn("Global", {r["Region"] for r in rows})
+        self.assertIn("Global", {r["Region"] for r in rows})
         row = self._by_key(rows, "AISF-08")[("111122223333", "us-east-1")]
-        self.assertEqual(row["Status"], "Failed")
+        self.assertEqual(row["Status"], "N/A")
+        self.assertIn("SM-09", row["Finding_Details"])
 
     def test_separate_global_keeps_the_global_key_beside_regional_ones(self):
         """A control with only Global sources keeps its own comparison key."""
@@ -1500,15 +1417,15 @@ class TestGlobalSourceRows(unittest.TestCase):
         )
         keys = {(r["Region"], r["Check_ID"]): r for r in rows}
         self.assertEqual(keys[("Global", "AISF-05")]["Status"], "Failed")
-        self.assertEqual(keys[("us-east-1", "AISF-07")]["Status"], "Passed")
-        # AISF-05's only us-east-1 legs are folded Global rows: its row is the
-        # Global key's. No Global AISF-00 calls AISF-07 unassessed.
+        self.assertEqual(keys[("us-east-1", "AISF-07")]["Status"], "N/A")
+        # Global sources keep their own scope. No Global AISF-00 calls
+        # a regional-only AISF-07 mapping unassessed.
         self.assertNotIn(("us-east-1", "AISF-05"), keys)
         self.assertNotIn(("Global", "AISF-00"), keys)
         self.assertIn("AISF-08", keys[("us-east-1", "AISF-00")]["Finding_Details"])
-        self.assertNotIn("AISF-05", keys[("us-east-1", "AISF-00")]["Finding_Details"])
+        self.assertIn("AISF-05", keys[("us-east-1", "AISF-00")]["Finding_Details"])
 
-    def test_separate_global_regional_verdict_still_folds_global_rows(self):
+    def test_separate_global_keeps_regional_and_global_verdicts_independent(self):
         rows = aisf_mappings.derive_aisf_findings(
             [
                 _source_row("BR-20", "Failed", region="Global"),
@@ -1517,8 +1434,8 @@ class TestGlobalSourceRows(unittest.TestCase):
             separate_global=True,
         )
         by_key = self._by_key(rows, "AISF-05")
-        self.assertEqual(by_key[("111122223333", "us-east-1")]["Status"], "Failed")
-        self.assertNotIn(("111122223333", "Global"), by_key)
+        self.assertEqual(by_key[("111122223333", "us-east-1")]["Status"], "N/A")
+        self.assertEqual(by_key[("111122223333", "Global")]["Status"], "Failed")
 
     def test_separate_global_only_global_rows_match_the_default(self):
         source = [_source_row("BR-20", "Failed", region="Global")]
@@ -1544,8 +1461,9 @@ class TestGlobalSourceRows(unittest.TestCase):
             ]
         )
         by_key = self._by_key(rows, "AISF-05")
-        self.assertEqual(by_key[("111122223333", "us-east-1")]["Status"], "Failed")
-        self.assertEqual(by_key[("444455556666", "us-east-1")]["Status"], "Passed")
+        self.assertEqual(by_key[("111122223333", "Global")]["Status"], "Failed")
+        self.assertEqual(by_key[("111122223333", "us-east-1")]["Status"], "N/A")
+        self.assertEqual(by_key[("444455556666", "us-east-1")]["Status"], "N/A")
         self.assertNotIn(
             "reported under Global",
             by_key[("444455556666", "us-east-1")]["Finding_Details"],
@@ -1656,9 +1574,9 @@ class TestSingleAccountRouting(unittest.TestCase):
         )
         derived = _derived_by_id(captured["service_findings"]["aisf"])
         self.assertEqual(derived["AISF-07"]["Status"], "Failed")
-        self.assertEqual(derived["AISF-05"]["Status"], "Passed")
+        self.assertEqual(derived["AISF-05"]["Status"], "N/A")
         self.assertEqual(captured["service_stats"]["aisf"]["failed"], 1)
-        self.assertEqual(captured["service_stats"]["aisf"]["passed"], 1)
+        self.assertEqual(captured["service_stats"]["aisf"]["passed"], 0)
         # And the source rows keep their own service.
         self.assertEqual(
             {f["Check_ID"] for f in captured["service_findings"]["bedrock"]},
@@ -1695,7 +1613,7 @@ class TestSingleAccountRouting(unittest.TestCase):
             {"AISF-05"},
         )
 
-    def test_an_ai_prefixed_csv_row_routes_to_aisf_not_the_csv_category(self):
+    def test_retired_aisf_csv_row_is_isolated_with_a_diagnostic(self):
         """A stale or foreign artifact must not file AISF-* under bedrock."""
         captured = self._render(
             {
@@ -1705,10 +1623,9 @@ class TestSingleAccountRouting(unittest.TestCase):
                 },
             }
         )
-        self.assertEqual(
-            {f["Check_ID"] for f in captured["service_findings"]["aisf"]}, {"AISF-01"}
-        )
+        self.assertEqual(captured["service_findings"]["aisf"], [])
         self.assertEqual(captured["service_findings"]["bedrock"], [])
+        self.assertTrue(captured["aisf_register"]["artifact_issues"])
 
     def test_derived_rows_are_deduped_on_the_same_key_as_csv_rows(self):
         captured = self._render(
@@ -1797,7 +1714,7 @@ class TestMultiAccountConsolidator(unittest.TestCase):
         captured = self._consolidate()
 
         derived = _derived_by_id(captured["service_findings"]["aisf"])
-        self.assertEqual(derived["AISF-08"]["Status"], "Passed")
+        self.assertEqual(derived["AISF-08"]["Status"], "N/A")
 
     def test_a_deselected_bedrock_gets_no_aisf_00_row(self):
         rows = []
@@ -1815,42 +1732,47 @@ class TestMultiAccountConsolidator(unittest.TestCase):
             {"AISF-07", "AISF-08"},
         )
 
-    def test_a_deselected_sagemaker_is_named_in_the_scope_text(self):
+    def test_deselected_sagemaker_is_not_replaced_by_manual_control_tasks(self):
         row = _source_row("BR-20", "Passed")
         row.pop("Account_ID")
         self._write("bedrock_security_report_exec_us-east-1.csv", [row])
-
         with patch.dict(os.environ, {"ENABLE_SAGEMAKER": "false"}):
             captured = self._consolidate()
-
         html = report_template.generate_html_report(**captured)
-        self.assertIn(TestScopeTextNamesOmittedControls.SAGEMAKER_NOTE, html)
+        self.assertFalse(
+            _register_from_html(html)["scope"]["source_selection"]["sagemaker"]
+        )
+        self.assertEqual(
+            [(c["source_check_id"], c["status"]) for c in _checks_from_html(html)],
+            [("BR-20", "Passed")],
+        )
 
-    def test_the_derived_count_reaches_the_scope_text(self):
+    def test_unknown_legacy_alias_does_not_change_consolidated_native_results(self):
         row = _source_row("BR-20", "Passed")
         row.pop("Account_ID")
         self._write("bedrock_security_report_exec_us-east-1.csv", [row])
-
         with _with_fourth_derived_control():
             captured = self._consolidate()
             html = report_template.generate_html_report(**captured)
-        self.assertIn(
-            "Scope: 4 of the 105 in-scope AISF controls carry a derived AISF- "
-            "row; the remaining 101",
-            html,
+        checks = _checks_from_html(html)
+        self.assertEqual(
+            [(c["source_check_id"], c["status"]) for c in checks], [("BR-20", "Passed")]
+        )
+        self.assertNotIn(
+            "AIR-TEST-02",
+            {cid for check in checks for cid in check["aisf_control_ids"]},
         )
 
-    def test_ai_prefix_routes_to_aisf_and_not_to_the_bedrock_fallback(self):
+    def test_retired_aisf_csv_row_is_isolated_with_a_diagnostic(self):
         row = _source_row("AISF-01")
         row.pop("Account_ID")
         self._write("bedrock_security_report_exec_us-east-1.csv", [row])
 
         captured = self._consolidate()
 
-        self.assertEqual(
-            {f["check_id"] for f in captured["service_findings"]["aisf"]}, {"AISF-01"}
-        )
+        self.assertEqual(captured["service_findings"]["aisf"], [])
         self.assertEqual(captured["service_findings"]["bedrock"], [])
+        self.assertTrue(captured["aisf_register"]["artifact_issues"])
 
 
 if __name__ == "__main__":

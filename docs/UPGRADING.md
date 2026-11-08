@@ -77,6 +77,48 @@ by the infrastructure stack's `GitHubBranch` parameter on every build:
   `GitHubBranch` first. If the stack's template did not change, this can be a
   parameter-only update that uses the current template.
 
+### AISF catalog, report, and assessment selection
+
+This revision updates both top-level deployment templates, both SAM templates,
+`buildspec.yml`, the state machine, and the report code. Update the existing
+single-account infrastructure stack with
+`deployment/aiml-security-single-account.yaml`, or the multi-account central
+stack with `deployment/2-aiml-security-codebuild.yaml`. If `GitHubBranch` pins an
+older revision, change it to the intended revision during that update. Select
+`EnableAISFAssessment=true` to run all existing AI service, GRC, and OWASP
+collectors together; the new parameter defaults to `false`.
+
+Then start the corresponding CodeBuild project to deploy the SAM and report
+changes and run a new assessment. Direct SAM users must redeploy the template
+for their mode with `EnableAISFAssessment=true` to use the preset; a new
+execution with `{}` input is sufficient. Existing account and Region settings
+still apply. This feature adds no IAM grant, producer, or member-role StackSet
+change. Optional AgentCore artifact object reads remain separately controlled.
+
+Rerun assessments after the upgrade. Existing archived reports are not rewritten.
+New single-account runs require service completion receipts; old inputs without
+them must not be replayed as proven complete. Multi-account runs now provide an
+explicit expected account/Region manifest and retain failed accounts in diagnostic
+reports. Repair missing or malformed selected artifacts and rerun the affected
+assessment; the presence of an uploaded diagnostic HTML report does not establish
+success.
+
+The AISF view reports actual source-check observations and reviewed mappings;
+the direct-check denominator is unchanged. The 218-control catalog remains
+internal reference data. Unobserved requirements do not generate assessment
+rows or manual-review tasks, and successful source checks do not establish
+whole-control passes. See [AISF interpretation](SECURITY_CHECKS_AISF.md).
+
+The comprehensive mapping extension also reuses existing FS and native OW/AG
+observations, including evidence previously visible through OWASP or the Agentic
+AI Security lens. The AISF preset enables these existing dependencies together
+and retains their artifacts and effective selection for reporting and history.
+With the preset disabled, FS remains available when GRC or OWASP is enabled,
+and native OW requires OWASP. Individual deselections are preserved in that
+mode. **View failed findings** in the AISF summary shows source failures in the
+shared findings table. **Details and remediation** retains the source action and
+partial mapping limits. Equivalent lens aliases do not count as additional evidence.
+
 ## Before Upgrading
 
 1. Review the changelog's `Deployment impact` section, or compare the two
@@ -169,9 +211,10 @@ top-level CloudFormation templates:
    `aiml-security-assessment/template-multi-account.yaml`, whichever you use.
 3. Deploy it to the existing AWS SAM stack name, keeping the existing parameter
    values unless you intend to change them.
-4. Start the Step Functions execution with the execution input the release
-   expects. For example, use `"enableResponsibleAIGRC": "true"`, not the
-   legacy `"enableFinServ"` key (see
+4. Start a new Step Functions execution. The deployed AISF preset needs no
+   extra execution flags. With AISF disabled, use the execution input expected
+   for individual optional assessments, such as `"enableResponsibleAIGRC": "true"`.
+   The legacy `"enableFinServ"` key is rejected (see
    [Troubleshooting §6b](TROUBLESHOOTING.md#6b-execution-fails-with-legacyenablefinservinputrejected)).
 
 You are responsible for separately updating any cross-account roles or
@@ -197,6 +240,13 @@ the target revision contains deployable assessment or orchestration changes.
   `CREATE_COMPLETE` or `UPDATE_COMPLETE`.
 - If an assessment ran, a new report was written to the infrastructure stack's
   `AssessmentBucket` and contains the checks expected for the deployed release.
+- If you enabled AISF, the new report identifies the preset and all six effective
+  collectors, and its JSON records `scope.enable_aisf=true`, `schema_version=2`,
+  and `view="automated-check-results"`. The `checks` array contains accepted
+  source-check observations, including results without a reviewed AISF mapping.
+  Collection, artifact, and input gaps are disclosed in `gaps`. The 218-control
+  catalog remains internal reference data; successful source checks do not
+  establish whole-control passes.
 
 ---
 

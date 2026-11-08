@@ -28,7 +28,11 @@ from the configured repository.
 
 The framework generates interactive security assessment reports with filtering, search, and dark mode support.
 
-**Sample reports:** [Single Account](https://aws-samples.github.io/sample-aiml-security-assessment/sample-reports/security_assessment_single_account.html) | [Multi-Account](https://aws-samples.github.io/sample-aiml-security-assessment/sample-reports/security_assessment_multi_account.html)
+**Current AISF samples:** [Single Account](sample-reports/aisf_single_account.html) | [Multi-Account](sample-reports/aisf_multi_account.html)
+
+Both current samples show AI check results, their reviewed AISF mappings, affected resources, and remediation. Open **By Compliance Standard → AWS AI Security Framework**.
+
+**Historical sample reports:** [Single Account](sample-reports/security_assessment_single_account.html) | [Multi-Account](sample-reports/security_assessment_multi_account.html). These retain their original findings and assessment dates.
 
 <table>
   <tr>
@@ -209,9 +213,31 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 
 All settings below are CloudFormation parameters on the top-level deployment templates. Changing a value requires a stack update followed by a new CodeBuild run.
 
+### Selecting the AISF Assessment Preset
+
+Set `EnableAISFAssessment=true` to assess the AWS AI Security Framework with
+all existing AI evidence collectors. This single choice enables Amazon Bedrock,
+Amazon SageMaker AI, Amazon Bedrock AgentCore, Agent Registry, Responsible AI
+GRC, and OWASP, even when their individual switches are `false`. It applies in
+both deployment modes and to every selected account and Region; GRC runs once
+per account.
+
+The preset defaults to `false`. Its report includes the actual findings from
+these AI collectors, with their original `Passed`, `Failed`, or `N/A` results
+and reviewed AISF mappings. Additional AI checks without a reviewed mapping
+remain visible. Unobserved canonical controls do not generate manual-review
+tasks or an assessment denominator. Optional AgentCore artifact object reads
+remain separately controlled. The report identifies the preset, effective
+collectors, and incomplete inputs. See [AISF assessment scope](docs/SECURITY_CHECKS_AISF.md).
+
+For direct SAM deployments, set `EnableAISFAssessment=true` when deploying the
+SAM template for your mode. A new Step Functions execution with `{}` input
+then enables the preset; separate GRC or OWASP execution flags are unnecessary.
+Account and Region settings still determine the execution scope.
+
 ### Selecting Service Assessments
 
-Choose which direct service assessments run:
+With `EnableAISFAssessment=false`, choose which direct service assessments run:
 
 | Parameter | Assessment | Default |
 | --- | --- | --- |
@@ -220,13 +246,14 @@ Choose which direct service assessments run:
 | `EnableAgentCoreAssessment` | Amazon Bedrock AgentCore | `true` |
 | `EnableAgentRegistryAssessment` | AWS Agent Registry | `true` |
 
-For a Bedrock-only run, leave `EnableBedrockAssessment=true` and set the other
+For a Bedrock-only run, keep `EnableAISFAssessment=false`, leave
+`EnableBedrockAssessment=true`, and set the other
 three parameters to `false`. Existing deployments keep all four services
 enabled unless you change these parameters.
 
 - **Deselected services are labeled Not selected.** Their Lambda functions are not invoked and produce no CSV files. The report labels their areas **Not selected** rather than showing an assessed service with zero findings. Selecting no direct services is supported and produces a scope-only report.
-- **Derived views shrink with the selection.** The Agentic AI lens and AWS AI Security Framework (AISF) view contain only rows supported by selected services. OWASP controls that lose a source show an N/A/Informational coverage notice; a control that loses its only source (such as OW-07 when Bedrock is off) remains visible as unassessed.
-- **Optional assessments stay independent.** Responsible AI GRC still assesses deselected services when it is enabled, including when it runs as an OWASP dependency. To limit execution to the selected services, disable both `EnableResponsibleAIGRCAssessment` and `EnableOWASPAssessment`.
+- **Derived views shrink with the selection.** The Agentic AI lens contains only rows from the selected Bedrock, AgentCore, and Agent Registry assessments. OWASP controls that lose a source show an N/A/Informational coverage notice; a control that loses its only source (such as OW-07 when Bedrock is off) remains visible as unassessed.
+- **Optional assessments stay independent when the AISF preset is off.** Responsible AI GRC still assesses deselected services when it is enabled, including when it runs as an OWASP dependency. To limit execution to the selected services, disable both `EnableResponsibleAIGRCAssessment` and `EnableOWASPAssessment`.
 - **Compare like with like.** Deselecting a well-configured service can lower the pass rate by removing passing controls from the score. Compare pass rates only across runs with the same selection.
 
 Selection controls execution, not provisioning: the Lambda functions and their
@@ -240,7 +267,8 @@ input. For implementation details, see the
 ### Optional: Responsible AI GRC Checks (`EnableResponsibleAIGRCAssessment`)
 
 The 64 Responsible AI GRC (`FS-XX`) checks are **opt-in** (default `false`).
-Set `EnableResponsibleAIGRCAssessment` to `true` to run them; findings appear in
+Set `EnableResponsibleAIGRCAssessment` or `EnableAISFAssessment` to `true`
+to run them; findings appear in
 a dedicated **Responsible AI GRC** section of the report. The assessment runs
 once per account, not once per region. The legacy `EnableFinServAssessment`
 parameter is still accepted as an alias; see
@@ -252,21 +280,23 @@ AWS Security Hub severity scale; see the
 Compliance mappings are preliminary; validate them with your risk, legal, and
 compliance teams before relying on them as audit evidence.
 
-> **Direct SAM deployments:** If you deploy `aiml-security-assessment/template.yaml` yourself and start executions manually, include `"enableResponsibleAIGRC": "true"` in the `StartExecution` input to run these checks.
+> **Direct SAM deployments:** Set `EnableAISFAssessment=true` at deployment to include these checks in the preset. With the preset disabled, include `"enableResponsibleAIGRC": "true"` in the `StartExecution` input to run them separately.
 
 <a id="scope-and-limitations-1"></a>
 
 ### Optional: OWASP Top 10 for LLM Checks (`EnableOWASPAssessment`)
 
 The 12 OWASP Top 10 for LLM (`OW-XX`) checks are **opt-in** (default `false`).
-Set `EnableOWASPAssessment` to `true` to run them. The OWASP assessment maps
+Set `EnableOWASPAssessment` or `EnableAISFAssessment` to `true` to run them.
+The OWASP assessment maps
 existing Bedrock, SageMaker AI, AgentCore, and Responsible AI GRC findings to
 LLM01–LLM10 and runs two native checks for LLM07 (System Prompt Leakage).
 Findings appear in the report's **By Compliance Standard** section.
 
 Many OWASP mappings derive from Responsible AI GRC checks, so enabling OWASP
 also runs the Responsible AI GRC assessment. Unless you enable Responsible AI
-GRC explicitly, those findings are used only as OWASP evidence: they are hidden
+GRC explicitly or select the AISF preset, those findings are used only as
+OWASP evidence: they are hidden
 from the report, and their CSV is not copied to the report bucket. See
 [OWASP Top 10 for LLM Checks](docs/SECURITY_CHECKS_OWASP.md) for the mappings and
 status semantics.
@@ -468,8 +498,8 @@ Confirm in the AWS CodeBuild console that the build completed, then:
 | `sagemaker_security_report_{execution_id}_{region}.csv` | Amazon SageMaker AI results |
 | `agentcore_security_report_{execution_id}_{region}.csv` | Amazon Bedrock AgentCore results |
 | `agent_registry_security_report_{execution_id}_{region}.csv` | AWS Agent Registry results |
-| `responsible_ai_grc_security_report_{execution_id}.csv` | Responsible AI GRC results (only when `EnableResponsibleAIGRCAssessment` is `true`) |
-| `owasp_security_report_{execution_id}_{region}.csv` | OWASP Top 10 for LLM results (only when `EnableOWASPAssessment` is `true`) |
+| `responsible_ai_grc_security_report_{execution_id}.csv` | Responsible AI GRC results (when `EnableResponsibleAIGRCAssessment` or `EnableAISFAssessment` is `true`) |
+| `owasp_security_report_{execution_id}_{region}.csv` | OWASP Top 10 for LLM results (when `EnableOWASPAssessment` or `EnableAISFAssessment` is `true`) |
 | `assessment_history_run_{execution_id}.json` | Single-account only: a record of whether the run succeeded, used by the changes report (unless `EnableAssessmentHistory` is `false`) |
 | `security_assessment_single_account_{timestamp}.html` | The account's HTML report |
 | `security_assessment_changes_{timestamp}.html` and `.csv` | Changes since the account's previous run (from the second run on, unless `EnableAssessmentHistory` is `false`) |
@@ -534,7 +564,7 @@ There is no separate deployment parameter to turn off the Bedrock content-access
 | Document | Description |
 | --- | --- |
 | [Security Checks Reference](docs/SECURITY_CHECKS.md) | All 277 checks, with severity levels, status values, and scoring |
-| [AWS AI Security Framework Checks](docs/SECURITY_CHECKS_AISF.md) | Derived AISF control rows, source checks, and coverage semantics; these rows restate existing checks and are excluded from the 277-check total |
+| [AWS AI Security Framework Assessment](docs/SECURITY_CHECKS_AISF.md) | AI check results and reviewed AISF mappings across direct services, GRC, native OWASP, and Agentic AI checks. Includes additional AI checks without a reviewed mapping. [Synthetic examples](sample-reports/README.md#current-aisf-examples) |
 | [OWASP Top 10 for LLM Checks](docs/SECURITY_CHECKS_OWASP.md) | OW-01..12: mapping-derived LLM01..LLM10 rows, native LLM07 checks, and status semantics |
 | [Responsible AI GRC Checks](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md) | All FS check definitions, the upstream-overlap table, and the compliance framework mapping |
 | [Responsible AI GRC Scope](docs/RESPONSIBLE_AI_GRC_SCOPE.md) | What Responsible AI GRC is and is not, its sources, check counts, terminology, and migration from `EnableFinServAssessment` |
