@@ -163,24 +163,44 @@ def _collapse_aliases(rows: list[dict]) -> list[dict]:
 
 def evidence_unavailable(row: dict) -> bool:
     text = (value(row, "Finding") + " " + value(row, "Finding_Details")).lower()
+    # A missing security configuration can make its audit record "incomplete"
+    # without preventing collection. Require a read/assessment failure signal.
     return any(
-        word in text
-        for word in (
-            "accessdenied",
-            "access denied",
-            "permission denied",
-            "unsupported",
-            "unavailable",
-            "incomplete",
-            "pagination",
-            "truncated",
-            "timeout",
-            "safety cap",
-            "could not assess",
-            "could not be assessed",
-            "could not read",
-            "could not be read",
-            "not in the iam permissions cache",
+        re.search(pattern, text)
+        for pattern in (
+            r"\b(?:accessdenied(?:exception)?|access denied|permission denied"
+            r"|unsupportedoperation(?:exception)?|unsupported region"
+            r"|readtimeouterror|connecttimeouterror|timeouterror"
+            r"|requesttimeout(?:exception)?|lambdatimeoutapproaching)\b",
+            r"\b(?:could not|unable to) (?:be )?(?:fully )?"
+            r"(?:assess(?:ed)?|read|list(?:ed)?|enumerat(?:e|ed)|retriev(?:e|ed)"
+            r"|evaluat(?:e|ed)|pars(?:e|ed)|complet(?:e|ed)|searched)\b",
+            r"\b(?:assessment error|read(?:\(s\)|s)? failed"
+            r"|recorded read errors|could not determine the assessment account"
+            r"|not in the iam permissions cache)\b",
+            r"\b(?:could not initialize the (?:iam|eventbridge) client"
+            r"|could not determine the account id"
+            r"|could not (?:generate service-last-accessed details"
+            r"|inspect service-last-accessed data)"
+            r"|did not complete before the assessment deadline"
+            r"|iam permission cache was not available"
+            r"|no iam permissions found in cache)\b",
+            r"\bschema(?: at \S+)?(?: in s3)? was not read\b",
+            r"\bthe vpc endpoints of .+ were not read\b",
+            r"\bwhether an alarm counts shell connections in this region was not read\b",
+            r"\b(?:discovery|inventory|assessment|permissions cache|account context"
+            r"|source list|bucket list|api|service) (?:is |was |remains )?"
+            r"(?:unavailable|incomplete|truncated|partial)\b",
+            r"\b(?:pagination (?:failed|stopped)"
+            r"|repeated a pagination token|stopping pagination"
+            r"|(?:discovery|inventory) safety cap reached"
+            r"|inventory reached the \d+-record safety limit)\b",
+            r"\b(?:timeout during (?:discovery|assessment|collection|read)"
+            r"|(?:discovery|assessment|collection|read|request) timed out"
+            r"|timeout, not assessed|iam job timed out"
+            r"|lambda timeout was approaching|before (?:its |the )lambda timeout"
+            r"|stopped at the run deadline)\b",
+            r"\bunsupported endpoint configuration variant\b",
         )
     )
 

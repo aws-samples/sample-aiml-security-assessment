@@ -28,11 +28,11 @@ from the configured repository.
 
 The framework generates interactive security assessment reports with filtering, search, and dark mode support.
 
-**Current AISF samples:** [Single Account](sample-reports/aisf_single_account.html) | [Multi-Account](sample-reports/aisf_multi_account.html)
+**Current AISF samples:** [Single Account](https://aws-samples.github.io/sample-aiml-security-assessment/sample-reports/aisf_single_account.html) | [Multi-Account](https://aws-samples.github.io/sample-aiml-security-assessment/sample-reports/aisf_multi_account.html)
 
 Both current samples show AI check results, their reviewed AISF mappings, affected resources, and remediation. Open **By Compliance Standard → AWS AI Security Framework**.
 
-**Historical sample reports:** [Single Account](sample-reports/security_assessment_single_account.html) | [Multi-Account](sample-reports/security_assessment_multi_account.html). These retain their original findings and assessment dates.
+**Historical sample reports:** [Single Account](https://aws-samples.github.io/sample-aiml-security-assessment/sample-reports/security_assessment_single_account.html) | [Multi-Account](https://aws-samples.github.io/sample-aiml-security-assessment/sample-reports/security_assessment_multi_account.html). These retain their original findings and assessment dates.
 
 <table>
   <tr>

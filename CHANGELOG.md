@@ -22,10 +22,10 @@ section.
   do not generate manual-review tasks or an assessment denominator. Optional
   AgentCore artifact object reads stay separately controlled.
 - Promoted current AISF AI-check samples in the README and sample index.
-  Visible links on both historical sample pages lead to the corresponding current
-  example while preserving original findings and assessment dates. Provenance
-  records original and notice-bearing historical hashes. This sample/documentation
-  update requires no additional deployment.
+  Both link to the new examples separately from the historical reports, which
+  retain their original findings and assessment dates. Provenance records the
+  historical reports' hashes without rewriting those pages. This
+  sample/documentation update requires no additional deployment.
 - Added independent, default-enabled switches for Bedrock, SageMaker AI,
   AgentCore, and AWS Agent Registry assessments in both deployment modes.
   Disabled services skip their assessment Lambda and CSV requirements; reports
@@ -456,6 +456,14 @@ back `Passed` names what it could not read.
 
 ### Fixed
 
+- Keep valid AISF source observations in their evidence category when finding
+  prose describes incomplete logging or unavailable audit content, or names
+  a timeout configuration field. Collection gaps require an explicit
+  assessment or collection failure signal. Native outcomes and remediation
+  remain intact, and actual denied or incomplete collection stays visible.
+- Return a bounded Responsible AI GRC receipt to Step Functions while retaining
+  every finding in its S3 CSV. Both workflow modes explicitly catch collector
+  payload-limit errors so the diagnostic report and completion checks can run.
 - BR-03 and BR-44 now link to the current Amazon Bedrock Marketplace access
   documentation section. Refreshed single-account, multi-account, and changes
   samples carry the corrected link.
@@ -588,6 +596,13 @@ back `Passed` names what it could not read.
 
 ### Deployment impact
 
+- **AISF evidence classification and collector completion:** Run single-account
+  or multi-account CodeBuild from this revision to deploy the updated report
+  and Responsible AI GRC Lambda code and workflow error handling, then
+  generate a new assessment. Direct SAM users must rebuild and redeploy
+  `aiml-security-assessment/template.yaml` or `template-multi-account.yaml`
+  for their mode, then start a new execution. For these corrections alone, no
+  top-level infrastructure or member-role StackSet update is required.
 - **Collector and evidence corrections:** Run single-account or multi-account
   CodeBuild from this revision to deploy the updated Bedrock, AgentCore,
   Responsible AI GRC, and report Lambda code, then generate a new assessment.

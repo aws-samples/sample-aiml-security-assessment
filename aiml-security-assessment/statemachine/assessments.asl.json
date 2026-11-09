@@ -189,6 +189,13 @@
                                         "Catch": [
                                             {
                                                 "ErrorEquals": [
+                                                    "States.DataLimitExceeded"
+                                                ],
+                                                "ResultPath": "$.assessmentError",
+                                                "Next": "Bedrock Assessment Incomplete"
+                                            },
+                                            {
+                                                "ErrorEquals": [
                                                     "States.ALL"
                                                 ],
                                                 "ResultPath": "$.assessmentError",
@@ -270,6 +277,13 @@
                                             }
                                         ],
                                         "Catch": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.DataLimitExceeded"
+                                                ],
+                                                "ResultPath": "$.assessmentError",
+                                                "Next": "Sagemaker Assessment Incomplete"
+                                            },
                                             {
                                                 "ErrorEquals": [
                                                     "States.ALL"
@@ -356,6 +370,13 @@
                                         "Catch": [
                                             {
                                                 "ErrorEquals": [
+                                                    "States.DataLimitExceeded"
+                                                ],
+                                                "ResultPath": "$.assessmentError",
+                                                "Next": "AgentCore Assessment Incomplete"
+                                            },
+                                            {
+                                                "ErrorEquals": [
                                                     "States.ALL"
                                                 ],
                                                 "ResultPath": "$.assessmentError",
@@ -437,6 +458,13 @@
                                             }
                                         ],
                                         "Catch": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.DataLimitExceeded"
+                                                ],
+                                                "ResultPath": "$.assessmentError",
+                                                "Next": "AWS Agent Registry Assessment Incomplete"
+                                            },
                                             {
                                                 "ErrorEquals": [
                                                     "States.ALL"
@@ -574,6 +602,13 @@
                                         "Catch": [
                                             {
                                                 "ErrorEquals": [
+                                                    "States.DataLimitExceeded"
+                                                ],
+                                                "ResultPath": "$.responsibleAIGRCError",
+                                                "Next": "Responsible AI GRC Assessment Incomplete"
+                                            },
+                                            {
+                                                "ErrorEquals": [
                                                     "States.ALL"
                                                 ],
                                                 "ResultPath": "$.responsibleAIGRCError",
@@ -665,6 +700,13 @@
                             }
                         ],
                         "Catch": [
+                            {
+                                "ErrorEquals": [
+                                    "States.DataLimitExceeded"
+                                ],
+                                "ResultPath": "$.owaspError",
+                                "Next": "OWASP Assessment Incomplete"
+                            },
                             {
                                 "ErrorEquals": [
                                     "States.ALL"

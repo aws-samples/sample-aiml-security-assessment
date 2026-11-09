@@ -31825,7 +31825,7 @@
     "aiml-security-assessment/functions/security/agentcore_assessments/app.py": "176784133b1c4d514ec9c1d3202c47dd4c134098a345cb238d9d9dacd3f07251",
     "aiml-security-assessment/functions/security/bedrock_assessments/app.py": "9b5370947431ec17239046cfdce27884efb64299f29c640cf960aa7952a92664",
     "aiml-security-assessment/functions/security/owasp_assessments/app.py": "fe8d284b99e39d802fbe463492241c1aca56c7a06ff7c911b6a6b196972c6c67",
-    "aiml-security-assessment/functions/security/responsible_ai_grc_assessments/app.py": "57447766a431f8490612b5730ad77d83499524378ef3df4a97534bb8473381df",
+    "aiml-security-assessment/functions/security/responsible_ai_grc_assessments/app.py": "edca1e4b270062707b8f324575a6712bcdf5ee34edd8e2147ef570170211276b",
     "aiml-security-assessment/functions/security/sagemaker_assessments/app.py": "252ab75f092801ef234973305edeca59009449a305e83adfc753769dea28d829"
   },
   "source_revision": "5df3295024713ac3ce88130c549bbc4fb2cebd53"

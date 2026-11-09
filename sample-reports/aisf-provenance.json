@@ -4,13 +4,13 @@
   "inputs": {
     "aiml-security-assessment/functions/security/generate_consolidated_report/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog.py": "64abc2340a4d8478dcfcd37c7861e669d03b4505cc3d436a9b0f3e7d31dbd467",
-    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/check_inventory.json": "ccdcd8e4f7478516d31f86e887d26b04357781a86429c22a15fd3c53d1666bd4",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/check_inventory.json": "bbd94b256b5ebeda219aeb20c843c03e7901637d5c2b997080a82b632c5bc340",
     "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/classification.json": "e4ebec58fbf41133890ba9caccaa6b9219ddfbd610827caa108bfc6b429e8b8c",
     "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/controls.json": "f2d44380f1859c204d13caf093b6e73a0aa2bea55e6f9cd6862971db12e362be",
     "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/manifest.json": "c3f19c2ee5c4b9afef8bcaa02357fcfffd0f334ce6d0d4c958cff2b9391ab34d",
-    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/mapping.json": "c6cf9d7e20bc7f9234898c620c08b807b1a0e2fa72fb62be312a4f481b37ef8d",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/mapping.json": "227be817aa0831ff5758d8368be36af64ace66de95019e120a294cdf8cde1f24",
     "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_mappings.py": "0ad74702da9ef81bbde93d26bd30ff7c4e6159d27593f5929da9bf509cc066e7",
-    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_results.py": "456288e9aa526013b3472d62ed7dd1574fc11e2849dbf3a373f535c0a7ce9a4b",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_results.py": "8b54aa420bb83257ca1b5f1fc7903a9dd11d0869dd2e8aa08e8cb58fc5b5a6cc",
     "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_view.py": "62ee6fbfeaa8e0abae94b61c716d2e7910cf5f0a5015e5d233ab881e38cdce7c",
     "aiml-security-assessment/functions/security/generate_consolidated_report/app.py": "911cf97a82d36202e54975445b36eadf16618eb3fbd5b08f1cb1913d6e4102fc",
     "aiml-security-assessment/functions/security/generate_consolidated_report/assessment_artifacts.py": "01bbc9520337b929ef344712033bc4060bf46ec8e6debcf19ff496dbf65c6207",
@@ -43,10 +43,10 @@
     "tools/generate_aisf_samples.py": "cce80a04f7f991b83dd854a7c3b284add4aa6816e9dc4bdd8620ad73cae6ba55"
   },
   "outputs": {
-    "sample-reports/aisf_multi_account.html": "4f04f27018a19f8da0b00b238a0dd9acaa1901e0fad09b9fc8b087d5dcdf29bc",
-    "sample-reports/aisf_multi_account.json": "ed6002f875dbd4f49559533ffa432c5fe910a82d2ec5d1c4e42d6cbbf14543fd",
-    "sample-reports/aisf_single_account.html": "859d18f46d80b840bd480ebf7f8c01a094bff2f9504c1377d265674ad31ee2c6",
-    "sample-reports/aisf_single_account.json": "ad4efa09901c2ec6b1e7127a44737ed938b5a7ccf78f513292f9e7d5c1ab82e0"
+    "sample-reports/aisf_multi_account.html": "df3348d6d53ff78939c69760c59ca1fde0328fffc2e424e82130102a2c27d869",
+    "sample-reports/aisf_multi_account.json": "2338f8b0c970308de360a28d451021971e97889bcc457d883c17ce348cecb235",
+    "sample-reports/aisf_single_account.html": "df0224575fe090fb1bf3acc98f07424d55e1ef255466294810177a8a7989a1b7",
+    "sample-reports/aisf_single_account.json": "4f211ef642693e3063ff0a6922b3557617b42729b5a17e22baafcf20e1f98148"
   },
   "primary_samples": {
     "files": {

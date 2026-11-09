@@ -8437,7 +8437,9 @@ def lambda_handler(event, context):
         "statusCode": 200,
         "body": {
             "message": "Responsible AI GRC security assessment completed",
-            "findings": all_findings,
+            "row_count": sum(
+                len(finding.get("csv_data", [])) for finding in all_findings
+            ),
             "report_url": s3_url,
         },
     }

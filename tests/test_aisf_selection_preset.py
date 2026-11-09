@@ -185,7 +185,14 @@ def merge_result(data, result, path="$"):
     return {**deepcopy(data), path[2:]: deepcopy(result)}
 
 
-def run_workflow(machine, data, calls, context, fail_function=None):
+def run_workflow(
+    machine,
+    data,
+    calls,
+    context,
+    fail_function=None,
+    fail_error="SyntheticCollectorFailure",
+):
     """Execute the shipped ASL; replace Lambda IO with success/failure receipts."""
     name = machine["StartAt"]
     for _ in range(40):
@@ -214,11 +221,24 @@ def run_workflow(machine, data, calls, context, fail_function=None):
             function = arguments["FunctionName"].removeprefix("${").removesuffix("}")
             calls.append((function, arguments["Payload"]))
             if function == fail_function:
-                catcher = state["Catch"][0]
-                assert "States.ALL" in catcher["ErrorEquals"]
+                catcher = next(
+                    (
+                        entry
+                        for entry in state.get("Catch", [])
+                        if fail_error in entry["ErrorEquals"]
+                        or (
+                            "States.ALL" in entry["ErrorEquals"]
+                            and fail_error
+                            not in ("States.DataLimitExceeded", "States.Runtime")
+                        )
+                    ),
+                    None,
+                )
+                if catcher is None:
+                    raise ValueError(fail_error)
                 data = merge_result(
                     data,
-                    {"Error": "SyntheticCollectorFailure", "Cause": "Access denied"},
+                    {"Error": fail_error, "Cause": "Synthetic collector failure"},
                     catcher["ResultPath"],
                 )
                 name = catcher["Next"]
@@ -231,7 +251,9 @@ def run_workflow(machine, data, calls, context, fail_function=None):
             result = {"Payload": payload}
         elif kind == "Parallel":
             result = [
-                run_workflow(branch, deepcopy(data), calls, context, fail_function)
+                run_workflow(
+                    branch, deepcopy(data), calls, context, fail_function, fail_error
+                )
                 for branch in state["Branches"]
             ]
         elif kind == "Map":
@@ -249,6 +271,7 @@ def run_workflow(machine, data, calls, context, fail_function=None):
                         calls,
                         item_context,
                         fail_function,
+                        fail_error,
                     )
                 )
         else:
@@ -265,7 +288,14 @@ def run_workflow(machine, data, calls, context, fail_function=None):
     pytest.fail("Workflow did not terminate")
 
 
-def execution(template, aisf, direct, optional=None, fail_function=None):
+def execution(
+    template,
+    aisf,
+    direct,
+    optional=None,
+    fail_function=None,
+    fail_error="SyntheticCollectorFailure",
+):
     calls = []
     run_workflow(
         definition(template, aisf, direct),
@@ -279,6 +309,7 @@ def execution(template, aisf, direct, optional=None, fail_function=None):
             "StateMachine": {"Name": "synthetic-aisf"},
         },
         fail_function,
+        fail_error,
     )
     original = next(
         payload["OriginalInput"] for function, payload in calls if function == REPORT
@@ -735,11 +766,22 @@ def test_requested_preset_with_partial_scope_keeps_flags_and_reports_incomplete(
     assert "Effective collectors: Amazon Bedrock." in html
 
 
-@pytest.mark.parametrize("failed", [GRC, OWASP, CORE["agentcore"][2]])
-def test_aisf_caught_collector_failure_reaches_artifact_validation_and_register(failed):
-    _, original = execution(
-        SAM_TEMPLATES[0], "true", dict.fromkeys(CORE, "false"), fail_function=failed
+@pytest.mark.parametrize("template", SAM_TEMPLATES)
+@pytest.mark.parametrize("failed", [GRC, OWASP] + [entry[2] for entry in CORE.values()])
+@pytest.mark.parametrize(
+    "error", ["SyntheticCollectorFailure", "States.DataLimitExceeded"]
+)
+def test_aisf_caught_collector_failure_reaches_artifact_validation_and_register(
+    template, failed, error
+):
+    calls, original = execution(
+        template,
+        "true",
+        dict.fromkeys(CORE, "false"),
+        fail_function=failed,
+        fail_error=error,
     )
+    assert sum(function == REPORT for function, _ in calls) == 1
     results = complete_evidence()
     with pytest.raises(ValueError, match="Incomplete assessment artifacts"):
         single.validate_assessment_artifacts(
@@ -748,7 +790,7 @@ def test_aisf_caught_collector_failure_reaches_artifact_validation_and_register(
     failed_owner = {
         GRC: "responsible-ai-grc",
         OWASP: "owasp",
-        CORE["agentcore"][2]: "agentcore",
+        **{entry[2]: owner for owner, entry in CORE.items()},
     }[failed]
     assert any(issue["owner"] == failed_owner for issue in results["artifact_issues"])
     html = single.generate_html_report(

@@ -22,6 +22,7 @@ import pytest
 from botocore.exceptions import ClientError
 
 from .support import finserv_app as app
+from .support import generated_findings
 from .support import make_resource_inventory
 
 
@@ -3574,8 +3575,9 @@ class TestFinservChecksRegistry:
     @patch("finserv_app.get_permissions_cache", return_value=None)
     @patch("finserv_app.collect_resource_inventory")
     @patch("finserv_app.build_finserv_checks")
+    @patch("finserv_app.generate_csv_report", wraps=app.generate_csv_report)
     def test_errored_check_emits_could_not_assess_row(
-        self, mock_build, mock_collect, mock_cache, mock_write
+        self, mock_report, mock_build, mock_collect, mock_cache, mock_write
     ):
         # One check raises (uncaught) → handler synthesizes one could-not-assess row.
         mock_collect.return_value = make_resource_inventory()
@@ -3603,7 +3605,7 @@ class TestFinservChecksRegistry:
         mock_build.return_value = [("FS-44", boom), ("FS-02", normal)]
 
         resp = app.lambda_handler({"Execution": {"Name": "exec-1"}}, None)
-        findings = resp["body"]["findings"]
+        findings = generated_findings(mock_report, resp)
         # Errored check now contributes exactly one row, not zero (no silent drop).
         boom_result = next(f for f in findings if f["check_name"] == "Boom Check")
         assert len(boom_result["csv_data"]) == 1
@@ -3622,8 +3624,9 @@ class TestFinservChecksRegistry:
     @patch("finserv_app.get_permissions_cache", return_value=None)
     @patch("finserv_app.collect_resource_inventory")
     @patch("finserv_app.build_finserv_checks")
+    @patch("finserv_app.generate_csv_report", wraps=app.generate_csv_report)
     def test_non_error_empty_result_still_emits_could_not_assess_row(
-        self, mock_build, mock_collect, mock_cache, mock_write
+        self, mock_report, mock_build, mock_collect, mock_cache, mock_write
     ):
         # A check that returns a NON-error wrapper status but zero csv_data must
         # NOT silently vanish — the handler synthesizes a could-not-assess row for
@@ -3637,7 +3640,7 @@ class TestFinservChecksRegistry:
         mock_build.return_value = [("FS-13", empty_pass)]
 
         resp = app.lambda_handler({"Execution": {"Name": "exec-3"}}, None)
-        findings = resp["body"]["findings"]
+        findings = generated_findings(mock_report, resp)
         result = next(f for f in findings if f["check_name"] == "Empty Pass Check")
         assert len(result["csv_data"]) == 1
         row = result["csv_data"][0]
@@ -3650,7 +3653,10 @@ class TestFinservChecksRegistry:
     @patch.dict(os.environ, {"AIML_ASSESSMENT_BUCKET_NAME": "test-bucket"})
     @patch("finserv_app.get_permissions_cache", return_value=None)
     @patch("finserv_app.collect_resource_inventory")
-    def test_no_check_contributes_zero_rows(self, mock_collect, mock_cache, mock_write):
+    @patch("finserv_app.generate_csv_report", wraps=app.generate_csv_report)
+    def test_no_check_contributes_zero_rows(
+        self, mock_report, mock_collect, mock_cache, mock_write
+    ):
         # Full handler run with mocked AWS (all clients raise) — every check must
         # still contribute at least one row (real rows or a could-not-assess row).
         mock_collect.return_value = make_resource_inventory()
@@ -3658,7 +3664,7 @@ class TestFinservChecksRegistry:
             "finserv_app.boto3.client", side_effect=RuntimeError("AccessDenied")
         ):
             resp = app.lambda_handler({"Execution": {"Name": "exec-2"}}, None)
-        findings = resp["body"]["findings"]
+        findings = generated_findings(mock_report, resp)
         for f in findings:
             assert len(f["csv_data"]) >= 1, f"{f['check_name']} contributed zero rows"
 
