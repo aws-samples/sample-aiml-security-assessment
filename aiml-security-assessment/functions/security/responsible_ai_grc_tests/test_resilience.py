@@ -14,6 +14,7 @@ Validates: Requirements REQ-4.2, REQ-4.3, REQ-4.6, REQ-8
 from unittest.mock import MagicMock, patch
 
 from .support import finserv_app as app
+from .support import generated_findings
 from .support import make_resource_inventory
 
 
@@ -666,8 +667,10 @@ class TestHandlerWithPartialInventory:
     @patch("finserv_app.get_permissions_cache")
     @patch("finserv_app.collect_resource_inventory")
     @patch("finserv_app.boto3.client")
+    @patch("finserv_app.generate_csv_report", wraps=app.generate_csv_report)
     def test_handler_completes_with_lambda_inventory_unavailable(
         self,
+        mock_report,
         mock_boto_client,
         mock_collect_inv,
         mock_cache,
@@ -689,7 +692,7 @@ class TestHandlerWithPartialInventory:
         result = app.lambda_handler(lambda_event, None)
 
         assert result["statusCode"] == 200
-        findings = result["body"]["findings"]
+        findings = generated_findings(mock_report, result)
         # All 65 registry entries must produce a result dict
         assert len(findings) == 65
 
@@ -727,8 +730,10 @@ class TestHandlerWithPartialInventory:
     @patch("finserv_app.get_permissions_cache")
     @patch("finserv_app.collect_resource_inventory")
     @patch("finserv_app.boto3.client")
+    @patch("finserv_app.generate_csv_report", wraps=app.generate_csv_report)
     def test_handler_completes_with_guardrails_and_waf_unavailable(
         self,
+        mock_report,
         mock_boto_client,
         mock_collect_inv,
         mock_cache,
@@ -755,4 +760,4 @@ class TestHandlerWithPartialInventory:
         result = app.lambda_handler(lambda_event, None)
 
         assert result["statusCode"] == 200
-        assert len(result["body"]["findings"]) == 65
+        assert len(generated_findings(mock_report, result)) == 65

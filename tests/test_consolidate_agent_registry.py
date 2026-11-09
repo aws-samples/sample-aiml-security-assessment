@@ -3,8 +3,8 @@
 `consolidate_html_reports.py` is the root multi-account consolidator. It has its
 own Check_ID prefix routing, separate from the single-account report Lambda, so
 a new assessment area has to be wired in both places. These tests cover the
-Agent Registry path: prefix routing, the AG-* lens split, the finding-name
-fallback, and the per-account stats the report widgets are built from.
+Agent Registry path: validated source routing, the AG-* lens split, isolation
+of unknown or wrong-owner rows, and the per-account report stats.
 """
 
 import csv
@@ -92,7 +92,7 @@ class TestConsolidateAgentRegistryCategorization(unittest.TestCase):
         captured = self._consolidate()
 
         registry_ids = {
-            f["check_id"] for f in captured["service_findings"]["agent-registry"]
+            f["Check_ID"] for f in captured["service_findings"]["agent-registry"]
         }
         self.assertEqual(registry_ids, {"AR-01", "AR-05", "AR-07"})
         self.assertEqual(
@@ -105,8 +105,8 @@ class TestConsolidateAgentRegistryCategorization(unittest.TestCase):
             {"passed": 0, "failed": 0, "na": 0},
         )
 
-    def test_ar_row_in_agentcore_csv_still_routes_by_prefix(self):
-        """A stale deployment can still emit AR-* into the AgentCore CSV."""
+    def test_ar_row_in_agentcore_csv_is_isolated(self):
+        """A wrong-owner row cannot borrow the AgentCore producer's scope."""
         self._write(
             "agentcore_security_report_test_us-east-1.csv",
             [
@@ -116,13 +116,18 @@ class TestConsolidateAgentRegistryCategorization(unittest.TestCase):
         )
         captured = self._consolidate()
 
+        self.assertEqual(captured["service_findings"]["agent-registry"], [])
         self.assertEqual(
-            {f["check_id"] for f in captured["service_findings"]["agent-registry"]},
-            {"AR-08"},
-        )
-        self.assertEqual(
-            {f["check_id"] for f in captured["service_findings"]["agentcore"]},
+            {f["Check_ID"] for f in captured["service_findings"]["agentcore"]},
             {"AC-01"},
+        )
+        issues = captured["aisf_register"]["artifact_issues"]
+        self.assertTrue(
+            any(
+                issue["kind"] == "scope-mismatch"
+                and issue.get("observation", {}).get("Check_ID") == "AR-08"
+                for issue in issues
+            )
         )
 
     def test_ag_rows_from_registry_csv_route_to_the_agentic_lens(self):
@@ -137,31 +142,33 @@ class TestConsolidateAgentRegistryCategorization(unittest.TestCase):
         captured = self._consolidate()
 
         self.assertEqual(
-            {f["check_id"] for f in captured["service_findings"]["agentic"]},
+            {f["Check_ID"] for f in captured["service_findings"]["agentic"]},
             {"AG-33"},
         )
         self.assertEqual(
-            {f["check_id"] for f in captured["service_findings"]["agent-registry"]},
+            {f["Check_ID"] for f in captured["service_findings"]["agent-registry"]},
             {"AR-03"},
         )
 
-    def test_unprefixed_registry_finding_falls_back_to_agent_registry(self):
-        """The name fallback catches a row whose Check_ID prefix is unknown.
-
-        Without the fallback an unrecognized prefix defaults to bedrock, which
-        would silently misattribute the finding.
-        """
+    def test_unknown_registry_check_is_isolated_with_original_evidence(self):
+        """A finding's name cannot turn an unknown ID into a known check."""
         self._write(
             "agent_registry_security_report_test_us-east-1.csv",
             [_row("UNKNOWN", "AWS Agent Registry record provenance gap")],
         )
         captured = self._consolidate()
 
-        self.assertEqual(
-            {f["check_id"] for f in captured["service_findings"]["agent-registry"]},
-            {"UNKNOWN"},
-        )
+        self.assertEqual(captured["service_findings"]["agent-registry"], [])
         self.assertEqual(captured["service_findings"]["bedrock"], [])
+        issues = captured["aisf_register"]["artifact_issues"]
+        self.assertTrue(
+            any(
+                issue["kind"] == "unknown-check"
+                and issue.get("observation", {}).get("Check_ID") == "UNKNOWN"
+                and issue["observation"]["Finding_Details"] == "details"
+                for issue in issues
+            )
+        )
 
 
 if __name__ == "__main__":

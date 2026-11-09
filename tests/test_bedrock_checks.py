@@ -11,6 +11,7 @@ Each check is tested for:
 
 import contextlib
 import copy
+import csv
 import gzip
 import io
 import json
@@ -55337,3 +55338,49 @@ class TestBedrockNASeverity:
     )
     def test_the_source_scan_accepts_informational_na_rows(self, source):
         assert [row[2] for row in _na_branch_severities(source)] == ["Informational"]
+
+
+@pytest.mark.parametrize("row_total", [1, 900])
+def test_live_bedrock_receipt_is_bounded_while_s3_keeps_every_result(row_total):
+    expected = [
+        {
+            "Check_ID": "BR-34",
+            "Finding": "Synthetic guardrail observation",
+            "Finding_Details": f"resource-{index:04d}: " + "synthetic evidence " * 30,
+            "Resolution": "Review the named synthetic resource.",
+            "Reference": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+            "Severity": "Medium",
+            "Status": "Failed" if index % 2 else "Passed",
+            "Region": "us-east-1",
+            "Compliance_Frameworks": "",
+        }
+        for index in range(row_total)
+    ]
+    test_client = MagicMock()
+    test_client.get_model_invocation_logging_configuration.side_effect = (
+        _make_client_error("AccessDeniedException")
+    )
+    report_url = "s3://test-assessment-bucket/synthetic-run/bedrock-us-east-1.csv"
+    with (
+        patch.object(bedrock_app.boto3, "client", return_value=test_client),
+        patch.object(bedrock_app, "get_permissions_cache", return_value=None),
+        patch.object(
+            bedrock_app,
+            "check_guardrail_intervention_logging",
+            return_value={"status": "WARN", "csv_data": expected},
+        ),
+        patch.object(bedrock_app, "write_to_s3", return_value=report_url) as persist,
+    ):
+        response = bedrock_app.lambda_handler(_bedrock_event(), None)
+    persist.assert_called_once()
+    csv_content = persist.call_args.args[1]
+    saved = list(csv.DictReader(io.StringIO(csv_content)))
+    native = [r for r in saved if r["Finding"] == "Synthetic guardrail observation"]
+    assert native == expected
+    assert response["statusCode"] == 200
+    assert set(response["body"]) == {"message", "row_count", "report_url"}
+    assert response["body"]["row_count"] == len(saved)
+    assert response["body"]["report_url"] == report_url
+    assert len(json.dumps(response).encode("utf-8")) < 4096
+    if row_total == 900:
+        assert len(csv_content.encode("utf-8")) > 256 * 1024

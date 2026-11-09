@@ -1,0 +1,3 @@
+Check_ID,Region,Finding,Status,Severity,Finding_Details,Resolution,Reference,Account_ID,Execution_ID,Resource_ID
+OW-01,us-east-1,Application review,N/A,Medium,Synthetic application evidence is missing.,Supply scoped application review evidence.,https://owasp.org/www-project-top-10-for-large-language-model-applications/,444455556666,synthetic-two,synthetic-app
+OW-11,us-east-1,System Prompt Embedded in Lambda Environment,N/A,Informational,AccessDenied reading synthetic Lambda environment configuration.,Restore scoped read access and repeat the prompt storage review.,https://owasp.org/www-project-top-10-for-large-language-model-applications/,444455556666,synthetic-two,synthetic-prompt-function

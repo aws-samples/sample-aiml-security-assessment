@@ -283,7 +283,7 @@ still sees `OriginalInput`, `Region`, and `RegionIndex`.
 ### Service Selection
 
 User-facing behavior (the **Not selected** labeling, score denominators, and
-Responsible AI GRC independence) is documented in
+Responsible AI GRC independence with the AISF preset off) is documented in
 [Selecting Service Assessments](../README.md#selecting-service-assessments).
 Historical CSV selection is documented in
 [Assessment History](ASSESSMENT_HISTORY.md#which-run-is-the-previous-run).
@@ -292,26 +292,39 @@ This section covers the implementation wiring.
 - **Parameters.** `EnableBedrockAssessment`, `EnableSageMakerAssessment`,
   `EnableAgentCoreAssessment`, and `EnableAgentRegistryAssessment` are string
   parameters (`true`/`false`, default `true`) in both SAM templates and both
-  top-level deployment templates.
+  top-level deployment templates. `EnableAISFAssessment` is a string parameter
+  with default `false` in the same four templates. When true, the SAM condition
+  `AISFAssessmentEnabled` substitutes `true` for all four direct services.
 - **Pass-state wiring.** Both SAM templates substitute the values into the
   `Configure Service Assessments` Pass state, which writes
   `$.ServiceSelection` (keys `bedrock`, `sagemaker`, `agentcore`,
   `agent-registry`) before cleanup and region resolution. The regional Choice
   states read `$.OriginalInput.ServiceSelection[...]`. Because the Pass state
   overwrites `$.ServiceSelection`, execution input cannot override the
-  deployment's selected scope.
+  deployment's selected scope. The following `Configure AISF Assessment` state
+  writes the baked parameter to `$.enableAISF`; when true, two Pass states also
+  set `$.enableResponsibleAIGRC` and `$.enableOWASP` to `"true"`. ResultPath
+  updates retain input context. The existing regional choices still run GRC
+  only in the first Region and OWASP in every selected Region. An empty direct
+  execution input therefore supports AISF, while legacy-key rejection remains
+  unchanged.
 - **CodeBuild forwarding.** The top-level deployment templates expose the
   switches as the `ENABLE_BEDROCK`, `ENABLE_SAGEMAKER`, `ENABLE_AGENTCORE`, and
   `ENABLE_AGENT_REGISTRY` CodeBuild environment variables. `buildspec.yml`
   validates them and forwards them as `SAM_ENABLE_*_PARAMETER` overrides to all
   three `sam deploy` sites (member account, management account, and single
-  account). The feature adds no API calls or IAM permissions, so the
-  member-role StackSet is unaffected.
+  account). `ENABLE_AISF` is normalized and validated after the existing
+  GRC/FinServ alias and OWASP validation. A true preset sets all six effective
+  collector flags before SAM deployment and execution; post-build also resolves
+  the preset before artifact validation, CSV copying, report consolidation, and
+  history selection. The feature reuses existing collectors and permissions;
+  it adds no new API operation or IAM grant, so the member-role StackSet is
+  unaffected.
 - **Artifact validation.** The report Lambda
   (`generate_consolidated_report/app.py`) builds `per_region_categories` and
   `expected_artifacts` from the selection and requires every selected service's
   CSV for every resolved region; missing selected artifacts still fail report
-  generation, while deselected artifacts are not required. An all-disabled
+  generation, while deselected artifacts are not required. With AISF disabled, an all-disabled
   selection may produce an HTML report without service CSVs. The CodeBuild
   artifact checks in `buildspec.yml` likewise require CSV prefixes only for
   enabled services.
@@ -1041,31 +1054,80 @@ post-render insertion is present in the generated HTML.
 
 ### Variant: a derived standard (AISF-style)
 
-A **derived** standard publishes a framework view over checks that already
-ship, so it has no Lambda, no CSV, no Step Functions branch and no IAM change.
-`AISF-` rows are produced by `derive_aisf_findings()` in
-`generate_consolidated_report/aisf_mappings.py`, called from both consolidators
-after their source rows are collected. Steps 1 through 5 and the S3 wiring in
-step 7 do not apply; instead:
+A **derived** standard publishes a framework view over existing observations.
+It has no producer Lambda, CSV prefix, Step Functions assessment branch, or
+IAM grant. Keep `"derived": True` in the registry to exclude AISF from producer
+discovery and counts.
 
-- Add `"derived": True` to the registry entry. That key is read in exactly one
-  place, the `category_slugs` comprehension in `app.py`, to keep the slug out of
-  the S3 prefix list. Every other consumer keeps the slug so the section still
-  renders and routes.
-- When the scope text counts the standard's own controls, or a deselected
-  service removes some of them, give the entry a `scope_text_for` callable and
-  pass `compliance_scope` from both consolidators, so the text counts what the
-  map holds and names what was left out. `report_template.py` is loaded by
-  path and cannot import the mapping module, so the figures travel through the
-  callers. AISF uses `aisf_mappings.aisf_scope()` and `_aisf_scope_text()`.
-- Register the standard and its first rows in the same change. A registered
-  standard with zero rows renders nothing at all (`if _total <= 0: continue`),
-  which looks exactly like a wiring bug.
-- Exclude the derived rows from the check-count total, and say so where the
-  count is published. They restate verdicts that are already counted.
-- Map only a control its named incumbents assert in full, and pin the map in
-  `tests/test_aisf_derived_standard.py`. See
-  [SECURITY_CHECKS_AISF.md](SECURITY_CHECKS_AISF.md).
+AISF uses `generate_consolidated_report/aisf_results.py` in both consolidators.
+The complete pinned catalog and reviewed mapping ledger establish reference
+lineage, independently of observed tags or `AISF_DERIVED_MAP`. Customer HTML,
+JSON, and CSV project accepted native observations into check results with
+their original outcomes and reviewed mappings. Unobserved canonical controls
+create no customer rows, manual tasks, or assessment denominator. Accepted AI
+checks without a reviewed mapping remain visible with that limitation.
+The deployment preset selects existing producers separately; it does not change
+AISF's derived status. The report records `scope.enable_aisf` and effective
+`scope.source_selection`.
+Renderers preserve supplied source selections and disclose contradictory preset
+markers as incomplete scope instead of inferring missing evidence.
+
+`aisf_mappings.py` retains the stable `AISF-05/07/08` source summaries and
+`AISF-00` marker. They are separate from canonical-control records and do not
+increase the 277-check total, direct pass rate, or Open Action Items.
+Retired IDs must not be reused.
+
+Before crediting a source observation, validate its account, execution, Region,
+producer owner, selection, and artifact contract. `assessment_artifacts.py`
+is shared by both paths. Single-account validation requires per-service
+completion receipts preserved by the state machine. Multi-account CodeBuild
+passes the expected account/execution/Region/status manifest through
+`ASSESSMENT_SCOPE_MANIFEST`; inferring scope from files cannot prove completeness.
+
+Map the actual predicate and uncovered canonical requirements in
+`aisf_catalog/mapping.json`. All current mappings are partial: source `Passed`,
+no-resource results, or tags cannot establish a whole-control pass. Preserve a
+failed source independently of incomplete or unavailable evidence.
+
+Review every native predicate in `aisf_catalog/check_inventory.json`, including
+checks with no AISF tags. Record its concrete source location, presentation
+aliases, relevant canonical requirements, limitations, and a specific exclusion
+reason when there is no defensible relationship. Review additional relationships
+for already-mapped checks as well. A category name is not a predicate.
+
+FS observations follow the existing GRC-or-OWASP selection contract. Native OW
+observations require OWASP selection; native AG observations belong to their
+direct service. Derived AG and OW aliases retain their underlying source ID and
+owner. Equivalent projections attach as presentations of one source observation;
+distinct or conflicting observations remain separate. An alias without enough
+source identity is an input gap, not evidence borrowed from another check.
+Neither AISF navigation nor mapping enables a deselected source assessment.
+
+The AISF view uses original source-check `Passed`, `Failed`, and `N/A` outcomes.
+Failed-result filters expose the original findings, resources, and remediation;
+collector incompleteness is a separate signal. Source-emitted advice retains its
+original `N/A` status and limitations. Do not manufacture process-evidence tasks
+from the canonical catalog. A reviewed mapping is a partial relationship, not a
+whole-control pass. The main findings table's AISF filter includes native AI
+observations with their original check IDs; **Details and remediation** retains
+their source ownership and scope.
+
+Verify catalog/source freshness and both deterministic report modes:
+
+```bash
+.venv/bin/python tools/update_aisf_catalog.py --check
+.venv/bin/python tools/check_aisf_inventory.py
+.venv/bin/python tools/generate_aisf_samples.py --check
+```
+
+The frozen expected inventory in `tests/fixtures/aisf/canonical-ids.txt` comes
+from the pinned canonical export, independently of runtime mappings. Tests in
+`tests/test_aisf_catalog_alignment.py`, `tests/test_aisf_derived_standard.py`,
+and `tests/test_aisf_comprehensive_mapping.py` cover all 64 selections, scope
+isolation, failed artifacts, missing receipts, alias conflicts, every source
+family, native/manual observations, exports, and rejected false passes. A new
+revision requires independent oracle and mapping review. See
+[the full AISF contract](SECURITY_CHECKS_AISF.md).
 
 ## Testing Your Extensions
 
@@ -1144,10 +1206,16 @@ reports and screenshots.
 
 #### 1. Generate New Sample Reports
 
-The canonical files in `sample-reports/` come from a fresh assessment run:
+The primary files in `sample-reports/` come from a fresh assessment run:
 download the run's single-account, multi-account, and changes reports, and
 replace and anonymize them together with the procedure in
 [Updating the Changes Sample](#updating-the-changes-sample).
+
+The separate AISF AI-check examples use fixed synthetic fixtures. Run
+`.venv/bin/python tools/generate_aisf_samples.py` from the repository root,
+then repeat with `--check`. See [current AISF samples](../sample-reports/README.md#current-aisf-examples)
+for their scope and provenance. This generator records the primary reports'
+hashes without rewriting their assessment results.
 
 To check rendering before a run, use the local report fixtures with the
 command in

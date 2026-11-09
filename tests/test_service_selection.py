@@ -35,6 +35,7 @@ def _definition(selection):
         ROOT / "aiml-security-assessment/statemachine/assessments.asl.json"
     ).read_text()
     text = text.replace("${MaxRegionConcurrency}", "5")
+    text = text.replace("${EnableAISFAssessment}", "false")
     for service, (parameter, _, _) in SERVICES.items():
         text = text.replace("${Enable" + parameter + "Assessment}", selection[service])
     return json.loads(text)
@@ -57,7 +58,7 @@ def _results(selection):
     return {
         service: {
             f"{service.replace('-', '_')}_security_report_{EXECUTION}_{region}": [
-                _row(service)
+                {**_row(service), "Region": region}
             ]
             for region in REGIONS
         }
@@ -106,7 +107,7 @@ def test_every_selection_executes_only_selected_lambdas_and_validates_their_arti
     configure = definition["States"][definition["StartAt"]]
     assert configure["Type"] == "Pass"
     assert configure["ResultPath"] == "$.ServiceSelection"
-    assert configure["Next"] == "Cleanup S3 Bucket"
+    assert configure["Next"] == "Configure AISF Assessment"
     original_input = {
         "ServiceSelection": configure["Result"],
         "ResolvedRegions": {"regions": REGIONS},
@@ -161,7 +162,9 @@ def test_all_deployment_paths_expose_default_enabled_switches(template):
             substitutions = doc["Resources"]["AIMLAssessmentStateMachine"][
                 "Properties"
             ]["DefinitionSubstitutions"]
-            assert substitutions[name] == {"Fn::Ref": name}
+            assert substitutions[name] == {
+                "Fn::If": ["AISFAssessmentEnabled", "true", {"Fn::Ref": name}]
+            }
         else:
             projects = [
                 r
@@ -307,6 +310,37 @@ def test_empty_selection_generates_an_explicit_scope_report_without_artifacts():
         "OriginalInput": {
             "ServiceSelection": dict.fromkeys(SERVICES, "false"),
             "ResolvedRegions": {"regions": REGIONS},
+            "AssessmentResults": [
+                {
+                    "Region": region,
+                    "RegionIndex": index,
+                    "ExecutionId": EXECUTION,
+                    "ServiceResults": [
+                        {
+                            "service": service,
+                            "statusCode": 200,
+                            "skipped": True,
+                            "reason": "not-selected",
+                        }
+                        for service in SERVICES
+                    ]
+                    + [
+                        {
+                            "service": "responsible-ai-grc",
+                            "statusCode": 200,
+                            "skipped": True,
+                            "reason": "not-selected-or-secondary-region",
+                        }
+                    ],
+                    "OWASPResult": {
+                        "service": "owasp",
+                        "statusCode": 200,
+                        "skipped": True,
+                        "reason": "not-selected",
+                    },
+                }
+                for index, region in enumerate(REGIONS)
+            ],
         },
     }
     client = MagicMock()

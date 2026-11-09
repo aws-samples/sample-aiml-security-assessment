@@ -3,6 +3,7 @@ compliance-standard section when the "owasp" service key has findings.
 """
 
 import importlib.util
+import json
 import os
 import sys
 
@@ -81,12 +82,30 @@ def _direct_finding(check_id, status, severity, details):
 
 
 class TestOWASPSectionRendering:
-    def test_no_owasp_findings_hides_compliance_section(self):
+    def test_no_owasp_findings_hides_owasp_but_keeps_aisf(self):
+        from bs4 import BeautifulSoup
+
         html = report_template.generate_html_report(**_base_kwargs())
-        # When there are zero OWASP findings, no compliance nav / filter option.
-        assert 'class="nav-section compliance-nav"' not in html
-        assert 'value="owasp"' not in html
-        assert 'id="owasp"' not in html
+        soup = BeautifulSoup(html, "html.parser")
+        assert soup.select_one("section#owasp") is None
+        assert soup.select_one('nav.compliance-nav a[href="#owasp"]') is None
+        assert soup.select_one('#serviceFilter option[value="owasp"]') is None
+
+        assert soup.select_one("section#aisf") is not None
+        assert soup.select_one('nav.compliance-nav a[href="#aisf"]') is not None
+        assert soup.select_one('#serviceFilter option[value="aisf"]') is not None
+        results = json.loads(soup.select_one("script#aisf-data").string)
+        assert results["view"] == "automated-check-results"
+        assert results["checks"] == []
+        assert "controls" not in results
+        assert not soup.select(".aisf-check, .aisf-control")
+        assert any(
+            gap["kind"] == "source-not-selected" and gap["owner"] == "owasp"
+            for gap in results["gaps"]
+        )
+        assert {
+            gap["owner"] for gap in results["gaps"] if gap["kind"] == "source-absent"
+        } == {"bedrock", "sagemaker", "agentcore", "agent-registry"}
 
     def test_with_owasp_findings_renders_all_owasp_ui(self):
         kwargs = _base_kwargs()

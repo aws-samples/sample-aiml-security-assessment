@@ -3,19 +3,22 @@ Integration tests for the lambda_handler in responsible_ai_grc_assessments/app.p
 
 These tests verify:
   - lambda_handler runs end-to-end with all checks mocked
-  - Response structure (statusCode, body, findings, report_url)
+  - Response structure (statusCode, body, row_count, report_url)
   - All 59 standalone check functions are called (5 merged upstream)
   - CSV is written to S3
   - Error handling when AIML_ASSESSMENT_BUCKET_NAME is missing
   - Error handling when S3 write fails
 """
 
+import csv
+import io
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from .support import finserv_app as app
+from .support import generated_findings, make_resource_inventory
 
 
 # =========================================================================
@@ -26,10 +29,84 @@ from .support import finserv_app as app
 class TestLambdaHandler:
     """End-to-end handler tests with fully mocked AWS clients."""
 
+    def test_large_report_persists_every_row_with_bounded_workflow_response(
+        self, lambda_event, monkeypatch
+    ):
+        rows = [
+            {
+                "Check_ID": check_id,
+                "Finding": f"Synthetic resource {index}",
+                "Finding_Details": f'Resource {index}: "inspected",\n'
+                + "evidence " * 700,
+                "Resolution": f"Apply the documented setting to resource {index}.",
+                "Reference": "https://example.com/security-guidance",
+                "Severity": "High" if index % 2 else "Informational",
+                "Status": "Failed" if index % 2 else "Passed",
+                "Region": "us-east-1",
+                "Compliance_Frameworks": "AWS AI Security Framework",
+            }
+            for check_id in ("FS-09", "FS-52")
+            for index in range(40)
+        ]
+        findings = [
+            {
+                "check_name": f"Synthetic {check_id}",
+                "status": "WARN",
+                "csv_data": [row for row in rows if row["Check_ID"] == check_id],
+            }
+            for check_id in ("FS-09", "FS-52")
+        ]
+        s3 = MagicMock(spec=["put_object"])
+        monkeypatch.setenv("AIML_ASSESSMENT_BUCKET_NAME", "test-assessment-bucket")
+        with (
+            patch("finserv_app.boto3.client", return_value=s3) as mock_client,
+            patch("finserv_app.get_permissions_cache", return_value=None),
+            patch(
+                "finserv_app.collect_resource_inventory",
+                return_value=make_resource_inventory(),
+            ),
+            patch(
+                "finserv_app.build_finserv_checks",
+                return_value=[
+                    (
+                        finding["csv_data"][0]["Check_ID"],
+                        lambda finding=finding: finding,
+                    )
+                    for finding in findings
+                ],
+            ),
+        ):
+            result = app.lambda_handler(lambda_event, None)
+
+        s3.put_object.assert_called_once()
+        uploaded = s3.put_object.call_args.kwargs
+        assert uploaded["Bucket"] == "test-assessment-bucket"
+        assert uploaded["Key"] == (
+            "responsible_ai_grc_security_report_"
+            f"{lambda_event['Execution']['Name']}.csv"
+        )
+        assert uploaded["ContentType"] == "text/csv"
+        csv_body = uploaded["Body"]
+        if isinstance(csv_body, bytes):
+            csv_body = csv_body.decode("utf-8")
+        assert len(csv_body.encode("utf-8")) > 256 * 1024
+        assert list(csv.DictReader(io.StringIO(csv_body))) == rows
+        assert result["statusCode"] == 200
+        assert len(json.dumps(result).encode("utf-8")) < 2048
+        assert "findings" not in result["body"]
+        assert result["body"]["row_count"] == len(rows)
+        assert result["body"]["report_url"] == (
+            "https://test-assessment-bucket.s3.amazonaws.com/" + uploaded["Key"]
+        )
+        mock_client.assert_called_once_with("s3", config=app.boto3_config)
+
     @patch("finserv_app.write_to_s3")
     @patch("finserv_app.get_permissions_cache")
     @patch("finserv_app.boto3.client")
-    def test_handler_returns_200(self, mock_client, mock_cache, mock_s3, lambda_event):
+    @patch("finserv_app.generate_csv_report", wraps=app.generate_csv_report)
+    def test_handler_returns_200(
+        self, mock_report, mock_client, mock_cache, mock_s3, lambda_event
+    ):
         """Smoke test: handler completes and returns 200."""
         # Return a generic mock for every boto3 client
         generic = MagicMock()
@@ -78,18 +155,19 @@ class TestLambdaHandler:
         result = app.lambda_handler(lambda_event, None)
 
         assert result["statusCode"] == 200
-        assert "findings" in result["body"]
+        assert "row_count" in result["body"]
         assert "report_url" in result["body"]
-        assert isinstance(result["body"]["findings"], list)
+        assert isinstance(generated_findings(mock_report, result), list)
         # The handler runs 65 registry entries (64 standalone checks + the new
         # FS-27 ARC policies check that shares the FS-27 check_id).
-        assert len(result["body"]["findings"]) == 65
+        assert len(generated_findings(mock_report, result)) == 65
 
     @patch("finserv_app.write_to_s3")
     @patch("finserv_app.get_permissions_cache")
     @patch("finserv_app.boto3.client")
+    @patch("finserv_app.generate_csv_report", wraps=app.generate_csv_report)
     def test_handler_findings_all_have_check_name(
-        self, mock_client, mock_cache, mock_s3, lambda_event
+        self, mock_report, mock_client, mock_cache, mock_s3, lambda_event
     ):
         """Every finding dict should have check_name and status keys."""
         generic = MagicMock()
@@ -135,7 +213,7 @@ class TestLambdaHandler:
 
         result = app.lambda_handler(lambda_event, None)
 
-        for finding in result["body"]["findings"]:
+        for finding in generated_findings(mock_report, result):
             assert "check_name" in finding, f"Missing check_name in {finding}"
             assert "status" in finding, f"Missing status in {finding}"
             assert finding["status"] in ("PASS", "WARN", "ERROR"), (

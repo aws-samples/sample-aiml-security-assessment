@@ -53,3 +53,15 @@ def make_resource_inventory(**overrides) -> finserv_app.ResourceInventory:
     )
     defaults.update(overrides)
     return finserv_app.ResourceInventory(**defaults)
+
+
+def generated_findings(mock_report, response: dict) -> list[dict]:
+    """Read the findings passed to CSV generation and verify the response count."""
+    mock_report.assert_called_once()
+    findings = mock_report.call_args.args[0]
+    assert response["statusCode"] == 200
+    assert "findings" not in response["body"]
+    assert response["body"]["row_count"] == sum(
+        len(finding["csv_data"]) for finding in findings
+    )
+    return findings

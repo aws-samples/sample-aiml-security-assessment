@@ -12,11 +12,26 @@ section.
 
 ### Added
 
+- Added the opt-in `EnableAISFAssessment` preset (default `false`) in both
+  deployment modes and both direct SAM templates. Selecting it runs all four
+  existing AI service collectors plus Responsible AI GRC and OWASP, regardless
+  of individual assessment switches. Reports and JSON show the preset setting
+  and effective source selection; artifacts and history use the same scope.
+  The AISF view shows actual AI check results and reviewed mappings, including
+  additional AI checks without a reviewed mapping. Unobserved canonical controls
+  do not generate manual-review tasks or an assessment denominator. Optional
+  AgentCore artifact object reads stay separately controlled.
+- Promoted current AISF AI-check samples in the README and sample index.
+  Both link to the new examples separately from the historical reports, which
+  retain their original findings and assessment dates. Provenance records the
+  historical reports' hashes without rewriting those pages. This
+  sample/documentation update requires no additional deployment.
 - Added independent, default-enabled switches for Bedrock, SageMaker AI,
   AgentCore, and AWS Agent Registry assessments in both deployment modes.
   Disabled services skip their assessment Lambda and CSV requirements; reports
   label them Not selected and explain reduced Agentic AI / OWASP source coverage.
-  Optional Responsible AI GRC and OWASP assessments remain independently enabled.
+  Optional Responsible AI GRC and OWASP assessments remain independent when
+  the AISF preset is disabled.
 - Added a "Changes since last assessment" report. After each run, every
   account whose run completed gets
   `security_assessment_changes_<YYYYMMDD_HHMMSS>.html` and `.csv` next to its
@@ -54,52 +69,59 @@ section.
   single-account sample so both pages show the same placeholders. The
   screenshot comes from `sample-reports/scripts/capture_changes_screenshot.py`.
 
-- **AWS AI Security Framework (AISF) mapping.** Each producer row now names the
-  AISF controls it asserts in a new `Compliance_Frameworks` CSV column, in one
-  of three forms: `AISF <control>` when this check alone asserts the whole
-  control, `AISF <control> (N of M checks)` when the control is asserted in
-  full by M checks together and this is one of them, and
-  `AISF <control> (partial)` when the check asserts less than the control
-  requires. A check that maps to several controls carries them pipe-joined.
-  The column names 103 of the 105 machine-checkable AISF controls. Of the 105,
-  64 are asserted in full, 39 in part, and 2 are not implementable from
-  configuration. See
-  [the tag vocabulary](docs/SECURITY_CHECKS_AISF.md#the-qualifier-is-what-makes-a-partly-asserted-control-safe-to-name)
-  in `docs/SECURITY_CHECKS_AISF.md`. Behavior worth knowing:
-  - **CSV consumers:** the Bedrock, SageMaker AI, AgentCore and AWS Agent
-    Registry CSVs gain a `Compliance_Frameworks` column. The Responsible AI GRC
-    CSV already had one, and its `FS-` rows keep carrying regulatory framework
-    ids there, so the one column now holds two vocabularies: split on `|` and
-    read `AISF `-prefixed elements as AISF tags. The OWASP CSV has no such
-    column. A parser that maps columns by position, or that rejects unknown
-    columns, needs updating.
-  - The HTML report adds an **AWS AI Security Framework** section under "By
-    Compliance Standard", beside OWASP Top 10 for LLM. It renders `AISF-05`
-    (knowledge base vector store encryption, from `BR-20`), `AISF-07` (batch
-    inference network and encryption, from `SM-18` and `SM-42`) and `AISF-08`
-    (notebook access control, from `SM-09`, `SM-01` and `SM-03`). A row is
-    `Failed` when any source check present for the account and Region failed,
-    even if another source check is absent (the details name it), `Passed`
-    only when every source check is present and passed, and `N/A` naming the
-    absent checks otherwise.
-  - The section needs no deployment parameter, makes no AWS API call, and adds
-    no scan time, because each row restates checks that already ran. `AISF-`
-    rows are excluded from the 277-check total, the pass rate and Open Action
-    Items, as OWASP-mapped rows are.
-  - An informational `AISF-00` row appears per account and Region where a
-    mapped source check from a selected service was absent, so partial
-    coverage reads as unassessed. A control whose source checks all belong to
-    a deselected service gets no row and no `AISF-00` mention, because the
-    report already shows that service as Not selected. The section's scope
-    text names each such control and the service that removed it, and counts
-    only the controls the report can show. A source check belongs to the
-    service whose Lambda emits it, so an `AG-` row derived from a Bedrock
-    check follows the Bedrock selection, not the AgentCore one.
-  - Only a control asserted in full gets a derived row. `AISF-01` to `AISF-04`
-    and `AISF-06` were retired before release, because each restated a check
-    that asserts only part of its control, and the ids are never reused.
-  - The mappings are preliminary. Validate them with your security and
-    compliance team before using a row as audit evidence.
+- **Inclusive AWS AI Security Framework (AISF) check results.** Both report modes
+  and their JSON/CSV exports show actual selected AI collector observations,
+  original outcomes, scope, resources, and remediation. The 218-control catalog
+  remains reference data pinned to canonical revision
+  `5df3295024713ac3ce88130c549bbc4fb2cebd53`. The canonical exporter supplies
+  the exact vendored controls. Classification metadata retains only the five
+  assessment fields recorded in the manifest. Revision, raw input and projected
+  output hashes, and per-control/source-code mapping digests make updates
+  reproducible.
+  - The reviewed ledger covers 303 partial edges from 208 native checks.
+    All 126 mapped controls have partial evidence; 92 have no mapped collector.
+    The complete review accounts for 233 native IDs and 44 derived AG/OW
+    presentations, with specific exclusions for 25 native predicates. The prior
+    64 whole-control labels are not substantiated and are downgraded. No
+    current mapping can emit a whole-control pass.
+  - Relevant FS, native OW, native AG, and direct-service findings contribute
+    evidence, including manual review requests. Equivalent AG/OW aliases
+    retain their original presentations without counting the source twice;
+    conflicting observations remain visible. FS follows the existing
+    GRC-or-OWASP selection contract, and native OW requires OWASP. This mapping
+    expansion adds no collector, API, IAM grant, execution dependency, or toggle.
+  - Canonical classification remains 104 machine and 114 non-machine controls
+    in the reference bundle. The report does not generate manual tasks for
+    unobserved requirements or present these catalog counts as assessed results.
+    Existing source advice retains its original `N/A` outcome and limitations.
+  - Check results show original `Passed`, `Failed`, or `N/A` outcomes, findings,
+    resources, source actions, account/Region/execution scope, and reviewed
+    AISF mappings. All accepted additional AI checks remain visible when no
+    reviewed mapping exists. Exports retain all included observations when
+    display filters are active. Collector and input gaps remain separate from
+    check outcomes. The main findings table's AISF filter also includes native
+    AI check rows with their original check IDs; **Details and remediation**
+    retains source ownership and scope.
+  - Original failures, details, resource identifiers, resolutions, references,
+    and errors survive normalization. Failure and incompleteness remain
+    separate flags. Global evidence has its own scope; observations are not
+    borrowed across accounts, executions, Regions, or deselected owners.
+  - Missing, empty, header-only, malformed, unreadable, wrong-schema, and
+    wrong-scope CSVs are explicit input issues. Valid earlier rows survive
+    a malformed tail. Per-service completion receipts and a multi-account
+    scope manifest prevent missing accounts/Regions or failed assessments
+    from being reported as complete.
+  - `AISF-05`, `AISF-07`, `AISF-08`, and marker `AISF-00` keep their IDs.
+    Source summaries preserve failures and otherwise report partial proof as
+    `N/A`. Retired `AISF-01/02/03/04/06` are not reused. Canonical IDs do not
+    become new Lambda producers or CSV prefixes. The 277-check denominator
+    and direct-check metrics exclude these derived controls.
+  - Existing `Compliance_Frameworks` tags remain traceability metadata;
+    their old whole-control qualifiers are not adjudication rules. See the
+    [AISF contract](docs/SECURITY_CHECKS_AISF.md) and
+    [deterministic synthetic samples](sample-reports/README.md#current-aisf-examples).
+    Historical public, tracked, and assessment-history examples remain
+    separate artifacts, not the current coverage oracle.
 
 - **69 new checks**, growing the catalog from 208 to 277 checks (162 core).
   Each one carries its AISF control in `Compliance_Frameworks` where one
@@ -434,6 +456,14 @@ back `Passed` names what it could not read.
 
 ### Fixed
 
+- Keep valid AISF source observations in their evidence category when finding
+  prose describes incomplete logging or unavailable audit content, or names
+  a timeout configuration field. Collection gaps require an explicit
+  assessment or collection failure signal. Native outcomes and remediation
+  remain intact, and actual denied or incomplete collection stays visible.
+- Return a bounded Responsible AI GRC receipt to Step Functions while retaining
+  every finding in its S3 CSV. Both workflow modes explicitly catch collector
+  payload-limit errors so the diagnostic report and completion checks can run.
 - BR-03 and BR-44 now link to the current Amazon Bedrock Marketplace access
   documentation section. Refreshed single-account, multi-account, and changes
   samples carry the corrected link.
@@ -447,6 +477,22 @@ back `Passed` names what it could not read.
   reviewed generated-value inventory and compare a full-size report with itself.
 - Parse IAM Resource policy variables in the SageMaker AI assessment without
   repeated regex backtracking on malformed `${` sequences.
+- Treat a successfully described AgentCore runtime without authorizer configuration
+  as the documented default IAM SigV4 mode in `FS-08`. Both IAM and JWT rows are
+  limited configuration observations; unread or malformed configuration remains
+  undetermined. `FS-66` now reports either mode as N/A/Informational for manual
+  identity-propagation review, because authentication mode alone proves neither
+  propagation nor its absence.
+- Preserve unavailable evidence gaps when a discovered AgentCore role is missing
+  from the IAM permissions cache or cannot be read. `AC-12` and `AC-48` guidance
+  distinguishes missing referenced resources from AccessDenied and directs users
+  to verify the referenced ARN, account, Region, and existence before rerunning.
+- Return a bounded Bedrock collector completion receipt with the CSV URL and row
+  count after writing the complete CSV. This prevents Step Functions result-size
+  failures without dropping findings from the assessment artifact.
+- Correct `FS-01` Shield Advanced remediation to name eligible customer-managed
+  resources. API Gateway stages cannot be protected directly; a Regional API
+  can use a customer-managed CloudFront distribution with Shield Advanced.
 - Preserve default-enabled artifact completeness checks when an older CodeBuild
   project has not yet received service-selection environment variables.
 - Derive selection notices and scope descriptions from the selected assessments.
@@ -550,13 +596,39 @@ back `Passed` names what it could not read.
 
 ### Deployment impact
 
+- **AISF evidence classification and collector completion:** Run single-account
+  or multi-account CodeBuild from this revision to deploy the updated report
+  and Responsible AI GRC Lambda code and workflow error handling, then
+  generate a new assessment. Direct SAM users must rebuild and redeploy
+  `aiml-security-assessment/template.yaml` or `template-multi-account.yaml`
+  for their mode, then start a new execution. For these corrections alone, no
+  top-level infrastructure or member-role StackSet update is required.
+- **Collector and evidence corrections:** Run single-account or multi-account
+  CodeBuild from this revision to deploy the updated Bedrock, AgentCore,
+  Responsible AI GRC, and report Lambda code, then generate a new assessment.
+  Direct SAM users must rebuild and redeploy their mode's template, then start
+  a new execution. These corrections require no new IAM grant, deployment
+  infrastructure change, or member-role StackSet update. Existing report files
+  are not rewritten.
+- **AISF catalog, report, and selection:** First update the existing single-account
+  infrastructure stack with `deployment/aiml-security-single-account.yaml`, or
+  the multi-account central stack with `deployment/2-aiml-security-codebuild.yaml`.
+  Update `GitHubBranch` if pinned to an older revision, and set
+  `EnableAISFAssessment=true` to select the preset (default `false`). Then start
+  CodeBuild from this revision to deploy the SAM/report/state-machine changes
+  and run a new assessment. Direct SAM users must redeploy their mode's template
+  with the parameter, then start a new execution; `{}` input supports the preset.
+  No new IAM grant, producer, or member-role StackSet change is required.
+  Archived reports are not rewritten. New runs require completion receipts;
+  uploaded diagnostic HTML for incomplete input does not mark the build complete.
 - **Service selection:** Update `deployment/aiml-security-single-account.yaml`
   for single-account deployments or `deployment/2-aiml-security-codebuild.yaml`
   for multi-account central infrastructure, set the desired service switches,
   then start CodeBuild using this revision. No member-role StackSet update is
   required for this feature. Direct SAM users must redeploy `template.yaml` or
   `template-multi-account.yaml` with the desired `Enable*Assessment` parameters
-  and start a new execution. All switches default to true on upgrade.
+  and start a new execution. The four direct-service switches default to true
+  on upgrade; the AISF preset defaults to false.
 - **Changes since last assessment report:** A CodeBuild run is required,
   because `buildspec.yml` changed and the new `assessment_history/` package
   runs in the post-build phase. If `GitHubBranch` pins a tag or commit, update

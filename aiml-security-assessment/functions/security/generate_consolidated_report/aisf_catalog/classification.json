@@ -1,0 +1,1531 @@
+{
+  "schema_version": 1,
+  "controls": {
+    "AIR-ACR-EVAL-01": {
+      "section": "agentcore-evaluations",
+      "text_sha256": "ab37d950c57a4024",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-EVAL-02": {
+      "section": "agentcore-evaluations",
+      "text_sha256": "1975dfed09fe3060",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-EVAL-03": {
+      "section": "agentcore-evaluations",
+      "text_sha256": "a8ca9c793adcbd52",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-EVAL-04": {
+      "section": "agentcore-evaluations",
+      "text_sha256": "024e7c5c8714e425",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-EVAL-05": {
+      "section": "agentcore-evaluations",
+      "text_sha256": "b4718891572ea1fe",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-EVAL-06": {
+      "section": "agentcore-evaluations",
+      "text_sha256": "0a2fcd3ea5113572",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-EVAL-07": {
+      "section": "agentcore-evaluations",
+      "text_sha256": "5247a4e88a7022ab",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-EVAL-08": {
+      "section": "agentcore-evaluations",
+      "text_sha256": "5cf4304d6ae643aa",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-GW-01": {
+      "section": "agentcore-gateway",
+      "text_sha256": "1ee9be052d6b49bb",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-GW-02": {
+      "section": "agentcore-gateway",
+      "text_sha256": "99f9ed6adcc70079",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-GW-03": {
+      "section": "agentcore-gateway",
+      "text_sha256": "b89c3674e5ec700a",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-GW-04": {
+      "section": "agentcore-gateway",
+      "text_sha256": "4d83c2f14eb11e4c",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-GW-05": {
+      "section": "agentcore-gateway",
+      "text_sha256": "bcdb1c85af780370",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-GW-06": {
+      "section": "agentcore-gateway",
+      "text_sha256": "c62ff7d074ead8e5",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-GW-07": {
+      "section": "agentcore-gateway",
+      "text_sha256": "d094ffd7966a28b8",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-GW-08": {
+      "section": "agentcore-gateway",
+      "text_sha256": "1ad2c7e53bf1aaa4",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-GW-09": {
+      "section": "agentcore-gateway",
+      "text_sha256": "fe13e01ca9f2301a",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-GW-10": {
+      "section": "agentcore-gateway",
+      "text_sha256": "b8b8e5d45f990544",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-ID-01": {
+      "section": "agentcore-identity",
+      "text_sha256": "18c330c97ebb71b7",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-ID-02": {
+      "section": "agentcore-identity",
+      "text_sha256": "e57dcd20ea7dac73",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-ID-03": {
+      "section": "agentcore-identity",
+      "text_sha256": "0cebebb98063e813",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-ID-04": {
+      "section": "agentcore-identity",
+      "text_sha256": "d346dd3444dcfd3c",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-ID-05": {
+      "section": "agentcore-identity",
+      "text_sha256": "6895564235392268",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-ID-06": {
+      "section": "agentcore-identity",
+      "text_sha256": "f3074d90157a76a6",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-ID-07": {
+      "section": "agentcore-identity",
+      "text_sha256": "983c2c66ebf53a71",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-ID-08": {
+      "section": "agentcore-identity",
+      "text_sha256": "e2bdefc86ef1bc36",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-ID-09": {
+      "section": "agentcore-identity",
+      "text_sha256": "6a6e04753071e858",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-ID-10": {
+      "section": "agentcore-identity",
+      "text_sha256": "156b5563863e4d74",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-ID-11": {
+      "section": "agentcore-identity",
+      "text_sha256": "2cee4861e12d409a",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-MEM-01": {
+      "section": "agentcore-memory",
+      "text_sha256": "e40594fe648abf9d",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-MEM-02": {
+      "section": "agentcore-memory",
+      "text_sha256": "d35447eaec75ce03",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-MEM-07": {
+      "section": "agentcore-memory",
+      "text_sha256": "32fa4bfc47226b90",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-MEM-09": {
+      "section": "agentcore-memory",
+      "text_sha256": "92c2b2212d0c000b",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-MEM-10": {
+      "section": "agentcore-memory",
+      "text_sha256": "1145ded70f9ce629",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-MEM-11": {
+      "section": "agentcore-memory",
+      "text_sha256": "a8cf1064a9da4812",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-MEM-12": {
+      "section": "agentcore-memory",
+      "text_sha256": "57fe9cafc8b0a4c7",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-MEM-13": {
+      "section": "agentcore-memory",
+      "text_sha256": "11add0527e1313ee",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-OBS-01": {
+      "section": "agentcore-observability",
+      "text_sha256": "8b03a302d9cdacdf",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-OBS-02": {
+      "section": "agentcore-observability",
+      "text_sha256": "7acf231edf56ca78",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-OBS-03": {
+      "section": "agentcore-observability",
+      "text_sha256": "6432e13a62335894",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-OBS-04": {
+      "section": "agentcore-observability",
+      "text_sha256": "ad04376fe2c16971",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-OBS-05": {
+      "section": "agentcore-observability",
+      "text_sha256": "9186f0517662685b",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-OBS-06": {
+      "section": "agentcore-observability",
+      "text_sha256": "56cba329ab9a1cd7",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-OBS-07": {
+      "section": "agentcore-observability",
+      "text_sha256": "8908acee61e5dd76",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-OPT-01": {
+      "section": "agentcore-registry-optimization-payments",
+      "text_sha256": "544c51130a887dfd",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-OPT-02": {
+      "section": "agentcore-registry-optimization-payments",
+      "text_sha256": "59a4211bf3cf2df4",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-PAY-01": {
+      "section": "agentcore-registry-optimization-payments",
+      "text_sha256": "b46d637afa97e1de",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-PAY-02": {
+      "section": "agentcore-registry-optimization-payments",
+      "text_sha256": "47f77dfce4052c1d",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-POL-01": {
+      "section": "agentcore-policy",
+      "text_sha256": "d08c13a6e76bfefc",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-POL-02": {
+      "section": "agentcore-policy",
+      "text_sha256": "f168d9e6ce189985",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-POL-03": {
+      "section": "agentcore-policy",
+      "text_sha256": "5f8df92bd35498f9",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-POL-04": {
+      "section": "agentcore-policy",
+      "text_sha256": "70f95cd8270f05f7",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-POL-05": {
+      "section": "agentcore-policy",
+      "text_sha256": "4bb895cc2555033e",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-POL-06": {
+      "section": "agentcore-policy",
+      "text_sha256": "ac82eda04dfd2bea",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-POL-07": {
+      "section": "agentcore-policy",
+      "text_sha256": "7359dad9ac316128",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-REG-01": {
+      "section": "agentcore-registry-optimization-payments",
+      "text_sha256": "dddd3e798c479786",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-REG-02": {
+      "section": "agentcore-registry-optimization-payments",
+      "text_sha256": "682099ee00488830",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-RT-01": {
+      "section": "agentcore-runtime",
+      "text_sha256": "a9cb31ac36f22534",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-RT-02": {
+      "section": "agentcore-runtime",
+      "text_sha256": "abd55109b6941833",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-RT-03": {
+      "section": "agentcore-runtime",
+      "text_sha256": "4d2ccc58fd6fede4",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-RT-04": {
+      "section": "agentcore-runtime",
+      "text_sha256": "cfd91931624a012b",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-RT-05": {
+      "section": "agentcore-runtime",
+      "text_sha256": "59a5f270fb383073",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-RT-06": {
+      "section": "agentcore-runtime",
+      "text_sha256": "b2cebd483e4fd0c9",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-RT-07": {
+      "section": "agentcore-runtime",
+      "text_sha256": "7406367fff2ea1b5",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-RT-08": {
+      "section": "agentcore-runtime",
+      "text_sha256": "42cecdc794ffe78b",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-RT-09": {
+      "section": "agentcore-runtime",
+      "text_sha256": "916e378a58d0778b",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-ACR-RT-10": {
+      "section": "agentcore-runtime",
+      "text_sha256": "9982eddc84d39049",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-RT-11": {
+      "section": "agentcore-runtime",
+      "text_sha256": "f93aae8ace9e3872",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-RT-12": {
+      "section": "agentcore-runtime",
+      "text_sha256": "3ffb932dd446432f",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-ACR-RT-13": {
+      "section": "agentcore-runtime",
+      "text_sha256": "706227dba5e262d7",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-GRD-01": {
+      "section": "bedrock-guardrails",
+      "text_sha256": "99f6688c3519ef78",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-GRD-02": {
+      "section": "bedrock-guardrails",
+      "text_sha256": "39c09b3b65e5605c",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-GRD-03": {
+      "section": "bedrock-guardrails",
+      "text_sha256": "ad591dfc160f089c",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-GRD-04": {
+      "section": "bedrock-guardrails",
+      "text_sha256": "b44e1efaad7ab29e",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-GRD-05": {
+      "section": "bedrock-guardrails",
+      "text_sha256": "f784b4da7e91b784",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-GRD-06": {
+      "section": "bedrock-guardrails",
+      "text_sha256": "9ccee0994f8d750a",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-GRD-07": {
+      "section": "bedrock-guardrails",
+      "text_sha256": "708b0fca6c3eee46",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-GRD-08": {
+      "section": "bedrock-guardrails",
+      "text_sha256": "ba191364c14884c6",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-GRD-09": {
+      "section": "bedrock-guardrails",
+      "text_sha256": "457432097f839039",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-GRD-10": {
+      "section": "bedrock-guardrails",
+      "text_sha256": "03b0360fe3cd08d0",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-GRD-11": {
+      "section": "bedrock-guardrails",
+      "text_sha256": "4bef144248aea97f",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-KB-01": {
+      "section": "bedrock-knowledge-bases",
+      "text_sha256": "d4533ad65e059b5d",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-KB-02": {
+      "section": "bedrock-knowledge-bases",
+      "text_sha256": "8125800b90658902",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-KB-03": {
+      "section": "bedrock-knowledge-bases",
+      "text_sha256": "d52c3618e6db3009",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-KB-04": {
+      "section": "bedrock-knowledge-bases",
+      "text_sha256": "48aeb70dcd8476ed",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-KB-05": {
+      "section": "bedrock-knowledge-bases",
+      "text_sha256": "19bd3a11b0292226",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-KB-06": {
+      "section": "bedrock-knowledge-bases",
+      "text_sha256": "1f3249f23d0ca129",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-KB-07": {
+      "section": "bedrock-knowledge-bases",
+      "text_sha256": "d9120e2c67623c5c",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-KB-08": {
+      "section": "bedrock-knowledge-bases",
+      "text_sha256": "a18565971046a9d4",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-KB-09": {
+      "section": "bedrock-knowledge-bases",
+      "text_sha256": "676b8b7bd2453a8d",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-KB-10": {
+      "section": "bedrock-knowledge-bases",
+      "text_sha256": "693dac2d80b63268",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-KB-11": {
+      "section": "bedrock-knowledge-bases",
+      "text_sha256": "16259a8087a8c1cc",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-MDL-01": {
+      "section": "bedrock-model-access",
+      "text_sha256": "91c815fee229b53e",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-MDL-02": {
+      "section": "bedrock-model-access",
+      "text_sha256": "98f116e1f4e2f444",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-MDL-03": {
+      "section": "bedrock-model-access",
+      "text_sha256": "f1d5bd2402f7341d",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-MDL-04": {
+      "section": "bedrock-model-access",
+      "text_sha256": "ed2bf99cb7345dd0",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-MDL-05": {
+      "section": "bedrock-model-access",
+      "text_sha256": "531195fa6debd27f",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-MDL-06": {
+      "section": "bedrock-model-access",
+      "text_sha256": "7a2965b6f44f89cd",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-BDR-MDL-07": {
+      "section": "bedrock-model-access",
+      "text_sha256": "b14c3b2b1f536b62",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-MDL-08": {
+      "section": "bedrock-model-access",
+      "text_sha256": "265b0cbcf12ffa68",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-MDL-09": {
+      "section": "bedrock-model-access",
+      "text_sha256": "89b2bd71f96d3d01",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-MDL-10": {
+      "section": "bedrock-model-access",
+      "text_sha256": "a9955b68b425230c",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-BDR-MDL-11": {
+      "section": "bedrock-model-access",
+      "text_sha256": "de01051082a3bde1",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-ACC-01": {
+      "section": "account-structure",
+      "text_sha256": "168705fd6f1a5c96",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-ACC-02": {
+      "section": "account-structure",
+      "text_sha256": "943b92c56b8915e6",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-FND-ACC-03": {
+      "section": "account-structure",
+      "text_sha256": "3ba538d07bf41b6c",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-ACC-04": {
+      "section": "account-structure",
+      "text_sha256": "b2324b89023b916e",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-ACC-05": {
+      "section": "account-structure",
+      "text_sha256": "d6d25d71899925fc",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-ACC-06": {
+      "section": "account-structure",
+      "text_sha256": "368a00ff9e28eb9a",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-ACC-07": {
+      "section": "account-structure",
+      "text_sha256": "acbb097fc1837fb4",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-ACC-08": {
+      "section": "account-structure",
+      "text_sha256": "900764f7c0f4c4ba",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-ACC-09": {
+      "section": "account-structure",
+      "text_sha256": "11c0ff61fb9e88a2",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-DAT-01": {
+      "section": "data-protection",
+      "text_sha256": "fae305b72a7aa9ec",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-DAT-02": {
+      "section": "data-protection",
+      "text_sha256": "b8c134547b90583e",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-DAT-03": {
+      "section": "data-protection",
+      "text_sha256": "ea43323c2fa6ce13",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-DAT-04": {
+      "section": "data-protection",
+      "text_sha256": "58f7be2a212fa891",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DAT-05": {
+      "section": "data-protection",
+      "text_sha256": "88143de9819b8245",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DAT-06": {
+      "section": "data-protection",
+      "text_sha256": "2ad7f140625f9b97",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DAT-07": {
+      "section": "data-protection",
+      "text_sha256": "772dbe5461d3ed1b",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DAT-08": {
+      "section": "data-protection",
+      "text_sha256": "c86912749d32a856",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DAT-09": {
+      "section": "data-protection",
+      "text_sha256": "457ddb2d1ee6b05c",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-DAT-10": {
+      "section": "data-protection",
+      "text_sha256": "3021dbd2c8708bd4",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DET-01": {
+      "section": "threat-detection",
+      "text_sha256": "e7663d5ba6257329",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-DET-02": {
+      "section": "threat-detection",
+      "text_sha256": "4feeceef573ba784",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-DET-03": {
+      "section": "threat-detection",
+      "text_sha256": "784393f58b05d835",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DET-04": {
+      "section": "threat-detection",
+      "text_sha256": "87117b03c3369ceb",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-DET-05": {
+      "section": "threat-detection",
+      "text_sha256": "767308989be455a1",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DET-06": {
+      "section": "threat-detection",
+      "text_sha256": "00fed2dec0354bf4",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DET-07": {
+      "section": "threat-detection",
+      "text_sha256": "ce9cf03f1c7a6fa9",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DET-08": {
+      "section": "threat-detection",
+      "text_sha256": "4b36519848b6657b",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DET-09": {
+      "section": "threat-detection",
+      "text_sha256": "1d19c9f021377d37",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-DET-10": {
+      "section": "threat-detection",
+      "text_sha256": "1c1a359cf0ba3cc5",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DET-11": {
+      "section": "threat-detection",
+      "text_sha256": "2f423fcd7e78f4f9",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-DET-12": {
+      "section": "threat-detection",
+      "text_sha256": "7204353eeb84c877",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-01": {
+      "section": "governance-compliance",
+      "text_sha256": "e4be44c8ef03fe8c",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-02": {
+      "section": "governance-compliance",
+      "text_sha256": "421d365358d59f78",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-GOV-03": {
+      "section": "governance-compliance",
+      "text_sha256": "44ca88fb24888502",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-04": {
+      "section": "governance-compliance",
+      "text_sha256": "62ef548f6f1e1176",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-05": {
+      "section": "governance-compliance",
+      "text_sha256": "d34f6d912dafd873",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-06": {
+      "section": "governance-compliance",
+      "text_sha256": "20913fd6aa782ae8",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-07": {
+      "section": "governance-compliance",
+      "text_sha256": "cef8159c62c5e2e8",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-08": {
+      "section": "governance-compliance",
+      "text_sha256": "e8f8c8b7f0984e9f",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-09": {
+      "section": "governance-compliance",
+      "text_sha256": "cdb7895c941940be",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-10": {
+      "section": "governance-compliance",
+      "text_sha256": "d6a359551eb25841",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-11": {
+      "section": "governance-compliance",
+      "text_sha256": "ea2f0d25e0d7beac",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-12": {
+      "section": "governance-compliance",
+      "text_sha256": "300d80a59654cdf9",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-FND-GOV-13": {
+      "section": "governance-compliance",
+      "text_sha256": "e5420b31804c989f",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-IAM-01": {
+      "section": "identity-access",
+      "text_sha256": "183c99f60ae0e48c",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-FND-IAM-02": {
+      "section": "identity-access",
+      "text_sha256": "08d18333cc817c80",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-IAM-03": {
+      "section": "identity-access",
+      "text_sha256": "d869caa85247efa5",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-IAM-04": {
+      "section": "identity-access",
+      "text_sha256": "710b57e052686f53",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-IAM-05": {
+      "section": "identity-access",
+      "text_sha256": "fc4bb32ba5819e47",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-IAM-06": {
+      "section": "identity-access",
+      "text_sha256": "ee745b57a27cc016",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-IAM-07": {
+      "section": "identity-access",
+      "text_sha256": "fb505454c4ac36e8",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-IAM-08": {
+      "section": "identity-access",
+      "text_sha256": "50efebf460c021c7",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-IAM-09": {
+      "section": "identity-access",
+      "text_sha256": "845bfcb3f563b6b5",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-FND-IAM-10": {
+      "section": "identity-access",
+      "text_sha256": "c68ec499760a7002",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-NET-01": {
+      "section": "network-isolation",
+      "text_sha256": "5ae3617a01d649a6",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-NET-02": {
+      "section": "network-isolation",
+      "text_sha256": "aaca3a56e6cc7163",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-NET-03": {
+      "section": "network-isolation",
+      "text_sha256": "667c25f782d9db92",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-FND-NET-04": {
+      "section": "network-isolation",
+      "text_sha256": "d076fcf75c7803d1",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-NET-05": {
+      "section": "network-isolation",
+      "text_sha256": "a366f518fdaf39d3",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-FND-NET-06": {
+      "section": "network-isolation",
+      "text_sha256": "713df0c7b9be58e1",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-NET-07": {
+      "section": "network-isolation",
+      "text_sha256": "77d4d65e19101d04",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-FND-NET-08": {
+      "section": "network-isolation",
+      "text_sha256": "e7e29c5ee04d0592",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-PHY-EDG-01": {
+      "section": "physical-edge-ai",
+      "text_sha256": "fe4f4c0851ddc66b",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-PHY-EDG-02": {
+      "section": "physical-edge-ai",
+      "text_sha256": "f2a05a3ab270c683",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-PHY-EDG-03": {
+      "section": "physical-edge-ai",
+      "text_sha256": "696fbc5ebf1e09bb",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-EP-01": {
+      "section": "sagemaker-endpoints",
+      "text_sha256": "be8fc81edcb6641e",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SGM-EP-02": {
+      "section": "sagemaker-endpoints",
+      "text_sha256": "cc681123ee903b26",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-EP-03": {
+      "section": "sagemaker-endpoints",
+      "text_sha256": "5d8cfed797189f20",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SGM-EP-04": {
+      "section": "sagemaker-endpoints",
+      "text_sha256": "56e3bea9bd15bf48",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-EP-05": {
+      "section": "sagemaker-endpoints",
+      "text_sha256": "1ca7677eeaa48136",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-EP-06": {
+      "section": "sagemaker-endpoints",
+      "text_sha256": "46be45b7831d125b",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SGM-EP-07": {
+      "section": "sagemaker-endpoints",
+      "text_sha256": "82da437730491eef",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-EP-08": {
+      "section": "sagemaker-endpoints",
+      "text_sha256": "b11de6f9c652ee1e",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SGM-GOV-01": {
+      "section": "sagemaker-governance",
+      "text_sha256": "c7b69372ca672cdc",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SGM-GOV-02": {
+      "section": "sagemaker-governance",
+      "text_sha256": "4ecaa82f64bd6484",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-GOV-03": {
+      "section": "sagemaker-governance",
+      "text_sha256": "b15bc509eec77b75",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-GOV-04": {
+      "section": "sagemaker-governance",
+      "text_sha256": "d513ebe7f3b351bb",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-GOV-05": {
+      "section": "sagemaker-governance",
+      "text_sha256": "00f555e4e9dc6c12",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-GOV-06": {
+      "section": "sagemaker-governance",
+      "text_sha256": "4d3cc736d988bc39",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-GOV-07": {
+      "section": "sagemaker-governance",
+      "text_sha256": "64d71c620fa630fe",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-GOV-08": {
+      "section": "sagemaker-governance",
+      "text_sha256": "f1f483379d83b691",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-GOV-09": {
+      "section": "sagemaker-governance",
+      "text_sha256": "0582f00e235a3fb5",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-GOV-10": {
+      "section": "sagemaker-governance",
+      "text_sha256": "e95375db53c63871",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SGM-TRN-01": {
+      "section": "sagemaker-training",
+      "text_sha256": "f8ba0e67bb8d0c4f",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SGM-TRN-02": {
+      "section": "sagemaker-training",
+      "text_sha256": "1dd3b4699778452a",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SGM-TRN-03": {
+      "section": "sagemaker-training",
+      "text_sha256": "2aa5d910934d7e19",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-TRN-04": {
+      "section": "sagemaker-training",
+      "text_sha256": "0b15ea74512458d6",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-TRN-05": {
+      "section": "sagemaker-training",
+      "text_sha256": "14555364a21b61de",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SGM-TRN-06": {
+      "section": "sagemaker-training",
+      "text_sha256": "22185bac74a06084",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-TRN-07": {
+      "section": "sagemaker-training",
+      "text_sha256": "8412f5aaf6df4cd9",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SGM-TRN-08": {
+      "section": "sagemaker-training",
+      "text_sha256": "f41ca3083cf048d2",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SGM-TRN-09": {
+      "section": "sagemaker-training",
+      "text_sha256": "2c5d1113917e64e3",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-AGT-01": {
+      "section": "selfhosted-agent",
+      "text_sha256": "281b1d4c5d0978d0",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-AGT-02": {
+      "section": "selfhosted-agent",
+      "text_sha256": "d1fbb36557468551",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-AGT-03": {
+      "section": "selfhosted-agent",
+      "text_sha256": "e064ecfffac3b6c8",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-AGT-04": {
+      "section": "selfhosted-agent",
+      "text_sha256": "0b9efe04aa79d982",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-AGT-05": {
+      "section": "selfhosted-agent",
+      "text_sha256": "6709bd530d66b5b7",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-AGT-06": {
+      "section": "selfhosted-agent",
+      "text_sha256": "71f50c70af012896",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-AGT-07": {
+      "section": "selfhosted-agent",
+      "text_sha256": "5820c2f046cba21c",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-CMP-01": {
+      "section": "selfhosted-compute",
+      "text_sha256": "95570b49ff6afc92",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SLF-CMP-02": {
+      "section": "selfhosted-compute",
+      "text_sha256": "7d8239faf2a5fc08",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-CMP-03": {
+      "section": "selfhosted-compute",
+      "text_sha256": "a5f44885c0ebfd24",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-CMP-04": {
+      "section": "selfhosted-compute",
+      "text_sha256": "15ed9bdbd5b6dccf",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-CMP-05": {
+      "section": "selfhosted-compute",
+      "text_sha256": "1bf51b36bdd8ad79",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-CMP-06": {
+      "section": "selfhosted-compute",
+      "text_sha256": "48652be4102665db",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-CMP-07": {
+      "section": "selfhosted-compute",
+      "text_sha256": "2d30cf062f6f0f9f",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-CMP-08": {
+      "section": "selfhosted-compute",
+      "text_sha256": "3be785f34913efb6",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-RT-01": {
+      "section": "selfhosted-runtime",
+      "text_sha256": "bad39dd36fe1e598",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-RT-02": {
+      "section": "selfhosted-runtime",
+      "text_sha256": "fa55c3539a8f4a87",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-RT-03": {
+      "section": "selfhosted-runtime",
+      "text_sha256": "f5a38bedb36b189f",
+      "kind": "technical",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-RT-04": {
+      "section": "selfhosted-runtime",
+      "text_sha256": "9e8822502c2b7769",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SLF-RT-05": {
+      "section": "selfhosted-runtime",
+      "text_sha256": "50ac34c238817290",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SLF-RT-06": {
+      "section": "selfhosted-runtime",
+      "text_sha256": "0169072cf166467e",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    },
+    "AIR-SLF-RT-07": {
+      "section": "selfhosted-runtime",
+      "text_sha256": "50b8ed62ceca97f2",
+      "kind": "process",
+      "machine_checkable": false,
+      "workload_agnostic": false
+    },
+    "AIR-SLF-RT-08": {
+      "section": "selfhosted-runtime",
+      "text_sha256": "3863b19d34c7a30a",
+      "kind": "technical",
+      "machine_checkable": true,
+      "workload_agnostic": true
+    }
+  }
+}

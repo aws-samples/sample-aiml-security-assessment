@@ -11,7 +11,7 @@ import consolidate_html_reports as chr
 
 
 class TestConsolidateResponsibleAIGRCCategorization(unittest.TestCase):
-    ACCT = "999988887777"
+    ACCT = "111122223333"
     BASE = tempfile.mkdtemp(prefix="responsible-ai-grc-consolidate-test-")
 
     def setUp(self):
@@ -25,6 +25,7 @@ class TestConsolidateResponsibleAIGRCCategorization(unittest.TestCase):
                 "Reference": "https://x",
                 "Severity": "High",
                 "Status": "Failed",
+                "Region": "us-east-1",
             },
             {
                 "Check_ID": "FS-01",
@@ -34,6 +35,7 @@ class TestConsolidateResponsibleAIGRCCategorization(unittest.TestCase):
                 "Reference": "https://x",
                 "Severity": "Medium",
                 "Status": "Failed",
+                "Region": "us-east-1",
             },
             {
                 "Check_ID": "FS-44",
@@ -43,13 +45,19 @@ class TestConsolidateResponsibleAIGRCCategorization(unittest.TestCase):
                 "Reference": "https://x",
                 "Severity": "High",
                 "Status": "Passed",
+                "Region": "us-east-1",
             },
         ]
-        path = f"{self.BASE}/{self.ACCT}/responsible_ai_grc_security_report_test.csv"
-        with open(path, "w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-            w.writeheader()
-            w.writerows(rows)
+        artifacts = {
+            "bedrock_security_report_test_us-east-1.csv": rows[:1],
+            "responsible_ai_grc_security_report_test.csv": rows[1:],
+        }
+        for filename, findings in artifacts.items():
+            path = f"{self.BASE}/{self.ACCT}/{filename}"
+            with open(path, "w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+                w.writeheader()
+                w.writerows(findings)
 
     def tearDown(self):
         shutil.rmtree(self.BASE, ignore_errors=True)
@@ -81,8 +89,8 @@ class TestConsolidateResponsibleAIGRCCategorization(unittest.TestCase):
             chr.consolidate_html_reports()
 
         sf = captured["service_findings"]
-        finserv_ids = {f["check_id"] for f in sf["responsible-ai-grc"]}
-        bedrock_ids = {f["check_id"] for f in sf["bedrock"]}
+        finserv_ids = {f["Check_ID"] for f in sf["responsible-ai-grc"]}
+        bedrock_ids = {f["Check_ID"] for f in sf["bedrock"]}
         self.assertIn("FS-01", finserv_ids)
         self.assertIn("FS-44", finserv_ids)
         self.assertNotIn("FS-01", bedrock_ids)
@@ -124,7 +132,7 @@ class TestConsolidateResponsibleAIGRCCategorization(unittest.TestCase):
             stats["responsible-ai-grc"], {"passed": 0, "failed": 0, "na": 0}
         )
         # BR-01 must still appear — only FS-* rows are dropped.
-        bedrock_ids = {f["check_id"] for f in sf["bedrock"]}
+        bedrock_ids = {f["Check_ID"] for f in sf["bedrock"]}
         self.assertIn("BR-01", bedrock_ids)
 
 
