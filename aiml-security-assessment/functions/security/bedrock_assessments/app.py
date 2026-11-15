@@ -1319,7 +1319,7 @@ def check_marketplace_subscription_access(
                         finding_name="Marketplace Subscription Access Check",
                         finding_details=f"{identity['type'].capitalize()} '{identity['name']}' has overly permissive marketplace subscription access through policy '{identity['policy']}'",
                         resolution="Ensure that users have access to only the models that you want user to be able to subscribe to based on your organizational policies. For example, you may want users to have access to only text based models and not image and video generation model. This can also help to keep cost in check.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-AmazonBedrockMarketplaceAccess",
+                        reference=MARKETPLACE_MODEL_CONTROL_REFERENCE,
                         severity="High",
                         status="Failed",
                         region=region,
@@ -1335,7 +1335,7 @@ def check_marketplace_subscription_access(
                     finding_name="Marketplace Subscription Access Check",
                     finding_details="No identities found with overly permissive marketplace subscription access",
                     resolution="No action required",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-AmazonBedrockMarketplaceAccess",
+                    reference=MARKETPLACE_MODEL_CONTROL_REFERENCE,
                     severity="Medium",
                     status="Passed",
                     region=region,
@@ -1347,7 +1347,7 @@ def check_marketplace_subscription_access(
             permission_cache,
             "BR-03",
             "Marketplace Subscription Access Check",
-            "https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-AmazonBedrockMarketplaceAccess",
+            MARKETPLACE_MODEL_CONTROL_REFERENCE,
             region,
         )
 
@@ -1365,7 +1365,7 @@ def check_marketplace_subscription_access(
                     finding_name="Marketplace Subscription Access Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference=MARKETPLACE_MODEL_CONTROL_REFERENCE,
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -1558,7 +1558,7 @@ def check_stale_bedrock_access(permission_cache, region: str = "") -> Dict[str, 
                     finding_name="Stale Bedrock Access Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -4843,7 +4843,7 @@ def check_bedrock_access_and_vpc_endpoints(
                     finding_name="Bedrock VPC Endpoint Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -4962,7 +4962,7 @@ def check_bedrock_guardrails(region: str = "") -> Dict[str, Any]:
                     finding_name="Bedrock Guardrails Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -6933,7 +6933,7 @@ def check_bedrock_logging_configuration(region: str = "") -> Dict[str, Any]:
                     finding_name="Bedrock Logging Configuration Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -8724,7 +8724,7 @@ def check_bedrock_cloudtrail_logging(region: str = "") -> Dict[str, Any]:
                     finding_name="Bedrock CloudTrail Logging Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/logging-using-cloudtrail.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -8735,6 +8735,9 @@ def check_bedrock_cloudtrail_logging(region: str = "") -> Dict[str, Any]:
 
 PROMPT_MANAGEMENT_REFERENCE = (
     "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management.html"
+)
+PROMPT_VERSION_REFERENCE = (
+    "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management-deploy.html"
 )
 PROMPT_FLOWS_REFERENCE = (
     "https://docs.aws.amazon.com/bedrock/latest/userguide/flows.html"
@@ -8977,7 +8980,7 @@ def _prompt_version_findings(
                     )
                 ),
                 resolution="Create a numbered version of each named prompt with CreatePromptVersion, then reference that version from every flow and application.",
-                reference=PROMPT_MANAGEMENT_REFERENCE,
+                reference=PROMPT_VERSION_REFERENCE,
                 severity="Medium",
                 status="Failed",
                 region=region,
@@ -9003,7 +9006,7 @@ def _prompt_version_findings(
                     )
                 ),
                 resolution="No action required for version pinning. Create a new version whenever the prompt changes so the pinned reference stays current.",
-                reference=PROMPT_MANAGEMENT_REFERENCE,
+                reference=PROMPT_VERSION_REFERENCE,
                 severity="Medium",
                 status="Passed",
                 region=region,
@@ -9027,7 +9030,7 @@ def _prompt_version_findings(
                     )
                 ),
                 resolution="Grant bedrock:ListPrompts on each prompt and re-run the assessment.",
-                reference=PROMPT_MANAGEMENT_REFERENCE,
+                reference=PROMPT_VERSION_REFERENCE,
                 severity="Informational",
                 status="N/A",
                 region=region,
@@ -9102,7 +9105,7 @@ def _prompt_version_findings(
                     )
                 ),
                 resolution="Recreate each named prompt with a customer-managed KMS key in customerEncryptionKeyArn, create the version to be referenced, and delete the numbered versions that carry no key with DeletePrompt.",
-                reference=PROMPT_MANAGEMENT_REFERENCE,
+                reference=PROMPT_VERSION_REFERENCE,
                 severity="Medium",
                 status="Failed",
                 region=region,
@@ -9130,7 +9133,7 @@ def _prompt_version_findings(
                     )
                 ),
                 resolution="Recreate each named prompt with an enabled customer managed KMS key in customerEncryptionKeyArn, create the version to be referenced, and delete the numbered versions that carry the other key with DeletePrompt.",
-                reference=PROMPT_MANAGEMENT_REFERENCE,
+                reference=PROMPT_VERSION_REFERENCE,
                 severity="Medium",
                 status="Failed",
                 region=region,
@@ -9157,7 +9160,7 @@ def _prompt_version_findings(
                     )
                 ),
                 resolution="No action required for prompt version encryption. Keep the key policy scoped to the roles that run the prompt.",
-                reference=PROMPT_MANAGEMENT_REFERENCE,
+                reference=PROMPT_VERSION_REFERENCE,
                 severity="Medium",
                 status="Passed",
                 region=region,
@@ -9187,7 +9190,7 @@ def _prompt_version_findings(
                     )
                 ),
                 resolution="Grant bedrock:GetPrompt on each prompt version and kms:DescribeKey on the key it names, then re-run the assessment.",
-                reference=PROMPT_MANAGEMENT_REFERENCE,
+                reference=PROMPT_VERSION_REFERENCE,
                 severity="Informational",
                 status="N/A",
                 region=region,
@@ -9308,7 +9311,7 @@ def _runtime_prompt_version_findings(
             finding_name=RUNTIME_PROMPT_VERSION_FINDING,
             finding_details=details,
             resolution=resolution,
-            reference=PROMPT_MANAGEMENT_REFERENCE,
+            reference=PROMPT_VERSION_REFERENCE,
             severity=severity,
             status=status,
             region=region,
@@ -9927,7 +9930,7 @@ def check_bedrock_prompt_management(
                     finding_name="Bedrock Prompt Management Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference=PROMPT_MANAGEMENT_REFERENCE,
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -10137,7 +10140,7 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
                     finding_name="Bedrock Knowledge Base Encryption Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -10919,7 +10922,7 @@ def check_bedrock_guardrail_iam_enforcement(
                     finding_name=check_name,
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference=GUARDRAIL_IAM_REFERENCE,
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -11304,7 +11307,7 @@ def check_bedrock_custom_model_encryption(region: str = "") -> Dict[str, Any]:
                     finding_name="Bedrock Custom Model Encryption Check",
                     finding_details=describe_api_error(e, "Custom model API", region),
                     resolution="Verify permissions to access Bedrock custom models",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-iam-role.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -11327,7 +11330,7 @@ def check_bedrock_custom_model_encryption(region: str = "") -> Dict[str, Any]:
                     finding_name="Bedrock Custom Model Encryption Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -12163,7 +12166,7 @@ def check_bedrock_invocation_log_encryption(region: str = "") -> Dict[str, Any]:
                     finding_name="Bedrock Invocation Log Encryption Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference=INVOCATION_LOG_ENCRYPTION_REFERENCE,
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -12356,7 +12359,7 @@ def check_bedrock_flows_guardrails(region: str = "") -> Dict[str, Any]:
                     finding_name="Bedrock Flows Guardrails Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows-guardrails.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -12566,7 +12569,7 @@ def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, A
                     finding_name="Bedrock Agent IAM Roles Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference="https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/gensec05-bp01.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -14397,6 +14400,11 @@ def check_bedrock_central_guardrail_enforcement(
         }
 
 
+GUARDRAIL_TIER_REFERENCE = (
+    "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-tiers.html"
+)
+
+
 def check_bedrock_guardrail_tier(region: str = "") -> Dict[str, Any]:
     """
     BR-16: Verify guardrails are using Standard tier (vs Express tier) for enhanced protection
@@ -14428,7 +14436,7 @@ def check_bedrock_guardrail_tier(region: str = "") -> Dict[str, Any]:
                         finding_name="Guardrail Tier Validation Check",
                         finding_details="No Bedrock guardrails configured in this region",
                         resolution="Create Bedrock guardrails with Standard tier for enhanced content filtering and protection",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                        reference=GUARDRAIL_TIER_REFERENCE,
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -14510,7 +14518,7 @@ def check_bedrock_guardrail_tier(region: str = "") -> Dict[str, Any]:
                             finding_name="Guardrail Tier Validation Check",
                             finding_details=f"Guardrail '{gr['name']}' (ID: {gr['id']}) is using the '{gr['tier']}' content-filter tier instead of 'STANDARD'. The STANDARD tier provides more robust content filtering and broader language support than the CLASSIC tier.",
                             resolution="Update the guardrail to use the STANDARD content-filter tier for improved contextual understanding, better prompt attack filtering (distinguishing jailbreaks from prompt injection), and broader language support. The STANDARD tier requires cross-Region inference. Review pricing implications before upgrading.",
-                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                            reference=GUARDRAIL_TIER_REFERENCE,
                             severity="Medium",
                             status="Failed",
                             region=region,
@@ -14524,7 +14532,7 @@ def check_bedrock_guardrail_tier(region: str = "") -> Dict[str, Any]:
                         finding_name="Guardrail Tier Validation Check",
                         finding_details=f"{len(standard_tier_guardrails)} guardrails are using the STANDARD content-filter tier with enhanced protection capabilities",
                         resolution="No action required. Continue monitoring guardrail effectiveness.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+                        reference=GUARDRAIL_TIER_REFERENCE,
                         severity="Low",
                         status="Passed",
                         region=region,
@@ -14543,10 +14551,7 @@ def check_bedrock_guardrail_tier(region: str = "") -> Dict[str, Any]:
                             "Review the guardrail configuration and rerun the "
                             "assessment after GetGuardrail reports the content-filter tier."
                         )
-                        reference = (
-                            "https://docs.aws.amazon.com/bedrock/latest/userguide/"
-                            "guardrails-components.html"
-                        )
+                        reference = GUARDRAIL_TIER_REFERENCE
                     else:
                         finding_details = (
                             f"Guardrail '{gr['name']}' (ID: {gr['id']}) could not "
@@ -14608,7 +14613,7 @@ def check_bedrock_guardrail_tier(region: str = "") -> Dict[str, Any]:
                     finding_name="Guardrail Tier Validation Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+                    reference=GUARDRAIL_TIER_REFERENCE,
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -14718,7 +14723,7 @@ def check_bedrock_custom_model_kms_encryption(region: str = "") -> Dict[str, Any
                             check_id="BR-17",
                             finding_name="Custom Model Customer-Managed KMS Encryption Check",
                             finding_details=f"Custom model '{model_info['name']}' uses AWS-owned encryption keys instead of customer-managed KMS keys. This limits your control over key rotation, access policies, and audit trail.",
-                            resolution="When creating new custom models, specify a customer-managed KMS key using the customizationConfig.kmsKeyArn parameter. For existing models, consider retraining with customer-managed KMS encryption. Ensure KMS key grants allow Amazon Bedrock service access.",
+                            resolution="When creating new custom models, specify a customer-managed KMS key in the customModelKmsKeyId parameter of CreateModelCustomizationJob, or in the modelKmsKeyArn parameter of CreateCustomModel. For existing models, consider retraining with customer-managed KMS encryption. Ensure KMS key grants allow Amazon Bedrock service access.",
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
                             severity="High",
                             status="Failed",
@@ -14733,7 +14738,7 @@ def check_bedrock_custom_model_kms_encryption(region: str = "") -> Dict[str, Any
                         check_id="BR-17",
                         finding_name="Custom Model Customer-Managed KMS Encryption Check",
                         finding_details=f"Custom model '{model_info['name']}' names a KMS key that is not an enabled customer managed key: {model_info['text']}.",
-                        resolution="Retrain the model with customizationConfig.kmsKeyArn set to an enabled customer managed KMS key, then delete the model that carries the other key.",
+                        resolution="Recreate the model with an enabled customer managed KMS key, set in customModelKmsKeyId when retraining with CreateModelCustomizationJob or in modelKmsKeyArn when importing with CreateCustomModel, then delete the model that carries the other key.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
                         severity="High",
                         status="Failed",
@@ -23331,7 +23336,7 @@ def check_guardduty_prompt_injection_detection(region: str = "") -> Dict[str, An
     name the unarchived findings it holds on bedrock.amazonaws.com calls as
     the example flagged events.
     """
-    reference = "https://docs.aws.amazon.com/guardduty/latest/ug/what-is-guardduty.html"
+    reference = "https://docs.aws.amazon.com/guardduty/latest/ug/ai-protection.html"
     findings = {
         "check_name": GUARDDUTY_PROMPT_INJECTION_FINDING,
         "status": "PASS",
@@ -24651,7 +24656,7 @@ def check_bedrock_agent_guardrail_association(region: str = "") -> Dict[str, Any
                         finding_name="Agent Guardrail Association Check",
                         finding_details="No Bedrock agents configured in this region",
                         resolution="When creating agents, associate a Bedrock guardrail so agent inputs and responses are filtered for harmful content, PII, and denied topics",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-guardrail.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -24687,7 +24692,7 @@ def check_bedrock_agent_guardrail_association(region: str = "") -> Dict[str, Any
                             finding_name="Agent Guardrail Association Check",
                             finding_details=f"Bedrock agent '{agent['name']}' (ID: {agent['id']}) does not have a guardrail associated. Agent interactions are not subject to content filtering, PII protection, or denied-topic controls.",
                             resolution="Associate a Bedrock guardrail with the agent by setting guardrailConfiguration (guardrailIdentifier and guardrailVersion) on the agent. Prepare the agent after updating so the change takes effect.",
-                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use.html",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-guardrail.html",
                             severity="High",
                             status="Failed",
                             region=region,
@@ -24701,7 +24706,7 @@ def check_bedrock_agent_guardrail_association(region: str = "") -> Dict[str, Any
                         finding_name="Agent Guardrail Association Check",
                         finding_details=f"{len(agents_with_guardrail)} agents have an associated guardrail",
                         resolution="No action required. Continue associating guardrails with new agents.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-guardrail.html",
                         severity="Low",
                         status="Passed",
                         region=region,
@@ -24721,7 +24726,7 @@ def check_bedrock_agent_guardrail_association(region: str = "") -> Dict[str, Any
                             e, "Bedrock Agents API", region
                         ),
                         resolution="Bedrock Agents may not be available in all regions",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-guardrail.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -24762,7 +24767,7 @@ def check_bedrock_agent_guardrail_association(region: str = "") -> Dict[str, Any
                     finding_name="Agent Guardrail Association Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-guardrail.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -24978,7 +24983,7 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                         finding_name="Imported Model Customer-Managed KMS Encryption Check",
                         finding_details="No imported custom Bedrock models found in this region",
                         resolution="When importing models, specify a customer-managed KMS key for encryption to maintain control over encryption keys",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-import-model.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -25041,7 +25046,7 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                             finding_name="Imported Model Customer-Managed KMS Encryption Check",
                             finding_details=f"Imported model '{model_info['name']}' is not encrypted with a customer-managed KMS key. This limits your control over key rotation, access policies, and audit trail.",
                             resolution="Re-import the model specifying a customer-managed KMS key (modelKmsKeyArn). Ensure the KMS key policy grants Amazon Bedrock service access.",
-                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-import-model.html",
                             severity="High",
                             status="Failed",
                             region=region,
@@ -25056,7 +25061,7 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                         finding_name="Imported Model Customer-Managed KMS Encryption Check",
                         finding_details=f"Imported model '{model_info['name']}' names a KMS key that is not an enabled customer managed key: {model_info['text']}.",
                         resolution="Re-import the model specifying an enabled customer managed KMS key (modelKmsKeyArn), then delete the model that carries the other key.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-import-model.html",
                         severity="High",
                         status="Failed",
                         region=region,
@@ -25070,7 +25075,7 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                         finding_name="Imported Model Customer-Managed KMS Encryption Check",
                         finding_details=f"The encryption key of {len(models_unknown)} of {len(imported_models)} imported model(s) could not be judged, so whether each uses a customer managed key is unknown: {'; '.join(models_unknown[:10])}.",
                         resolution="Grant bedrock:GetImportedModel on each model and kms:DescribeKey on the key it names, then re-run the assessment.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-import-model.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -25084,7 +25089,7 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                         finding_name="Imported Model Customer-Managed KMS Encryption Check",
                         finding_details=f"{len(models_with_customer_keys)} of {len(imported_models)} imported model(s) are encrypted with a KMS key that kms:DescribeKey reports as customer managed and Enabled",
                         resolution="No action required. Continue using customer-managed keys for imported models.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-import-model.html",
                         severity="Medium",
                         status="Passed",
                         region=region,
@@ -25104,7 +25109,7 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                             e, "Imported models API", region
                         ),
                         resolution="Model import may not be available in all regions",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-import-model.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -25122,7 +25127,7 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                             e, "Imported model encryption check", region
                         ),
                         resolution="Amazon Bedrock Custom Model Import is not enabled or available for this account in this region. No IAM change is required; the check applies only once model import is in use.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-import-model.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -25163,7 +25168,7 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                     finding_name="Imported Model Customer-Managed KMS Encryption Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-import-model.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -25209,7 +25214,7 @@ def check_bedrock_batch_inference_output_encryption(
                         finding_name="Batch Inference Output Encryption Check",
                         finding_details="No Bedrock batch inference (model invocation) jobs found in this region",
                         resolution="When creating batch inference jobs, set outputDataConfig.s3OutputDataConfig.s3EncryptionKeyId to a customer-managed KMS key to encrypt the job output",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference-create.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -25244,7 +25249,7 @@ def check_bedrock_batch_inference_output_encryption(
                             finding_name="Batch Inference Output Encryption Check",
                             finding_details=f"Batch inference job '{job_name}' does not specify a customer-managed KMS key for its S3 output. Job output (model responses) may be encrypted only with the bucket default or an AWS-managed key.",
                             resolution="When creating batch inference jobs, set outputDataConfig.s3OutputDataConfig.s3EncryptionKeyId to a customer-managed KMS key, and ensure the destination S3 bucket enforces that key.",
-                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference-create.html",
                             severity="Medium",
                             status="Failed",
                             region=region,
@@ -25258,7 +25263,7 @@ def check_bedrock_batch_inference_output_encryption(
                         finding_name="Batch Inference Output Encryption Check",
                         finding_details=f"{len(jobs_with_cmk)} batch inference jobs specify a customer-managed KMS key for their S3 output",
                         resolution="No action required. Continue specifying a customer-managed KMS key for batch inference output.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference-create.html",
                         severity="Low",
                         status="Passed",
                         region=region,
@@ -25278,7 +25283,7 @@ def check_bedrock_batch_inference_output_encryption(
                             e, "Batch inference API", region
                         ),
                         resolution="Batch inference may not be available in all regions",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference-create.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -25296,7 +25301,7 @@ def check_bedrock_batch_inference_output_encryption(
                             e, "Batch inference output encryption check", region
                         ),
                         resolution="Amazon Bedrock batch inference is not enabled or available for this account in this region. No IAM change is required; the check applies only once batch inference is in use.",
-                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference-create.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -25337,7 +25342,7 @@ def check_bedrock_batch_inference_output_encryption(
                     finding_name="Batch Inference Output Encryption Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference-create.html",
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -26304,7 +26309,7 @@ def _guardrail_intervention_signal_finding(
     LookupEvents returning no call is not evidence that none is made.
     """
     finding_name = "Guardrail Intervention Monitoring Signal"
-    reference = "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-enforcements.html"
+    reference = "https://docs.aws.amazon.com/bedrock/latest/userguide/monitoring-guardrails-cw-metrics.html"
     apply_guardrail_called = _apply_guardrail_called(region)
     evidence, unread = _guardrail_scope(
         guardrail_inventory, attachment_inventory, apply_guardrail_called
@@ -29086,7 +29091,7 @@ def _marketplace_subnet_privacy_finding(
                         ),
                     )
                 ),
-                resolution="Re-register the endpoint on subnets whose route tables carry no internet gateway route, and reach AWS services from them through VPC endpoints or a NAT gateway.",
+                resolution="Update the endpoint with UpdateMarketplaceModelEndpoint so endpointConfig.sageMaker.vpc names subnets whose route tables carry no internet gateway route, and reach AWS services from them through VPC endpoints or a NAT gateway.",
                 reference=reference,
                 severity="High",
                 status="Failed",
@@ -29131,7 +29136,7 @@ def _marketplace_subnet_privacy_finding(
                     len(private), endpoint_arn, ", ".join(private[:5])
                 )
             ),
-            resolution="No action required for subnet privacy. Re-check it whenever the endpoint is re-registered or a route table changes.",
+            resolution="No action required for subnet privacy. Re-check it whenever the endpoint's VPC configuration or a route table changes.",
             reference=reference,
             severity="High",
             status="Passed",
@@ -29157,7 +29162,7 @@ def check_bedrock_marketplace_endpoint_vpc(
     findings = {"csv_data": []}
     reference = (
         "https://docs.aws.amazon.com/bedrock/latest/APIReference/"
-        "API_GetMarketplaceModelEndpoint.html"
+        "API_SageMakerEndpoint.html"
     )
     inventory = endpoint_inventory or get_marketplace_endpoint_inventory(region)
     if inventory.get("list_error"):
@@ -29230,7 +29235,7 @@ def check_bedrock_marketplace_endpoint_vpc(
                 resolution=(
                     "No action required"
                     if compliant
-                    else "Register the endpoint with non-empty VPC subnetIds and securityGroupIds."
+                    else "Create or update the endpoint with CreateMarketplaceModelEndpoint or UpdateMarketplaceModelEndpoint so endpointConfig.sageMaker.vpc names non-empty subnetIds and securityGroupIds."
                 ),
                 reference=reference,
                 severity="High",
@@ -29275,9 +29280,7 @@ def check_bedrock_job_vpc(
     is judged whatever its status, as SM-33 judges training jobs.
     """
     findings = {"csv_data": []}
-    reference = (
-        "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_VpcConfig.html"
-    )
+    reference = "https://docs.aws.amazon.com/bedrock/latest/userguide/usingVPC.html"
 
     def row(details, resolution, severity, status):
         return create_finding(
@@ -29699,7 +29702,7 @@ def check_bedrock_marketplace_endpoint_cmk(
                     finding_name="Marketplace Model Endpoint CMK Encryption",
                     finding_details=f"Marketplace endpoint '{endpoint_arn}' does not specify a customer-managed KMS key.",
                     resolution=(
-                        "Register the endpoint with a customer-managed KMS key."
+                        "Create or update the endpoint with endpointConfig.sageMaker.kmsEncryptionKey set to a customer-managed KMS key."
                         if required
                         else "No action required under the current baseline. Set REQUIRE_MARKETPLACE_ENDPOINT_CMK=true to enforce customer-managed encryption."
                     ),
@@ -29774,7 +29777,7 @@ def check_bedrock_marketplace_endpoint_cmk(
                     "No action required"
                     if uses_cmk
                     else (
-                        "Register the endpoint with a customer-managed KMS key."
+                        "Create or update the endpoint with endpointConfig.sageMaker.kmsEncryptionKey set to a customer-managed KMS key."
                         if required
                         else "No action required under the current baseline. Set REQUIRE_MARKETPLACE_ENDPOINT_CMK=true to enforce customer-managed encryption."
                     )
@@ -31423,7 +31426,7 @@ REGION_CONTROL_ACTIONS = (
 
 GLOBAL_INFERENCE_REGION_VALUE = "unspecified"
 
-REGION_CONTROL_REFERENCE = "https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html"
+REGION_CONTROL_REFERENCE = "https://docs.aws.amazon.com/bedrock/latest/userguide/global-cross-region-inference.html"
 
 MAX_REPORTED_INFERENCE_PROFILES = 5
 
@@ -32704,7 +32707,7 @@ def check_ai_service_region_control(
 CUSTOM_MODEL_SHARING_FINDING = "Bedrock Custom Model Cross-Account Access"
 
 CUSTOM_MODEL_SHARING_REFERENCE = (
-    "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_GetResourcePolicy.html"
+    "https://docs.aws.amazon.com/bedrock/latest/userguide/share-model.html"
 )
 
 # The resource policies read per Region. A Region with more owned models than
@@ -33444,7 +33447,7 @@ MARKETPLACE_SUBSCRIBE_ACTION = "aws-marketplace:subscribe"
 
 MARKETPLACE_PRODUCT_CONDITION_KEY = "aws-marketplace:productid"
 
-MARKETPLACE_MODEL_CONTROL_REFERENCE = "https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-AmazonBedrockMarketplaceAccess"
+MARKETPLACE_MODEL_CONTROL_REFERENCE = "https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html#model-access-permissions"
 
 # Bedrock user guide, model-access.html, "Grant IAM permissions to request
 # access to Amazon Bedrock foundation models with a product ID".
@@ -35685,9 +35688,7 @@ def check_bedrock_ai_user_access_keys(
 
 ROOT_ACCESS_KEY_FINDING = "Root User Access Key"
 
-ROOT_ACCESS_KEY_REFERENCE = (
-    "https://docs.aws.amazon.com/IAM/latest/APIReference/API_GetAccountSummary.html"
-)
+ROOT_ACCESS_KEY_REFERENCE = "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_root-user_manage_delete-key.html"
 
 
 def check_root_user_access_key(region: str = "") -> Dict[str, Any]:
@@ -37490,6 +37491,9 @@ def check_bedrock_ai_user_console_mfa(
 
 
 KNOWLEDGE_BASE_CLASSIFICATION_REFERENCE = (
+    "https://docs.aws.amazon.com/macie/latest/user/discovery-jobs.html"
+)
+MACIE_AUTOMATED_DISCOVERY_REFERENCE = (
     "https://docs.aws.amazon.com/macie/latest/user/discovery-asdd.html"
 )
 
@@ -38835,7 +38839,7 @@ def check_bedrock_knowledge_base_source_classification(
                         "and keep the bucket in its classification scope, beside "
                         "the scheduled classification job."
                     ),
-                    reference=KNOWLEDGE_BASE_CLASSIFICATION_REFERENCE,
+                    reference=MACIE_AUTOMATED_DISCOVERY_REFERENCE,
                     severity="Medium",
                     status="Failed",
                     region=region,
@@ -41294,6 +41298,9 @@ def check_bedrock_data_path_object_lock(region: str = "") -> Dict[str, Any]:
 RESOURCE_OWNER_FINDING = "Bedrock Resource Owner Tag"
 
 RESOURCE_OWNER_REFERENCE = "https://docs.aws.amazon.com/resourcegroupstagging/latest/APIReference/API_GetResources.html"
+BEDROCK_RESOURCE_TAGGING_REFERENCE = (
+    "https://docs.aws.amazon.com/bedrock/latest/userguide/tagging.html"
+)
 
 # An owner key is "owner" after any namespace prefix, alone or beside words that
 # only say which owner it is or how to reach them. Any other word (previous,
@@ -41571,7 +41578,7 @@ def check_bedrock_resource_owner_tag(region: str = "") -> Dict[str, Any]:
                 finding_name=check_name,
                 finding_details=details,
                 resolution=resolution,
-                reference=RESOURCE_OWNER_REFERENCE,
+                reference=BEDROCK_RESOURCE_TAGGING_REFERENCE,
                 severity=severity,
                 status=status,
                 region=region,
@@ -41754,7 +41761,7 @@ def check_bedrock_resource_owner_tag(region: str = "") -> Dict[str, Any]:
                     finding_name=check_name,
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
-                    reference=RESOURCE_OWNER_REFERENCE,
+                    reference=BEDROCK_RESOURCE_TAGGING_REFERENCE,
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -47003,6 +47010,12 @@ def write_to_s3(
         raise
 
 
+# The incomplete row points at the Lambda's CloudWatch Logs, where the error is.
+CHECK_INCOMPLETE_REFERENCE = (
+    "https://docs.aws.amazon.com/lambda/latest/dg/monitoring-cloudwatchlogs-view.html"
+)
+
+
 def _run_check_safely(
     check_id: str, check: Callable[[], Dict[str, Any]], region: str
 ) -> Dict[str, Any]:
@@ -47029,7 +47042,7 @@ def _run_check_safely(
                         "Review the Bedrock assessment Lambda's CloudWatch Logs "
                         f"for the {check_id} error, then rerun the assessment."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security.html",
+                    reference=CHECK_INCOMPLETE_REFERENCE,
                     severity="Informational",
                     status="N/A",
                     region=region,

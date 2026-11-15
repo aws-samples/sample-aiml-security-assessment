@@ -2181,6 +2181,34 @@ class TestFS53WafSqlInjectionRules:
         result = app.check_waf_sql_injection_rules(inv)
         _assert_finding_structure(result)
 
+    def test_known_bad_inputs_alone_is_not_injection_protection(self):
+        """ACL whose only managed group is KnownBadInputsRuleSet → Failed."""
+        acl_detail = {
+            "Rules": [
+                {
+                    "Name": "AWS-AWSManagedRulesKnownBadInputsRuleSet",
+                    "Statement": {
+                        "ManagedRuleGroupStatement": {
+                            "VendorName": "AWS",
+                            "Name": "AWSManagedRulesKnownBadInputsRuleSet",
+                        }
+                    },
+                }
+            ]
+        }
+        inv = make_resource_inventory(
+            web_acls=app.WebAclInventory(
+                summaries=[{"Name": "acl1", "Id": "id1"}],
+                detail_by_id={"id1": acl_detail},
+            )
+        )
+        result = app.check_waf_sql_injection_rules(inv)
+        _assert_finding_structure(result)
+        rows = result["csv_data"]
+        assert [r["Status"] for r in rows] == ["Failed"]
+        assert rows[0]["Finding"] == "WAF ACLs Missing Injection Protection Rules"
+        assert "acl1" in rows[0]["Finding_Details"]
+
     def test_na_no_acls(self):
         """Empty summaries list → N/A (no ACLs found)."""
         inv = make_resource_inventory(

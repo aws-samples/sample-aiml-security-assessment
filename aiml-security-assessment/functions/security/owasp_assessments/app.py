@@ -224,8 +224,8 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, Any]]] = {
         {
             "check_id": "OW-01",
             "owasp_category": "LLM01:2025 Prompt Injection",
-            "finding": "OWASP LLM01: WAF SQLi & KnownBadInputs Coverage",
-            "resolution": "Add AWS Managed Rule Groups AWSManagedRulesSQLiRuleSet and AWSManagedRulesKnownBadInputsRuleSet to the WAF Web ACL guarding GenAI ingress.",
+            "finding": "OWASP LLM01: WAF SQLi & Common Rule Set Coverage",
+            "resolution": "Add AWS Managed Rule Groups AWSManagedRulesSQLiRuleSet and AWSManagedRulesCommonRuleSet to the WAF Web ACL guarding GenAI ingress. WAF rules cover request-layer injection only; use Bedrock Guardrails prompt-attack filters for prompt injection.",
         }
     ],
     "FS-54": [
@@ -455,8 +455,8 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, Any]]] = {
         {
             "check_id": "OW-03",
             "owasp_category": "LLM03:2025 Supply Chain",
-            "finding": "OWASP LLM03: SageMaker AutoML Network Isolation",
-            "resolution": "Enable network isolation on AutoML jobs so generated training containers cannot fetch unapproved dependencies or send data over unmanaged network paths.",
+            "finding": "OWASP LLM03: SageMaker AutoML Inter-Container Traffic Encryption",
+            "resolution": "Enable EnableInterContainerTrafficEncryption in AutoMLJobConfig.SecurityConfig so data exchanged between AutoML training containers is encrypted in transit.",
         }
     ],
     "SM-25": [
@@ -464,7 +464,7 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, Any]]] = {
             "check_id": "OW-03",
             "owasp_category": "LLM03:2025 Supply Chain",
             "finding": "OWASP LLM03: SageMaker ML Lineage Tracking",
-            "resolution": "Use SageMaker Experiments and lineage associations to track training runs, parameters, artifacts, and model package provenance across the ML supply chain.",
+            "resolution": "Use SageMaker AI with MLflow (SageMaker Experiments is Studio Classic only) and lineage associations to track training runs, parameters, artifacts, and model package provenance across the ML supply chain.",
         },
         {
             "check_id": "OW-04",
@@ -539,13 +539,13 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, Any]]] = {
             "check_id": "OW-04",
             "owasp_category": "LLM04:2025 Data and Model Poisoning",
             "finding": "OWASP LLM04: SageMaker Model Monitor Coverage",
-            "resolution": "Configure active SageMaker Model Monitor schedules so data-quality and model-quality regressions caused by poisoned inputs or drift are detected.",
+            "resolution": "Keep active SageMaker Model Monitor schedules where already in use (Model Monitor is closed to new customers; others use the AWS-documented open-source monitoring alternatives) so data-quality and model-quality regressions caused by poisoned inputs or drift are detected.",
         },
         {
             "check_id": "OW-09",
             "owasp_category": "LLM09:2025 Misinformation",
             "finding": "OWASP LLM09: SageMaker Model Monitor Coverage",
-            "resolution": "Configure SageMaker Model Monitor schedules for production models so quality regressions that can produce incorrect outputs are detected.",
+            "resolution": "Keep active SageMaker Model Monitor schedules for production models where already in use (Model Monitor is closed to new customers; others use the AWS-documented open-source monitoring alternatives) so quality regressions that can produce incorrect outputs are detected.",
         },
     ],
     "SM-22": [
@@ -575,13 +575,13 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, Any]]] = {
             "check_id": "OW-04",
             "owasp_category": "LLM04:2025 Data and Model Poisoning",
             "finding": "OWASP LLM04: SageMaker Model Drift Detection",
-            "resolution": "Enable SageMaker Model Monitor drift detection for production endpoints so poisoning, data drift, and model-quality degradation are identified.",
+            "resolution": "Monitor production endpoints for drift with SageMaker Model Monitor where already in use, or the AWS-documented open-source alternatives (Model Monitor is closed to new customers), so poisoning, data drift, and model-quality degradation are identified.",
         },
         {
             "check_id": "OW-09",
             "owasp_category": "LLM09:2025 Misinformation",
             "finding": "OWASP LLM09: SageMaker Model Drift Detection",
-            "resolution": "Configure data-quality and model-quality monitoring for SageMaker endpoints so degraded model behavior that can produce misinformation is detected.",
+            "resolution": "Monitor data quality and model quality for SageMaker endpoints with SageMaker Model Monitor where already in use, or the AWS-documented open-source alternatives (Model Monitor is closed to new customers), so degraded model behavior that can produce misinformation is detected.",
         },
     ],
     # LLM05 Improper Output Handling
@@ -826,7 +826,7 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, Any]]] = {
             "check_id": "OW-09",
             "owasp_category": "LLM09:2025 Misinformation",
             "finding": "OWASP LLM09: SageMaker Clarify Evaluation",
-            "resolution": "Use SageMaker Clarify to evaluate bias and explainability for models whose generated outputs can influence user decisions.",
+            "resolution": "Evaluate bias and explainability for models whose generated outputs can influence user decisions, with SageMaker Clarify where already in use or the AWS-documented alternatives (Clarify is closed to new customers; Amazon Bedrock Evaluations for foundation models).",
         }
     ],
     # LLM10 Unbounded Consumption

@@ -202,7 +202,8 @@ PROVENANCE_REFERENCE_URL = (
     "API_Provenance.html"
 )
 EVENT_ROUTING_REFERENCE_URL = (
-    "https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-rules.html"
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "registry-eventbridge.html"
 )
 
 

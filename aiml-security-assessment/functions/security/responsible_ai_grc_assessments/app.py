@@ -2,9 +2,10 @@
 AWS FinServ GenAI Risk Assessment Lambda
 =========================================
 Implements 65 security checks (64 standalone + 1 shared FS-27 entry for the new
-Automated Reasoning Policies check) derived from the AWS guide:
-"Financial Services risk management of the use of Generative AI"
-https://d1.awsstatic.com/onedam/marketing-channels/website/public/global-FinServ-ComplianceGuide-GenAIRisks-public.pdf
+Automated Reasoning Policies check) derived from the primary source, "AWS User
+Guide to Governance, Risk, and Compliance for Responsible AI Adoption"
+(GRC_USER_GUIDE_URL), with the secondary source "Generative AI risks and
+mitigations for financial services" (FINSERV_GUIDE_URL).
 
 Check ID namespace: FS-01 through FS-69
   FS-01 to FS-63 — original 63 checks across 15 risk categories
@@ -424,6 +425,28 @@ def _is_missing_bucket_error(err: "ClientError") -> bool:
 # could not run (e.g., missing IAM permission). They are visible in the report
 # (Status="N/A") so a failed/permission-denied check does not silently vanish.
 COULD_NOT_ASSESS_PREFIX = "COULD NOT ASSESS: "
+# Primary normative source for the FS-* controls (see PRIMARY_SOURCE in
+# generate_provenance.py and docs/RESPONSIBLE_AI_GRC_SCOPE.md).
+GRC_USER_GUIDE_URL = (
+    "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/"
+    "whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-"
+    "Responsible-AI-Adoption-Financial-Services.pdf"
+)
+# SageMaker Clarify is closed to new customers (FS-39, FS-41).
+CLARIFY_AVAILABILITY_URL = (
+    "https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-availability-change.html"
+)
+CLARIFY_FEATURE_ATTRIBUTION_DRIFT_URL = (
+    "https://docs.aws.amazon.com/sagemaker/latest/dg/"
+    "clarify-model-monitor-feature-attribution-drift.html"
+)
+CLARIFY_AVAILABILITY_NOTE = (
+    "Existing Clarify customers can continue to use it; AWS documents replacements "
+    "(standardized bias metrics, SHAP, SageMaker AI MLflow, and Bedrock Evaluations "
+    "for foundation models)."
+)
+# Secondary source ("Generative AI risks and mitigations for financial
+# services"); see SECONDARY_SOURCE in generate_provenance.py.
 FINSERV_GUIDE_URL = (
     "https://d1.awsstatic.com/onedam/marketing-channels/website/public/"
     "global-FinServ-ComplianceGuide-GenAIRisks-public.pdf"
@@ -803,14 +826,14 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "No Guardrails — Word Filters Not Applicable": "Informational",
     "No Guardrails With Word Filters": "Medium",
     "Guardrail Word Filters Configured": "Medium",
-    # --- FS-39 (bias = High) ---
-    "No SageMaker Clarify Bias Monitoring": "High",
+    # --- FS-39 (bias = High; absence is Informational: Clarify is closed to new customers) ---
+    "No SageMaker Clarify Bias Monitoring": "Informational",
     "SageMaker Clarify Bias Monitoring Schedules Found": "High",
     "SageMaker Clarify Bias Monitoring Schedules Not Running": "High",
     # --- FS-40 (advisory) ---
     "ADVISORY: Bias Dataset Coverage — Manual Review Required": "Informational",
-    # --- FS-41 (explainability = High) ---
-    "No SageMaker Clarify Explainability Monitoring": "High",
+    # --- FS-41 (explainability = High; absence is Informational: Clarify is closed to new customers) ---
+    "No SageMaker Clarify Explainability Monitoring": "Informational",
     "SageMaker Clarify Explainability Monitoring Schedules Found": "High",
     "SageMaker Clarify Explainability Schedules Not Running": "High",
     # --- FS-42 (absence is Informational: Bedrock-only estates have no model cards) ---
@@ -1001,7 +1024,7 @@ def _no_regional_genai_resources_row(region: str) -> Dict[str, Any]:
             "Responsible AI GRC checks were not applied to this region."
         ),
         resolution="No action required unless GenAI workloads are expected in this region.",
-        reference=FINSERV_GUIDE_URL,
+        reference=GRC_USER_GUIDE_URL,
         severity="Informational",
         status="N/A",
         region=region,
@@ -1097,7 +1120,7 @@ def check_waf_shield_on_bedrock_endpoints(inventory) -> Dict[str, Any]:
                         "2. Associate the ACL with API Gateway stages or ALBs fronting Bedrock.\n"
                         "3. Add AWS Managed Rules for known bad inputs."
                     ),
-                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html",
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-rate-based.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-01"],
@@ -1110,7 +1133,7 @@ def check_waf_shield_on_bedrock_endpoints(inventory) -> Dict[str, Any]:
                     finding_name="Regional WAF Web ACLs Present",
                     finding_details=f"Found {len(acls)} regional WAF Web ACL(s).",
                     resolution="Verify ACLs are associated with Bedrock-facing endpoints.",
-                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-chapter.html",
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-rate-based.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-01"],
@@ -2370,7 +2393,7 @@ def check_model_onboarding_governance() -> Dict[str, Any]:
                         "2. Use AWS Service Catalog to publish approved model configurations.\n"
                         "3. Implement a model risk management (MRM) process per SR 11-7."
                     ),
-                    reference="https://docs.aws.amazon.com/config/latest/developerguide/evaluate-config.html",
+                    reference="https://docs.aws.amazon.com/config/latest/developerguide/evaluate-config_develop-rules.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-14"],
@@ -2383,7 +2406,7 @@ def check_model_onboarding_governance() -> Dict[str, Any]:
                     finding_name="Model Governance Config Rules Present",
                     finding_details=f"Found {len(bedrock_rules)} model-related Config rule(s).",
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/config/latest/developerguide/evaluate-config.html",
+                    reference="https://docs.aws.amazon.com/config/latest/developerguide/evaluate-config_develop-rules.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-14"],
@@ -3078,7 +3101,7 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                         "Bedrock resource ARN(s) (such as a Knowledge Base or "
                         "Agent ARN) instead of Resource '*'."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
                     severity="High",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-22"],
@@ -3120,7 +3143,7 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                         + notes
                     ),
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-22"],
@@ -3696,7 +3719,7 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
                     finding_name="No Guardrails — Topic Policy Not Applicable",
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with denied topics for regulated financial content.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-denied-topics.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-28"],
@@ -3754,7 +3777,7 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
                         "Consider the STANDARD tier (GA June 2025) for broader language support; "
                         "it requires cross-region inference on the guardrail."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-denied-topics.html",
                     severity="High",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-28"],
@@ -3787,7 +3810,7 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
                         "training materials, procedure documents, and incident reports "
                         "(PDF \u00a71.2.1 Practical guidance)."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-denied-topics.html",
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-28"],
@@ -3808,7 +3831,7 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
                         "materials as the source: employee policies, training materials, procedure "
                         "documents, and incident reports (as recommended in PDF \u00a71.2.1 Practical guidance)."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-denied-topics.html",
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-28"],
@@ -3837,9 +3860,10 @@ def check_compliance_disclaimer_in_outputs() -> Dict[str, Any]:
             ),
             resolution=(
                 "1. Implement post-processing to append required disclaimers to GenAI outputs.\n"
-                "2. Use Bedrock Guardrails word filters to block outputs that omit required disclosures.\n"
-                "3. Document disclaimer requirements in the AI use case register.\n"
-                "4. Test disclaimer presence in QA/UAT before production deployment."
+                "2. Document disclaimer requirements in the AI use case register.\n"
+                "3. Test disclaimer presence in QA/UAT before production deployment. Guardrails "
+                "word filters block listed words or phrases and cannot detect a missing "
+                "disclaimer, so enforce its presence in application code."
             ),
             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
             severity="Informational",
@@ -4578,7 +4602,7 @@ def check_user_feedback_mechanism() -> Dict[str, Any]:
                 "3. Log feedback to DynamoDB/S3 for model improvement.\n"
                 "4. Define SLAs for reviewing flagged content."
             ),
-            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+            reference="https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/genops01-bp02.html",
             severity="Informational",
             status="N/A",
             compliance_frameworks=COMPLIANCE_MAP["FS-37"],
@@ -4605,7 +4629,7 @@ def check_guardrail_word_filters(inventory) -> Dict[str, Any]:
                     finding_name="No Guardrails — Word Filters Not Applicable",
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with word filters.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-word-filters.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-38"],
@@ -4639,7 +4663,7 @@ def check_guardrail_word_filters(inventory) -> Dict[str, Any]:
                         "- Add custom denylist for prohibited financial terms\n"
                         "- Add allowlist for required regulatory language"
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-word-filters.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-38"],
@@ -4652,7 +4676,7 @@ def check_guardrail_word_filters(inventory) -> Dict[str, Any]:
                     finding_name="Guardrail Word Filters Configured",
                     finding_details=f"Guardrails with word filters: {', '.join(guardrails_with_words)}.",
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-word-filters.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-38"],
@@ -4679,6 +4703,11 @@ def check_sagemaker_clarify_bias() -> Dict[str, Any]:
       - ECOA or Fair Housing conformance.
     Note that MonitoringScheduleStatus has no "Active" value; the running state
     is "Scheduled". Findings therefore report the observed status verbatim.
+
+    SageMaker Clarify is closed to new customers, so having no bias schedule is
+    reported as N/A / Informational rather than Failed (bias monitoring may run
+    on the documented replacements). A schedule that exists but is not running
+    is still Failed.
 
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, ECOA, Fair Housing Act]
     """
@@ -4709,38 +4738,46 @@ def check_sagemaker_clarify_bias() -> Dict[str, Any]:
         ]
 
         if not bias_schedules:
-            findings["status"] = "WARN"
+            # Advisory, not Failed: Clarify is closed to new customers, so the
+            # absence of a Clarify schedule is not evidence that bias monitoring
+            # is missing; it may run on the documented replacements.
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-39",
                     finding_name="No SageMaker Clarify Bias Monitoring",
                     finding_details=(
                         "No SageMaker Clarify model bias monitoring schedules found. "
-                        "Models making financial decisions (credit, insurance) may exhibit "
-                        "discriminatory bias without detection."
+                        "SageMaker Clarify is no longer open to new customers, so bias "
+                        "monitoring may run outside Clarify and cannot be confirmed "
+                        "through this API. " + CLARIFY_AVAILABILITY_NOTE
                     ),
                     resolution=(
-                        "1. Configure SageMaker Clarify bias detection for all models making "
-                        "credit, insurance, or employment decisions.\n"
+                        "1. For models making credit, insurance, or employment decisions, "
+                        "confirm that bias is monitored: existing Clarify customers can use "
+                        "Clarify bias drift monitoring; otherwise compute the standardized "
+                        "bias metrics in your own pipeline as described in the Clarify "
+                        "availability change guidance.\n"
                         "2. Define protected attributes (age, gender, race proxies).\n"
                         "3. Set bias metric thresholds and alert on violations.\n"
                         "4. Document bias testing results for regulatory examination."
                     ),
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-monitor-bias-drift.html",
-                    severity="High",
-                    status="Failed",
+                    reference=CLARIFY_AVAILABILITY_URL,
+                    severity="Informational",
+                    status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-39"],
                 )
             )
-        else:
+        if running:
+            # Only running schedules count as evidence; a schedule that is
+            # not Scheduled is reported as Failed below, never as a pass.
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-39",
                     finding_name="SageMaker Clarify Bias Monitoring Schedules Found",
                     finding_details=(
                         f"Found {len(bias_schedules)} model bias monitoring schedule(s); "
-                        f"{len(running)} with status Scheduled. "
-                        + _describe_schedules(bias_schedules)
+                        f"{len(running)} with status Scheduled: "
+                        + _describe_schedules(running)
                         + " "
                         + manual_review
                     ),
@@ -4751,27 +4788,27 @@ def check_sagemaker_clarify_bias() -> Dict[str, Any]:
                     compliance_frameworks=COMPLIANCE_MAP["FS-39"],
                 )
             )
-            if not_running:
-                findings["status"] = "WARN"
-                findings["csv_data"].append(
-                    create_finding(
-                        check_id="FS-39",
-                        finding_name="SageMaker Clarify Bias Monitoring Schedules Not Running",
-                        finding_details=(
-                            "Model bias monitoring schedules exist but are not in the "
-                            "Scheduled state, so bias monitoring is not currently running: "
-                            + _describe_schedules(not_running)
-                        ),
-                        resolution=(
-                            "Investigate and restart the affected monitoring schedules, then "
-                            "confirm they reach the Scheduled state."
-                        ),
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-monitor-bias-drift.html",
-                        severity="High",
-                        status="Failed",
-                        compliance_frameworks=COMPLIANCE_MAP["FS-39"],
-                    )
+        if not_running:
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-39",
+                    finding_name="SageMaker Clarify Bias Monitoring Schedules Not Running",
+                    finding_details=(
+                        "Model bias monitoring schedules exist but are not in the "
+                        "Scheduled state, so bias monitoring is not currently running: "
+                        + _describe_schedules(not_running)
+                    ),
+                    resolution=(
+                        "Investigate and restart the affected monitoring schedules, then "
+                        "confirm they reach the Scheduled state."
+                    ),
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-monitor-bias-drift.html",
+                    severity="High",
+                    status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-39"],
                 )
+            )
     except Exception as e:
         return _error_findings(check_name, e)
     return findings
@@ -4837,7 +4874,8 @@ def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
       - ECOA conformance.
     Adverse-action reason generation is an application concern and stays a
     manual review. As with FS-39, MonitoringScheduleStatus has no "Active"
-    value; the running state is "Scheduled".
+    value; the running state is "Scheduled", and having no schedule is N/A /
+    Informational because Clarify is closed to new customers.
 
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, ECOA Adverse Action]
     """
@@ -4868,68 +4906,76 @@ def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
         ]
 
         if not explainability_schedules:
-            findings["status"] = "WARN"
+            # Advisory, not Failed: Clarify is closed to new customers, so the
+            # absence of a Clarify schedule is not evidence that explanations
+            # are missing; they may come from SHAP run outside Clarify.
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-41",
                     finding_name="No SageMaker Clarify Explainability Monitoring",
                     finding_details=(
                         "No SageMaker Clarify explainability monitoring found. "
-                        "Models making adverse financial decisions may not provide "
-                        "required explanations (ECOA adverse action notices)."
+                        "SageMaker Clarify is no longer open to new customers, so "
+                        "explanations may be produced outside Clarify and cannot be "
+                        "confirmed through this API. " + CLARIFY_AVAILABILITY_NOTE
                     ),
                     resolution=(
-                        "1. Configure SageMaker Clarify explainability for credit/lending models.\n"
-                        "2. Generate SHAP values for feature importance.\n"
-                        "3. Map top features to human-readable adverse action reason codes.\n"
-                        "4. Store explanations for regulatory examination."
+                        "1. For credit and lending models, confirm that explanations are "
+                        "produced: existing Clarify customers can use Clarify feature "
+                        "attribution drift monitoring; otherwise generate SHAP values in "
+                        "your own pipeline as described in the Clarify availability change "
+                        "guidance.\n"
+                        "2. Map top features to human-readable adverse action reason codes.\n"
+                        "3. Store explanations for regulatory examination."
                     ),
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability.html",
-                    severity="High",
-                    status="Failed",
+                    reference=CLARIFY_AVAILABILITY_URL,
+                    severity="Informational",
+                    status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-41"],
                 )
             )
-        else:
+        if running:
+            # Only running schedules count as evidence; a schedule that is
+            # not Scheduled is reported as Failed below, never as a pass.
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-41",
                     finding_name="SageMaker Clarify Explainability Monitoring Schedules Found",
                     finding_details=(
                         f"Found {len(explainability_schedules)} explainability monitoring "
-                        f"schedule(s); {len(running)} with status Scheduled. "
-                        + _describe_schedules(explainability_schedules)
+                        f"schedule(s); {len(running)} with status Scheduled: "
+                        + _describe_schedules(running)
                         + " "
                         + manual_review
                     ),
                     resolution="No action required for schedule presence.",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability.html",
+                    reference=CLARIFY_FEATURE_ATTRIBUTION_DRIFT_URL,
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-41"],
                 )
             )
-            if not_running:
-                findings["status"] = "WARN"
-                findings["csv_data"].append(
-                    create_finding(
-                        check_id="FS-41",
-                        finding_name="SageMaker Clarify Explainability Schedules Not Running",
-                        finding_details=(
-                            "Explainability monitoring schedules exist but are not in the "
-                            "Scheduled state, so explanations are not currently being produced: "
-                            + _describe_schedules(not_running)
-                        ),
-                        resolution=(
-                            "Investigate and restart the affected monitoring schedules, then "
-                            "confirm they reach the Scheduled state."
-                        ),
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability.html",
-                        severity="High",
-                        status="Failed",
-                        compliance_frameworks=COMPLIANCE_MAP["FS-41"],
-                    )
+        if not_running:
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-41",
+                    finding_name="SageMaker Clarify Explainability Schedules Not Running",
+                    finding_details=(
+                        "Explainability monitoring schedules exist but are not in the "
+                        "Scheduled state, so explanations are not currently being produced: "
+                        + _describe_schedules(not_running)
+                    ),
+                    resolution=(
+                        "Investigate and restart the affected monitoring schedules, then "
+                        "confirm they reach the Scheduled state."
+                    ),
+                    reference=CLARIFY_FEATURE_ATTRIBUTION_DRIFT_URL,
+                    severity="High",
+                    status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-41"],
                 )
+            )
     except Exception as e:
         return _error_findings(check_name, e)
     return findings
@@ -5343,7 +5389,7 @@ def check_macie_on_training_data_buckets() -> Dict[str, Any]:
     COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, GDPR Art.25, PCI-DSS 3.4, FFIEC CAT]
     """
     check_name = "Amazon Macie PII Scanning Check"
-    reference = "https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html"
+    reference = "https://docs.aws.amazon.com/macie/latest/user/discovery-asdd.html"
     not_enabled_markers = ("not enabled", "not been onboarded", "no macie account")
     findings = _empty_findings(check_name)
     try:
@@ -5580,7 +5626,7 @@ def check_data_classification_tagging(inventory) -> Dict[str, Any]:
                     finding_name="No AI/ML Data Buckets Identified",
                     finding_details="No S3 buckets with AI/ML naming found.",
                     resolution="Tag AI/ML data buckets with data-classification labels.",
-                    reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html",
+                    reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-46"],
@@ -5622,7 +5668,7 @@ def check_data_classification_tagging(inventory) -> Dict[str, Any]:
                         "Values: Public, Internal, Confidential, Restricted. "
                         "Enforce via SCP or AWS Config rule."
                     ),
-                    reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html",
+                    reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-46"],
@@ -5635,7 +5681,7 @@ def check_data_classification_tagging(inventory) -> Dict[str, Any]:
                     finding_name="AI/ML Buckets Have Classification Tags",
                     finding_details=f"All {len(aiml_buckets)} AI/ML bucket(s) have classification tags.",
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-tagging.html",
+                    reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/buckets-tagging.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-46"],
@@ -5841,7 +5887,7 @@ def check_hallucination_disclaimer_advisory() -> Dict[str, Any]:
                 "2. Implement post-processing to append disclaimers.\n"
                 "3. Test disclaimer presence in QA before production."
             ),
-            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
             severity="Informational",
             status="N/A",
             compliance_frameworks=COMPLIANCE_MAP["FS-49"],
@@ -6097,7 +6143,7 @@ def check_bedrock_sdk_version_currency(inventory) -> Dict[str, Any]:
                     finding_name="No Bedrock-Related Lambda Functions Found",
                     finding_details="No Lambda functions with Bedrock-related naming found.",
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/lambda/latest/dg/runtimes-update.html",
+                    reference="https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-52"],
@@ -6167,7 +6213,7 @@ def check_bedrock_sdk_version_currency(inventory) -> Dict[str, Any]:
                         "4. Refer to https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html "
                         "for the authoritative list of supported and deprecated runtimes."
                     ),
-                    reference="https://docs.aws.amazon.com/lambda/latest/dg/runtimes-update.html",
+                    reference="https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-52"],
@@ -6180,7 +6226,7 @@ def check_bedrock_sdk_version_currency(inventory) -> Dict[str, Any]:
                     finding_name="Bedrock Lambda Functions on Current Runtimes",
                     finding_details=f"All {len(bedrock_functions)} Bedrock Lambda function(s) use current runtimes.",
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/lambda/latest/dg/runtimes-update.html",
+                    reference="https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-52"],
@@ -6211,7 +6257,7 @@ def check_waf_sql_injection_rules(inventory) -> Dict[str, Any]:
                     finding_name="No WAF Web ACLs — Injection Rules Not Applicable",
                     finding_details="No regional WAF Web ACLs found.",
                     resolution="Create WAF Web ACLs with injection protection rules (see FS-01).",
-                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-use-case.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-53"],
@@ -6219,10 +6265,12 @@ def check_waf_sql_injection_rules(inventory) -> Dict[str, Any]:
             )
             return findings
 
+        # KnownBadInputsRuleSet targets exploit patterns (Log4j, Java
+        # deserialization, path traversal), not SQL injection or XSS, so it
+        # alone does not count as injection protection.
         INJECTION_RULE_GROUPS = {
             "AWSManagedRulesSQLiRuleSet",
             "AWSManagedRulesCommonRuleSet",
-            "AWSManagedRulesKnownBadInputsRuleSet",
         }
 
         acls_without_injection_rules = []
@@ -6258,9 +6306,12 @@ def check_waf_sql_injection_rules(inventory) -> Dict[str, Any]:
                         "Add AWS Managed Rule Groups to WAF ACLs:\n"
                         "- AWSManagedRulesSQLiRuleSet (SQL injection)\n"
                         "- AWSManagedRulesCommonRuleSet (XSS, LFI, RFI)\n"
-                        "- AWSManagedRulesKnownBadInputsRuleSet (prompt injection patterns)"
+                        "- AWSManagedRulesKnownBadInputsRuleSet (known-bad request patterns such as Log4j "
+                        "and Java deserialization exploits; it does not detect prompt injection)\n"
+                        "Prompt injection is a model-layer risk; use Bedrock Guardrails prompt-attack "
+                        "filters (see FS-51)."
                     ),
-                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-use-case.html",
                     severity="High",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-53"],
@@ -6273,7 +6324,7 @@ def check_waf_sql_injection_rules(inventory) -> Dict[str, Any]:
                     finding_name="WAF Injection Protection Rules Present",
                     finding_details=f"All {len(acls)} WAF ACL(s) have injection protection rules.",
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-baseline.html",
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/aws-managed-rule-groups-use-case.html",
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-53"],
@@ -6311,13 +6362,12 @@ def check_penetration_testing_evidence() -> Dict[str, Any]:
                 "additional Regions, with cross-account "
                 "shared-VPC testing via AWS RAM). Open-source tools such as Garak or PyRIT and "
                 "manual red-teaming are complementary options. Verify current regional availability "
-                "in the service-availability note on the Resilience page of the AWS Security "
-                "Agent documentation before relying on it.\n"
+                "in the AWS Security Agent User Guide before relying on it.\n"
                 "4. Document findings and remediation for regulatory examination, and tag tested "
                 "resources with a last-pentest-date for audit trail.\n"
                 "5. For DORA compliance, include GenAI in TLPT (Threat-Led Penetration Testing) scope."
             ),
-            reference="https://docs.aws.amazon.com/securityagent/latest/userguide/resilience.html",
+            reference="https://docs.aws.amazon.com/securityagent/latest/userguide/perform-penetration-test.html",
             severity="Informational",
             status="N/A",
             compliance_frameworks=COMPLIANCE_MAP["FS-54"],
@@ -6552,7 +6602,7 @@ def check_output_schema_validation(inventory) -> Dict[str, Any]:
                     "3. Reject malformed outputs and return safe error responses.\n"
                     "4. Log schema validation failures to CloudWatch for monitoring."
                 ),
-                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/inference-parameters.html",
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/structured-output.html",
                 severity="Informational",
                 status="N/A",
                 compliance_frameworks=COMPLIANCE_MAP["FS-58"],
@@ -6593,7 +6643,7 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
                     finding_name="No Guardrails — Topic Allowlist Not Applicable",
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with topic policies to restrict off-topic responses.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-denied-topics.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-59"],
@@ -6645,7 +6695,7 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
                         "Consider the STANDARD tier (GA June 2025) for broader language support; "
                         "it requires cross-region inference on the guardrail."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-denied-topics.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-59"],
@@ -6673,7 +6723,7 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
                         "the STANDARD tier (topicsTierConfig.tierName=STANDARD via UpdateGuardrail; "
                         "requires a cross-region inference profile)."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-denied-topics.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-59"],
@@ -6689,7 +6739,7 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
                         f"{tier_note}"
                     ),
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-denied-topics.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-59"],

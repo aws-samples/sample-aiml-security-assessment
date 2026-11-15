@@ -3529,6 +3529,25 @@ class TestBR03MarketplaceAccess:
         assert all(f["Check_ID"] == "BR-03" for f in findings)
         assert any("Hidden" in f["Finding_Details"] for f in findings)
 
+    def test_br03_rows_cite_model_access_permissions(
+        self,
+        permission_cache_compliant,
+        permission_cache_marketplace_overpermissive,
+    ):
+        expected = (
+            "https://docs.aws.amazon.com/bedrock/latest/userguide/"
+            "model-access.html#model-access-permissions"
+        )
+        assert bedrock_app.MARKETPLACE_MODEL_CONTROL_REFERENCE == expected
+        for cache in (
+            permission_cache_compliant,
+            permission_cache_marketplace_overpermissive,
+        ):
+            findings = extract_csv_data(
+                bedrock_app.check_marketplace_subscription_access(cache)
+            )
+            assert {f["Reference"] for f in findings} == {expected}
+
     def test_br03_schema_valid(self, permission_cache_marketplace_overpermissive):
         check = bedrock_app.check_marketplace_subscription_access
         result = check(permission_cache_marketplace_overpermissive)
@@ -16345,6 +16364,10 @@ class TestBR44MarketplaceModelControl:
         )
 
         assert [f["Status"] for f in findings] == ["Passed"]
+        assert findings[0]["Reference"] == (
+            "https://docs.aws.amazon.com/bedrock/latest/userguide/"
+            "model-access.html#model-access-permissions"
+        )
         details = findings[0]["Finding_Details"]
         assert "policy 'MarketplaceGuard'" in details
         assert "role 'OpenA'" in details and "role 'OpenB'" in details
@@ -20844,6 +20867,14 @@ class TestBR17CustomModelKMSEncryption:
         assert findings[0]["Status"] == "Failed"
         assert findings[0]["Check_ID"] == "BR-17"
         assert findings[0]["Severity"] == "High"
+        # The key parameters are customModelKmsKeyId on
+        # CreateModelCustomizationJob and modelKmsKeyArn on CreateCustomModel;
+        # CustomizationConfig carries no KMS key field.
+        resolution = findings[0]["Resolution"]
+        assert "customModelKmsKeyId" in resolution
+        assert "CreateModelCustomizationJob" in resolution
+        assert "modelKmsKeyArn" in resolution and "CreateCustomModel" in resolution
+        assert "customizationConfig" not in resolution
 
     @patch("bedrock_app.boto3.client")
     def test_br17_access_denied_returns_incomplete_na(self, mock_client):
@@ -20936,6 +20967,23 @@ class TestBR17CustomModelKMSEncryption:
         assert sorted(rows) == ["Failed", "Passed"]
         assert "'bad'" in rows["Failed"] and "managed by AWS" in rows["Failed"]
         assert rows["Passed"].startswith("1 of 2 custom model(s)")
+
+    def test_br17_wrong_key_resolution_names_the_real_key_parameters(self):
+        with patch("bedrock_app.boto3.client") as mock_client:
+            mock_client.return_value = self._models_client(
+                {"bad": {"modelKmsKeyArn": self._AWS}},
+                {self._AWS: {"KeyManager": "AWS", "KeyState": "Enabled"}},
+            )
+            rows = extract_csv_data(
+                bedrock_app.check_bedrock_custom_model_kms_encryption(
+                    region="us-east-1"
+                )
+            )
+
+        [failed] = [row for row in rows if row["Status"] == "Failed"]
+        assert "customModelKmsKeyId" in failed["Resolution"]
+        assert "modelKmsKeyArn" in failed["Resolution"]
+        assert "customizationConfig" not in failed["Resolution"]
 
     def test_br17_undescribable_key_and_unread_model_are_reported_na(self):
         rows = self._statuses(
@@ -26058,6 +26106,10 @@ class TestBR32CloudWatchAlarms:
         signal = findings[1]
         assert signal["Finding"] == "Guardrail Intervention Monitoring Signal"
         assert signal["Status"] == "Failed"
+        assert signal["Reference"] == (
+            "https://docs.aws.amazon.com/bedrock/latest/userguide/"
+            "monitoring-guardrails-cw-metrics.html"
+        )
         assert (
             "no metric filter on invocation log group '/aws/bedrock/invocations' "
             "that selects INTERVENED feeds an acting alarm" in signal["Finding_Details"]
@@ -29734,10 +29786,16 @@ class TestProposedBedrockChecks:
             )[0]
 
         assert br39["Status"] == "Failed"
+        assert "endpointConfig.sageMaker.vpc" in br39["Resolution"]
+        assert "UpdateMarketplaceModelEndpoint" in br39["Resolution"]
+        assert br39["Reference"] == (
+            "https://docs.aws.amazon.com/bedrock/latest/APIReference/"
+            "API_SageMakerEndpoint.html"
+        )
         assert br40["Status"] == "Failed"
         assert br40["Severity"] == "Medium"
         assert br40["Resolution"] == (
-            "Register the endpoint with a customer-managed KMS key."
+            "Create or update the endpoint with endpointConfig.sageMaker.kmsEncryptionKey set to a customer-managed KMS key."
         )
 
     @patch.dict(
@@ -41900,6 +41958,9 @@ def test_handler_keeps_the_report_when_one_check_raises():
     rows = [r for f in captured["findings"] for r in f.get("csv_data", [])]
     [incomplete] = [r for r in rows if r["Finding"] == "BR-34 Check Incomplete"]
     assert incomplete["Check_ID"] == "BR-34"
+    assert incomplete["Reference"] == (
+        "https://docs.aws.amazon.com/lambda/latest/dg/monitoring-cloudwatchlogs-view.html"
+    )
     assert incomplete["Status"] == "N/A"
     assert incomplete["Severity"] == "Informational"
     assert (
@@ -55337,3 +55398,57 @@ class TestBedrockNASeverity:
     )
     def test_the_source_scan_accepts_informational_na_rows(self, source):
         assert [row[2] for row in _na_branch_severities(source)] == ["Informational"]
+
+
+class TestBedrockReferenceConstants:
+    """Each remediation link names the page that documents its control."""
+
+    @pytest.mark.parametrize(
+        ("name", "url"),
+        [
+            (
+                "KNOWLEDGE_BASE_CLASSIFICATION_REFERENCE",
+                "https://docs.aws.amazon.com/macie/latest/user/discovery-jobs.html",
+            ),
+            (
+                "MACIE_AUTOMATED_DISCOVERY_REFERENCE",
+                "https://docs.aws.amazon.com/macie/latest/user/discovery-asdd.html",
+            ),
+            (
+                "PROMPT_VERSION_REFERENCE",
+                "https://docs.aws.amazon.com/bedrock/latest/userguide/"
+                "prompt-management-deploy.html",
+            ),
+            (
+                "GUARDRAIL_TIER_REFERENCE",
+                "https://docs.aws.amazon.com/bedrock/latest/userguide/"
+                "guardrails-tiers.html",
+            ),
+            (
+                "REGION_CONTROL_REFERENCE",
+                "https://docs.aws.amazon.com/bedrock/latest/userguide/"
+                "global-cross-region-inference.html",
+            ),
+            (
+                "CUSTOM_MODEL_SHARING_REFERENCE",
+                "https://docs.aws.amazon.com/bedrock/latest/userguide/share-model.html",
+            ),
+            (
+                "ROOT_ACCESS_KEY_REFERENCE",
+                "https://docs.aws.amazon.com/IAM/latest/UserGuide/"
+                "id_root-user_manage_delete-key.html",
+            ),
+            (
+                "BEDROCK_RESOURCE_TAGGING_REFERENCE",
+                "https://docs.aws.amazon.com/bedrock/latest/userguide/tagging.html",
+            ),
+        ],
+    )
+    def test_reference_constant(self, name, url):
+        assert getattr(bedrock_app, name) == url
+
+    def test_no_row_cites_the_generic_bedrock_security_page(self):
+        with open(_spec.origin) as handle:
+            source = handle.read()
+        assert "bedrock/latest/userguide/security.html" not in source
+        assert "customizationConfig.kmsKeyArn" not in source

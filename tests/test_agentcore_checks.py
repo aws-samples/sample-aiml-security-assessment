@@ -3613,7 +3613,7 @@ class TestAC06BrowserToolRecording:
             "AgentCore Browser Session Recording"
         }
         assert {finding["Reference"] for finding in findings} == {
-            agentcore_app.AGENTCORE_SECURITY_HUB_REFERENCE_URL
+            agentcore_app.AGENTCORE_SECURITY_HUB_BROWSER_RECORDING_REFERENCE_URL
         }
 
 
@@ -5549,6 +5549,28 @@ class TestAC07MemoryConfiguration:
 
         assert [f["Status"] for f in rows] == ["Passed", "Failed"]
         assert "'Other'" in rows[1]["Finding_Details"]
+
+    @patch("agentcore_app.agentcore_client")
+    def test_policy_rows_cite_resource_policies_and_key_rows_storage(self, mock_ac):
+        # The resource-policy leg once cited the storage encryption page.
+        self._one_memory(mock_ac, arn=self._MEMORY_ARN)
+        mock_ac.get_resource_policy.return_value = {"policy": self._policy("*")}
+
+        findings = extract_csv_data(
+            agentcore_app.check_agentcore_memory_configuration()
+        )
+
+        def references(name):
+            return {f["Reference"] for f in findings if f["Finding"] == name}
+
+        assert references("AgentCore Memory Resource-Based Policy") == {
+            "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+            "resource-based-policies.html"
+        }
+        assert references("AgentCore Memory Encryption") == {
+            "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+            "storage-encryption.html"
+        }
 
 
 # ===================================================================
@@ -30831,6 +30853,12 @@ class TestManagedToolSessionHolders:
             assert "reports no networkConfiguration" in egress[0]["Finding_Details"]
             assert recording[0]["Status"] == "Failed"
             assert "reports no session recording" in recording[0]["Finding_Details"]
+            # BedrockAgentCore.6 covers custom browsers only, so the managed
+            # browser's row cites the recording guide, not that control.
+            assert recording[0]["Reference"] == (
+                "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+                "browser-session-recording.html"
+            )
             for row in (egress[0], recording[0]):
                 assert row["Finding_Details"].count("role Agent") == 1
                 assert "user reader" not in row["Finding_Details"]
@@ -47512,6 +47540,12 @@ class TestAC45WholePopulation:
         assert (agentcore_app.IAM_CACHE_V1_NOTE in findings[0]["Finding_Details"]) is (
             not v2
         )
+        # The Code Interpreter tool-role row keeps the S3 integration guide; the
+        # shell and runtime-role legs cite their own pages.
+        assert findings[0]["Reference"] == (
+            "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+            "code-interpreter-s3-integration.html"
+        )
 
     # The command shell leg.
 
@@ -47583,6 +47617,10 @@ class TestAC45WholePopulation:
         assert [f["Status"] for f in rows] == ["Failed"]
         assert rows[0]["Region"] == agentcore_app.GLOBAL_REGION_LABEL
         assert "role Wide (" in rows[0]["Finding_Details"]
+        assert rows[0]["Reference"] == (
+            "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+            "runtime-execute-command.html"
+        )
         assert reason in rows[0]["Finding_Details"]
         assert "BreakGlass" not in rows[0]["Finding_Details"]
         assert agentcore_app.IAM_CACHE_SCP_NOTE in rows[0]["Finding_Details"]
@@ -48525,6 +48563,10 @@ class TestAC45CommandShellAlarm:
         assert [f["Status"] for f in rows] == ["Failed"]
         assert rows[0]["Finding"].endswith("Unwatched")
         assert rows[0]["Severity"] == "Medium"
+        assert rows[0]["Reference"] == (
+            "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+            "runtime-execute-command.html"
+        )
 
     @pytest.mark.parametrize(
         "metric_filter",

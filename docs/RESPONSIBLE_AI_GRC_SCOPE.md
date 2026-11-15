@@ -106,7 +106,7 @@ Full source detail:
 
 | Source | Date | Role |
 |---|---|---|
-| [AWS User Guide to GRC for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf) | updated 2026 | **Primary normative source.** 15 risk categories, §1.2.1–§1.2.15. Referred to as *the AWS GRC User Guide*. |
+| [AWS User Guide to GRC for Responsible AI Adoption](https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf) | updated 2026 | **Primary normative source.** 15 risk categories, §1.2.1–§1.2.15. Referred to as *the AWS GRC User Guide*. |
 | [Generative AI risks and mitigations for financial services](https://d1.awsstatic.com/onedam/marketing-channels/website/public/global-FinServ-ComplianceGuide-GenAIRisks-public.pdf) | © 2026 | Financial-services risk categories and directly derived controls. |
 | [Original announcement blog](https://aws.amazon.com/blogs/security/introducing-the-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption-within-financial-services-industries/) | 2025-05-14 | Historical context only. Title scoped to Financial Services Industries. Not normative. |
 | [Updated announcement blog](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/) | 2026-05-13 | Publication context. Title drops "Financial Services Industries". Not normative. |

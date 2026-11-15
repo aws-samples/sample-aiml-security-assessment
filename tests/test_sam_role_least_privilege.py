@@ -461,6 +461,7 @@ _EXPECTED_ACTIONS = {
         "ecs:DescribeCapacityProviders",
         "eks:DescribeFargateProfile",
         "securityhub:GetConfigurationPolicy",
+        "organizations:DescribeEffectivePolicy",
         "macie2:GetAdministratorAccount",
         "macie2:DescribeOrganizationConfiguration",
         "detective:ListInvitations",
@@ -1979,6 +1980,17 @@ _SAGEMAKER_MANAGED_GRANTS_2 = [
         _sagemaker_policy2_arn("securityhub:*:ACCOUNT:configuration-policy/*"),
         None,
     ),
+    # SM-36 reads this account's effective Security Hub CSPM policy, bounded
+    # by organizations:PolicyType to that one policy type.
+    (
+        "Allow",
+        "organizations:DescribeEffectivePolicy",
+        _sagemaker_policy2_arn("organizations::*:account/o-*/ACCOUNT"),
+        json.dumps(
+            {"StringEquals": {"organizations:PolicyType": "SECURITYHUB_CSPM_POLICY"}},
+            sort_keys=True,
+        ),
+    ),
     # SM-35's Macie and Detective Regional administrator reads. The four
     # actions on '*' have no resource type in the service authorization
     # reference (2026-10-04); DescribeOrganizationConfiguration has Graph.
@@ -2039,7 +2051,8 @@ def test_sagemaker_managed_policy_2_renders_within_its_budget(template, partitio
 
 @pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)
 def test_sagemaker_managed_policy_2_holds_exactly_the_approved_grants(template):
-    """Only ecs:ListTasks takes a Condition: '*' bounded by ecs:cluster."""
+    """Only ecs:ListTasks (bounded by ecs:cluster) and SM-36's
+    DescribeEffectivePolicy (bounded by organizations:PolicyType) take a Condition."""
     with open(template, encoding="utf-8") as template_file:
         data = yaml.load(template_file, Loader=_CfnLoader)  # nosec B506
 

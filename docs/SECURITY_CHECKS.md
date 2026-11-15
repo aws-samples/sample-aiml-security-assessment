@@ -111,8 +111,8 @@ Expand a service to list its checks; each ID links to the full entry. Agentic AI
 | [SM-03](#sm-03-data-protection) | Data Protection | High for missing KMS keys; Medium for network encryption; Low for AWS managed keys |
 | [SM-04](#sm-04-amazon-guardduty-integration) | Amazon GuardDuty Integration | High |
 | [SM-05](#sm-05-mlops-features) | MLOps Features | Low; Medium for feature groups not in `Created` state |
-| [SM-06](#sm-06-clarify-usage) | Clarify Usage | High |
-| [SM-07](#sm-07-model-monitor) | Model Monitor | Medium |
+| [SM-06](#sm-06-clarify-usage) | Clarify Usage | High; Informational (advisory) when Clarify is not used |
+| [SM-07](#sm-07-model-monitor) | Model Monitor | Medium; Informational (advisory) when Model Monitor is not used |
 | [SM-08](#sm-08-model-registry) | Model Registry | Low for missing approvals; Medium or High for check errors |
 | [SM-09](#sm-09-notebook-root-access) | Notebook Root Access | High |
 | [SM-10](#sm-10-notebook-amazon-vpc-deployment) | Notebook Amazon VPC Deployment | High |
@@ -126,11 +126,11 @@ Expand a service to list its checks; each ID links to the full entry. Agentic AI
 | [SM-18](#sm-18-transform-job-encryption) | Transform Job Encryption | Medium |
 | [SM-19](#sm-19-hyperparameter-tuning-encryption) | Hyperparameter Tuning Encryption | Medium |
 | [SM-20](#sm-20-compilation-job-encryption) | Compilation Job Encryption | Medium |
-| [SM-21](#sm-21-automl-network-isolation) | AutoML Network Isolation | Medium |
+| [SM-21](#sm-21-automl-inter-container-traffic-encryption) | AutoML Inter-Container Traffic Encryption | Medium |
 | [SM-22](#sm-22-model-approval-workflow) | Model Approval Workflow | Medium; Low for pending-approval backlog |
-| [SM-23](#sm-23-model-drift-detection) | Model Drift Detection | Medium; Low for incomplete monitoring |
+| [SM-23](#sm-23-model-drift-detection) | Model Drift Detection | Medium; Low for incomplete monitoring; Informational (advisory) for endpoints without Model Monitor |
 | [SM-24](#sm-24-ab-testing-and-shadow-deployment) | A/B Testing and Shadow Deployment | Informational (advisory) |
-| [SM-25](#sm-25-ml-lineage-tracking) | ML Lineage Tracking | Low |
+| [SM-25](#sm-25-ml-lineage-tracking) | ML Lineage Tracking | Low; Informational (advisory) when Experiments is not used |
 | [SM-26](#sm-26-guardduty-ai-protection) | GuardDuty AI Protection | High |
 | [SM-27](#sm-27-hyperpod-ebs-cmk-encryption) | HyperPod EBS CMK Encryption | Medium |
 | [SM-28](#sm-28-hyperpod-vpc-configuration) | HyperPod VPC Configuration | Medium |
@@ -722,13 +722,13 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 
 ### SM-06: Clarify Usage
 
-- **Severity:** High
-- **Description:** Validates SageMaker Clarify for bias detection and explainability.
+- **Severity:** High; Informational (advisory) when Clarify is not used
+- **Description:** Reports SageMaker Clarify processing jobs. SageMaker Clarify is no longer open to new customers; existing customers can continue to use it. No Clarify jobs is `N/A`/Informational and names the AWS-documented replacement (open-source SageMaker AI monitoring solutions with standardized bias metrics and SHAP, SageMaker AI MLflow, CloudWatch and QuickSight; Amazon Bedrock Evaluations for foundation models). A failed Clarify job fails. A list error is `N/A`. A processing job whose describe fails, or the run deadline stopping the describe loop, adds an `N/A` `SageMaker Clarify Usage Check Incomplete` row naming the unread jobs, keeps the failed Clarify jobs that were read, and withholds the no-Clarify advisory.
 
 ### SM-07: Model Monitor
 
-- **Severity:** Medium
-- **Description:** Checks Model Monitor configuration for drift detection.
+- **Severity:** Medium; Informational (advisory) when Model Monitor is not used
+- **Description:** Checks Model Monitor schedules. Model Monitor is no longer open to new customers; existing customers can continue to use it. No schedules is `N/A`/Informational naming the AWS-documented replacement (open-source SageMaker AI monitoring solutions with MLflow Apps and Evidently AI, QuickSight and CloudWatch). A schedule not in `Scheduled` status fails. A list error is `N/A`.
 
 ### SM-08: Model Registry
 
@@ -829,10 +829,10 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 - **Severity:** Medium
 - **Description:** Checks compilation job encryption.
 
-### SM-21: AutoML Network Isolation
+### SM-21: AutoML Inter-Container Traffic Encryption
 
 - **Severity:** Medium
-- **Description:** Validates AutoML job network isolation.
+- **Description:** Fails each AutoML job whose `AutoMLJobConfig.SecurityConfig.EnableInterContainerTrafficEncryption` is not true. A `ListAutoMLJobs` failure is `N/A` could-not-assess, not `No AutoML jobs found`. A job whose `DescribeAutoMLJob` call fails is named in an `N/A` `SageMaker AutoML Inter-Container Traffic Encryption Check Incomplete` row that withholds `Passed`; failed jobs that were read still fail.
 
 ### SM-22: Model Approval Workflow
 
@@ -848,10 +848,10 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 
 ### SM-23: Model Drift Detection
 
-- **Severity:** Medium; Low for incomplete monitoring
+- **Severity:** Medium; Low for incomplete monitoring; Informational (advisory) for endpoints without Model Monitor
 - **Description:** Validates model drift monitoring configuration, and for each monitoring schedule on an `InService` endpoint, its baseline, its recent reports and its alarm (AIR-SGM-EP-06).
 - **Rows emitted:**
-  - `Model Drift Detection Not Configured`, `Model Drift Detection - Missing Data Quality Monitoring`, `Model Drift Detection - Missing Model Quality Monitoring` and `Model Drift Detection Check`: whether endpoints have data quality and model quality monitoring schedules.
+  - `Model Drift Detection Not Configured` and `Model Drift Detection Summary` are `N/A`/Informational advisories for endpoints with no monitoring schedule, because Model Monitor is closed to new customers. `Model Drift Detection - Missing Data Quality Monitoring`, `Model Drift Detection - Missing Model Quality Monitoring` and `Model Drift Detection - Inactive Monitoring Schedule` fail for endpoints that already use Model Monitor; the first 10 are listed and `Model Drift Detection - Monitoring Issues Summary` (Failed) counts the rest and names their endpoints. `Model Drift Detection Check` reports the read.
   - `Model Monitor Baseline Constraints`: fails a schedule whose job definition names no baseline constraints file. A job definition that cannot be described is `N/A`.
   - `Model Monitor Recent Report`: fails a schedule that has never run, whose latest finished execution is not `Completed` or `CompletedWithViolations`, or whose latest report was scheduled more than twice its cadence ago.
   - `Model Monitor Violation Alarm`: fails a schedule with no CloudWatch alarm whose `ALARM` state reaches an enabled action, its own or an OR composite alarm's, on a metric in that schedule's monitoring-type namespace with both its endpoint and schedule dimensions. A data quality alarm must read a `feature_baseline_drift_` metric with a rising threshold below 1. A `cloudwatch:DescribeAlarms` error is `N/A`.
@@ -863,8 +863,8 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 
 ### SM-25: ML Lineage Tracking
 
-- **Severity:** Low
-- **Description:** Validates experiment tracking and lineage.
+- **Severity:** Low; Informational (advisory) when Experiments is not used
+- **Description:** Reports SageMaker Experiments and model package lineage. Experiments is available only in Studio Classic and AWS recommends SageMaker AI with MLflow, so no experiments, or experiments without trials, is `N/A`/Informational pointing to MLflow. Experiments with active trials pass (`ML Lineage Tracking - Experiments Active`, Low). A `ListExperiments` failure is `N/A` could-not-assess. When experiments exist but `ListTrials` fails for any sampled experiment and no trials are found, the row is `N/A` `ML Lineage Tracking - Trials Assessment` could-not-assess instead of claiming no trials exist.
 
 ### SM-26: GuardDuty AI Protection
 
@@ -911,7 +911,7 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 ### SM-33: Training Job Network Boundary
 
 - **Severity:** Medium
-- **Description:** Requires training jobs to run inside a customer VPC. Network isolation and `VpcConfig` are reported separately, because a job can set `EnableNetworkIsolation` with no VPC attachment, and an isolated job without a VPC attachment still has no private path to Amazon S3 or Amazon ECR. SM-21 asserts the same VPC boundary for AutoML jobs only. Every training job is listed and described, with no item cap. The same check lists and describes every processing job (AIR-FND-NET-01): a job whose `NetworkConfig` names no `VpcConfig` fails `Processing Job Network Boundary`, and the subnets of the others go through the route-table read under `SageMaker Processing Job Subnet Internet Exposure`. A list or describe error is `N/A`, and `No SageMaker training or processing jobs found` appears only when both lists read empty. In an estate with many jobs this check makes one describe call per job, and when the run deadline is reached during either describe loop, the jobs not described are named in an `N/A` row that withholds `Passed` for that job type.
+- **Description:** Requires training jobs to run inside a customer VPC. Network isolation and `VpcConfig` are reported separately, because a job can set `EnableNetworkIsolation` with no VPC attachment, and an isolated job without a VPC attachment still has no private path to Amazon S3 or Amazon ECR. SM-21 covers AutoML jobs separately, for inter-container traffic encryption. Every training job is listed and described, with no item cap. The same check lists and describes every processing job (AIR-FND-NET-01): a job whose `NetworkConfig` names no `VpcConfig` fails `Processing Job Network Boundary`, and the subnets of the others go through the route-table read under `SageMaker Processing Job Subnet Internet Exposure`. A list or describe error is `N/A`, and `No SageMaker training or processing jobs found` appears only when both lists read empty. In an estate with many jobs this check makes one describe call per job, and when the run deadline is reached during either describe loop, the jobs not described are named in an `N/A` row that withholds `Passed` for that job type.
 - **Rows emitted:**
   - `Training Job Network Boundary` and `Training Job Network Isolation`: each training job's `VpcConfig` and `EnableNetworkIsolation`, reported apart.
   - `SageMaker Training Job Subnet Internet Exposure`: a training job's subnets whose route table routes to an internet gateway.
@@ -938,7 +938,7 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 - **Description:** Requires the AWS Security Hub AI Security Best Practices v1.0.0 standard (`standards/ai-security-best-practices/v/1.0.0`) to be enabled in the region. `READY` passes; `INCOMPLETE` passes with a note to review the standard's `StatusReason`; any other subscription status fails. Security Hub not enabled in the region (`InvalidAccessException` with the "not subscribed to AWS Security Hub" message) fails, because no standard is evaluating anything; the same code with any other message is `N/A`, because Security Hub also answers it to a caller it does not permit.
 - **Rows emitted:**
   - `Security Hub AI Security Best Practices Standard`: the standard leg above.
-  - `Security Hub Central Configuration`: passes when Security Hub's organization configuration is `CENTRAL` and `ENABLED` and this account is associated with a configuration policy that enables Security Hub and lists the AI Security Best Practices and AWS Foundational Security Best Practices standards. A self-managed association, an association in `AssociationStatus` `FAILED`, or a policy without those standards fails. `DescribeOrganizationConfiguration`, `GetConfigurationPolicyAssociation` and `GetConfigurationPolicy` answer only for the Security Hub delegated administrator, so a denied read is `N/A` as `Security Hub Central Configuration Incomplete`.
+  - `Security Hub Central Configuration`: under Security Hub organization configuration `CENTRAL` and `ENABLED`, passes when this account is associated with a configuration policy that enables Security Hub and lists the AI Security Best Practices and AWS Foundational Security Best Practices standards; a self-managed association, an association in `AssociationStatus` `FAILED`, or a policy without those standards fails. Central configuration is now a legacy feature replaced by Security Hub CSPM declarative policies, so otherwise the check reads this account's effective `SECURITYHUB_CSPM_POLICY` with `organizations:DescribeEffectivePolicy`. It passes when the policy enables Security Hub CSPM in the region and the region's override, or `default`, lists both `ai-security-best-practices/v/1.0.0` and `aws-foundational-security-best-practices/v/1.0.0` with `default_control_association_status` `ENABLED`; any `disabled_controls` are named in the row but not judged against the AI standard. `DISABLED` with no `enabled_controls` fails, because no control of the standards runs; `DISABLED` with `enabled_controls` is `N/A`/Informational naming them, because whether they cover the AI standard is not judged; a missing association status is `N/A` as `Security Hub Central Configuration Incomplete`. It fails when the region is disabled or ungoverned or a standard is missing. With neither central configuration nor an effective policy it fails and recommends a Security Hub CSPM policy. `DescribeOrganizationConfiguration`, `GetConfigurationPolicyAssociation` and `GetConfigurationPolicy` answer only for the Security Hub delegated administrator; when the organization configuration is denied, an effective policy is still judged. A denied or unreadable read is `N/A` as `Security Hub Central Configuration Incomplete`, and an account outside an organization is `N/A`.
 
 ### SM-37: GuardDuty Lambda Protection
 
@@ -1467,7 +1467,7 @@ These five checks inspect AgentCore gateways directly and are emitted by the Age
 
 These 64 opt-in standalone checks (`FS-XX`) add cross-industry AI governance,
 risk, and compliance controls derived from the
-[AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf)
+[AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf)
 (see also the
 [AWS Security Blog announcement](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/)).
 Enable them with the `EnableResponsibleAIGRCAssessment` deployment parameter.

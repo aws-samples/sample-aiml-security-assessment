@@ -652,9 +652,13 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-36', 'Guardrails With Content Filters Found', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-37', 'ADVISORY: User Feedback Mechanism \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-38', 'Guardrail Word Filters Configured', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT'),
-    ('FS-39', 'No SageMaker Clarify Bias Monitoring', 'Failed', 'High', 'SR 11-7 | FFIEC CAT | ECOA/Fair Housing'),
+    # Reviewed golden change: SageMaker Clarify is closed to new customers, so
+    # having no Clarify schedule is advisory N/A + Informational, not Failed/High.
+    ('FS-39', 'No SageMaker Clarify Bias Monitoring', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | ECOA/Fair Housing'),
     ('FS-40', 'ADVISORY: Bias Dataset Coverage \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | ECOA'),
-    ('FS-41', 'No SageMaker Clarify Explainability Monitoring', 'Failed', 'High', 'SR 11-7 | FFIEC CAT | ECOA Adverse Action'),
+    # Reviewed golden change: SageMaker Clarify is closed to new customers, so
+    # having no Clarify schedule is advisory N/A + Informational, not Failed/High.
+    ('FS-41', 'No SageMaker Clarify Explainability Monitoring', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | ECOA Adverse Action'),
     # Reviewed golden change: absence of SageMaker Model Cards is no longer a
     # Failed/Medium. A Bedrock-only estate legitimately has none, so the row is
     # N/A + Informational. (The check also stopped paginating on the wrong response

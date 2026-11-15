@@ -434,9 +434,71 @@ back `Passed` names what it could not read.
 
 ### Fixed
 
-- BR-03 and BR-44 now link to the current Amazon Bedrock Marketplace access
-  documentation section. Refreshed single-account, multi-account, and changes
-  samples carry the corrected link.
+- Corrected the remediation reference of about 75 finding rows across
+  Bedrock, SageMaker AI, AgentCore, Agent Registry, and Responsible AI GRC
+  checks so each links the AWS page that documents its control. Pages that
+  covered a different topic were replaced, including SM-02 (now the
+  `AmazonSageMakerFullAccess` managed-policy section), SM-03, SM-42, BR-03 and
+  BR-44 (now the Marketplace `aws-marketplace:ProductId` permissions section
+  of the model access page), BR-32, AC-07, AC-45, FS-22, FS-37, FS-46, FS-54,
+  and FS-58. Overview or API reference links were replaced with the specific
+  guide page where one exists. The could-not-assess rows of BR-02 through
+  BR-14 reuse their check's own reference; other checks' error and fallback
+  rows keep their service's security overview page.
+- Corrected resolution text that contradicted AWS documentation. BR-17 names
+  `customModelKmsKeyId` and `modelKmsKeyArn` in place of a parameter that does
+  not exist. BR-39 and BR-40 Marketplace endpoints are configured on create or
+  update through `endpointConfig.sageMaker`, not at registration. FS-29 no
+  longer suggests word filters can detect a missing disclaimer, and FS-53 no
+  longer says `AWSManagedRulesKnownBadInputsRuleSet` covers prompt injection.
+- FS-53 no longer counts an ACL whose only managed rule group is
+  `AWSManagedRulesKnownBadInputsRuleSet` as injection-protected; it needs
+  `AWSManagedRulesSQLiRuleSet` or `AWSManagedRulesCommonRuleSet`. Such ACLs now
+  fail. The OW-01 row mapped from FS-53 is retitled `OWASP LLM01: WAF SQLi &
+  Common Rule Set Coverage` and no longer recommends KnownBadInputs.
+- SM-21 rows are renamed `SageMaker AutoML Job Inter-Container Traffic
+  Encryption ...` to match what the check reads
+  (`EnableInterContainerTrafficEncryption`); the OWASP OW-03 row it feeds is
+  renamed to match. History pairs the retitled rows by `Check_ID`.
+- SageMaker Clarify and Model Monitor are no longer open to new customers, and
+  SageMaker Experiments is Studio Classic only. SM-06, SM-07, SM-23 (endpoints
+  with no schedule), SM-25, FS-39, and FS-41 now report not using these
+  features as `N/A`/Informational advisories that name the AWS-documented
+  alternatives, instead of `Failed`. Misconfigured Clarify jobs and Model
+  Monitor schedules that exist still fail. The SM-06 and SM-07 list-error rows
+  are `N/A` could-not-assess rows instead of `Failed`, and an SM-25
+  `ListExperiments` failure is reported as `N/A` instead of as no experiments.
+- SM-36 accepts Security Hub CSPM declarative policies, which replace the
+  legacy central configuration. Outside central configuration it reads the
+  account's effective `SECURITYHUB_CSPM_POLICY` and passes when the policy
+  enables Security Hub CSPM in the region with the AI Security Best Practices
+  and AWS Foundational Security Best Practices standards. It no longer
+  recommends turning on central configuration, and member accounts under a
+  policy are judged instead of reported `N/A`.
+- SM-36 no longer passes a Security Hub CSPM policy that enables the AI and
+  Foundational standards but turns their controls off.
+  `default_control_association_status` `DISABLED` with no `enabled_controls`
+  fails; with `enabled_controls` it is `N/A`/Informational naming them; a
+  missing status is `N/A` incomplete. A passing row names any
+  `disabled_controls`.
+- SM-21 no longer reports a `ListAutoMLJobs` failure as `No AutoML jobs found`
+  or passes when some `DescribeAutoMLJob` calls failed; the unread jobs are
+  named in an `N/A` incomplete row. SM-25 no longer says experiments have no
+  trials when `ListTrials` failed; that case is `N/A` could-not-assess.
+- SM-06 isolates each `DescribeProcessingJob` failure: unread jobs, or a run
+  deadline stop, are named in an `N/A` incomplete row, and failed Clarify jobs
+  read after them are still reported. SM-23 adds a Failed summary row counting
+  monitoring issues beyond the first 10. The SM-21 check function is renamed
+  `check_sagemaker_automl_inter_container_encryption`, which timeout rows name.
+- FS-39 and FS-41 emit their `Passed` "Schedules Found" row only for schedules
+  in the `Scheduled` state. When every schedule is stopped, only the `Failed`
+  "Not Running" row is emitted.
+- The OWASP OW-09 rows mapped from SM-07 and SM-23 now say Model Monitor is
+  closed to new customers and name the documented alternatives, matching the
+  OW-04 rows.
+- The Responsible AI GRC primary source now links the edition of the AWS User
+  Guide to Governance, Risk, and Compliance for Responsible AI Adoption updated
+  2026-05-13, and FS-00 cites it.
 - Replaced source-account resource, session, and Identity Center names in the
   single-account, multi-account, and changes samples with synthetic values.
   The sample guard now checks the full `sample-reports/` tree for those names.
@@ -543,13 +605,27 @@ back `Passed` names what it could not read.
   Responsible AI and GRC checks guide now says `nodejs20.x` was deprecated on
   April 30, 2026, instead of describing it as upcoming. The AWS Security Agent
   text in the penetration-testing guidance and the FS-54 finding now notes
-  that it is part of AWS Continuum, says its Regions have expanded since the
-  March 2026 launch, and points to the service-availability note on the
-  Security Agent Resilience page for the current Regions. The FS-54 reference
-  link now goes to that page.
+  that it is part of AWS Continuum and says its Regions have expanded since
+  the March 2026 launch. The guidance points to the service-availability note
+  on the Security Agent Resilience page for the current Regions, and the FS-54
+  finding tells readers to verify Regions in the AWS Security Agent User Guide.
+  The FS-54 reference link goes to the Security Agent "Create a penetration
+  test" page (see the remediation reference entry above).
 
 ### Deployment impact
 
+- **Remediation references, SM-36, and advisory status changes:** The
+  Bedrock, SageMaker AI, AgentCore, Agent Registry, Responsible AI GRC, and
+  OWASP assessment Lambdas changed, and both SAM templates add
+  `organizations:DescribeEffectivePolicy` (bounded to
+  `organizations:PolicyType` `SECURITYHUB_CSPM_POLICY`) to the SageMaker
+  function's managed policy for SM-36. Single-account: start CodeBuild with
+  this revision, or redeploy `template.yaml` for direct SAM deployments.
+  Multi-account: start CodeBuild with this revision so each member account's
+  assessment stack is redeployed, or redeploy `template-multi-account.yaml`
+  directly. No member-role StackSet or central infrastructure update is
+  required. Until the SAM stack is updated, SM-36 reads as `N/A` Incomplete
+  outside central configuration.
 - **Service selection:** Update `deployment/aiml-security-single-account.yaml`
   for single-account deployments or `deployment/2-aiml-security-codebuild.yaml`
   for multi-account central infrastructure, set the desired service switches,

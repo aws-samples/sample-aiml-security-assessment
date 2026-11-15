@@ -931,7 +931,7 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
                         finding_name="Direct Internet Access Enabled",
                         finding_details=f"SageMaker notebook instance '{instance['name']}' has direct internet access enabled",
                         resolution="Configure the notebook instance to use VPC connectivity and disable direct internet access",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/appendix-notebook-and-internet-access.html",
                         severity="High",
                         status="Failed",
                         region=region,
@@ -950,7 +950,7 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
                             "traffic"
                         ),
                         resolution="Recreate the notebook instance with SubnetId and SecurityGroupIds in a private subnet",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/appendix-notebook-and-internet-access.html",
                         severity="High",
                         status="Failed",
                         region=region,
@@ -965,7 +965,7 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
                         finding_name="Non-VPC Only Network Access",
                         finding_details=f"SageMaker domain '{domain['domain_id']}' ({domain['name']}) is not configured for VPC-only access",
                         resolution="Configure the SageMaker domain to use VPC-only network access type",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/studio-notebooks-and-internet-access.html",
                         severity="High",
                         status="Failed",
                         region=region,
@@ -1070,7 +1070,7 @@ def check_guardduty_enabled(
                     finding_name="GuardDuty Not Enabled",
                     finding_details="Amazon GuardDuty is not enabled in this account. GuardDuty can help detect security threats in SageMaker workloads.",
                     resolution="Enable Amazon GuardDuty to monitor for potential security threats in your SageMaker environment, including anomalous model access patterns and potential data exfiltration attempts.",
-                    reference="https://docs.aws.amazon.com/guardduty/latest/ug/ai-protection.html",
+                    reference="https://docs.aws.amazon.com/guardduty/latest/ug/guardduty_settingup.html",
                     severity="High",
                     status="Failed",
                     region=region,
@@ -1225,7 +1225,7 @@ def _guardduty_security_hub_routing_finding(region: str) -> Dict[str, Any]:
 GUARDDUTY_REVIEW_FINDING = "GuardDuty Findings Reviewed in Security Hub"
 GUARDDUTY_REVIEW_REFERENCE = (
     "https://docs.aws.amazon.com/securityhub/latest/userguide/"
-    "finding-workflow-status.html"
+    "findings-workflow-status.html"
 )
 # The control asks for review on a defined cadence and names none, so this
 # check uses a 30-day window and says so in every row.
@@ -2721,7 +2721,7 @@ def check_sagemaker_iam_permissions(
                                 f"narrows it. {SCP_NOT_EVALUATED_NOTE}"
                             ),
                             resolution="Replace AmazonSageMakerFullAccess with more restrictive custom policies that follow the principle of least privilege",
-                            reference="https://docs.aws.amazon.com/sagemaker-unified-studio/latest/adminguide/security-iam.html",
+                            reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security-iam-awsmanpol.html#security-iam-awsmanpol-AmazonSageMakerFullAccess",
                             severity="High",
                             status="Failed",
                             region=region,
@@ -2742,7 +2742,7 @@ def check_sagemaker_iam_permissions(
                             ],
                             f"{len(roles_with_full_access)} role(s) are reported "
                             "above.",
-                            "https://docs.aws.amazon.com/sagemaker-unified-studio/latest/adminguide/security-iam.html",
+                            "https://docs.aws.amazon.com/sagemaker/latest/dg/security-iam-awsmanpol.html#security-iam-awsmanpol-AmazonSageMakerFullAccess",
                             region,
                         )
                     )
@@ -2756,7 +2756,7 @@ def check_sagemaker_iam_permissions(
                             finding_name="Stale SageMaker Access",
                             finding_details=f"User '{user['name']}' hasn't accessed SageMaker since {user['last_accessed'].strftime('%Y-%m-%d')}",
                             resolution="Review and remove SageMaker access for inactive users",
-                            reference="https://docs.aws.amazon.com/sagemaker-unified-studio/latest/adminguide/security-iam.html",
+                            reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security-iam-awsmanpol.html#security-iam-awsmanpol-AmazonSageMakerFullAccess",
                             severity="Medium",
                             status="Failed",
                             region=region,
@@ -2768,7 +2768,7 @@ def check_sagemaker_iam_permissions(
                 "permissions boundary, and no user with a SageMaker grant is "
                 "stale by 60 days."
             )
-            reference = "https://docs.aws.amazon.com/sagemaker-unified-studio/latest/adminguide/security-iam.html"
+            reference = "https://docs.aws.amazon.com/sagemaker/latest/dg/security-iam-awsmanpol.html#security-iam-awsmanpol-AmazonSageMakerFullAccess"
             findings["csv_data"].append(
                 _unread_resources_finding(
                     "SM-02",
@@ -3302,7 +3302,7 @@ TRAINING_VOLUME_ENCRYPTION_FINDING = "Training Job Volume Encryption"
 KEY_NOT_ENABLED_FINDING = "Customer Managed Key Not Enabled"
 TRAINING_BUCKET_FINDING = "Training Job Data Bucket Protection"
 TRAINING_VOLUME_ENCRYPTION_REFERENCE = (
-    "https://docs.aws.amazon.com/sagemaker/latest/dg/train-encrypt.html"
+    "https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ResourceConfig.html"
 )
 TRAINING_VOLUME_ENCRYPTION_RESOLUTION = (
     "Set ResourceConfig.VolumeKmsKeyId to a customer managed key when creating "
@@ -4226,6 +4226,23 @@ def get_resolution_for_component(component: str) -> str:
     )
 
 
+CLARIFY_REFERENCE = (
+    "https://docs.aws.amazon.com/sagemaker/latest/dg/"
+    "clarify-configure-processing-jobs.html"
+)
+CLARIFY_AVAILABILITY_REFERENCE = (
+    "https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-availability-change.html"
+)
+CLARIFY_AVAILABILITY_NOTE = (
+    "Amazon SageMaker Clarify is no longer open to new customers; existing "
+    "customers can continue to use it. AWS documents the open-source SageMaker "
+    "AI monitoring solutions with the standardized bias metrics, the SHAP "
+    "library, SageMaker AI MLflow, Amazon CloudWatch and Amazon QuickSight as "
+    "its replacement for predictive models, and Amazon Bedrock Evaluations for "
+    "foundation models."
+)
+
+
 def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[str, Any]:
     """
     Check if SageMaker Clarify is being used for bias detection and model explainability
@@ -4243,13 +4260,29 @@ def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[st
             # Check Processing Jobs for Clarify
             paginator = sagemaker_client.get_paginator("list_processing_jobs")
             clarify_jobs_found = False
+            # Jobs whose describe failed, and a deadline stop; either leaves
+            # the job inventory incomplete.
+            unread = []
+            jobs_described = 0
+            stopped = False
 
             for page in paginator.paginate():
                 for job in page["ProcessingJobSummaries"]:
                     job_name = job["ProcessingJobName"]
-                    job_details = sagemaker_client.describe_processing_job(
-                        ProcessingJobName=job_name
-                    )
+                    stopped = _deadline_reached()
+                    if stopped:
+                        break
+                    jobs_described += 1
+                    try:
+                        job_details = sagemaker_client.describe_processing_job(
+                            ProcessingJobName=job_name
+                        )
+                    except Exception as e:
+                        unread.append(
+                            f"sagemaker:DescribeProcessingJob {job_name} "
+                            f"({get_assessment_error_label(e)})"
+                        )
+                        continue
 
                     # Check if it's a Clarify job
                     if (
@@ -4269,12 +4302,50 @@ def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[st
                                     "status": "Failed",
                                 }
                             )
+                if stopped:
+                    break
 
-            if not clarify_jobs_found:
+            if stopped:
+                unread.append(
+                    _deadline_stop_note(
+                        "sagemaker:DescribeProcessingJob", jobs_described, "job(s)"
+                    )
+                )
+            if unread:
+                issues_found.append(
+                    {
+                        "issue_type": "Usage Check Incomplete",
+                        "details": (
+                            f"{len(unread)} processing job read(s) did not complete, "
+                            "so Clarify jobs among them were not assessed: "
+                            + "; ".join(unread[:10])
+                            + (" and more" if len(unread) > 10 else "")
+                            + "."
+                        ),
+                        "resolution": COULD_NOT_ASSESS_RESOLUTION,
+                        "severity": "Informational",
+                        "status": "N/A",
+                    }
+                )
+            elif not clarify_jobs_found:
+                # Not using a service that is closed to new customers is an
+                # advisory gap, never a failure.
                 issues_found.append(
                     {
                         "issue_type": "No Clarify Usage",
-                        "details": "No SageMaker Clarify jobs found",
+                        "details": (
+                            "No SageMaker Clarify processing jobs found. "
+                            + CLARIFY_AVAILABILITY_NOTE
+                        ),
+                        "resolution": (
+                            "No action required for Clarify. If bias detection or "
+                            "explainability is required for these models, use the "
+                            "AWS-documented replacement for Clarify: the open-source "
+                            "SageMaker AI monitoring solutions with the standardized "
+                            "bias metrics and the SHAP library, or Amazon Bedrock "
+                            "Evaluations for foundation models."
+                        ),
+                        "reference": CLARIFY_AVAILABILITY_REFERENCE,
                         "severity": "Informational",
                         "status": "N/A",
                     }
@@ -4285,9 +4356,10 @@ def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[st
             issues_found.append(
                 {
                     "issue_type": "Clarify Check Error",
-                    "details": f"Error checking Clarify configuration: {str(e)}",
-                    "severity": "High",
-                    "status": "Failed",
+                    "details": build_could_not_assess_detail(e, region),
+                    "resolution": COULD_NOT_ASSESS_RESOLUTION,
+                    "severity": "Informational",
+                    "status": "N/A",
                 }
             )
 
@@ -4298,8 +4370,13 @@ def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[st
                         check_id="SM-06",
                         finding_name=f"SageMaker Clarify {issue['issue_type']}",
                         finding_details=issue["details"],
-                        resolution="Implement SageMaker Clarify for model explainability and bias detection",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-configure-processing-jobs.html",
+                        resolution=issue.get(
+                            "resolution",
+                            "Review the failed Clarify processing job's "
+                            "FailureReason and rerun the bias or explainability "
+                            "analysis. " + CLARIFY_AVAILABILITY_NOTE,
+                        ),
+                        reference=issue.get("reference", CLARIFY_REFERENCE),
                         severity=issue["severity"],
                         status=issue["status"],
                         region=region,
@@ -4313,7 +4390,7 @@ def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[st
                     finding_name="SageMaker Clarify Usage Check",
                     finding_details="SageMaker Clarify is properly utilized",
                     resolution="No action required",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-configure-processing-jobs.html",
+                    reference=CLARIFY_REFERENCE,
                     severity="Low",
                     status="Passed",
                     region=region,
@@ -4330,6 +4407,18 @@ def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[st
             "details": f"Error during check: {str(e)}",
             "csv_data": [],
         }
+
+
+MODEL_MONITOR_AVAILABILITY_REFERENCE = (
+    "https://docs.aws.amazon.com/sagemaker/latest/dg/"
+    "model-monitor-availability-change.html"
+)
+MODEL_MONITOR_AVAILABILITY_NOTE = (
+    "Amazon SageMaker Model Monitor is no longer open to new customers; existing "
+    "customers can continue to use it. AWS documents the open-source SageMaker AI "
+    "monitoring solutions (SageMaker AI MLflow Apps with Evidently AI), Amazon "
+    "QuickSight governance dashboards and Amazon CloudWatch as its replacement."
+)
 
 
 def check_sagemaker_model_monitor_usage(
@@ -4378,10 +4467,23 @@ def check_sagemaker_model_monitor_usage(
                         )
 
             if not monitoring_found:
+                # Not using a service that is closed to new customers is an
+                # advisory gap, never a failure.
                 issues_found.append(
                     {
                         "issue_type": "No Model Monitoring",
-                        "details": "No Model Monitor schedules found",
+                        "details": (
+                            "No Model Monitor schedules found. "
+                            + MODEL_MONITOR_AVAILABILITY_NOTE
+                        ),
+                        "resolution": (
+                            "No action required for Model Monitor. If production "
+                            "models need data and model quality monitoring, use the "
+                            "AWS-documented replacement: the open-source SageMaker "
+                            "AI monitoring solutions, Amazon QuickSight dashboards "
+                            "and Amazon CloudWatch endpoint metrics and alarms."
+                        ),
+                        "reference": MODEL_MONITOR_AVAILABILITY_REFERENCE,
                         "severity": "Informational",
                         "status": "N/A",
                     }
@@ -4392,9 +4494,10 @@ def check_sagemaker_model_monitor_usage(
             issues_found.append(
                 {
                     "issue_type": "Monitor Check Error",
-                    "details": f"Error checking Model Monitor configuration: {str(e)}",
-                    "severity": "High",
-                    "status": "Failed",
+                    "details": build_could_not_assess_detail(e, region),
+                    "resolution": COULD_NOT_ASSESS_RESOLUTION,
+                    "severity": "Informational",
+                    "status": "N/A",
                 }
             )
 
@@ -4405,8 +4508,16 @@ def check_sagemaker_model_monitor_usage(
                         check_id="SM-07",
                         finding_name=f"SageMaker Model Monitor {issue['issue_type']}",
                         finding_details=issue["details"],
-                        resolution="Configure comprehensive model monitoring schedules",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
+                        resolution=issue.get(
+                            "resolution",
+                            "Start the monitoring schedule, or delete it if the "
+                            "model it watches is retired. "
+                            + MODEL_MONITOR_AVAILABILITY_NOTE,
+                        ),
+                        reference=issue.get(
+                            "reference",
+                            "https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
+                        ),
                         severity=issue["severity"],
                         status=issue["status"],
                         region=region,
@@ -8072,7 +8183,7 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
                         finding_name="SageMaker Endpoint Single Instance",
                         finding_details=f"Endpoint '{endpoint['endpoint_name']}' variant '{endpoint['variant_name']}' has only {endpoint['instance_count']} instance(s). Single instance creates availability risk and no failover capability.",
                         resolution="Configure production endpoints with at least 2 instances across multiple Availability Zones for high availability and fault tolerance.",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/deployment-best-practices.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -8087,7 +8198,7 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
                         finding_name="SageMaker Endpoint Instance Count Check",
                         finding_details=f"All {len(endpoints_multi_instance)} endpoint variants have multiple instances",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/deployment-best-practices.html",
                         severity="Medium",
                         status="Passed",
                         region=region,
@@ -8101,7 +8212,7 @@ def check_sagemaker_endpoint_instance_count(region: str = "") -> Dict[str, Any]:
                         finding_name="SageMaker Endpoint Instance Count Check",
                         finding_details="No InService endpoints found",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-auto-scaling.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/deployment-best-practices.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -8619,7 +8730,7 @@ def check_sagemaker_data_quality_encryption(region: str = "") -> Dict[str, Any]:
                         finding_name="SageMaker Data Quality Job Encryption Disabled",
                         finding_details=f"Data quality job definition '{job['name']}' does not have inter-container traffic encryption enabled. Data transmitted between containers is not encrypted.",
                         resolution="Enable EnableInterContainerTrafficEncryption in NetworkConfig when creating data quality job definitions.",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_MonitoringNetworkConfig.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -8634,7 +8745,7 @@ def check_sagemaker_data_quality_encryption(region: str = "") -> Dict[str, Any]:
                         finding_name="SageMaker Data Quality Job Encryption Check",
                         finding_details=f"All {len(jobs_with_encryption)} data quality job definitions have inter-container encryption enabled",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_MonitoringNetworkConfig.html",
                         severity="Medium",
                         status="Passed",
                         region=region,
@@ -8648,7 +8759,7 @@ def check_sagemaker_data_quality_encryption(region: str = "") -> Dict[str, Any]:
                         finding_name="SageMaker Data Quality Job Encryption Check",
                         finding_details="No data quality job definitions found",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_MonitoringNetworkConfig.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -8737,7 +8848,7 @@ def check_sagemaker_processing_job_encryption(region: str = "") -> Dict[str, Any
                         finding_name="SageMaker Processing Job Volume Encryption Missing",
                         finding_details=f"Processing job '{job['name']}' does not have volume encryption configured. Data at rest on processing instances is not encrypted with customer-managed keys.",
                         resolution="Configure VolumeKmsKeyId in ProcessingResources.ClusterConfig when creating processing jobs to encrypt attached EBS volumes.",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/processing-job.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ProcessingClusterConfig.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -8751,7 +8862,7 @@ def check_sagemaker_processing_job_encryption(region: str = "") -> Dict[str, Any
                         finding_name="SageMaker Processing Job Encryption Summary",
                         finding_details=f"Found {len(jobs_without_encryption)} total processing jobs without volume encryption (showing first 15)",
                         resolution="Review all processing jobs and configure volume encryption",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/processing-job.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ProcessingClusterConfig.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -8766,7 +8877,7 @@ def check_sagemaker_processing_job_encryption(region: str = "") -> Dict[str, Any
                         finding_name="SageMaker Processing Job Encryption Check",
                         finding_details=f"All {len(jobs_with_encryption)} processing jobs have volume encryption configured",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/processing-job.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ProcessingClusterConfig.html",
                         severity="Medium",
                         status="Passed",
                         region=region,
@@ -8780,7 +8891,7 @@ def check_sagemaker_processing_job_encryption(region: str = "") -> Dict[str, Any
                         finding_name="SageMaker Processing Job Encryption Check",
                         finding_details="No processing jobs found",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/processing-job.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ProcessingClusterConfig.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -9132,7 +9243,7 @@ def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]
                         finding_name="SageMaker Transform Job Volume Encryption Missing",
                         finding_details=f"Transform job '{job['name']}' does not have volume encryption configured. Data at rest on transform instances is not encrypted with customer-managed keys.",
                         resolution="Configure VolumeKmsKeyId in TransformResources when creating transform jobs to encrypt attached EBS volumes.",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_TransformResources.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -9146,7 +9257,7 @@ def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]
                         finding_name="SageMaker Transform Job Encryption Summary",
                         finding_details=f"Found {len(jobs_without_encryption)} total transform jobs without volume encryption (showing first 15)",
                         resolution="Review all transform jobs and configure volume encryption",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_TransformResources.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -9160,7 +9271,7 @@ def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]
                     unread,
                     f"{len(jobs_with_encryption)} transform job(s) have volume "
                     "encryption configured.",
-                    "https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html",
+                    "https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_TransformResources.html",
                     region,
                 )
             )
@@ -9173,7 +9284,7 @@ def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]
                         finding_name="SageMaker Transform Job Encryption Check",
                         finding_details=f"All {len(jobs_with_encryption)} transform jobs have volume encryption configured",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_TransformResources.html",
                         severity="Medium",
                         status="Passed",
                         region=region,
@@ -9187,7 +9298,7 @@ def check_sagemaker_transform_job_encryption(region: str = "") -> Dict[str, Any]
                         finding_name="SageMaker Transform Job Encryption Check",
                         finding_details="No transform jobs found",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_TransformResources.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -9290,7 +9401,7 @@ def check_sagemaker_hyperparameter_tuning_encryption(
                         finding_name="SageMaker Hyperparameter Tuning Job Encryption Missing",
                         finding_details=f"Hyperparameter tuning job '{job['name']}' does not have volume encryption configured. Training data at rest is not encrypted with customer-managed keys.",
                         resolution="Configure VolumeKmsKeyId in TrainingJobDefinition.ResourceConfig when creating hyperparameter tuning jobs.",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/automatic-model-tuning.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ResourceConfig.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -9304,7 +9415,7 @@ def check_sagemaker_hyperparameter_tuning_encryption(
                         finding_name="SageMaker Hyperparameter Tuning Job Encryption Summary",
                         finding_details=f"Found {len(jobs_without_encryption)} total hyperparameter tuning jobs without volume encryption (showing first 15)",
                         resolution="Review all hyperparameter tuning jobs and configure volume encryption",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/automatic-model-tuning.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ResourceConfig.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -9319,7 +9430,7 @@ def check_sagemaker_hyperparameter_tuning_encryption(
                         finding_name="SageMaker Hyperparameter Tuning Job Encryption Check",
                         finding_details=f"All {len(jobs_with_encryption)} hyperparameter tuning jobs have volume encryption configured",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/automatic-model-tuning.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ResourceConfig.html",
                         severity="Medium",
                         status="Passed",
                         region=region,
@@ -9333,7 +9444,7 @@ def check_sagemaker_hyperparameter_tuning_encryption(
                         finding_name="SageMaker Hyperparameter Tuning Job Encryption Check",
                         finding_details="No hyperparameter tuning jobs found",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/automatic-model-tuning.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_ResourceConfig.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -9418,7 +9529,7 @@ def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, An
                         finding_name="SageMaker Compilation Job Encryption Missing",
                         finding_details=f"Compilation job '{job['name']}' does not have output encryption configured. Compiled model artifacts are not encrypted with customer-managed keys.",
                         resolution="Configure KmsKeyId in OutputConfig when creating compilation jobs to encrypt compiled model output.",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/neo.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_OutputConfig.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -9432,7 +9543,7 @@ def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, An
                         finding_name="SageMaker Compilation Job Encryption Summary",
                         finding_details=f"Found {len(jobs_without_encryption)} total compilation jobs without encryption (showing first 15)",
                         resolution="Review all compilation jobs and configure output encryption",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/neo.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_OutputConfig.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -9447,7 +9558,7 @@ def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, An
                         finding_name="SageMaker Compilation Job Encryption Check",
                         finding_details=f"All {len(jobs_with_encryption)} compilation jobs have output encryption configured",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/neo.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_OutputConfig.html",
                         severity="Medium",
                         status="Passed",
                         region=region,
@@ -9461,7 +9572,7 @@ def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, An
                         finding_name="SageMaker Compilation Job Encryption Check",
                         finding_details="No compilation jobs found",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/neo.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_OutputConfig.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -9491,12 +9602,16 @@ def check_sagemaker_compilation_job_encryption(region: str = "") -> Dict[str, An
         }
 
 
-def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]:
+def check_sagemaker_automl_inter_container_encryption(
+    region: str = "",
+) -> Dict[str, Any]:
     """
-    Check if SageMaker AutoML (Autopilot) jobs have network isolation enabled.
+    Check if SageMaker AutoML (Autopilot) jobs have inter-container traffic encryption enabled.
     Aligns with AWS Security Hub control SageMaker.15
     """
-    logger.debug("Starting check for SageMaker AutoML job network isolation")
+    logger.debug(
+        "Starting check for SageMaker AutoML job inter-container traffic encryption"
+    )
     try:
         findings = {"csv_data": []}
 
@@ -9504,50 +9619,65 @@ def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]
             "sagemaker", config=boto3_config, region_name=region
         )
 
-        jobs_without_isolation = []
-        jobs_with_isolation = []
+        jobs_without_encryption = []
+        jobs_with_encryption = []
+        # (job name, error) for jobs whose DescribeAutoMLJob call failed.
+        jobs_unread = []
 
-        try:
-            paginator = sagemaker_client.get_paginator("list_auto_ml_jobs")
-            for page in paginator.paginate():
-                for job in page.get("AutoMLJobSummaries", []):
-                    job_name = job.get("AutoMLJobName")
-                    job_status = job.get("AutoMLJobStatus")
+        # A ListAutoMLJobs failure propagates to the outer except, which
+        # reports the check as could-not-assess instead of an empty inventory.
+        paginator = sagemaker_client.get_paginator("list_auto_ml_jobs")
+        for page in paginator.paginate():
+            for job in page.get("AutoMLJobSummaries", []):
+                job_name = job.get("AutoMLJobName")
+                job_status = job.get("AutoMLJobStatus")
+                if not job_name:
+                    continue
+                try:
+                    job_details = sagemaker_client.describe_auto_ml_job(
+                        AutoMLJobName=job_name
+                    )
+                except Exception as e:
+                    logger.warning(f"Error describing AutoML job {job_name}: {str(e)}")
+                    jobs_unread.append((job_name, e))
+                    continue
+                security_config = job_details.get("AutoMLJobConfig", {}).get(
+                    "SecurityConfig", {}
+                )
+                if security_config.get("EnableInterContainerTrafficEncryption", False):
+                    jobs_with_encryption.append(job_name)
+                else:
+                    jobs_without_encryption.append(
+                        {"name": job_name, "status": job_status}
+                    )
 
-                    if job_name:
-                        try:
-                            job_details = sagemaker_client.describe_auto_ml_job(
-                                AutoMLJobName=job_name
-                            )
+        if jobs_unread:
+            names = ", ".join(name for name, _ in jobs_unread[:10])
+            more = ", ..." if len(jobs_unread) > 10 else ""
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-21",
+                    finding_name="SageMaker AutoML Inter-Container Traffic Encryption Check Incomplete",
+                    finding_details=(
+                        f"DescribeAutoMLJob failed for {len(jobs_unread)} AutoML "
+                        f"job(s) ({names}{more}), so their inter-container traffic "
+                        "encryption was not assessed. "
+                        + build_could_not_assess_detail(jobs_unread[0][1], region)
+                    ),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_DescribeAutoMLJob.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
 
-                            security_config = job_details.get(
-                                "AutoMLJobConfig", {}
-                            ).get("SecurityConfig", {})
-                            enable_inter_container_encryption = security_config.get(
-                                "EnableInterContainerTrafficEncryption", False
-                            )
-
-                            if not enable_inter_container_encryption:
-                                jobs_without_isolation.append(
-                                    {"name": job_name, "status": job_status}
-                                )
-                            else:
-                                jobs_with_isolation.append(job_name)
-
-                        except Exception as e:
-                            logger.warning(
-                                f"Error describing AutoML job {job_name}: {str(e)}"
-                            )
-
-        except Exception as e:
-            logger.error(f"Error listing AutoML jobs: {str(e)}")
-
-        if jobs_without_isolation:
-            for job in jobs_without_isolation[:15]:
+        if jobs_without_encryption:
+            for job in jobs_without_encryption[:15]:
                 findings["csv_data"].append(
                     create_finding(
                         check_id="SM-21",
-                        finding_name="SageMaker AutoML Job Network Isolation Disabled",
+                        finding_name="SageMaker AutoML Job Inter-Container Traffic Encryption Disabled",
                         finding_details=f"AutoML job '{job['name']}' does not have inter-container traffic encryption enabled. Data transmitted between containers during training is not encrypted.",
                         resolution="Enable EnableInterContainerTrafficEncryption in AutoMLJobConfig.SecurityConfig when creating AutoML jobs.",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_AutoMLSecurityConfig.html",
@@ -9557,12 +9687,12 @@ def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]
                     )
                 )
 
-            if len(jobs_without_isolation) > 15:
+            if len(jobs_without_encryption) > 15:
                 findings["csv_data"].append(
                     create_finding(
                         check_id="SM-21",
-                        finding_name="SageMaker AutoML Job Network Isolation Summary",
-                        finding_details=f"Found {len(jobs_without_isolation)} total AutoML jobs without network isolation (showing first 15)",
+                        finding_name="SageMaker AutoML Job Inter-Container Traffic Encryption Summary",
+                        finding_details=f"Found {len(jobs_without_encryption)} total AutoML jobs without inter-container traffic encryption (showing first 15)",
                         resolution="Review all AutoML jobs and enable inter-container traffic encryption",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_AutoMLSecurityConfig.html",
                         severity="Medium",
@@ -9570,14 +9700,14 @@ def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]
                         region=region,
                     )
                 )
-        else:
-            if jobs_with_isolation:
+        elif not jobs_unread:
+            if jobs_with_encryption:
                 # AutoML jobs exist and all have encryption - Passed
                 findings["csv_data"].append(
                     create_finding(
                         check_id="SM-21",
-                        finding_name="SageMaker AutoML Job Network Isolation Check",
-                        finding_details=f"All {len(jobs_with_isolation)} AutoML jobs have inter-container encryption enabled",
+                        finding_name="SageMaker AutoML Job Inter-Container Traffic Encryption Check",
+                        finding_details=f"All {len(jobs_with_encryption)} AutoML jobs have inter-container encryption enabled",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_AutoMLSecurityConfig.html",
                         severity="Medium",
@@ -9590,7 +9720,7 @@ def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]
                 findings["csv_data"].append(
                     create_finding(
                         check_id="SM-21",
-                        finding_name="SageMaker AutoML Job Network Isolation Check",
+                        finding_name="SageMaker AutoML Job Inter-Container Traffic Encryption Check",
                         finding_details="No AutoML jobs found",
                         resolution="No action required",
                         reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_AutoMLSecurityConfig.html",
@@ -9604,14 +9734,14 @@ def check_sagemaker_automl_network_isolation(region: str = "") -> Dict[str, Any]
 
     except Exception as e:
         logger.error(
-            f"Error in check_sagemaker_automl_network_isolation: {str(e)}",
+            f"Error in check_sagemaker_automl_inter_container_encryption: {str(e)}",
             exc_info=True,
         )
         return {
             "csv_data": [
                 create_finding(
                     check_id="SM-21",
-                    finding_name="SageMaker AutoML Network Isolation Check",
+                    finding_name="SageMaker AutoML Inter-Container Traffic Encryption Check",
                     finding_details=build_could_not_assess_detail(e, region),
                     resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
@@ -11059,12 +11189,21 @@ def check_model_drift_detection(region: str = "") -> Dict[str, Any]:
                             "be detected by SageMaker. An open-source SageMaker AI "
                             "MLflow App with Evidently AI reports is not linked to an "
                             "endpoint by any SageMaker API, so that replacement path "
-                            "is not read."
+                            "is not read, and this row is advisory. "
+                            + MODEL_MONITOR_AVAILABILITY_NOTE
                         ),
-                        resolution="Configure Model Monitor with data quality, model quality, bias, and feature attribution drift monitoring for production endpoints.",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
-                        severity="Medium",
-                        status="Failed",
+                        resolution=(
+                            "If this endpoint serves a production model, monitor its "
+                            "data and model quality. Existing Model Monitor customers "
+                            "can add data quality and model quality schedules; "
+                            "otherwise use the AWS-documented replacement: the "
+                            "open-source SageMaker AI monitoring solutions, Amazon "
+                            "QuickSight dashboards and Amazon CloudWatch endpoint "
+                            "metrics and alarms."
+                        ),
+                        reference=MODEL_MONITOR_AVAILABILITY_REFERENCE,
+                        severity="Informational",
+                        status="N/A",
                         region=region,
                     )
                 )
@@ -11074,11 +11213,19 @@ def check_model_drift_detection(region: str = "") -> Dict[str, Any]:
                     create_finding(
                         check_id="SM-23",
                         finding_name="Model Drift Detection Summary",
-                        finding_details=f"Found {len(endpoints_without_monitoring)} total endpoints without drift detection (showing first 10)",
-                        resolution="Configure Model Monitor for all production endpoints",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
-                        severity="Medium",
-                        status="Failed",
+                        finding_details=(
+                            f"Found {len(endpoints_without_monitoring)} total "
+                            "endpoints without Model Monitor schedules (showing "
+                            "first 10). " + MODEL_MONITOR_AVAILABILITY_NOTE
+                        ),
+                        resolution=(
+                            "Monitor the data and model quality of each production "
+                            "endpoint with Model Monitor (existing customers) or the "
+                            "AWS-documented replacement."
+                        ),
+                        reference=MODEL_MONITOR_AVAILABILITY_REFERENCE,
+                        severity="Informational",
+                        status="N/A",
                         region=region,
                     )
                 )
@@ -11090,7 +11237,36 @@ def check_model_drift_detection(region: str = "") -> Dict[str, Any]:
                         check_id="SM-23",
                         finding_name=f"Model Drift Detection - {issue['issue']}",
                         finding_details=issue["details"],
-                        resolution="Configure comprehensive monitoring including data quality, model quality, bias drift, and feature attribution drift monitoring.",
+                        resolution=(
+                            "Add the missing data quality or model quality schedule, "
+                            "or restart the inactive schedule, for this monitored "
+                            "endpoint. " + MODEL_MONITOR_AVAILABILITY_NOTE
+                        ),
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
+                        severity="Low",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+
+            if len(monitoring_issues) > 10:
+                hidden = monitoring_issues[10:]
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-23",
+                        finding_name="Model Drift Detection - Monitoring Issues Summary",
+                        finding_details=(
+                            f"Found {len(monitoring_issues)} monitoring issues on "
+                            f"monitored endpoints (showing first 10). The other "
+                            f"{len(hidden)} affect: "
+                            + ", ".join(sorted({i["endpoint"] for i in hidden})[:20])
+                            + "."
+                        ),
+                        resolution=(
+                            "Add the missing data quality or model quality schedules, "
+                            "or restart the inactive schedules, for these monitored "
+                            "endpoints. " + MODEL_MONITOR_AVAILABILITY_NOTE
+                        ),
                         reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor.html",
                         severity="Low",
                         status="Failed",
@@ -11339,6 +11515,15 @@ def check_ab_testing_shadow_deployment(region: str = "") -> Dict[str, Any]:
         }
 
 
+MLFLOW_REFERENCE = "https://docs.aws.amazon.com/sagemaker/latest/dg/mlflow.html"
+EXPERIMENTS_CLASSIC_NOTE = (
+    "Experiment tracking with the SageMaker Experiments Python SDK is available "
+    "only in Studio Classic; AWS recommends the new Studio experience with "
+    "Amazon SageMaker AI with MLflow for experiment tracking. MLflow tracking "
+    "servers and apps are not read by this check."
+)
+
+
 def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
     """
     Check if ML Lineage Tracking is being used to track model artifacts and experiments.
@@ -11353,7 +11538,10 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
         )
 
         experiments_found = False
+        experiments_error = None
         trials_found = False
+        trials_unread = 0
+        trials_error = None
         lineage_issues = []
         lineage_assessment_error = None
 
@@ -11379,9 +11567,13 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
                             logger.warning(
                                 f"Error listing trials for experiment {experiment_name}: {str(e)}"
                             )
+                            trials_unread += 1
+                            if trials_error is None:
+                                trials_error = e
 
             except Exception as e:
                 logger.warning(f"Error listing experiments: {str(e)}")
+                experiments_error = e
 
             # Check for Model Package lineage
             try:
@@ -11457,15 +11649,58 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Error in lineage tracking check: {str(e)}")
 
-        # Generate findings
-        if not experiments_found:
+        # Generate findings. Experiments is a Studio Classic capability and AWS
+        # recommends MLflow instead, so not using it is advisory only.
+        mlflow_resolution = (
+            "Track training runs, parameters, metrics and model artifacts with "
+            "Amazon SageMaker AI with MLflow, and register the resulting models in "
+            "the SageMaker Model Registry so their lineage is recorded."
+        )
+        if experiments_error is not None:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-25",
+                    finding_name="ML Lineage Tracking - Experiments Assessment",
+                    finding_details=build_could_not_assess_detail(
+                        experiments_error, region
+                    ),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
+                    reference=MLFLOW_REFERENCE,
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+        elif not experiments_found:
             findings["csv_data"].append(
                 create_finding(
                     check_id="SM-25",
                     finding_name="ML Lineage Tracking - Experiments Not Used",
-                    finding_details="No SageMaker Experiments found. ML Lineage tracking through Experiments is not being utilized.",
-                    resolution="Implement SageMaker Experiments to track ML training runs, hyperparameters, metrics, and model artifacts. This enables reproducibility and auditability.",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/experiments.html",
+                    finding_details=(
+                        "No SageMaker Experiments found. " + EXPERIMENTS_CLASSIC_NOTE
+                    ),
+                    resolution=mlflow_resolution,
+                    reference=MLFLOW_REFERENCE,
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+        elif not trials_found and trials_unread:
+            # An unread experiment may hold trials, so absence is not proven.
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-25",
+                    finding_name="ML Lineage Tracking - Trials Assessment",
+                    finding_details=(
+                        f"SageMaker Experiments exist, but ListTrials failed for "
+                        f"{trials_unread} sampled experiment(s) and the others "
+                        "returned no trials, so whether trials exist was not "
+                        "determined. "
+                        + build_could_not_assess_detail(trials_error, region)
+                    ),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
+                    reference=MLFLOW_REFERENCE,
                     severity="Informational",
                     status="N/A",
                     region=region,
@@ -11476,11 +11711,14 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
                 create_finding(
                     check_id="SM-25",
                     finding_name="ML Lineage Tracking - No Active Trials",
-                    finding_details="SageMaker Experiments exist but no trials found. Experiments may not be actively used for tracking training runs.",
-                    resolution="Create trials within experiments to track individual training runs, their parameters, and results.",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/experiments.html",
-                    severity="Low",
-                    status="Failed",
+                    finding_details=(
+                        "SageMaker Experiments exist but no trials were found. "
+                        + EXPERIMENTS_CLASSIC_NOTE
+                    ),
+                    resolution=mlflow_resolution,
+                    reference=MLFLOW_REFERENCE,
+                    severity="Informational",
+                    status="N/A",
                     region=region,
                 )
             )
@@ -14629,9 +14867,7 @@ CREATION_PROBE_PARTITIONS = ("aws", "aws-cn", "aws-us-gov")
 # AIR-SGM-EP-08: the batch transform path. A transform job takes its network
 # posture from its model, so these two actions carry the whole guardrail.
 BATCH_CREATION_GUARDRAIL_FINDING = "SageMaker Batch Transform Creation Guardrail"
-BATCH_CREATION_GUARDRAIL_REFERENCE = (
-    "https://docs.aws.amazon.com/sagemaker/latest/dg/batch-vpc.html"
-)
+BATCH_CREATION_GUARDRAIL_REFERENCE = "https://docs.aws.amazon.com/sagemaker/latest/dg/security_iam_id-based-policy-examples.html#sagemaker-condition-examples"
 SAGEMAKER_BATCH_CREATE_ACTIONS = (
     "sagemaker:CreateModel",
     "sagemaker:CreateTransformJob",
@@ -16681,11 +16917,197 @@ AI_SECURITY_STANDARD_RESOLUTION = (
 
 
 CENTRAL_CONFIGURATION_FINDING = "Security Hub Central Configuration"
+# Security Hub CSPM declarative policies in AWS Organizations replace central
+# configuration as the recommended way to manage Security Hub CSPM across an
+# organization; the two are mutually exclusive.
 CENTRAL_CONFIGURATION_REFERENCE = (
     "https://docs.aws.amazon.com/securityhub/latest/userguide/"
-    "central-configuration-intro.html"
+    "accounts-orgs-policies.html"
 )
 SELF_MANAGED_CONFIGURATION_POLICY_ID = "SELF_MANAGED_SECURITY_HUB"
+# The Organizations policy type that governs Security Hub CSPM enablement and
+# standards. SECURITYHUB_POLICY is the Security Hub (not CSPM) type and carries
+# no standards. botocore does not validate the enum client-side, so an older
+# bundled model still sends this value.
+SECURITY_HUB_CSPM_POLICY_TYPE = "SECURITYHUB_CSPM_POLICY"
+# Standard identifiers as a Security Hub CSPM policy lists them in
+# enabled_standards (the standard ARN without its "standards/" prefix).
+AI_SECURITY_POLICY_STANDARD = "ai-security-best-practices/v/1.0.0"
+FSBP_POLICY_STANDARD_PREFIX = "aws-foundational-security-best-practices/"
+SECURITY_HUB_POLICY_RESOLUTION = (
+    "From the AWS Organizations management account or the delegated "
+    "administrator, attach a Security Hub CSPM policy (policy type "
+    f"{SECURITY_HUB_CSPM_POLICY_TYPE}) to the root, OU or account that enables "
+    "Security Hub CSPM in this region and lists both "
+    f"{AI_SECURITY_POLICY_STANDARD} and "
+    "aws-foundational-security-best-practices/v/1.0.0 in enabled_standards. "
+    "Declarative policies replace Security Hub central configuration, which is "
+    "a legacy feature."
+)
+
+
+def _policy_value(node: Any) -> Any:
+    """The value of an effective-policy leaf, with or without its operator."""
+    if isinstance(node, dict):
+        for operator in ("@@assign", "@@append"):
+            if operator in node:
+                return node[operator]
+        return None
+    return node
+
+
+def _security_hub_effective_policy() -> Dict[str, Any]:
+    """Read this account's effective Security Hub CSPM policy.
+
+    Returns state "present" with the parsed content, "absent" when the account
+    has no effective policy of the type, "no_org" outside an organization, or
+    "unread" with the error.
+    """
+    try:
+        response = boto3.client(
+            "organizations", config=boto3_config
+        ).describe_effective_policy(PolicyType=SECURITY_HUB_CSPM_POLICY_TYPE)
+    except ClientError as error:
+        code = error.response.get("Error", {}).get("Code", "")
+        if code == "EffectivePolicyNotFoundException":
+            return {"state": "absent"}
+        if code == "AWSOrganizationsNotInUseException":
+            return {"state": "no_org"}
+        return {"state": "unread", "error": error}
+    except Exception as error:
+        return {"state": "unread", "error": error}
+    try:
+        content = json.loads((response.get("EffectivePolicy") or {})["PolicyContent"])
+        if not isinstance(content, dict):
+            raise ValueError("effective policy content is not a JSON object")
+    except Exception as error:
+        return {"state": "unread", "error": error}
+    return {"state": "present", "content": content}
+
+
+def _security_hub_policy_finding(region: str, content: Dict[str, Any], row, prefix):
+    """SM-36: judge an effective Security Hub CSPM policy for this region."""
+    cspm = content.get("securityhub_cspm") or {}
+    enablement = cspm.get("cspm_enablement") or {}
+
+    def _regions(key):
+        value = _policy_value(enablement.get(key))
+        return [str(item) for item in value] if isinstance(value, list) else []
+
+    enabled_in = _regions("enable_in_regions")
+    disabled_in = _regions("disable_in_regions")
+    governed = (
+        f"{prefix}This account's effective Security Hub CSPM policy "
+        f"({SECURITY_HUB_CSPM_POLICY_TYPE}) "
+    )
+    if region in disabled_in or "ALL_SUPPORTED" in disabled_in:
+        return row(
+            governed + f"disables Security Hub CSPM in {region} (disable_in_regions "
+            "takes precedence over enable_in_regions), so no standard is enforced "
+            "here.",
+            SECURITY_HUB_POLICY_RESOLUTION,
+            "Medium",
+            "Failed",
+        )
+    if region not in enabled_in and "ALL_SUPPORTED" not in enabled_in:
+        return row(
+            governed + f"does not list {region} in enable_in_regions, so the "
+            "region is ungoverned and nothing enforces the AI Security Best "
+            "Practices standard here.",
+            SECURITY_HUB_POLICY_RESOLUTION,
+            "Medium",
+            "Failed",
+        )
+    controls = cspm.get("cspm_standards_controls") or {}
+    scope = region if isinstance(controls.get(region), dict) else "default"
+    configuration = controls.get(scope) or {}
+    standards = _policy_value(configuration.get("enabled_standards"))
+    standards = [str(item) for item in standards] if isinstance(standards, list) else []
+    missing = []
+    if not any(AI_SECURITY_POLICY_STANDARD in item for item in standards):
+        missing.append("AI Security Best Practices v1.0.0")
+    if not any(FSBP_POLICY_STANDARD_PREFIX in item for item in standards):
+        missing.append("AWS Foundational Security Best Practices")
+    source = (
+        f"the {region} regional override"
+        if scope == region
+        else "the default standards configuration"
+    )
+    if missing:
+        return row(
+            governed + f"enables Security Hub CSPM in {region}, but {source} "
+            f"does not list {' or '.join(missing)} among its {len(standards)} "
+            "enabled standard(s), so the policy does not enforce the AI posture "
+            "standards on this account.",
+            SECURITY_HUB_POLICY_RESOLUTION,
+            "Medium",
+            "Failed",
+        )
+    controls_configuration = configuration.get("controls_configuration") or {}
+    association = str(
+        _policy_value(controls_configuration.get("default_control_association_status"))
+        or ""
+    ).upper()
+
+    def _control_ids(key):
+        value = _policy_value(controls_configuration.get(key))
+        return [str(item) for item in value] if isinstance(value, list) else []
+
+    standards_on = (
+        governed + f"enables Security Hub CSPM in {region}, and {source} enables "
+        "the AI Security Best Practices v1.0.0 and AWS Foundational Security Best "
+        "Practices standards"
+    )
+    if association == "DISABLED":
+        # Only enabled_controls run; disabled_controls is not allowed here.
+        enabled_controls = _control_ids("enabled_controls")
+        if not enabled_controls:
+            return row(
+                standards_on + ", but sets default_control_association_status "
+                "DISABLED with no enabled_controls, so no control of those "
+                "standards runs.",
+                SECURITY_HUB_POLICY_RESOLUTION,
+                "Medium",
+                "Failed",
+            )
+        return row(
+            standards_on + ", but sets default_control_association_status DISABLED, "
+            f"so only its {len(enabled_controls)} enabled_controls run "
+            f"({', '.join(enabled_controls[:10])}"
+            f"{', ...' if len(enabled_controls) > 10 else ''}). Whether they cover "
+            "the AI Security Best Practices controls was not judged.",
+            "Confirm that the policy's enabled_controls include the AI Security "
+            "Best Practices controls, or set default_control_association_status "
+            "to ENABLED.",
+            "Informational",
+            "N/A",
+        )
+    if association != "ENABLED":
+        return row(
+            standards_on + ", but default_control_association_status, a required "
+            f"field, is {association or 'not returned'}, so whether the standards' "
+            "controls run was not determined.",
+            COULD_NOT_ASSESS_RESOLUTION,
+            "Informational",
+            "N/A",
+            name=f"{CENTRAL_CONFIGURATION_FINDING} Incomplete",
+        )
+    disabled_controls = _control_ids("disabled_controls")
+    exceptions = (
+        f" It disables {len(disabled_controls)} control(s) "
+        f"({', '.join(disabled_controls[:10])}"
+        f"{', ...' if len(disabled_controls) > 10 else ''}); those exceptions were "
+        "not judged against the AI standard."
+        if disabled_controls
+        else " It disables no controls."
+    )
+    return row(
+        standards_on + " with default_control_association_status ENABLED, so "
+        "their controls run." + exceptions,
+        "No action required",
+        "Medium",
+        "Passed",
+    )
 
 
 def _central_configuration_association_finding(region: str, row) -> Dict[str, Any]:
@@ -16821,7 +17243,8 @@ def _central_configuration_association_finding(region: str, row) -> Dict[str, An
 
 
 def _security_hub_central_configuration_finding(region: str) -> Dict[str, Any]:
-    """SM-36: Security Hub standards are enforced org-wide only under CENTRAL."""
+    """SM-36: Security Hub standards are enforced org-wide by a Security Hub CSPM
+    declarative policy, or by legacy central configuration (CENTRAL)."""
 
     def _row(details, resolution, severity, status, name=CENTRAL_CONFIGURATION_FINDING):
         return create_finding(
@@ -16841,11 +17264,33 @@ def _security_hub_central_configuration_finding(region: str) -> Dict[str, Any]:
             "OrganizationConfiguration", {}
         )
     except Exception as error:
+        # Outside the Security Hub delegated administrator the organization
+        # configuration is not readable, but any account can read its own
+        # effective Security Hub CSPM policy.
+        policy = _security_hub_effective_policy()
+        if policy["state"] == "present":
+            return _security_hub_policy_finding(
+                region, policy["content"], _row, prefix=""
+            )
+        policy_note = {
+            "absent": (
+                " This account has no effective Security Hub CSPM policy "
+                f"({SECURITY_HUB_CSPM_POLICY_TYPE}) in AWS Organizations."
+            ),
+            "no_org": " This account is not a member of an AWS organization.",
+        }.get(
+            policy["state"],
+            " The account's effective Security Hub CSPM policy was not read "
+            "either: organizations:DescribeEffectivePolicy failed ("
+            f"{get_assessment_error_label(policy.get('error'))}).",
+        )
         return _row(
             "Security Hub central configuration was not read: "
             "DescribeOrganizationConfiguration failed. It can be called from the "
             "Security Hub delegated administrator account, so a run in any other "
-            "account cannot read it. " + build_could_not_assess_detail(error, region),
+            "account cannot read it. "
+            + build_could_not_assess_detail(error, region)
+            + policy_note,
             COULD_NOT_ASSESS_RESOLUTION,
             "Informational",
             "N/A",
@@ -16864,15 +17309,42 @@ def _security_hub_central_configuration_finding(region: str) -> Dict[str, Any]:
             "Medium",
             "Failed",
         )
+    local = (
+        f"Security Hub uses ConfigurationType {configuration_type or 'not returned'} "
+        "(central configuration is not in use). "
+    )
+    policy = _security_hub_effective_policy()
+    if policy["state"] == "present":
+        return _security_hub_policy_finding(
+            region, policy["content"], _row, prefix=local
+        )
+    if policy["state"] == "absent":
+        return _row(
+            local + "This account also has no effective Security Hub CSPM policy "
+            f"({SECURITY_HUB_CSPM_POLICY_TYPE}) in AWS Organizations, so each "
+            "account and region enables its own standards and nothing enforces "
+            "the AI Security Best Practices standard across the organization.",
+            SECURITY_HUB_POLICY_RESOLUTION,
+            "Medium",
+            "Failed",
+        )
+    if policy["state"] == "no_org":
+        return _row(
+            local + "AWS Organizations reports this account is not a member of an "
+            "organization, so no organization-wide Security Hub configuration "
+            "applies.",
+            "No action required.",
+            "Informational",
+            "N/A",
+        )
     return _row(
-        f"Security Hub uses ConfigurationType {configuration_type or 'not returned'}, "
-        "so each account and region enables its own standards and nothing "
-        "enforces the AI Security Best Practices standard across the organization.",
-        "From the Security Hub delegated administrator, turn on central "
-        "configuration and associate a configuration policy that enables the AI "
-        "Security Best Practices standard with every AI workload account.",
-        "Medium",
-        "Failed",
+        local + "Whether a Security Hub CSPM declarative policy governs this "
+        "account was not read: organizations:DescribeEffectivePolicy failed. "
+        + build_could_not_assess_detail(policy["error"], region),
+        COULD_NOT_ASSESS_RESOLUTION,
+        "Informational",
+        "N/A",
+        name=f"{CENTRAL_CONFIGURATION_FINDING} Incomplete",
     )
 
 
@@ -17111,7 +17583,7 @@ def check_guardduty_lambda_network_logs(
 
 ENDPOINT_FLOW_LOG_ALERTING_FINDING = "SageMaker Endpoint Network Anomaly Alerting"
 ENDPOINT_FLOW_LOG_ALERTING_REFERENCE = (
-    "https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs-cwl.html"
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/MonitoringLogData.html"
 )
 ENDPOINT_FLOW_LOG_ALERTING_RESOLUTION = (
     "Publish VPC Flow Logs (traffic type ALL or ACCEPT) for every VPC or subnet "
@@ -19282,6 +19754,9 @@ LAMBDA_RUNTIME_TIER_FINDING = "Lambda Runtime Detection Tier"
 LAMBDA_RUNTIME_TIER_REFERENCE = (
     "https://docs.aws.amazon.com/inspector/latest/user/scanning-lambda.html"
 )
+LAMBDA_PROTECTION_REFERENCE = (
+    "https://docs.aws.amazon.com/guardduty/latest/ug/lambda-protection.html"
+)
 RUNTIME_UNSUPPORTED_NOTE = (
     "EKS on Fargate, EKS Hybrid Nodes and ECS Managed Instances are not "
     "supported by Runtime Monitoring and fall to task- and network-level "
@@ -20101,7 +20576,11 @@ def _lambda_runtime_tier_findings(
                     "selector over arn:aws:lambda with ReadWriteType All, on a "
                     "logging trail or event data store."
                 ),
-                reference=LAMBDA_RUNTIME_TIER_REFERENCE,
+                reference=(
+                    LAMBDA_PROTECTION_REFERENCE
+                    if problem.startswith("GuardDuty Lambda Protection")
+                    else LAMBDA_RUNTIME_TIER_REFERENCE
+                ),
                 severity="Medium",
                 status="Failed",
                 region=region,
@@ -25453,12 +25932,13 @@ IOT_THING_VARIABLE_PATTERN = re.compile(
 )
 IOT_UNIQUE_CERTIFICATE_FINDING = "AWS IoT Unique Device Certificate"
 IOT_UNIQUE_CERTIFICATE_REFERENCE = (
-    "https://docs.aws.amazon.com/iot/latest/developerguide/x509-client-certs.html"
+    "https://docs.aws.amazon.com/iot-device-defender/latest/devguide/"
+    "audit-chk-device-cert-shared.html"
 )
 IOT_AUDIT_FINDING = "AWS IoT Device Defender Audit"
 IOT_AUDIT_REFERENCE = (
     "https://docs.aws.amazon.com/iot-device-defender/latest/devguide/"
-    "device-defender-audit.html"
+    "audit-chk-device-cert-shared.html"
 )
 IOT_SHARED_CERTIFICATE_CHECK = "DEVICE_CERTIFICATE_SHARED_CHECK"
 IOT_ROLE_ALIAS_FINDING = "AWS IoT Role Alias Device Scope"
@@ -26620,7 +27100,7 @@ def lambda_handler(event, context):
         run("SM-18", check_sagemaker_transform_job_encryption, region=region)
         run("SM-19", check_sagemaker_hyperparameter_tuning_encryption, region=region)
         run("SM-20", check_sagemaker_compilation_job_encryption, region=region)
-        run("SM-21", check_sagemaker_automl_network_isolation, region=region)
+        run("SM-21", check_sagemaker_automl_inter_container_encryption, region=region)
         # Model Governance Checks
         run("SM-22", check_model_approval_workflow, region=region)
         run("SM-23", check_model_drift_detection, region=region)
