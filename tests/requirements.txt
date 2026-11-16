@@ -9,6 +9,9 @@ botocore==1.43.108
 # against a pydantic major the deployed function forbids.
 pydantic>=2.0.0,<3.0.0
 beautifulsoup4==4.13.4
+# Transitive via requests/moto. Floor excludes the bundles that shipped the
+# compromised emSign root CAs (GHSA-6q48-6c7w-9gw2).
+certifi>=2026.10.18
 ripgrep>=15.1.0
 # Imported directly by tests/test_legacy_contracts.py to parse the SAM and
 # deployment CloudFormation templates. Available transitively via moto[all],

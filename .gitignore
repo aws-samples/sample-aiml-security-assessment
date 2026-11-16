@@ -49,3 +49,4 @@ tmp/
 .ash/
 .coverage
 design-plans/
+.protoshield/
