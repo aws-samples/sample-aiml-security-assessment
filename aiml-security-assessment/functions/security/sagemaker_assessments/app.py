@@ -198,6 +198,38 @@ def _run_check_safely(
         }
 
 
+def _check_error_result(
+    check_id: str, check_name: str, error: Exception, row_region: str
+) -> Dict[str, Any]:
+    """A check's outer-error result: one visible N/A row instead of no rows.
+
+    A check that catches its own unexpected exception would otherwise return
+    empty csv_data, which generate_csv_report skips, dropping the check from
+    the artifact without the incomplete row _run_check_safely gives a raise.
+    """
+    return {
+        "check_name": check_name,
+        "status": "ERROR",
+        "details": f"Error during check: {error}",
+        "csv_data": [
+            create_finding(
+                check_id=check_id,
+                finding_name=f"{check_name} Incomplete",
+                finding_details=(
+                    f"{check_name} stopped on an unexpected error, so its "
+                    f"{check_id} rows are not reported. "
+                    + build_could_not_assess_detail(error, row_region)
+                ),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
+                reference=CHECK_INCOMPLETE_REFERENCE,
+                severity="Informational",
+                status="N/A",
+                region=row_region,
+            )
+        ],
+    }
+
+
 def _timeout_finding(
     check_id: str, row_region: str, names: List[str]
 ) -> Dict[str, Any]:
@@ -2813,12 +2845,9 @@ def check_sagemaker_iam_permissions(
         logger.error(
             f"Error in check_sagemaker_iam_permissions: {str(e)}", exc_info=True
         )
-        return {
-            "check_name": "SageMaker IAM Permissions Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
-        }
+        return _check_error_result(
+            "SM-02", "SageMaker IAM Permissions Check", e, region
+        )
 
 
 def check_sagemaker_sso_configuration(region: str = "") -> Dict[str, Any]:
@@ -2918,12 +2947,9 @@ def check_sagemaker_sso_configuration(region: str = "") -> Dict[str, Any]:
         logger.error(
             f"Error in check_sagemaker_sso_configuration: {str(e)}", exc_info=True
         )
-        return {
-            "check_name": "SageMaker SSO Configuration Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
-        }
+        return _check_error_result(
+            "SM-02", "SageMaker SSO Configuration Check", e, region
+        )
 
 
 def has_sagemaker_permissions(policy_doc: Dict) -> bool:
@@ -4195,12 +4221,9 @@ def check_sagemaker_mlops_utilization(
         logger.error(
             f"Error in check_sagemaker_mlops_utilization: {str(e)}", exc_info=True
         )
-        return {
-            "check_name": "SageMaker MLOps Features Utilization Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
-        }
+        return _check_error_result(
+            "SM-05", "SageMaker MLOps Features Utilization Check", e, region
+        )
 
 
 def get_resolution_for_component(component: str) -> str:
@@ -4401,12 +4424,7 @@ def check_sagemaker_clarify_usage(permission_cache, region: str = "") -> Dict[st
 
     except Exception as e:
         logger.error(f"Error in check_sagemaker_clarify_usage: {str(e)}", exc_info=True)
-        return {
-            "check_name": "SageMaker Clarify Usage Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
-        }
+        return _check_error_result("SM-06", "SageMaker Clarify Usage Check", e, region)
 
 
 MODEL_MONITOR_AVAILABILITY_REFERENCE = (
@@ -4543,12 +4561,9 @@ def check_sagemaker_model_monitor_usage(
         logger.error(
             f"Error in check_sagemaker_model_monitor_usage: {str(e)}", exc_info=True
         )
-        return {
-            "check_name": "SageMaker Model Monitor Usage Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
-        }
+        return _check_error_result(
+            "SM-07", "SageMaker Model Monitor Usage Check", e, region
+        )
 
 
 NOTEBOOK_ROOT_REFERENCE = (
@@ -11911,12 +11926,7 @@ def check_model_registry_usage(
 
     except Exception as e:
         logger.error(f"Error in check_model_registry_usage: {str(e)}", exc_info=True)
-        return {
-            "check_name": "Model Registry Usage Check",
-            "status": "ERROR",
-            "details": f"Error during check: {str(e)}",
-            "csv_data": [],
-        }
+        return _check_error_result("SM-08", "Model Registry Usage Check", e, region)
 
 
 def check_hyperpod_ebs_cmk_encryption(
@@ -16986,30 +16996,43 @@ def _security_hub_effective_policy() -> Dict[str, Any]:
 
 
 def _ai_standard_control_ids(region: str):
-    """SM-36: the SecurityControlIds of the AI Security Best Practices standard.
+    """SM-36: the AI Security Best Practices controls available in this region.
 
-    Returns (ids, None), or (None, error) when the list was not read or came
-    back empty, so the caller cannot judge which AI controls run.
+    Returns (ids, unavailable, None), where ids holds the SecurityControlIds
+    whose CurrentRegionAvailability is not UNAVAILABLE and unavailable holds
+    the rest; a control that cannot run here is out of scope, not off. Returns
+    (None, None, error) when the list was not read or came back empty, so the
+    caller cannot judge which AI controls run.
     """
     try:
         partition = boto3.session.Session().get_partition_for_region(region)
         client = boto3.client("securityhub", config=boto3_config, region_name=region)
         ids = set()
+        unavailable = set()
         for page in client.get_paginator("list_security_control_definitions").paginate(
             StandardsArn=(
                 f"arn:{partition}:securityhub:{region}::{AI_SECURITY_STANDARD_ARN_FRAGMENT}"
             )
         ):
             for definition in page.get("SecurityControlDefinitions", []):
-                if definition.get("SecurityControlId"):
-                    ids.add(str(definition["SecurityControlId"]))
+                if not definition.get("SecurityControlId"):
+                    continue
+                control_id = str(definition["SecurityControlId"])
+                if definition.get("CurrentRegionAvailability") == "UNAVAILABLE":
+                    unavailable.add(control_id)
+                else:
+                    ids.add(control_id)
     except Exception as error:
-        return None, error
-    if not ids:
-        return None, ValueError(
-            "ListSecurityControlDefinitions returned no controls for the standard"
+        return None, None, error
+    if not ids and not unavailable:
+        return (
+            None,
+            None,
+            ValueError(
+                "ListSecurityControlDefinitions returned no controls for the standard"
+            ),
         )
-    return ids, None
+    return ids, unavailable, None
 
 
 def _ai_control_coverage_finding(
@@ -17028,7 +17051,7 @@ def _ai_control_coverage_finding(
     list), False when every control but the listed ones runs (a disabled list).
     Passed needs every AI control to run; none running fails; some is advisory.
     """
-    ai_ids, error = _ai_standard_control_ids(region)
+    ai_ids, unavailable, error = _ai_standard_control_ids(region)
     listed_text = ", ".join(listed[:10]) + (", ..." if len(listed) > 10 else "")
     if ai_ids is None:
         return row(
@@ -17042,14 +17065,31 @@ def _ai_control_coverage_finding(
             "N/A",
             name=f"{CENTRAL_CONFIGURATION_FINDING} Incomplete",
         )
+    if not ai_ids:
+        return row(
+            standards_on + f", and its {exceptions_field} lists {len(listed)} "
+            f"control(s) ({listed_text}), but none of the {len(unavailable)} AI "
+            "Security Best Practices controls is available in this region "
+            "(CurrentRegionAvailability UNAVAILABLE), so no AI control can run "
+            "here.",
+            "Review AI posture coverage in a region where the AI Security Best "
+            "Practices controls are available.",
+            "Informational",
+            "N/A",
+        )
     listed_set = set(listed)
     running = ai_ids & listed_set if listed_are_enabled else ai_ids - listed_set
     off = sorted(ai_ids - running)
+    excluded = (
+        f" ({len(unavailable)} control(s) unavailable in this region are out of scope)"
+        if unavailable
+        else ""
+    )
     if not off:
         return row(
             standards_on + f", and all {len(ai_ids)} AI Security Best Practices "
-            f"controls run; its {exceptions_field} ({listed_text}) leaves none of "
-            "them off.",
+            f"controls available in this region run{excluded}; its "
+            f"{exceptions_field} ({listed_text}) leaves none of them off.",
             "No action required",
             "Medium",
             "Passed",
@@ -17058,16 +17098,16 @@ def _ai_control_coverage_finding(
     if not running:
         return row(
             standards_on + f", but its {exceptions_field} leaves all "
-            f"{len(ai_ids)} AI Security Best Practices controls off ({off_text}), "
-            "so the AI standard evaluates nothing.",
+            f"{len(ai_ids)} AI Security Best Practices controls off ({off_text})"
+            f"{excluded}, so the AI standard evaluates nothing.",
             fix,
             "Medium",
             "Failed",
         )
     return row(
         standards_on + f", and {len(running)} of {len(ai_ids)} AI Security Best "
-        f"Practices controls run; its {exceptions_field} leaves {len(off)} off "
-        f"({off_text}).",
+        f"Practices controls run{excluded}; its {exceptions_field} leaves "
+        f"{len(off)} off ({off_text}).",
         "Confirm that each AI Security Best Practices control left off is a "
         "documented exception, or turn it on in the policy.",
         "Informational",

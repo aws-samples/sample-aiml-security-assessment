@@ -483,7 +483,13 @@ back `Passed` names what it could not read.
   none running fails, and some running is `N/A`/Informational naming the
   controls left off. `default_control_association_status` `DISABLED` with no
   `enabled_controls` fails, and a missing status or unreadable control list is
-  `N/A` incomplete.
+  `N/A` incomplete. AI controls whose `CurrentRegionAvailability` is
+  `UNAVAILABLE` are out of scope rather than counted as off, and a region where
+  none is available is an `N/A`/Informational availability row.
+- SM-02 (IAM permissions and SSO configuration), SM-05, SM-06, SM-07 and SM-08
+  no longer drop out of the findings CSV when the check stops on an unexpected
+  error. Each now reports one `N/A`/Informational `... Incomplete` row naming
+  the error type.
 - SM-21 no longer reports a `ListAutoMLJobs` failure as `No AutoML jobs found`
   or passes when some `DescribeAutoMLJob` calls failed; the unread jobs are
   named in an `N/A` incomplete row. SM-25 no longer says experiments have no

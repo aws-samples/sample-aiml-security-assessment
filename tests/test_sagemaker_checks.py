@@ -9,6 +9,8 @@ Each check is tested for:
 - Output schema validity
 """
 
+import csv
+import io
 import sys
 import os
 import importlib.util
@@ -1458,8 +1460,7 @@ class TestSM05MLOps:
         check = sagemaker_app.check_sagemaker_mlops_utilization
         mock_client.side_effect = Exception("MLOps error")
         result = check(empty_permission_cache)
-        # SM-05 returns empty csv_data on outer exception but sets status=ERROR
-        assert result.get("status") == "ERROR" or result.get("csv_data") is not None
+        _assert_outer_error_row(result, "SM-05", "MLOps error")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm05_schema_valid(self, mock_client, empty_permission_cache):
@@ -1509,6 +1510,45 @@ class TestSM05MLOps:
         )
 
 
+def _assert_outer_error_row(result, check_id, message, region=""):
+    """An outer exception leaves one visible N/A row, not an empty CSV."""
+    rows = extract_csv_data(result)
+    assert len(rows) == 1
+    row = rows[0]
+    assert_finding_schema(row)
+    assert row["Check_ID"] == check_id
+    assert (row["Status"], row["Severity"]) == ("N/A", "Informational")
+    assert row["Finding"].endswith("Incomplete")
+    # The detail names the exception type, never its message.
+    assert "Assessment error: Exception" in row["Finding_Details"]
+    assert message not in row["Finding_Details"]
+    assert row["Region"] == region
+    csv_rows = list(
+        csv.DictReader(io.StringIO(sagemaker_app.generate_csv_report([result])))
+    )
+    assert [r["Check_ID"] for r in csv_rows] == [check_id]
+
+
+class TestOuterErrorsStayVisible:
+    """SM-02 checks that catch their own error still emit a row."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm02_iam_permissions_outer_error(self, mock_client):
+        cache = MagicMock()
+        cache.get.side_effect = Exception("IAM cache error")
+        cache.__getitem__.side_effect = Exception("IAM cache error")
+        result = sagemaker_app.check_sagemaker_iam_permissions(
+            cache, region="us-east-1"
+        )
+        _assert_outer_error_row(result, "SM-02", "IAM cache error", "us-east-1")
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm02_sso_configuration_outer_error(self, mock_client):
+        mock_client.side_effect = Exception("SSO error")
+        result = sagemaker_app.check_sagemaker_sso_configuration(region="us-east-1")
+        _assert_outer_error_row(result, "SM-02", "SSO error", "us-east-1")
+
+
 # ===================================================================
 # SM-06: check_sagemaker_clarify_usage
 # ===================================================================
@@ -1535,7 +1575,7 @@ class TestSM06Clarify:
         check = sagemaker_app.check_sagemaker_clarify_usage
         mock_client.side_effect = Exception("Clarify error")
         result = check(empty_permission_cache)
-        assert result.get("status") == "ERROR" or result.get("csv_data") is not None
+        _assert_outer_error_row(result, "SM-06", "Clarify error")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm06_schema_valid(self, mock_client, empty_permission_cache):
@@ -1576,7 +1616,7 @@ class TestSM07ModelMonitor:
         check = sagemaker_app.check_sagemaker_model_monitor_usage
         mock_client.side_effect = Exception("Monitor error")
         result = check(empty_permission_cache)
-        assert result.get("status") == "ERROR" or result.get("csv_data") is not None
+        _assert_outer_error_row(result, "SM-07", "Monitor error")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm07_schema_valid(self, mock_client, empty_permission_cache):
@@ -1619,7 +1659,7 @@ class TestSM08ModelRegistry:
         check = sagemaker_app.check_model_registry_usage
         mock_client.side_effect = Exception("Registry error")
         result = check(empty_permission_cache)
-        assert result.get("status") == "ERROR" or result.get("csv_data") is not None
+        _assert_outer_error_row(result, "SM-08", "Registry error")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm08_schema_valid(self, mock_client, empty_permission_cache):
@@ -10336,7 +10376,13 @@ class TestSM36SecurityHubAIStandard:
             return [
                 {
                     "SecurityControlDefinitions": [
-                        {"SecurityControlId": c} for c in ai_controls
+                        {
+                            "SecurityControlId": c if isinstance(c, str) else c[0],
+                            "CurrentRegionAvailability": (
+                                "AVAILABLE" if isinstance(c, str) else c[1]
+                            ),
+                        }
+                        for c in ai_controls
                     ]
                 }
             ]
@@ -10520,7 +10566,7 @@ class TestSM36SecurityHubAIStandard:
                 },
                 "Passed",
                 "Medium",
-                "all 3 AI Security Best Practices controls run",
+                "all 3 AI Security Best Practices controls available in this region run",
             ),
             (
                 {
@@ -10548,7 +10594,7 @@ class TestSM36SecurityHubAIStandard:
                 },
                 "Passed",
                 "Medium",
-                "all 3 AI Security Best Practices controls run",
+                "all 3 AI Security Best Practices controls available in this region run",
             ),
             (
                 {
@@ -10602,6 +10648,72 @@ class TestSM36SecurityHubAIStandard:
         assert row["Finding"].endswith("Incomplete")
         assert "ListSecurityControlDefinitions" in row["Finding_Details"]
         assert "S3.1" in row["Finding_Details"]
+
+    UNAVAILABLE_AI3 = ("AI.1", "AI.2", ("AI.3", "UNAVAILABLE"))
+
+    @pytest.mark.parametrize(
+        ("controls_configuration", "status", "text"),
+        [
+            # The enabled list covers every available control; AI.3 cannot run.
+            (
+                {
+                    "default_control_association_status": "DISABLED",
+                    "enabled_controls": ["AI.1", "AI.2"],
+                },
+                "Passed",
+                "all 2 AI Security Best Practices controls available in this "
+                "region run (1 control(s) unavailable in this region are out of "
+                "scope)",
+            ),
+            # Disabling only the unavailable control leaves nothing off.
+            (
+                {
+                    "default_control_association_status": "ENABLED",
+                    "disabled_controls": ["AI.3"],
+                },
+                "Passed",
+                "all 2 AI Security Best Practices controls available in this region run",
+            ),
+            # The unavailable control does not count as running.
+            (
+                {
+                    "default_control_association_status": "ENABLED",
+                    "disabled_controls": ["AI.1"],
+                },
+                "N/A",
+                "1 of 2 AI Security Best Practices controls run (1 control(s) "
+                "unavailable in this region are out of scope); its "
+                "disabled_controls leaves 1 off (AI.1)",
+            ),
+        ],
+    )
+    @patch("sagemaker_app.boto3.client")
+    def test_region_unavailable_ai_controls_are_out_of_scope(
+        self, mock_client, controls_configuration, status, text
+    ):
+        row = self._controls(
+            mock_client, controls_configuration, ai_controls=self.UNAVAILABLE_AI3
+        )
+        assert row["Status"] == status
+        assert text in row["Finding_Details"]
+        assert "AI.3" not in row["Finding_Details"].split("leaves")[-1]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_every_ai_control_unavailable_is_an_availability_row(self, mock_client):
+        row = self._controls(
+            mock_client,
+            {
+                "default_control_association_status": "DISABLED",
+                "enabled_controls": ["IAM.7"],
+            },
+            ai_controls=(("AI.1", "UNAVAILABLE"), ("AI.2", "UNAVAILABLE")),
+        )
+        assert (row["Status"], row["Severity"]) == ("N/A", "Informational")
+        assert not row["Finding"].endswith("Incomplete")
+        assert (
+            "none of the 2 AI Security Best Practices controls is available"
+            in (row["Finding_Details"])
+        )
 
     @patch("sagemaker_app.boto3.client")
     def test_policy_with_no_control_exceptions_passes_without_listing_controls(
@@ -10843,7 +10955,7 @@ class TestSM36SecurityHubAIStandard:
             (
                 {"EnabledSecurityControlIdentifiers": ["AI.1", "AI.2", "AI.3"]},
                 "Passed",
-                "all 3 AI Security Best Practices controls run",
+                "all 3 AI Security Best Practices controls available in this region run",
             ),
             (
                 {"EnabledSecurityControlIdentifiers": []},
