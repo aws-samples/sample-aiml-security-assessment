@@ -475,12 +475,15 @@ back `Passed` names what it could not read.
   and AWS Foundational Security Best Practices standards. It no longer
   recommends turning on central configuration, and member accounts under a
   policy are judged instead of reported `N/A`.
-- SM-36 no longer passes a Security Hub CSPM policy that enables the AI and
-  Foundational standards but turns their controls off.
-  `default_control_association_status` `DISABLED` with no `enabled_controls`
-  fails; with `enabled_controls` it is `N/A`/Informational naming them; a
-  missing status is `N/A` incomplete. A passing row names any
-  `disabled_controls`.
+- SM-36 no longer passes a Security Hub CSPM policy or central configuration
+  policy that enables the AI and Foundational standards but turns their
+  controls off. It reads the AI Security Best Practices controls with
+  `securityhub:ListSecurityControlDefinitions` and judges the policy's enabled
+  or disabled control list against them: every AI control running passes,
+  none running fails, and some running is `N/A`/Informational naming the
+  controls left off. `default_control_association_status` `DISABLED` with no
+  `enabled_controls` fails, and a missing status or unreadable control list is
+  `N/A` incomplete.
 - SM-21 no longer reports a `ListAutoMLJobs` failure as `No AutoML jobs found`
   or passes when some `DescribeAutoMLJob` calls failed; the unread jobs are
   named in an `N/A` incomplete row. SM-25 no longer says experiments have no
@@ -619,13 +622,16 @@ back `Passed` names what it could not read.
   OWASP assessment Lambdas changed, and both SAM templates add
   `organizations:DescribeEffectivePolicy` (bounded to
   `organizations:PolicyType` `SECURITYHUB_CSPM_POLICY`) to the SageMaker
-  function's managed policy for SM-36. Single-account: start CodeBuild with
+  function's managed policy for SM-36, plus
+  `securityhub:ListSecurityControlDefinitions` on `*` (the action has no
+  resource type). Single-account: start CodeBuild with
   this revision, or redeploy `template.yaml` for direct SAM deployments.
   Multi-account: start CodeBuild with this revision so each member account's
   assessment stack is redeployed, or redeploy `template-multi-account.yaml`
   directly. No member-role StackSet or central infrastructure update is
   required. Until the SAM stack is updated, SM-36 reads as `N/A` Incomplete
-  outside central configuration.
+  outside central configuration, and for any policy whose control list it
+  must judge.
 - **Service selection:** Update `deployment/aiml-security-single-account.yaml`
   for single-account deployments or `deployment/2-aiml-security-codebuild.yaml`
   for multi-account central infrastructure, set the desired service switches,

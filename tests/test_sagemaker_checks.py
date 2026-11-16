@@ -10324,8 +10324,23 @@ class TestSM36SecurityHubAIStandard:
         association=None,
         policy=None,
         effective_policy=None,
+        ai_controls=("AI.1", "AI.2", "AI.3"),
     ):
         client = MagicMock()
+        self.control_list_calls = []
+
+        def control_pages(**kwargs):
+            self.control_list_calls.append(kwargs)
+            if isinstance(ai_controls, Exception):
+                raise ai_controls
+            return [
+                {
+                    "SecurityControlDefinitions": [
+                        {"SecurityControlId": c} for c in ai_controls
+                    ]
+                }
+            ]
+
         if association is not None:
             client.get_caller_identity.return_value = {"Account": "123456789012"}
             if isinstance(association, Exception):
@@ -10339,7 +10354,12 @@ class TestSM36SecurityHubAIStandard:
         if error is not None:
             client.get_paginator.side_effect = error
         else:
-            client.get_paginator.side_effect = _pager({"get_enabled_standards": pages})
+            client.get_paginator.side_effect = _pager(
+                {
+                    "get_enabled_standards": pages,
+                    "list_security_control_definitions": control_pages,
+                }
+            )
         if isinstance(configuration, Exception):
             client.describe_organization_configuration.side_effect = configuration
         else:
@@ -10369,6 +10389,7 @@ class TestSM36SecurityHubAIStandard:
         association=None,
         policy=None,
         effective_policy=None,
+        **kwargs,
     ):
         rows = self._run(
             mock_client,
@@ -10384,6 +10405,7 @@ class TestSM36SecurityHubAIStandard:
             association=association,
             policy=policy,
             effective_policy=effective_policy,
+            **kwargs,
         )
         assert rows[0]["Status"] == "Passed"
         assert len(rows) == 2
@@ -10467,7 +10489,7 @@ class TestSM36SecurityHubAIStandard:
         assert "default standards configuration" in row["Finding_Details"]
         assert row["Resolution"] == "No action required"
 
-    def _controls(self, mock_client, controls_configuration):
+    def _controls(self, mock_client, controls_configuration, **kwargs):
         return self._central(
             mock_client,
             {"ConfigurationType": "LOCAL", "Status": "ENABLED"},
@@ -10475,6 +10497,7 @@ class TestSM36SecurityHubAIStandard:
                 [self.POLICY_FSBP, self.POLICY_AI],
                 controls_configuration=controls_configuration,
             ),
+            **kwargs,
         )
 
     @patch("sagemaker_app.boto3.client")
@@ -10486,20 +10509,110 @@ class TestSM36SecurityHubAIStandard:
         assert "no enabled_controls" in row["Finding_Details"]
         assert "SECURITYHUB_CSPM_POLICY" in row["Resolution"]
 
+    @pytest.mark.parametrize(
+        ("controls_configuration", "status", "severity", "text"),
+        [
+            # An enabled list: only the listed controls run.
+            (
+                {
+                    "default_control_association_status": "DISABLED",
+                    "enabled_controls": ["AI.1", "AI.2", "AI.3", "IAM.7"],
+                },
+                "Passed",
+                "Medium",
+                "all 3 AI Security Best Practices controls run",
+            ),
+            (
+                {
+                    "default_control_association_status": "DISABLED",
+                    "enabled_controls": ["IAM.7", "Config.1"],
+                },
+                "Failed",
+                "Medium",
+                "leaves all 3 AI Security Best Practices controls off",
+            ),
+            (
+                {
+                    "default_control_association_status": "DISABLED",
+                    "enabled_controls": ["AI.1"],
+                },
+                "N/A",
+                "Informational",
+                "1 of 3 AI Security Best Practices controls run",
+            ),
+            # A disabled list: every control but the listed ones runs.
+            (
+                {
+                    "default_control_association_status": "ENABLED",
+                    "disabled_controls": ["S3.1"],
+                },
+                "Passed",
+                "Medium",
+                "all 3 AI Security Best Practices controls run",
+            ),
+            (
+                {
+                    "default_control_association_status": "ENABLED",
+                    "disabled_controls": ["AI.1", "AI.2", "AI.3"],
+                },
+                "Failed",
+                "Medium",
+                "leaves all 3 AI Security Best Practices controls off (AI.1, AI.2, AI.3)",
+            ),
+            (
+                {
+                    "default_control_association_status": "ENABLED",
+                    "disabled_controls": ["AI.2", "S3.1"],
+                },
+                "N/A",
+                "Informational",
+                "leaves 1 off (AI.2)",
+            ),
+        ],
+    )
     @patch("sagemaker_app.boto3.client")
-    def test_policy_enabling_only_listed_controls_is_not_passed(self, mock_client):
+    def test_policy_control_lists_are_judged_against_the_ai_standard(
+        self, mock_client, controls_configuration, status, severity, text
+    ):
+        row = self._controls(mock_client, controls_configuration)
+        assert (row["Status"], row["Severity"]) == (status, severity)
+        assert text in row["Finding_Details"]
+        assert self.control_list_calls == [{"StandardsArn": self.AI_ARN}]
+        if status == "Passed":
+            assert row["Resolution"] == "No action required"
+
+    @pytest.mark.parametrize(
+        "ai_controls",
+        [_make_client_error("InvalidAccessException"), ()],
+        ids=["denied", "empty"],
+    )
+    @patch("sagemaker_app.boto3.client")
+    def test_unread_ai_controls_are_incomplete_not_passed(
+        self, mock_client, ai_controls
+    ):
         row = self._controls(
             mock_client,
             {
-                "default_control_association_status": "DISABLED",
-                "enabled_controls": ["IAM.7", "Config.1"],
+                "default_control_association_status": "ENABLED",
+                "disabled_controls": ["S3.1"],
             },
+            ai_controls=ai_controls,
         )
-        assert (row["Status"], row["Severity"]) == ("N/A", "Informational")
-        assert (
-            "only its 2 enabled_controls run (IAM.7, Config.1)"
-            in (row["Finding_Details"])
+        assert row["Status"] == "N/A"
+        assert row["Finding"].endswith("Incomplete")
+        assert "ListSecurityControlDefinitions" in row["Finding_Details"]
+        assert "S3.1" in row["Finding_Details"]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_policy_with_no_control_exceptions_passes_without_listing_controls(
+        self, mock_client
+    ):
+        row = self._controls(
+            mock_client, {"default_control_association_status": "ENABLED"}
         )
+        assert row["Status"] == "Passed"
+        assert "no disabled_controls" in row["Finding_Details"]
+        assert self.control_list_calls == []
 
     @patch("sagemaker_app.boto3.client")
     def test_policy_without_the_required_association_status_is_incomplete(
@@ -10509,19 +10622,6 @@ class TestSM36SecurityHubAIStandard:
         assert row["Status"] == "N/A"
         assert row["Finding"].endswith("Incomplete")
         assert "not returned" in row["Finding_Details"]
-
-    @patch("sagemaker_app.boto3.client")
-    def test_policy_with_disabled_controls_passes_naming_them(self, mock_client):
-        row = self._controls(
-            mock_client,
-            {
-                "default_control_association_status": "ENABLED",
-                "disabled_controls": ["S3.1"],
-            },
-        )
-        assert row["Status"] == "Passed"
-        assert "disables 1 control(s) (S3.1)" in row["Finding_Details"]
-        assert row["Resolution"] == "No action required"
 
     @pytest.mark.parametrize(
         ("standards", "missing"),
@@ -10672,12 +10772,13 @@ class TestSM36SecurityHubAIStandard:
         assert "GetConfigurationPolicyAssociation" in row["Finding_Details"]
         mock_client.return_value.get_configuration_policy.assert_not_called()
 
-    def _association(self, mock_client, association, policy=None):
+    def _association(self, mock_client, association, policy=None, **kwargs):
         row = self._central(
             mock_client,
             {"ConfigurationType": "CENTRAL", "Status": "ENABLED"},
             association=association,
             policy=policy,
+            **kwargs,
         )
         call = mock_client.return_value.get_configuration_policy_association
         assert call.call_args.kwargs == {"Target": {"AccountId": "123456789012"}}
@@ -10720,17 +10821,53 @@ class TestSM36SecurityHubAIStandard:
         "aws-foundational-security-best-practices/v/1.0.0"
     )
 
-    def _policy(self, standards, enabled=True):
+    def _policy(self, standards, enabled=True, controls=None):
+        hub = {"ServiceEnabled": enabled, "EnabledStandardIdentifiers": standards}
+        if controls is not None:
+            hub["SecurityControlsConfiguration"] = controls
         return {
             "Id": "a1b2",
             "Name": "ai-baseline",
-            "ConfigurationPolicy": {
-                "SecurityHub": {
-                    "ServiceEnabled": enabled,
-                    "EnabledStandardIdentifiers": standards,
-                }
-            },
+            "ConfigurationPolicy": {"SecurityHub": hub},
         }
+
+    @pytest.mark.parametrize(
+        ("controls", "status", "text"),
+        [
+            ({"DisabledSecurityControlIdentifiers": []}, "Passed", "disables no"),
+            (
+                {"DisabledSecurityControlIdentifiers": ["AI.1", "AI.2", "AI.3"]},
+                "Failed",
+                "leaves all 3 AI Security Best Practices controls off",
+            ),
+            (
+                {"EnabledSecurityControlIdentifiers": ["AI.1", "AI.2", "AI.3"]},
+                "Passed",
+                "all 3 AI Security Best Practices controls run",
+            ),
+            (
+                {"EnabledSecurityControlIdentifiers": []},
+                "Failed",
+                "EnabledSecurityControlIdentifiers list is empty",
+            ),
+            (
+                {"EnabledSecurityControlIdentifiers": ["AI.3", "IAM.7"]},
+                "N/A",
+                "1 of 3 AI Security Best Practices controls run",
+            ),
+        ],
+    )
+    @patch("sagemaker_app.boto3.client")
+    def test_central_policy_control_lists_are_judged(
+        self, mock_client, controls, status, text
+    ):
+        row = self._association(
+            mock_client,
+            self._applied(),
+            policy=self._policy([self.FSBP_ID, self.AI_ID], controls=controls),
+        )
+        assert row["Status"] == status
+        assert text in row["Finding_Details"]
 
     def _applied(self, status="SUCCESS"):
         return {

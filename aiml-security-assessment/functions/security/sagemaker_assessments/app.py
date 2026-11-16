@@ -16985,6 +16985,96 @@ def _security_hub_effective_policy() -> Dict[str, Any]:
     return {"state": "present", "content": content}
 
 
+def _ai_standard_control_ids(region: str):
+    """SM-36: the SecurityControlIds of the AI Security Best Practices standard.
+
+    Returns (ids, None), or (None, error) when the list was not read or came
+    back empty, so the caller cannot judge which AI controls run.
+    """
+    try:
+        partition = boto3.session.Session().get_partition_for_region(region)
+        client = boto3.client("securityhub", config=boto3_config, region_name=region)
+        ids = set()
+        for page in client.get_paginator("list_security_control_definitions").paginate(
+            StandardsArn=(
+                f"arn:{partition}:securityhub:{region}::{AI_SECURITY_STANDARD_ARN_FRAGMENT}"
+            )
+        ):
+            for definition in page.get("SecurityControlDefinitions", []):
+                if definition.get("SecurityControlId"):
+                    ids.add(str(definition["SecurityControlId"]))
+    except Exception as error:
+        return None, error
+    if not ids:
+        return None, ValueError(
+            "ListSecurityControlDefinitions returned no controls for the standard"
+        )
+    return ids, None
+
+
+def _ai_control_coverage_finding(
+    region: str,
+    row,
+    standards_on: str,
+    *,
+    listed: List[str],
+    listed_are_enabled: bool,
+    exceptions_field: str,
+    fix: str,
+):
+    """SM-36: judge which AI Security Best Practices controls a policy runs.
+
+    listed_are_enabled is True when only the listed controls run (an enabled
+    list), False when every control but the listed ones runs (a disabled list).
+    Passed needs every AI control to run; none running fails; some is advisory.
+    """
+    ai_ids, error = _ai_standard_control_ids(region)
+    listed_text = ", ".join(listed[:10]) + (", ..." if len(listed) > 10 else "")
+    if ai_ids is None:
+        return row(
+            standards_on + f", and its {exceptions_field} lists {len(listed)} "
+            f"control(s) ({listed_text}), but the AI Security Best Practices "
+            "controls were not read with securityhub:ListSecurityControlDefinitions, "
+            "so whether they run was not determined. "
+            + build_could_not_assess_detail(error, region),
+            COULD_NOT_ASSESS_RESOLUTION,
+            "Informational",
+            "N/A",
+            name=f"{CENTRAL_CONFIGURATION_FINDING} Incomplete",
+        )
+    listed_set = set(listed)
+    running = ai_ids & listed_set if listed_are_enabled else ai_ids - listed_set
+    off = sorted(ai_ids - running)
+    if not off:
+        return row(
+            standards_on + f", and all {len(ai_ids)} AI Security Best Practices "
+            f"controls run; its {exceptions_field} ({listed_text}) leaves none of "
+            "them off.",
+            "No action required",
+            "Medium",
+            "Passed",
+        )
+    off_text = ", ".join(off[:10]) + (", ..." if len(off) > 10 else "")
+    if not running:
+        return row(
+            standards_on + f", but its {exceptions_field} leaves all "
+            f"{len(ai_ids)} AI Security Best Practices controls off ({off_text}), "
+            "so the AI standard evaluates nothing.",
+            fix,
+            "Medium",
+            "Failed",
+        )
+    return row(
+        standards_on + f", and {len(running)} of {len(ai_ids)} AI Security Best "
+        f"Practices controls run; its {exceptions_field} leaves {len(off)} off "
+        f"({off_text}).",
+        "Confirm that each AI Security Best Practices control left off is a "
+        "documented exception, or turn it on in the policy.",
+        "Informational",
+        "N/A",
+    )
+
+
 def _security_hub_policy_finding(region: str, content: Dict[str, Any], row, prefix):
     """SM-36: judge an effective Security Hub CSPM policy for this region."""
     cspm = content.get("securityhub_cspm") or {}
@@ -17070,17 +17160,14 @@ def _security_hub_policy_finding(region: str, content: Dict[str, Any], row, pref
                 "Medium",
                 "Failed",
             )
-        return row(
-            standards_on + ", but sets default_control_association_status DISABLED, "
-            f"so only its {len(enabled_controls)} enabled_controls run "
-            f"({', '.join(enabled_controls[:10])}"
-            f"{', ...' if len(enabled_controls) > 10 else ''}). Whether they cover "
-            "the AI Security Best Practices controls was not judged.",
-            "Confirm that the policy's enabled_controls include the AI Security "
-            "Best Practices controls, or set default_control_association_status "
-            "to ENABLED.",
-            "Informational",
-            "N/A",
+        return _ai_control_coverage_finding(
+            region,
+            row,
+            standards_on + " with default_control_association_status DISABLED",
+            listed=enabled_controls,
+            listed_are_enabled=True,
+            exceptions_field="enabled_controls",
+            fix=SECURITY_HUB_POLICY_RESOLUTION,
         )
     if association != "ENABLED":
         return row(
@@ -17093,20 +17180,22 @@ def _security_hub_policy_finding(region: str, content: Dict[str, Any], row, pref
             name=f"{CENTRAL_CONFIGURATION_FINDING} Incomplete",
         )
     disabled_controls = _control_ids("disabled_controls")
-    exceptions = (
-        f" It disables {len(disabled_controls)} control(s) "
-        f"({', '.join(disabled_controls[:10])}"
-        f"{', ...' if len(disabled_controls) > 10 else ''}); those exceptions were "
-        "not judged against the AI standard."
-        if disabled_controls
-        else " It disables no controls."
-    )
-    return row(
-        standards_on + " with default_control_association_status ENABLED, so "
-        "their controls run." + exceptions,
-        "No action required",
-        "Medium",
-        "Passed",
+    if not disabled_controls:
+        return row(
+            standards_on + " with default_control_association_status ENABLED "
+            "and no disabled_controls, so every control of those standards runs.",
+            "No action required",
+            "Medium",
+            "Passed",
+        )
+    return _ai_control_coverage_finding(
+        region,
+        row,
+        standards_on + " with default_control_association_status ENABLED",
+        listed=disabled_controls,
+        listed_are_enabled=False,
+        exceptions_field="disabled_controls",
+        fix=SECURITY_HUB_POLICY_RESOLUTION,
     )
 
 
@@ -17231,11 +17320,54 @@ def _central_configuration_association_finding(region: str, row) -> Dict[str, An
             "N/A",
             name=f"{CENTRAL_CONFIGURATION_FINDING} Incomplete",
         )
-    return row(
+    standards_on = (
         f"{associated} Configuration policy {policy_id}, read with securityhub:"
         "GetConfigurationPolicy, sets ServiceEnabled true and enables the AI "
         "Security Best Practices and AWS Foundational Security Best Practices "
-        "standards. The policy's per-control settings were not judged.",
+        "standards"
+    )
+    controls = hub.get("SecurityControlsConfiguration") or {}
+    central_fix = (
+        f"From the Security Hub delegated administrator, update configuration "
+        f"policy {policy_id} so the AI Security Best Practices controls are "
+        "enabled."
+    )
+    if "EnabledSecurityControlIdentifiers" in controls:
+        # Only the listed controls run, including when the list is empty.
+        enabled_ids = [str(i) for i in controls["EnabledSecurityControlIdentifiers"]]
+        if not enabled_ids:
+            return row(
+                standards_on + ", but its EnabledSecurityControlIdentifiers list "
+                "is empty, so no control of those standards runs.",
+                central_fix,
+                "Medium",
+                "Failed",
+            )
+        return _ai_control_coverage_finding(
+            region,
+            row,
+            standards_on,
+            listed=enabled_ids,
+            listed_are_enabled=True,
+            exceptions_field="EnabledSecurityControlIdentifiers",
+            fix=central_fix,
+        )
+    disabled_ids = [
+        str(i) for i in controls.get("DisabledSecurityControlIdentifiers") or []
+    ]
+    if disabled_ids:
+        return _ai_control_coverage_finding(
+            region,
+            row,
+            standards_on,
+            listed=disabled_ids,
+            listed_are_enabled=False,
+            exceptions_field="DisabledSecurityControlIdentifiers",
+            fix=central_fix,
+        )
+    return row(
+        standards_on + ", and disables no controls, so every control of those "
+        "standards runs.",
         "No action required",
         "Medium",
         "Passed",

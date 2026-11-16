@@ -471,6 +471,7 @@ _EXPECTED_ACTIONS = {
         "cloudtrail:ListEventDataStores",
         "cloudtrail:GetEventDataStore",
         "account:ListRegions",
+        "securityhub:ListSecurityControlDefinitions",
         "bedrock:ListModelCustomizationJobs",
         "bedrock:ListModelInvocationJobs",
         "bedrock:GetModelCustomizationJob",
@@ -2013,6 +2014,9 @@ _SAGEMAKER_MANAGED_GRANTS_2 = [
     # reference (2026-10-04); GetEventDataStore has eventdatastore and
     # ListRegions has account.
     ("Allow", "cloudtrail:ListEventDataStores", '"*"', None),
+    # SM-36 lists the AI standard's controls. ListSecurityControlDefinitions
+    # has no resource type in the service authorization reference (2026-11-15).
+    ("Allow", "securityhub:ListSecurityControlDefinitions", '"*"', None),
     (
         "Allow",
         "cloudtrail:GetEventDataStore",
