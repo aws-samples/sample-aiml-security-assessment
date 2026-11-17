@@ -154,75 +154,17 @@ def _join_words(words: List[str]) -> str:
     return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
 
 
-# AISF catalog figures the scope text states. They come from the AISF control
-# catalog, which is not on the Lambda's filesystem, so they are copied here.
-# `tests/test_aisf_derived_standard.py` pins covered and partial to the
-# producers' `aisf_compliance_*.py` tag maps, and pins the documents that repeat
-# these figures to them.
-AISF_COVERED_CONTROLS = 64
-AISF_PARTIAL_CONTROLS = 39
-AISF_UNIMPLEMENTABLE_CONTROLS = 2
-AISF_IN_SCOPE_CONTROLS = (
-    AISF_COVERED_CONTROLS + AISF_PARTIAL_CONTROLS + AISF_UNIMPLEMENTABLE_CONTROLS
-)
-
-
 def _aisf_scope_text(derived: int, omitted: Optional[List[Any]] = None) -> str:
-    """The AISF section's scope text, naming any control a deselected service removed.
-
-    `derived` is `len(aisf_mappings.AISF_DERIVED_MAP)` and `omitted` holds
-    (check id, [service label]) pairs from `aisf_mappings.omitted_aisf_controls()`;
-    both arrive through `aisf_mappings.aisf_scope()`. When `omitted` is non-empty
-    the first sentence also counts the derived controls this report can show.
-    """
-    remaining = AISF_IN_SCOPE_CONTROLS - derived
-    if omitted:
-        groups: Dict[tuple, List[str]] = {}
-        for check_id, labels in omitted:
-            groups.setdefault(tuple(labels), []).append(check_id)
-        reasons = "; ".join(
-            f"{_join_words(ids)} {'is' if len(ids) == 1 else 'are'} omitted "
-            f"because {_join_words(list(labels))} "
-            f"{'was' if len(labels) == 1 else 'were'} not selected"
-            for labels, ids in groups.items()
-        )
-        shown = derived - len(omitted)
-        opening = (
-            f"Scope: {derived} of the {AISF_IN_SCOPE_CONTROLS} in-scope AISF "
-            "controls carry a derived AISF- "
-            f"row, and {shown} of them {'is' if shown == 1 else 'are'} in scope "
-            f"for this report: {reasons}, so this report draws no conclusion "
-            f"about them. The remaining {remaining} are not yet rendered as rows, "
-            "and their absence from this section is not evidence of compliance. "
-        )
-    else:
-        opening = (
-            f"Scope: {derived} of the {AISF_IN_SCOPE_CONTROLS} in-scope AISF "
-            "controls carry a derived AISF- "
-            f"row; the remaining {remaining} are not yet rendered as rows, and "
-            "their absence from this section is not evidence of compliance. "
-        )
-    return opening + (
-        "A row is a "
-        f"narrower claim than coverage: {AISF_COVERED_CONTROLS} of the "
-        f"{AISF_IN_SCOPE_CONTROLS} are covered by checks "
-        f"that already ship and assert the whole control, {AISF_PARTIAL_CONTROLS} "
-        "are asserted in "
-        f"part, and {AISF_UNIMPLEMENTABLE_CONTROLS} are not implementable from "
-        "configuration. The "
-        "Compliance_Frameworks column on the producer rows names the rest: "
-        f"the {AISF_COVERED_CONTROLS - derived} covered controls without a row, "
-        f"and the {AISF_PARTIAL_CONTROLS} asserted in "
-        "part under a (partial) tag. AISF-01, AISF-02, "
-        "AISF-03, AISF-04 and AISF-06 are retired: each restated a check "
-        "that asserts only part of its control, so no row is derived for "
-        "them. These rows restate existing check verdicts under AISF "
-        "control ids, so they are <strong>not</strong> counted in the "
-        "framework's 277-check total. AISF-00 marks an account and region "
-        "where AISF-relevant checks ran but a mapped source check from a "
-        "selected service was absent. Preliminary and illustrative: validate the control "
-        "mapping with your Security/Compliance team before using it as "
-        "evidence."
+    """Describe actual check outcomes and the limits of canonical mappings."""
+    return (
+        "AISF includes the accepted AI workload check results from the selected "
+        "collectors, with their original findings, resources and remediation. "
+        "Reviewed AISF questions and predicate mappings provide context for each "
+        "observation; they do not establish a whole canonical control outcome. "
+        "Additional AI checks without a reviewed AISF mapping remain visible. "
+        "Source advisories, unavailable inputs and unselected collectors are "
+        "identified separately. Equivalent native and OWASP presentations are "
+        "counted once in this view."
     )
 
 
@@ -324,8 +266,17 @@ def _safe_https_url(value) -> Optional[str]:
     raw = "" if value is None else str(value).strip()
     if not raw or raw == "-":
         return None
-    parsed = urlparse(raw)
-    if parsed.scheme != "https" or not parsed.netloc:
+    try:
+        parsed = urlparse(raw)
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or any(ord(char) < 33 for char in raw)
+        ):
+            return None
+    except ValueError:
         return None
     return _escape_attr(raw)
 
@@ -341,6 +292,8 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
     Returns:
         HTML string of table rows
     """
+    from aisf_view import render_check_details
+
     rows = []
     for finding in findings:
         severity = finding.get(
@@ -377,6 +330,18 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
         )
         status_display = finding.get("status", finding.get("Status", ""))
 
+        if include_data_attrs and finding.get("_aisf_result"):
+            data_attrs += (
+                f' data-aisf-result="true" data-check-id="{_escape_attr(check_id)}"'
+                ' style="display: none"'
+            )
+
+        aisf_details = (
+            render_check_details(finding["_aisf_check"])
+            if finding.get("_aisf_check")
+            else ""
+        )
+
         row = f"""<tr {data_attrs}>
             <td><code>{_escape_text(account_id)}</code></td>
             <td><code>{_escape_text(region)}</code></td>
@@ -388,7 +353,7 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
                     <div class="finding-more-body">
                         <div><strong>Details</strong><p>{_escape_text(details)}</p></div>
                         <div><strong>Resolution</strong><p>{_escape_text(resolution)}</p></div>
-                        <div><strong>Reference</strong><p>{ref_html}</p></div>
+                        <div><strong>Reference</strong><p>{ref_html}</p></div>{aisf_details}
                     </div>
                 </details>
             </td>
@@ -432,6 +397,8 @@ def generate_assessment_summary(
     na_count: int,
     scope_text: str = "",
     selected: bool = True,
+    passed_caption: str = "Controls met",
+    na_caption: str = "Not applicable",
 ) -> str:
     """Generate a compact assessment-area summary that filters the main table."""
     if not selected:
@@ -449,8 +416,8 @@ def generate_assessment_summary(
                     {scope_html}
                     <div class="assessment-summary-grid">
                         <div class="metric danger"><div class="metric-label">Failed</div><div class="metric-value">{failed}</div><div class="metric-sub">Open findings</div></div>
-                        <div class="metric highlight"><div class="metric-label">Passed</div><div class="metric-value">{passed}</div><div class="metric-sub">Controls met</div></div>
-                        <div class="metric"><div class="metric-label">N/A</div><div class="metric-value">{na_count}</div><div class="metric-sub">Not applicable</div></div>
+                        <div class="metric highlight"><div class="metric-label">Passed</div><div class="metric-value">{passed}</div><div class="metric-sub">{_escape_text(passed_caption)}</div></div>
+                        <div class="metric"><div class="metric-label">N/A</div><div class="metric-value">{na_count}</div><div class="metric-sub">{_escape_text(na_caption)}</div></div>
                         <div class="metric"><div class="metric-label">Total</div><div class="metric-value">{total}</div><div class="metric-sub">Rows in report</div></div>
                     </div>
                     <div class="assessment-actions">
@@ -641,7 +608,15 @@ def get_html_template() -> str:
         .finding-more-body p {{ margin-top: 2px; }}
         .assessment-summary-grid {{ display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 16px; margin-bottom: 16px; }}
         .assessment-actions {{ display: flex; flex-wrap: wrap; gap: 10px; }}
-        @media (max-width: 1024px) {{ .layout {{ grid-template-columns: 1fr; }} .sidebar {{ display: none; }} .metrics {{ grid-template-columns: repeat(2, 1fr); }} }}
+        @media (max-width: 1024px) {{
+            .layout {{ grid-template-columns: minmax(0, 1fr); }}
+            .sidebar {{ position: static; height: auto; min-width: 0; border-right: 0; border-bottom: 1px solid var(--border); }}
+            .sidebar .nav-section {{ display: flex; flex-wrap: wrap; gap: 4px; }}
+            .sidebar .nav-section h3 {{ flex-basis: 100%; }}
+            .sidebar .nav-item {{ flex: 1 1 240px; min-width: 0; white-space: normal; }}
+            .sidebar-footer {{ overflow-wrap: anywhere; }}
+            .metrics {{ grid-template-columns: repeat(2, 1fr); }}
+        }}
         @media (max-width: 640px) {{ .metrics, .assessment-summary-grid {{ grid-template-columns: 1fr; }} .main {{ padding: 20px; }} }}
         .page-footer {{ padding: 16px 40px; border-top: 1px solid var(--border); font-size: 10px; line-height: 1.6; color: var(--text-3); text-align: center; background: var(--surface); }}
         .page-footer a {{ color: var(--accent); text-decoration: none; }}
@@ -836,7 +811,8 @@ def get_html_template() -> str:
                 const rowService = row.dataset.service || '';
                 const rowSeverity = row.dataset.severity || '';
                 const rowStatus = row.dataset.status || '';
-                let show = true;
+                const aisfResult = row.dataset.aisfResult === 'true';
+                let show = serviceFilter === 'aisf' ? aisfResult : !aisfResult;
                 if (searchText && !rowText.includes(searchText)) show = false;
                 if (accountFilter && rowAccount !== accountFilter) show = false;
                 if (regionFilter && rowRegion.toLowerCase() !== regionFilter) show = false;
@@ -1018,6 +994,10 @@ def generate_html_report(
     regions: list = None,
     service_selection: Optional[Dict[str, bool]] = None,
     compliance_scope: Optional[Dict[str, Dict[str, Any]]] = None,
+    aisf_register: Optional[Dict[str, Any]] = None,
+    enable_grc: bool = False,
+    enable_owasp: bool = False,
+    enable_aisf: bool = False,
 ) -> str:
     """
     Generate HTML report from findings data.
@@ -1039,8 +1019,21 @@ def generate_html_report(
     Returns:
         Complete HTML report string
     """
+    from aisf_results import build_aisf_check_results, build_aisf_register
+    from aisf_view import SCRIPT as AISF_SCRIPT, STYLE as AISF_STYLE, render_context
 
     selected_services = core_service_selection(service_selection)
+    if aisf_register is None:
+        aisf_register = build_aisf_register(
+            all_findings,
+            accounts=account_ids or [account_id or "Unknown"],
+            regions=regions or [],
+            service_selection=selected_services,
+            enable_grc=enable_grc,
+            enable_owasp=enable_owasp,
+            enable_aisf=enable_aisf,
+        )
+    aisf_results = build_aisf_check_results(aisf_register)
     omitted = [
         label
         for service, label in CORE_SERVICE_LABELS.items()
@@ -1180,7 +1173,12 @@ def generate_html_report(
     # Timestamp handling
     if not timestamp:
         timestamp = datetime.now(timezone.utc).strftime("%B %d, %Y %H:%M:%S UTC")
-    date_display = datetime.now(timezone.utc).strftime("%B %d, %Y")
+    try:
+        date_display = datetime.fromisoformat(
+            timestamp.replace("Z", "+00:00")
+        ).strftime("%B %d, %Y")
+    except ValueError:
+        date_display = timestamp
 
     # Build priority alerts
     high_priority = [
@@ -1245,14 +1243,35 @@ def generate_html_report(
         alerts_html = '<div class="alert-item"><div class="alert-info"><div class="alert-domain">No critical findings</div></div></div>'
 
     # Generate table rows
-    all_rows = generate_table_rows(all_findings, include_data_attrs=True)
+    aisf_findings = [
+        {
+            "_service": "aisf",
+            "_aisf_result": True,
+            "_aisf_check": check,
+            "Check_ID": check["source_check_id"],
+            "Account_ID": check["account"],
+            "Region": check["region"],
+            "Status": check["status"],
+            "Severity": check["severity"],
+            "Finding": check["finding"],
+            "Finding_Details": check["finding_details"],
+            "Resource_ID": check["resource"],
+            "Resolution": check["action_required"],
+            "Reference": check["reference"],
+        }
+        for check in aisf_results["checks"]
+    ]
+    all_rows = generate_table_rows(
+        all_findings + aisf_findings, include_data_attrs=True
+    )
 
     # Build region filter HTML (shared across modes, only shown when multiple regions).
     # "Global" tags IAM-only findings and is intentionally excluded from `regions`
     # (it must not inflate the scanned region count), but those findings still appear
     # in the tables and in a separate risk scope card when any are present.
     has_global = any(
-        (f.get("region") or f.get("Region")) == "Global" for f in all_findings
+        (f.get("region") or f.get("Region")) == "Global"
+        for f in all_findings + aisf_findings
     )
     # Show the filter when there is more than one distinct value to choose from:
     # multiple scanned regions, or a single scanned region alongside Global findings.
@@ -1533,7 +1552,15 @@ def generate_html_report(
         _slug_attr = _escape_attr(_slug)
         _stats = service_stats.get(_slug, {})
         _total = _stats.get("passed", 0) + _stats.get("failed", 0) + _stats.get("na", 0)
-        if _total <= 0:
+        if _slug == "aisf":
+            _total = aisf_results["summary"]["check_results"]
+            _outcomes = aisf_results["summary"]["statuses"]
+            _stats = {
+                "passed": _outcomes.get("Passed", 0),
+                "failed": _outcomes.get("Failed", 0),
+                "na": _outcomes.get("N/A", 0),
+            }
+        if _total <= 0 and _slug != "aisf":
             continue
         _failed = _stats.get("failed", 0)
         _passed = _stats.get("passed", 0)
@@ -1567,20 +1594,39 @@ def generate_html_report(
         compliance_filter_options_list.append(
             f'<option value="{_slug_attr}">{_name_text}</option>'
         )
+        _metric_sub = f"{_failed} Failed · {_passed} Passed · {_na} N/A"
+        if _slug == "aisf":
+            _summary = aisf_results["summary"]
+            _metric_sub += (
+                f" · {_summary['distinct_source_checks']} distinct checks"
+                f" · {_summary['source_advisories']} source advisories"
+                f" · {_summary['unavailable_results']} unavailable"
+                f" · {_summary['gap_count']} coverage gaps"
+            )
         compliance_service_cards_list.append(
             '<div class="metric"><div class="metric-label">'
             + _icon_small
             + f' {_name_text}</div><div class="metric-value">{_total}</div>'
-            + f'<div class="metric-sub">{_failed} Failed · {_passed} Passed · {_na} N/A</div></div>'
+            + f'<div class="metric-sub">{_metric_sub}</div></div>'
         )
+        _section_body = generate_assessment_summary(
+            _slug,
+            _total,
+            _failed,
+            _passed,
+            _na,
+            _scope_text,
+            passed_caption="Passed observations" if _slug == "aisf" else "Controls met",
+            na_caption="N/A / unavailable" if _slug == "aisf" else "Not applicable",
+        )
+        if _slug == "aisf":
+            _section_body += render_context(aisf_results)
         compliance_sections_list.append(
             f'<section id="{_slug_attr}" class="section">'
             '<div class="section-title">'
             + _icon
             + f"{_section_title_text}</div>"
-            + generate_assessment_summary(
-                _slug, _total, _failed, _passed, _na, _scope_text
-            )
+            + _section_body
             + "</section>"
         )
         compliance_scope_chips_list.append(
@@ -1845,4 +1891,6 @@ def generate_html_report(
                 f'font-weight: 500;">{chip_label} — Not selected</span>',
                 1,
             )
+    rendered_html = rendered_html.replace("</head>", AISF_STYLE + "</head>", 1)
+    rendered_html = rendered_html.replace("</body>", AISF_SCRIPT + "</body>", 1)
     return rendered_html

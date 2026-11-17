@@ -1,0 +1,2 @@
+Check_ID,Region,Finding,Status,Severity,Finding_Details,Resolution,Reference,Account_ID,Execution_ID,Resource_ID
+BR-20,us-west-2,Knowledge base discovery,N/A,Medium,Unsupported region in this synthetic assessment.,Use a supported discovery path or supply scoped manual evidence.,https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base.html,444455556666,synthetic-two,

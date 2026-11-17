@@ -1,12 +1,11 @@
-"""AWS AI Security Framework (AISF) rows, derived the way the main report does.
+"""Legacy partial AISF aliases derived from compared native check findings.
 
-No scanner writes AISF rows to a findings CSV: the main report derives them
-from the service findings each time it is built (``derive_aisf_findings`` in
-generate_consolidated_report/aisf_mappings.py). The changes report does the
-same, from each run's compared findings, with that same module loaded by file
-path. The changes report retains Global rows for controls without regional
-sources to keep comparison keys stable. Both runs are derived with today's
-mapping, so a mapping change never reads as a change in findings.
+The main AISF view presents native AI check results. The changes report keeps
+three legacy aliases from ``derive_aisf_findings`` in aisf_mappings.py, loaded by
+file path, for comparison compatibility. Global evidence retains its own key.
+Successful source checks provide partial evidence and cannot pass a whole AISF
+control. Both runs use today's mapping, so mapping changes are not findings
+changes.
 """
 
 from __future__ import annotations
@@ -92,12 +91,11 @@ def derive_aisf(
     """The AISF rows for one run's compared findings.
 
     ``compared_services`` are the core services compared in both runs; a
-    control whose sources all belong to another service gets no row, as in the
-    main report when that service isn't selected.
+    legacy alias whose sources all belong to another service gets no row.
 
-    Controls sourced only from Global rows keep a Global key
-    (``separate_global``), so their rows pair when unrelated regional findings
-    appear. Controls with regional sources use regional keys instead.
+    Global and regional evidence retain separate keys, so an unrelated scope
+    cannot change an alias or satisfy a missing predicate. Successful partial
+    evidence remains N/A for the whole control.
 
     A mapping error or a derived row that can't be read as a Finding is named
     in ``notes``; the other rows are kept.

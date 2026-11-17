@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import sys
 
 import pytest
@@ -164,13 +165,16 @@ def test_bare_finserv_word_is_absent_from_rendered_text(html):
     )
 
 
-def test_no_financial_services_capability_label_anywhere(html):
-    """The capability is cross-industry; the FSI label contradicted the rename.
-
-    Financial-services provenance is recorded as origin and traceability in the
-    docs and provenance record, not as a capability label in the report chrome.
-    """
-    assert "Financial Services" not in html
+def test_no_financial_services_capability_label_in_report_chrome(html):
+    """Canonical source guidance may name an industry; capability labels may not."""
+    chrome = re.findall(
+        r"<nav\b[^>]*>.*?</nav>|<option\b[^>]*>.*?</option>"
+        r'|<div class="(?:metric-label|scope-[^"]+-label|section-title)"[^>]*>.*?</div>',
+        html,
+        re.S,
+    )
+    assert chrome and any(CANONICAL_LABEL in element for element in chrome)
+    assert all("Financial Services" not in element for element in chrome)
 
 
 def test_taxonomy_moved_out_of_by_industry(html):

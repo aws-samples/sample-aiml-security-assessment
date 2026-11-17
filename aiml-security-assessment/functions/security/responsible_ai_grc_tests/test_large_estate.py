@@ -22,6 +22,7 @@ from unittest.mock import MagicMock, patch
 
 
 from .support import finserv_app as app
+from .support import generated_findings
 
 
 # ---------------------------------------------------------------------------
@@ -260,8 +261,10 @@ class TestLargeEstatePerformance:
     @patch("finserv_app.get_permissions_cache")
     @patch("finserv_app.boto3.client")
     @patch("finserv_app.collect_resource_inventory")
+    @patch("finserv_app.generate_csv_report", wraps=app.generate_csv_report)
     def test_large_estate_single_listing_and_memory(
         self,
+        mock_report,
         mock_collect_inventory,
         mock_boto3_client,
         mock_get_perm_cache,
@@ -311,9 +314,9 @@ class TestLargeEstatePerformance:
         assert result["statusCode"] == 200, (
             f"lambda_handler returned {result['statusCode']}"
         )
-        assert "findings" in result["body"]
-        assert len(result["body"]["findings"]) == 65, (
-            f"Expected 65 findings, got {len(result['body']['findings'])}"
+        assert "row_count" in result["body"]
+        assert len(generated_findings(mock_report, result)) == 65, (
+            f"Expected 65 findings, got {len(generated_findings(mock_report, result))}"
         )
 
         # --- REQ-10.1 / REQ-10.2: Single enumeration per inventory ---

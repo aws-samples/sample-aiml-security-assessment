@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "timestamp": "2026-11-06T12:00:00+00:00",
+  "service_selection": {
+    "bedrock": true,
+    "sagemaker": true,
+    "agentcore": true,
+    "agent-registry": true
+  },
+  "enable_aisf": true,
+  "enable_grc": true,
+  "enable_owasp": true,
+  "accounts": [
+    {
+      "account_id": "111122223333",
+      "execution_id": "synthetic-one",
+      "regions": ["us-east-1", "us-west-2"],
+      "status": "SUCCEEDED"
+    },
+    {
+      "account_id": "444455556666",
+      "execution_id": "synthetic-two",
+      "regions": ["us-east-1", "us-west-2"],
+      "status": "FAILED",
+      "failure": "Synthetic assessment stopped after partial CSV output."
+    }
+  ]
+}

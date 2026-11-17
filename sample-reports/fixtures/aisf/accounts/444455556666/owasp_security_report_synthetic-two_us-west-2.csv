@@ -1,0 +1,2 @@
+Check_ID,Region,Finding,Status,Severity,Finding_Details,Resolution,Reference,Account_ID,Execution_ID,Resource_ID
+OW-01,us-west-2,Application review,N/A,Medium,Synthetic application evidence is missing.,Supply scoped application review evidence.,https://owasp.org/www-project-top-10-for-large-language-model-applications/,444455556666,synthetic-two,synthetic-app

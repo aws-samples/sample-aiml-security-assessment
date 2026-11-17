@@ -4,7 +4,7 @@ This document provides a comprehensive reference for all 277 security checks per
 
 Sources differ by assessment area and are not interchangeable: the core Bedrock, SageMaker, AgentCore, and AWS Agent Registry checks derive from the AWS Well-Architected **Generative AI Lens** security best practices (`gensec*`) and service security documentation; the Agentic AI Security checks from the AWS Well-Architected **Agentic AI Lens**; the `FS-*` **Responsible AI GRC** checks from the AWS GRC User Guide; and the `OW-*` checks from the OWASP Top 10 for LLM. The AWS Well-Architected **Responsible AI Lens** is not a source for any of them — see [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md).
 
-The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. The framework also emits `BR-00`, `SM-00`, `AC-00`, `AR-00`, `FS-00`, `OW-00`, and `AISF-00` operational marker rows at runtime; these are not controls and are excluded from the 277-check total. `AISF-05`, `AISF-07`, and `AISF-08` are derived rows that restate verdicts of checks already counted, so they also do not increase the total. `AISF-01`, `AISF-02`, `AISF-03`, `AISF-04`, and `AISF-06` are retired and do not emit rows. See the [AWS AI Security Framework view](SECURITY_CHECKS_AISF.md) for their sources and coverage behavior. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
+The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. The framework also emits `BR-00`, `SM-00`, `AC-00`, `AR-00`, `FS-00`, `OW-00`, and `AISF-00` operational marker rows at runtime; these are not controls and are excluded from the 277-check total. `AISF-05`, `AISF-07`, and `AISF-08` are stable summaries of partial source evidence from checks already counted. They do not establish whole-control passes or increase the total. `AISF-01`, `AISF-02`, `AISF-03`, `AISF-04`, and `AISF-06` are retired and do not emit rows. See the [AWS AI Security Framework view](SECURITY_CHECKS_AISF.md) for source-check results, reviewed mappings, and coverage gaps. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
 
 The counts above describe the full catalog. Core service assessments are enabled
 by default and can be selected independently with the four
@@ -12,8 +12,20 @@ by default and can be selected independently with the four
 Deselected services produce no findings and appear as **Not selected** in the
 report; this is not an N/A finding or a compliant result. Agentic AI and OWASP
 mapping coverage decreases when their direct-service sources are deselected.
-The [AWS AI Security Framework view](SECURITY_CHECKS_AISF.md) derives `AISF-*`
-rows from already counted checks, so its rows do not increase the 277-check total.
+The [AWS AI Security Framework view](SECURITY_CHECKS_AISF.md) presents actual
+source-check observations and their reviewed mappings. The 218-control catalog
+is internal reference data; unobserved requirements do not create customer
+findings or manual-review tasks. Its size is separate from the unchanged
+277-check total and from the number of observed source checks.
+The 277 presentation IDs resolve to 233 distinct source/native checks and
+44 derived presentations (34 Agentic AI aliases and 10 OWASP categories).
+AISF reviews all source families, including FS and native AG/OW predicates.
+Useful partial findings and source-emitted advisory rows remain visible.
+**View failed findings** in the AISF summary opens the shared findings table
+with AISF and Failed selected. Open **Details and remediation** for the original
+source action and mapping limitations. A source-check pass does not establish
+whole-control compliance. See the AISF mapping and check-inventory ledgers for
+reviewed relationships and explicit exclusions.
 
 ## Table of Contents
 

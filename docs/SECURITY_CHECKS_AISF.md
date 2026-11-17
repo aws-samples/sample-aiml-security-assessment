@@ -1,329 +1,346 @@
-# AWS AI Security Framework (AISF) Checks
+# AWS AI Security Framework (AISF) Assessment
 
-This document catalogs the `AISF-XX` rows the report renders under "By
-Compliance Standard", the AWS AI Security Framework control each one reports on,
-and the shipped BR/SM/AC/AG check every row is derived from.
+Selecting AISF runs the existing AI workload collectors together. Both report
+modes show their actual check results, affected resources, remediation, and
+reviewed AISF mappings. Checks without a reviewed mapping remain visible as
+additional AI security observations. The assessment does not create a manual
+review of all 218 canonical controls.
 
-The report's `AISF-NN` ids (`AISF-05`, `AISF-00`) are this scanner's own row
-ids. They are distinct from Prowler's `AISF-AI-06`-style requirement ids, which
-[Prowler AISF requirements](#prowler-aisf-requirements) covers.
+The catalog is pinned to canonical repository revision
+`5df3295024713ac3ce88130c549bbc4fb2cebd53`. Its existing
+`build/export_controls.py` supplies the stable exported representation.
+The vendored bundle preserves each question, guidance, applicability, evidence,
+risk, source reference, and implementation step. The obsolete 253-control
+crosswalk is historical and is not the inventory oracle.
 
-- **Reference:** [AWS Well-Architected Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html),
-  plus the control-specific AWS documentation linked in the per-control tables
-  below.
-- **Opt-in:** none. AISF is a derived view over checks that already run, so it
-  needs no deployment parameter and adds no scan time.
-- **Report location:** the "By Compliance Standard" sidebar section, alongside
-  OWASP Top 10 for LLM.
-- **Coverage:** 3 of the 105 in-scope AISF controls carry a derived `AISF-` row;
-  the remaining 102 are not yet rendered as a row. The scope is every
-  machine-checkable AISF control, including the foundation controls, which assert
-  over the account or runtime an AI workload sits on. A row is a narrower claim
-  than coverage: 64 of the 105 are covered by checks that already ship and assert
-  the whole control, 39 are asserted only in part, and 2 are not implementable
-  from configuration, because each asks about evidence no AWS API returns. These
-  are the figures the report's own scope text states. The report counts the
-  derived controls from `AISF_DERIVED_MAP`, and
-  `tests/test_aisf_derived_standard.py` pins the covered and partial figures to
-  the producers' tag maps and this bullet to the scope text.
-  Five ids, `AISF-01`, `AISF-02`, `AISF-03`, `AISF-04` and `AISF-06`, are
-  retired: each restated a check that asserts only part of its control, so the
-  view no longer derives them, and the ids are never reallocated.
-- **Traceability:** a control asserted only in part never earns an `AISF-` row.
-  The `Compliance_Frameworks` CSV column names it on the producer rows instead,
-  with a `(partial)` qualifier, beside the covered controls that have no row yet.
-  It is described under
-  [Traceability column on producer rows](#traceability-column-on-producer-rows).
-  A tag carries no verdict.
+## Selecting AISF
 
-## Disclaimer
+Set the `EnableAISFAssessment` CloudFormation parameter to `true`. It defaults
+to `false` in both top-level deployment templates and both direct SAM templates.
+When enabled, it selects all four direct service collectors (Bedrock, SageMaker,
+AgentCore, and Agent Registry) plus Responsible AI GRC and OWASP, overriding
+individual assessment switches. Customers do not need to select OWASP or GRC
+separately to obtain their mapped AISF evidence. GRC runs in the first selected
+Region once per account; OWASP runs in each selected Region.
 
-> **These mappings are PRELIMINARY and ILLUSTRATIVE.** They have not been
-> reviewed by AWS Security Assurance Services or external auditors. Validate
-> each mapping against your own reading of the AISF control before relying on
-> an `AISF-` row as audit evidence. A control that is absent from this catalog
-> is unassessed, which is not evidence of compliance.
+CodeBuild resolves the preset before deployment, execution, artifact copying,
+and history. Direct SAM deployments bake the same setting into the state
+machine, so an execution with `{}` input uses the preset without extra flags.
+Execution input cannot override the deployed AISF or direct-service selection.
+With the preset disabled, the existing individual service and optional-standard
+selection behavior is preserved.
 
-## Design
+Selecting AISF runs existing collectors; it does not add a producer, IAM grant,
+or whole-control adjudicator. Source results assess their stated predicates.
+Optional AgentCore artifact object reads remain controlled by their separate
+switch and are not enabled by AISF. Unavailable reads, interrupted collectors,
+and original source advice remain visible without creating additional tasks
+from unobserved canonical requirements.
 
-AISF is a **derived** compliance standard. No Lambda runs AISF checks, no
-`aisf_security_report_*.csv` is written to S3, and the state machine has no
-AISF branch. `derive_aisf_findings()` in
-`aiml-security-assessment/functions/security/generate_consolidated_report/aisf_mappings.py`
-runs at consolidation time in both report paths (the
-`generate_consolidated_report` Lambda for single-account runs, and the root
-`consolidate_html_reports.py` for multi-account runs) and restates verdicts the
-incumbent checks already produced under AISF control ids. The changes since
-last assessment report runs the same function on each of the two runs it
-compares, so its AISF rows change only when a source check does (see
-[ASSESSMENT_HISTORY.md](ASSESSMENT_HISTORY.md#what-is-compared)).
+## Reference inventory
 
-Every control below is covered, meaning one or more incumbent checks assert
-the control exactly. A control its incumbents assert only in part is
-deliberately excluded: republishing that incumbent's `Passed` under the AISF
-control id would publish a pass the assessment never earned.
-`tests/test_aisf_derived_standard.py` pins the map: each id carries the
-registered `AISF-` prefix, no retired id or control reappears, and each
-mapped control's baked severity is the collapse of its declared risk band.
+These counts describe the catalog and mapping review. They are not the
+customer report's assessment denominator; displayed results come from the
+actual run.
 
-**`AISF-` rows are not counted in the framework's 277-check total.** They carry
-no new assertion, so counting them would double-count the incumbent check. They
-are excluded from the report's pass-rate denominator and from Open Action Items
-for the same reason, which is how OWASP-mapped rows already behave.
+| Measure | Count | Meaning |
+| --- | ---: | --- |
+| Canonical controls | 218 | 62 baseline and 156 AI controls across 24 sections |
+| Machine-classified controls | 104 | Canonical classification, not proof of automated coverage |
+| Non-machine controls | 114 | Whole requirements need process or application evidence outside this automated assessment |
+| Controls with a reviewed source mapping | 126 | 102 machine and 24 non-machine controls |
+| Controls without a mapped collector | 92 | 2 machine and 90 non-machine controls |
+| Reviewed mapping edges | 303 | Partial relationships from 208 existing native checks |
+| Partial mappings | 126 | Some evidence is reusable; full requirements remain unproven |
+| Justified whole-control pass adjudicators | 0 | No current source combination establishes the complete requirement |
+| Native source checks reviewed | 233 | 208 mapped and 25 excluded with specific reasons |
+| Derived presentation IDs reviewed | 44 | 34 AG aliases and 10 OW categories; not extra native checks |
+| Scanner check catalog | 277 | 233 native IDs plus 44 derived presentations; AISF adds no producer checks |
 
-**Ids are allocated once and never renumbered.** `AISF_DERIVED_MAP` is
-append-only: a new control takes the next free `AISF-` number. Reusing or
-resequencing an id rewrites the meaning of every archived report that already
-carries it.
+The earlier 64 whole-control labels were re-reviewed and downgraded to partial
+evidence. The other 39 mapped controls remain partial. A matching tag, a check
+count, a machine classification, or a source `Passed` result does not prove a
+canonical control. The report's finding counts come from accepted observations
+in the current run.
 
-### Registry entry
+The producer `Compliance_Frameworks` column retains its existing tags for
+compatibility. Bare AISF tags and legacy `(N of M checks)` qualifiers are
+historical mapping metadata, not trusted completeness or pass claims.
+The reviewed ledger takes precedence over these labels.
 
-The standard is registered by one entry in `COMPLIANCE_STANDARDS`
-(`report_template.py`) carrying `"derived": True`. That key keeps the slug out
-of the S3 prefix list the report Lambda builds in `app.py`: the Lambda's
-`s3:ListBucket` grant restricts `s3:prefix` to the producing artifacts, so
-listing a prefix for a standard that writes no CSV returns `AccessDenied` and
-fails report generation for every category. A producing standard (the
-OWASP-style wire-up in
-[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md#adding-a-compliance-standard-owasp-style))
-omits the key.
+## Comprehensive source review
 
-### Status semantics
+Every current source predicate and derived presentation is accounted for in
+`aisf_catalog/check_inventory.json`. The inventory is independent of the old
+AISF tags: collector ASTs, native call sites, AG projections, OW category
+mappings, and the check catalogs establish the expected IDs. There are 162
+BR/SM/AC/AR native IDs, 64 FS IDs, five native AG IDs, and two native OW IDs.
+`BR-14` remains a catalog/native ID, but its invocation is disabled; its mapping
+does not make that missing observation available.
 
-| Situation | Emitted |
-| ----------- | --------- |
-| every source check for the control passed | `Passed` |
-| any source check for the control failed | `Failed` |
-| any source check present for the account and region failed, even if another is absent | `Failed`, naming the absent `Check_ID`s |
-| a source check reported `N/A` and none failed, so no verdict is available | `N/A`, `Informational` |
-| some source checks present for the account and region, others absent, none failed | `N/A`, `Informational`, naming the absent `Check_ID`s |
-| no source check for the control present at all | no `AISF-` row for that control; the absence is reported once per account and region by `AISF-00` |
-| every source check for the control belongs to a deselected service | no `AISF-` row and no `AISF-00` mention; the service shows as Not selected, and the section's scope text names the control as omitted because that service was not selected |
+| Family | Native IDs | Previous mapped / edges | Current mapped / edges | Excluded |
+| --- | ---: | ---: | ---: | ---: |
+| BR | 57 | 33 / 53 | 50 / 74 | 7 |
+| SM | 42 | 26 / 40 | 41 / 63 | 1 |
+| AC | 53 | 46 / 81 | 52 / 90 | 1 |
+| AR | 10 | 4 / 4 | 9 / 11 | 1 |
+| AG | 5 | 4 / 8 | 4 / 8 | 1 |
+| FS | 64 | 0 / 0 | 50 / 55 | 14 |
+| OW | 2 | 0 / 0 | 2 / 2 | 0 |
+| Total | 233 | 113 / 186 | 208 / 303 | 25 |
 
-A source check emits one finding per resource, so a leg normally carries several
-verdicts for one account and region. All of them are aggregated, and
-`Finding_Details` names the count per leg (`BR-20 (10 findings: 9 Failed, 1
-Passed)`), so a failing resource cannot be hidden behind a later `Passed` row
-from the same check. BR-20 emits its summary `Passed` row after its per-resource
-rows, which is the order that made this concrete.
+All 186 previous edges remain as partial evidence; 117 reviewed relationships
+are added. The mapped-control count grows from 103 to 126, while controls with
+no source mapping fall from 115 to 92. None of these counts means a whole
+control passed. OW's ten categories project 84 source IDs through 95 category
+edges; these presentations contribute their underlying observations, not
+category-wide AISF mappings.
 
-A source check that runs once per account, on the primary Region, reports under
-the `Global` Region. An account-wide verdict holds in every Region, so each `Global` row is aggregated into every
-regional key of the same account, and `Finding_Details` says so. The `Global`
-key gets its own `AISF-` rows only for an account with no regional key.
-Otherwise a `Global` `Failed` would sit beside a regional `Passed` for the same
-control. The changes report ([ASSESSMENT_HISTORY.md](ASSESSMENT_HISTORY.md#what-is-compared))
-keeps a `Global` AISF row when that control has no regional source row, so it
-can pair across runs despite unrelated regional checks. When the control has
-regional source rows, those rows include the `Global` evidence and its
-separate `Global` AISF row is suppressed.
+Examples include FS-51 prompt-attack configuration for `AIR-BDR-GRD-02`, FS-45
+PII configuration for `AIR-BDR-GRD-03`, and FS-47/50 grounding/relevance settings
+for `AIR-BDR-GRD-09`. BR-24 and both FS-27 branches contribute contextual
+grounding or formal-policy-validation evidence to GRD-09. Policy existence
+does not establish correct rules, domain applicability, guardrail association,
+invocation, or response validation. FS-57/58 retain manual review requests for
+output encoding and schema validation; actual runtime/tool association and
+application behavior still need proof. Native OW-11/12 retain their heuristic
+limitations. Topic/profanity configuration in OW-12 is not proof of a dedicated
+prompt-attack filter.
 
-`AISF-00` is a report-completeness marker, not an AISF control. It lists every
-derived control of a selected service that had no source check for that account
-and region, so an incomplete scan reads as unassessed instead of silently
-omitting rows. It links no reference document. See
-[TROUBLESHOOTING.md](TROUBLESHOOTING.md#15-aisf-00-aisf-derived-control-coverage-row-in-the-report)
-for the causes.
+The following native checks have no defensible relationship to the pinned
+canonical requirements based on their current predicates. Their observations
+remain in the AISF view and exports with no reviewed AISF mapping, as well as
+in their original report sections. A mapping exclusion does not establish that
+an AI check is irrelevant or that its result is clean. Full source locations,
+counterevidence, and limitations are in the check inventory.
 
-### Severity
+| Excluded ID | Why the present predicate cannot support an AISF mapping |
+| --- | --- |
+| AC-05 | ECR name heuristic does not identify a deployed runtime; no matching repository-at-rest requirement |
+| AG-26 | Gateway DEBUG mode does not establish application redaction before telemetry export |
+| AR-05 | Registry CMK advisory has no matching canonical key requirement |
+| BR-19 | PrepareFlow validation does not establish peer review, security testing, approval, or controlled deployment |
+| BR-22 | Quota increase requests do not establish per-caller limits or bounded consumption |
+| BR-29 | Bedrock idle TTL is not AgentCore runtime lifecycle control or enforced tool/cost bounds |
+| BR-30 | Imported model-weight encryption does not establish training, fine-tuning, or grounding-data protection |
+| BR-31 | Batch-output encryption does not establish the canonical data-path or disposal requirements |
+| BR-38 | Bedrock reasoning-policy keys are not AgentCore Policy engine keys |
+| BR-40 | Marketplace endpoint keys do not establish SageMaker transport or training-data requirements |
+| SM-12 | Endpoint instance count is an availability setting, not an enforced request or consumption limit |
+| FS-03 | Quota increase requests do not establish security bounds |
+| FS-14 | Config rule names do not establish rule behavior or SageMaker drift detection |
+| FS-25 | A generic AOSS key observation lacks actual Bedrock knowledge-base association |
+| FS-26 | A generic AOSS VPC text match lacks public-access semantics and knowledge-base association |
+| FS-29 | Compliance disclaimer supplies no observed control predicate |
+| FS-30 | Bedrock bias-dataset review does not establish the SageMaker-specific requirement |
+| FS-34 | An available LEGACY foundation model is not evidence of a deployed model |
+| FS-37 | General user feedback has no matching canonical predicate |
+| FS-40 | Bedrock bias review does not establish the SageMaker-specific requirement |
+| FS-49 | Hallucination disclaimer supplies no observed control predicate |
+| FS-55 | Lambda function names do not establish input-validation behavior |
+| FS-62 | Data-currency disclaimer supplies no observed control predicate |
+| FS-63 | Config/lifecycle names and model catalog entries do not establish deployed-model governance |
+| FS-69 | Prompt input-validation names do not establish validation behavior |
 
-Severity comes from the AISF control's own `risk` band, not from the source
-row. An `AISF-` row is a verdict on an AISF control, and one incumbent check's
-severity is not that control's risk rating; `AISF-08` makes that concrete,
-since its three source checks carry different severities. AISF uses five risk
-bands and this framework's `SeverityEnum` has four, so `critical` and `high`
-both report as `High`, following section 6 of
-[SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md](SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md),
-which keeps four levels and accepts that a genuinely critical risk is reported
-as `High`. No derived control is rated `critical`: the three that were
-(`AISF-01`, `AISF-03`, `AISF-04`) are retired. A control in that band names the
-band and the downgrade in its `Finding_Details`, so a reader who sees `High`
-against a critical control learns why from the finding itself. A row with `Status=N/A` always reports `Informational`.
+## Report and export contract
 
-## Check catalogue
+The AISF section under **By Compliance Standard** uses the same summary and
+findings table as the other frameworks. **View failed findings** and **View all
+rows** open the shared table with AISF selected. Use its search, severity, and
+status filters, plus account and Region filters where available. Open **Details
+and remediation** for source ownership, resource scope, mappings, and evidence.
 
-| Check | AISF control | Severity | Source checks |
-| ------- | -------------- | ---------- | --------------- |
-| AISF-00 | none (coverage marker) | Informational | none |
-| AISF-05 | AIR-BDR-KB-03 | High | `BR-20` |
-| AISF-07 | AIR-SGM-EP-08 | High | `SM-18`, `SM-42` |
-| AISF-08 | AIR-SGM-TRN-05 | Medium | `SM-09`, `SM-01`, `SM-03` |
+With no accepted observations, AISF shows an empty or incomplete result as
+appropriate; it does not populate 218 canonical rows. Each result preserves:
 
-### AISF-05 AIR-BDR-KB-03 Knowledge Base Vector Store Encryption
+- Native check identity and original `Passed`, `Failed`, or `N/A` status.
+- Finding details, severity, resource identifiers, source remediation, and
+  validated reference links.
+- Account, Region, execution, producer owner, and discovery/permission errors.
+- Reviewed AISF relationships for the actual observed predicate, or an explicit
+  indication that no reviewed mapping exists.
+- Equivalent AG/OW presentations attached to their underlying observation.
 
-Is the underlying vector store or index for a knowledge base encrypted and
-access-restricted the same way as the source data it was built from?
+Collector, artifact, and input gaps appear separately under **Coverage gaps and
+incomplete inputs** when present.
+The canonical catalog remains internal reference data. Its unobserved manual
+and unmapped requirements create no customer findings, proof obligations, or
+assessment denominator. Actual source-emitted advisory rows retain their
+original `N/A` outcome and limitations, are labelled as advisory findings,
+and are excluded from automated-result counts.
 
-| Source | Signal |
-| -------- | -------- |
-| BR-20 | Knowledge Base Customer-Managed KMS Encryption Check |
+**Export all AISF JSON** and **Export all AISF CSV** include all retained check
+results and coverage gaps, independent of the current display filter. Each
+result represents an observation in its actual
+scope; multiple resources or conflicting outcomes remain separate observations.
+Neither finding counts nor unique check counts claim whole-control compliance.
+JSON `scope.enable_aisf` records the preset setting; `scope.source_selection`
+records each effective collector selection. The enabled-preset notice requires
+all six collectors to be selected. Standalone report inputs with the preset
+marker but a partial source selection retain that scope and show an incomplete
+scope notice, without assuming that the missing collectors ran.
+HTML escapes untrusted text and permits only validated HTTPS source links.
+CSV text is protected against spreadsheet formula execution.
 
-Reference: <https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html>
+## Status semantics
 
-### AISF-07 AIR-SGM-EP-08 Batch Inference Network and Encryption Parity
+| Result | Meaning |
+| --- | --- |
+| Passed | The source check's stated predicate passed for the observed resource and scope |
+| Failed | The source check's stated predicate failed; its original remediation remains actionable |
+| N/A | The source reports no applicable resource, unavailable/inconclusive evidence, or advice requiring application review |
 
-Are batch (offline) inference jobs that process data in bulk held to the same
-private-network and encryption standard as real-time inference?
+The AISF view preserves these source outcomes. An attached mapping does not
+extend a source pass or failure into whole-control AISF compliance. All current
+reviewed mappings are partial relationships. Filter for failed results to find
+actionable source findings even when another collector is unavailable.
+Search matches native check IDs, alias presentations, mapping IDs, finding
+details, resources, and remediation. N/A advice and unavailable reads must remain
+distinguishable from a successful empty discovery.
+`Passed` is never inferred from tags, no-resource discovery, manual/advisory
+evidence, unavailable evidence, or a deselected service.
 
-| Source | Signal |
-| -------- | -------- |
-| SM-18 | SageMaker Transform Job Encryption Check (model VPC/isolation config plus job KMS configuration) |
-| SM-42 | SageMaker Batch Transform Creation Guardrail (SCP and identity guardrails on `CreateModel` and `CreateTransformJob` for encryption, approved network and no direct internet access) |
+An empty discovery with an explicit successful producer receipt is different
+from a denied or interrupted discovery. Neither proves the complete control.
+When a collector retains rows before a pagination failure, those rows remain
+useful evidence and the missing population remains a gap.
 
-Reference: <https://docs.aws.amazon.com/sagemaker/latest/dg/batch-vpc.html>
+## Scope and input completeness
 
-### AISF-08 AIR-SGM-TRN-05 Notebook and Development Environment Access Control
+Regional observations apply only within the same account, execution, Region,
+and selected producer. Global evidence has its own explicit scope; it is not
+copied into every Region. Only equivalent observations in equivalent scope
+are deduplicated. Conflicting pass/fail rows are retained deterministically.
+An ambiguous observation without an execution identity is not shared between
+multiple executions.
 
-Is access to notebook instances and development environments used for model
-experimentation restricted and monitored the same way as production access?
+The reviewed evidence includes direct BR/SM/AC/AR checks, native Agentic AI
+checks, Responsible AI GRC checks, and native OWASP checks. FS evidence uses the
+existing **GRC or OWASP** selection contract. Native OW evidence requires OWASP.
+An AG or OW category presentation is traced to its actual source check and
+owner. An equivalent alias does not add a second observation; conflicting
+observations remain visible. A category row without a specific source identity
+cannot stand in for every check in that category.
 
-This is the one control with several source checks. All three legs must report
-`Passed` for `AISF-08` to report `Passed`; any `Failed` leg makes it `Failed`,
-even when another leg is missing; otherwise a leg that is missing or `N/A` makes
-it `N/A`, and the finding details name a missing leg.
+The AISF preset selects these existing sources together. With the preset off,
+the report follows the individual selection flags and does not activate an
+omitted source. Both report paths retain FS evidence needed by OWASP, including
+when the separate GRC presentation is hidden. Evidence absent because its owner
+was not selected remains an explicit scope gap; enabling a report view alone
+does not prove that a collector ran.
 
-| Source | Signal |
-| -------- | -------- |
-| SM-09 | SageMaker Notebook Root Access Check |
-| SM-01 | SageMaker Internet Access Check |
-| SM-03 | SageMaker Data Protection Check |
+Partially selected presets expose their actual selected and deselected collectors.
+Cross-account, cross-execution, cross-Region, unknown/retired source, and
+cross-owner rows are isolated as input issues rather than credited as evidence.
 
-Reference: <https://docs.aws.amazon.com/whitepapers/latest/sagemaker-studio-admin-best-practices/permissions-management.html>
+Both consolidators distinguish missing, zero-byte, header-only, malformed,
+unreadable, and wrong-schema selected CSVs. A malformed tail does not discard
+earlier valid rows. Missing second Regions and explicitly failed assessments
+remain visible. A successful report upload does not turn these inputs into a
+complete assessment: diagnostic reports preserve useful findings while the run
+reports incomplete status.
 
-### Retired ids
+The state machine preserves compact service completion receipts for each
+selected Region, including failures and explicit skips. Single-account report
+validation requires these receipts. Multi-account CodeBuild supplies an explicit
+account/execution/Region/status manifest through `ASSESSMENT_SCOPE_MANIFEST`.
+Without a manifest, the local legacy directory helper reports unknown scope;
+directory contents cannot prove that selected accounts or Regions are complete.
 
-These ids were derived once and are not derived now. Each restated an incumbent
-check that asserts only part of its control, so a
-restated `Passed` would have claimed the whole control. The ids stay allocated
-in `RETIRED_AISF_IDS` and are never given to another control, so an archived
-report that carries one still means the control below. The incumbent checks
-still run, and their producer rows still name the control in the
-`Compliance_Frameworks` column with a `(partial)` tag.
+## Limits of automated coverage
 
-| Id | AISF control | Incumbent | Why retired |
-| ---- | -------------- | ----------- | ------------- |
-| AISF-01 | AIR-ACR-GW-01 | `AG-24` | the incumbent asserts only part of the control |
-| AISF-02 | AIR-ACR-RT-09 | `AC-06` | the incumbent asserts only part of the control |
-| AISF-03 | AIR-BDR-GRD-01 | `BR-10` | the incumbent asserts only part of the control |
-| AISF-04 | AIR-BDR-GRD-03 | `BR-26` | the incumbent asserts only part of the control |
-| AISF-06 | AIR-BDR-MDL-10 | `BR-37` | the incumbent asserts only part of the control |
+Some canonical controls require process or application evidence that these
+collectors cannot evaluate. They remain in the reference catalog without
+becoming customer assessment rows. A whole control's non-machine classification
+does not discard legitimate configuration findings mapped to part of it.
+Likewise, a machine classification cannot invent a collector or a missing result.
+Mappings preserve these limits while check results retain their narrow claims.
 
-## Traceability column on producer rows
+## Stable legacy source-summary IDs
 
-The `AISF-` rows above are derived verdicts. The `Compliance_Frameworks` column
-publishes no verdict at all: it tags rows the BR/SM/AC/AG/AR checks already emit
-with the AISF control each check contributes to, so a reader of
-`bedrock_security_report_*.csv` can trace a row back to the framework. The
-`Status` column still carries the verdict.
+Customer results use native check IDs and attach canonical mapping references.
+The view does not allocate new `AISF-XX` producer IDs.
 
-### The qualifier is what makes a partly asserted control safe to name
+| Stable source summary | Canonical control | Source checks |
+| --- | --- | --- |
+| `AISF-05` | `AIR-BDR-KB-03` | `BR-20` |
+| `AISF-07` | `AIR-SGM-EP-08` | `SM-18`, `SM-42` |
+| `AISF-08` | `AIR-SGM-TRN-05` | `SM-09`, `SM-01`, `SM-03` |
 
-An `AISF-` row restates the incumbent's `Passed` under the control id, so only a
-covered control may reach `AISF_DERIVED_MAP`. A tag restates nothing, so it may
-name a partly asserted control as long as it says so. Three forms:
+These summaries preserve source failures, but otherwise report `N/A` with the
+partial-proof limitation. `AISF-00` remains an informational completeness marker.
+Retired `AISF-01`, `AISF-02`, `AISF-03`, `AISF-04`, and `AISF-06` are never reused.
+Their former controls remain under canonical IDs in the reference catalog.
 
-| Tag | Means |
-| ----- | ------- |
-| `AISF AIR-BDR-KB-03` | this check alone asserts the whole control |
-| `AISF AIR-SGM-TRN-05 (1 of 3 checks)` | the control is covered, but jointly, so no single leg asserts it |
-| `AISF <control> (partial)` | the check asserts less than the control requires, and the tightening is outstanding |
+The canonical risk is retained verbatim. Legacy row severities use the scanner's
+four-band scale, which collapses critical to High; the retained disclosure
+identifies that collapse. The historical critical controls are `AIR-ACR-GW-01`,
+`AIR-ACR-RT-09`, and `AIR-BDR-GRD-01`.
 
-A check that contributes to several controls carries them pipe-joined, with the
-`AISF ` prefix repeated on each element so a consumer that splits on `|` gets a
-complete token. One value may mix forms, because a check that asserts one
-control in full often asserts only part of another, so read each element on its
-own and never the value as a whole.
+AISF is derived by shared `aisf_results.py` at report time. It adds no Lambda,
+CSV prefix, assessment branch, IAM grant, or producer count. Its canonical
+controls and legacy summaries are excluded from the direct-check pass rate and
+Open Action Items to avoid counting source findings twice.
 
-### One map module per producer
+## Catalog, mapping, and sample updates
 
-The map files are named per producer (`aisf_compliance_bedrock.py` and so on)
-for a measured reason. All six producers name their files `schema.py` and
-`app.py`, and `app.py` reaches its schema with `from schema import
-create_finding`, resolved through `sys.modules` under that bare name. With four
-files all called `aisf_compliance.py`, loading two producers into one
-interpreter gave the second one the first one's map, and
-`aisf_frameworks("BR-10")` returned `""` inside the bedrock module. The symptom
-is an empty tag and no `ImportError`, so nothing raises.
-`test_two_producers_in_one_interpreter_keep_their_own_maps` holds this.
+The report package contains `aisf_catalog/controls.json`, `classification.json`,
+`mapping.json`, `check_inventory.json`, and `manifest.json`. The manifest pins the revision, schema,
+exporter, relevant source inputs, and generated output hashes. `controls.json`
+is the exact canonical export. `classification.json` retains only each control’s
+section, text hash, kind, machine-checkability, and workload-agnostic flag. The
+manifest records that projection schema and field list alongside the raw source
+classification checksum and the projected output checksum. The mapping
+ledger also pins the canonical record and producer source digests.
+The check inventory accounts for every native predicate and derived presentation,
+including untagged checks. It records source locations, aliases, reviewed AISF
+relationships, limitations, and a specific exclusion when no defensible
+relationship exists. A count is not a reason to add a mapping.
 
-### Scope, and what it does not cover
+From the repository root, check the vendored bundle and reviewed mapping:
 
-- **CSV and the schema contract only.** The column reaches all four producer
-  CSVs. `generate_table_rows` renders 6 columns and never reads the field, so
-  the HTML report does not show it; a 7th column would touch the OWASP and
-  FinServ sections plus the `colspan="6"` assertions.
-- **4 producer modules, not 5.** `owasp_assessments` is excluded because no
-  `OW-` check is an incumbent for any AISF control, so the field would ship
-  unpopulated on every OWASP row.
-- **`responsible_ai_grc_assessments` is untouched.** It already declared the
-  field and populates it from its own `COMPLIANCE_MAP`, none of whose tokens
-  is AISF. Its frozen inventory baseline, whose tuples carry the
-  compliance string as their 5th element, is unchanged.
-- **The lookup cannot be bypassed.** Every finding in the four producers is
-  built by `create_finding`, and
-  `test_no_producer_builds_a_finding_outside_create_finding` fails if any is
-  assembled as a literal dict. Such a row would ship an empty tag silently,
-  because `csv.DictWriter` raises on a key the fieldnames lack and never on a
-  key a row is missing. That same `extrasaction="raise"` default couples the
-  schema field to the fieldnames list, so landing one without the other raises
-  `ValueError` on the first row. `agentcore_assessments` builds its header
-  twice, once for the no-findings case, and both lists are asserted.
+```bash
+.venv/bin/python tools/update_aisf_catalog.py --check
+.venv/bin/python tools/check_aisf_inventory.py
+```
 
-## Prowler AISF requirements
+The bundled data is a frozen export identified by its source revision and the
+manifest input/output hashes. Runtime checks, tests, inventory validation, and
+AISF sample regeneration use this vendored data and do not require the authoring
+project. Re-import additionally requires an approved canonical authoring checkout
+containing `build/export_controls.py`; that checkout and exporter are not
+distributed in this repository. With that checkout available, re-import the
+approved revision:
 
-Prowler publishes its own AWS AI Security Framework compliance mapping, whose
-requirement ids (`AISF-AI-06`, `AISF-IAM-07` and so on) are Prowler's and are
-not AISF catalogue control ids. Two checks answer Prowler requirements that no
-check here asserted:
+```bash
+.venv/bin/python tools/update_aisf_catalog.py \
+  --source /path/to/aws-ai-security-framework-assessment \
+  --revision 5df3295024713ac3ce88130c549bbc4fb2cebd53
+```
 
-| Prowler requirement | Check | What it reproduces |
-| --------------------- | ------- | -------------------- |
-| AISF-AI-06 Bedrock API Audit Trail | `BR-56` Bedrock LLM Jacking Activity | `cloudtrail_threat_detection_llm_jacking`, with the departures listed in [SECURITY_CHECKS.md](SECURITY_CHECKS.md#br-56-bedrock-llm-jacking-activity) |
-| AISF-IAM-07 Cognito User Authentication for AI Apps | `AC-52` Cognito User Pool Authentication | the user pool and app client checks, for the pools an AgentCore JWT authorizer names |
+Append `--check` to verify that checkout without writing it or the target bundle.
+The importer invokes the canonical exporter; it does not interpret YAML through
+a second schema. Classification imports use the recorded field allowlist, so
+unused source annotations are not copied into the assessment bundle. A new
+canonical revision requires explicit pin updates, an
+independent mapping review, and refreshed frozen acceptance evidence. Never
+repair a mismatch by deriving expected IDs from the implementation ledger.
 
-Neither check carries a `Compliance_Frameworks` tag. The tag names an AISF
-catalogue control, and a Prowler requirement id is not one, so writing it into a
-map would publish a control the catalogue does not have. Mapping either check to
-a catalogue control it was not assessed against would publish a coverage claim
-nothing backs. The cross-reference lives in this table and in the code comment
-on each check instead.
+Regenerate and check both deterministic examples:
 
-These Prowler requirements are out of charter and have no check here. Each is
-account hygiene that applies whether or not the account runs an AI workload,
-Prowler already checks it, and this scanner's scope is the AI/ML resources in
-the account:
+```bash
+.venv/bin/python tools/generate_aisf_samples.py
+.venv/bin/python tools/generate_aisf_samples.py --check
+```
 
-- `AISF-IAM-04`, root account protection.
-- `AISF-IAM-06`, the IAM password policy.
-- `AISF-IAM-08`, API Gateway authorizers.
-- `AISF-GOV-03`, the account security contact.
-- `AISF-DATA-02`, IAM Access Analyzer enablement.
+See [sample provenance and fixtures](../sample-reports/README.md#current-aisf-examples).
+The frozen acceptance inventory is `tests/fixtures/aisf/canonical-ids.txt`.
+Acceptance tests exercise both consolidators, all 64 service/standard selections,
+artifact failures, scope isolation, unsafe links, and false whole-control passes.
 
-## Adding a control
+## Interpretation
 
-1. Confirm the incumbent checks assert the whole control. A check that asserts
-   less belongs in the tag column with a `(partial)` qualifier; close the gap in
-   the incumbent check first.
-2. Append an entry to `AISF_DERIVED_MAP` with the next free `AISF-` number,
-   counting the ids in `RETIRED_AISF_IDS` as taken, the incumbent `Check_ID`s,
-   and the control's `risk`, `rec`, and first `src` URL copied from the AISF
-   control definition. A source is attributed to the service whose Lambda
-   emits it: `BR-`, `SM-`, `AC-` and `AR-` by prefix, and each `AG-` id through
-   `AGENTIC_SOURCE_SERVICE`, because Bedrock, AgentCore and Agent Registry all
-   emit `AG-` rows. `TestAgenticSourceAttribution` fails if that table drifts
-   from the three Agentic mapping dictionaries or from any `AG-` id a producer
-   names. A source no table attributes is logged at runtime and is never
-   removed by service selection, so its control still renders.
-3. Update the coverage bullet in this file, the AISF figures in `CHANGELOG.md`,
-   and the `derived=3` fallback on the registry entry in `report_template.py`.
-   The report computes its own derived count from `AISF_DERIVED_MAP` through
-   `aisf_mappings.aisf_scope()`. If the control moved from `(partial)` to
-   covered, also update `AISF_COVERED_CONTROLS` and `AISF_PARTIAL_CONTROLS` in
-   `report_template.py`. `TestScopeTextCountsComeFromTheData` and
-   `test_scope_text_states_the_denominator_and_it_reconciles` fail until the
-   figures agree.
-4. Add the row to the check catalogue above with its own per-control section.
-5. Change the control's tags in the `aisf_compliance_<module>.py` map of each
-   producer that emits an incumbent: a control that became covered is bare or
-   `(1 of N checks)`, never `(partial)`.
-6. Run the full test suite, ruff, cfn-lint and `sam validate --lint` as CI does.
+This assessment reports AI workload check results. Selecting AISF includes the
+existing AI collectors and their reviewed mappings; it does not certify every
+canonical requirement. Process and application evidence beyond the implemented
+checks is outside this assessment's scope.

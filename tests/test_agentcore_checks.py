@@ -63423,3 +63423,74 @@ class TestCrossRegionLoopsStopAtTheDeadline:
             "bedrock-agentcore:ListGateways in us-west-2 (LambdaTimeoutApproaching)"
             in callers["rt-a"]["Finding_Details"]
         )
+
+
+@pytest.mark.parametrize("read_leg", ["DescribeKey", "GetKeyPolicy"])
+@pytest.mark.parametrize("error_code", ["NotFoundException", "AccessDeniedException"])
+@patch("agentcore_app.kms_client")
+@patch("agentcore_app.agentcore_client")
+def test_live_ac12_missing_key_guidance_distinguishes_denied_reads(
+    mock_ac, mock_kms, read_leg, error_code
+):
+    fixture = TestAC12GatewayKeyScope()
+    key = fixture._KEYS["gw-good"]
+    error = _make_client_error(error_code, "synthetic read failure")
+    fixture._wire(
+        mock_ac,
+        mock_kms,
+        ["gw-good"],
+        metadata={key: error} if read_leg == "DescribeKey" else {},
+        policies={key: error} if read_leg == "GetKeyPolicy" else {},
+    )
+    [row] = agentcore_app.check_agentcore_gateway_encryption()
+    assert row["Check_ID"] == "AC-12"
+    assert row["Status"] == "N/A"
+    assert row["Severity"] == "Informational"
+    assert error_code in row["Finding_Details"]
+    assert read_leg in row["Finding_Details"]
+    resolution = row["Resolution"]
+    assert "For NotFoundException or ResourceNotFoundException, verify" in resolution
+    assert "ARN, account, Region" in resolution
+    assert "correct stale references and rerun" in resolution
+    assert "For AccessDenied, grant only the named read action" in resolution
+    assert not resolution.startswith("Grant")
+
+
+@pytest.mark.parametrize("error_code", ["NoSuchEntity", "AccessDenied"])
+@patch("agentcore_app.iam_client")
+@patch("agentcore_app.agentcore_client")
+def test_live_ac48_missing_role_guidance_distinguishes_denied_reads(
+    mock_ac, mock_iam, error_code
+):
+    fixture = TestAC48ExecutionRoleTrustAndSharing()
+    inventory = fixture._wire(mock_ac, mock_iam, runtimes=["SyntheticRuntimeRole"])
+    mock_iam.get_role.side_effect = _make_client_error(error_code, "synthetic error")
+    findings = agentcore_app.check_agentcore_execution_role_trust_and_sharing(inventory)
+    [row] = fixture._named(findings, "AgentCore Execution Role Trust")
+    assert row["Check_ID"] == "AC-48"
+    assert row["Status"] == "N/A"
+    assert row["Severity"] == "Informational"
+    assert error_code in row["Finding_Details"]
+    assert "SyntheticRuntimeRole" in row["Finding_Details"]
+    resolution = row["Resolution"]
+    assert "For NoSuchEntity, verify the referenced role ARN, account" in resolution
+    assert "role existence" in resolution
+    assert "correct stale references and rerun" in resolution
+    assert "For AccessDenied, grant iam:GetRole on that role" in resolution
+    assert not resolution.startswith("Grant")
+
+
+@patch("agentcore_app.agentcore_client")
+def test_live_ac45_runtime_role_absent_from_cache_remains_unassessed(mock_ac):
+    fixture = TestAC45RuntimeExecutionRole()
+    _wire_tools(mock_ac)
+    _wire_runtime_roles(mock_ac, {"rt-1": fixture._runtime("rt-1", "MissingRole")})
+    findings = agentcore_app.check_agentcore_tool_execution_role_scope(
+        fixture._cache({})
+    )
+    [row] = [f for f in findings if "MissingRole" in f["Finding_Details"]]
+    assert row["Check_ID"] == "AC-45"
+    assert row["Status"] == "N/A"
+    assert row["Severity"] == "Informational"
+    assert "not in the IAM permissions cache" in row["Finding_Details"]
+    assert row["Resolution"]

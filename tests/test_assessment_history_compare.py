@@ -884,8 +884,14 @@ def test_an_aisf_control_with_every_service_in_both_runs_is_compared(
         make_finding("SM-01", "Failed", region=region),
     ]
     result = _compare(previous, current)
-    aisf = {row.check_id: row.change for row in result.rows if row.area == "aisf"}
-    assert aisf["AISF-90"] is Change.REGRESSED
+    rows = {row.check_id: row for row in result.rows}
+    alias = rows["AISF-90"]
+    assert alias.area == "aisf"
+    assert (alias.previous_status, alias.current_status) == ("N/A", "Failed")
+    assert alias.change is Change.NEW
+    native = rows["SM-01"]
+    assert (native.previous_status, native.current_status) == ("Passed", "Failed")
+    assert native.change is Change.REGRESSED
     assert result.excluded == ()
     assert result.notes == ()
 

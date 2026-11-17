@@ -1,0 +1,95 @@
+{
+  "check": ".venv/bin/python tools/generate_aisf_samples.py --check",
+  "generated_at": "2026-11-06T12:00:00+00:00",
+  "inputs": {
+    "aiml-security-assessment/functions/security/generate_consolidated_report/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog.py": "64abc2340a4d8478dcfcd37c7861e669d03b4505cc3d436a9b0f3e7d31dbd467",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/check_inventory.json": "bbd94b256b5ebeda219aeb20c843c03e7901637d5c2b997080a82b632c5bc340",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/classification.json": "e4ebec58fbf41133890ba9caccaa6b9219ddfbd610827caa108bfc6b429e8b8c",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/controls.json": "f2d44380f1859c204d13caf093b6e73a0aa2bea55e6f9cd6862971db12e362be",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/manifest.json": "c3f19c2ee5c4b9afef8bcaa02357fcfffd0f334ce6d0d4c958cff2b9391ab34d",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_catalog/mapping.json": "227be817aa0831ff5758d8368be36af64ace66de95019e120a294cdf8cde1f24",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_mappings.py": "0ad74702da9ef81bbde93d26bd30ff7c4e6159d27593f5929da9bf509cc066e7",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_results.py": "8b54aa420bb83257ca1b5f1fc7903a9dd11d0869dd2e8aa08e8cb58fc5b5a6cc",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/aisf_view.py": "62ee6fbfeaa8e0abae94b61c716d2e7910cf5f0a5015e5d233ab881e38cdce7c",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/app.py": "911cf97a82d36202e54975445b36eadf16618eb3fbd5b08f1cb1913d6e4102fc",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/assessment_artifacts.py": "01bbc9520337b929ef344712033bc4060bf46ec8e6debcf19ff496dbf65c6207",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/report_template.py": "312d88f497eeb490a075f15d65160b9304126fecef5ba14034d3fc975539312f",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/schema.py": "22adb048615afdb99bb19520e6c2975800d0dc2fdfe2e668c258884f4dba3e69",
+    "aiml-security-assessment/functions/security/generate_consolidated_report/test_generate_report.py": "e14eb06dcf680cedc5f5d7b3610c27e638a1f1c8c691fc8519dd2120d04303ec",
+    "consolidate_html_reports.py": "dcbe3625c71d5b4f423ebbc48c609bb7205b1d6268e9d23ee27b26a0b8b671a4",
+    "sample-reports/fixtures/aisf/accounts/111122223333/agent_registry_security_report_synthetic-one_us-east-1.csv": "d454d3bb68dc1e2c8c342abcf0f6f8889fab9b77d0deb0ec0db2347fa9e8b1be",
+    "sample-reports/fixtures/aisf/accounts/111122223333/agent_registry_security_report_synthetic-one_us-west-2.csv": "fc90460c3836c1fcd2aaf310560728068a6bbab56b73a28791448e13350aed68",
+    "sample-reports/fixtures/aisf/accounts/111122223333/agentcore_security_report_synthetic-one_us-east-1.csv": "b57465dcb80fd3b566cfaadd82b5825b6a574bfe8ceacc23170e8915c10a437d",
+    "sample-reports/fixtures/aisf/accounts/111122223333/bedrock_security_report_synthetic-one_us-east-1.csv": "c26468937a75d53bb1c672c971526e547cc90789e7c18658794f227a4f5e14d6",
+    "sample-reports/fixtures/aisf/accounts/111122223333/bedrock_security_report_synthetic-one_us-west-2.csv": "2ef3bb948baeca77aae036213e4a55f862d96ff9c146ef02c327d9a18bd72854",
+    "sample-reports/fixtures/aisf/accounts/111122223333/owasp_security_report_synthetic-one_us-east-1.csv": "c7cfde958296cb2e4a497e2b472afc67a0b45937fece3110e381c9d34eae315d",
+    "sample-reports/fixtures/aisf/accounts/111122223333/owasp_security_report_synthetic-one_us-west-2.csv": "e1da2ea3ff375870cab0685612c8b959c20f0b8ec94af2eb6be86713aa2b6e5f",
+    "sample-reports/fixtures/aisf/accounts/111122223333/responsible_ai_grc_security_report_synthetic-one.csv": "d1dca77463dff14018d1349f9abd94d9bcf702dfd2bb65255e21bd142cda700b",
+    "sample-reports/fixtures/aisf/accounts/111122223333/sagemaker_security_report_synthetic-one_us-east-1.csv": "32d0746804148e784484d4488512273a2f96105dee7ff829a6e1bcf516449635",
+    "sample-reports/fixtures/aisf/accounts/111122223333/sagemaker_security_report_synthetic-one_us-west-2.csv": "7776eec5a8ea2b5df826c70fee1adddecc6efbf9dcf9dc9184ff362006f43b52",
+    "sample-reports/fixtures/aisf/accounts/444455556666/agent_registry_security_report_synthetic-two_us-east-1.csv": "2a7b5dc7298ebc46cd697ee8e4f34fc79fe6977ab1bb4051d81c7f19045cc90d",
+    "sample-reports/fixtures/aisf/accounts/444455556666/agent_registry_security_report_synthetic-two_us-west-2.csv": "7afa7db7fc6f35fc9e0b0a5d795bb9c9d5b9b38028976ac3e56b9905350c2a95",
+    "sample-reports/fixtures/aisf/accounts/444455556666/agentcore_security_report_synthetic-two_us-east-1.csv": "2ced78c738640c029842a77d62578ec9ca7bab24ea08eb298296c68eda886c92",
+    "sample-reports/fixtures/aisf/accounts/444455556666/agentcore_security_report_synthetic-two_us-west-2.csv": "bb57f6d5809837653cf7c721976081bd1584cd64de1c6a005f6cf88dd3a82187",
+    "sample-reports/fixtures/aisf/accounts/444455556666/bedrock_security_report_synthetic-two_us-east-1.csv": "659cf61edb19a08d8d1f32cbd0783bbb1aeb8c94ebc173ecf9dbd080fb984486",
+    "sample-reports/fixtures/aisf/accounts/444455556666/bedrock_security_report_synthetic-two_us-west-2.csv": "325b632bf51a470c03434c710b7522bd5e0c16203eec764c9ca53841bcad0fae",
+    "sample-reports/fixtures/aisf/accounts/444455556666/owasp_security_report_synthetic-two_us-east-1.csv": "3b4f39347f960de27e66425311854f67bb235d7ff63906378adf68a6495f150c",
+    "sample-reports/fixtures/aisf/accounts/444455556666/owasp_security_report_synthetic-two_us-west-2.csv": "f91faad62f95d2faeaadc4a507c6cb7d2e90bc5033cc9e1783c6ff52764e92af",
+    "sample-reports/fixtures/aisf/accounts/444455556666/responsible_ai_grc_security_report_synthetic-two.csv": "803f8aae014a793bba9eb7888d000c049093b4e650eed71db9ed4b4bc81f6e60",
+    "sample-reports/fixtures/aisf/accounts/444455556666/sagemaker_security_report_synthetic-two_us-east-1.csv": "0c641c0c4b9014000562561e332bb87ceb7c636f3fff8e48040532fac5952757",
+    "sample-reports/fixtures/aisf/accounts/444455556666/sagemaker_security_report_synthetic-two_us-west-2.csv": "417168a5e367315831ed1b1612960ef737568122ead22773a5a27a9585b23a31",
+    "sample-reports/fixtures/aisf/scope.json": "28adb56494f8d26f28f95f4f7c7ed2f0b067eaad72c6bbe5085b501c660e8c01",
+    "tools/generate_aisf_samples.py": "cce80a04f7f991b83dd854a7c3b284add4aa6816e9dc4bdd8620ad73cae6ba55"
+  },
+  "outputs": {
+    "sample-reports/aisf_multi_account.html": "df3348d6d53ff78939c69760c59ca1fde0328fffc2e424e82130102a2c27d869",
+    "sample-reports/aisf_multi_account.json": "2338f8b0c970308de360a28d451021971e97889bcc457d883c17ce348cecb235",
+    "sample-reports/aisf_single_account.html": "df0224575fe090fb1bf3acc98f07424d55e1ef255466294810177a8a7989a1b7",
+    "sample-reports/aisf_single_account.json": "4f211ef642693e3063ff0a6922b3557617b42729b5a17e22baafcf20e1f98148"
+  },
+  "primary_samples": {
+    "files": {
+      "security_assessment_changes.html": "9f6026be6e866061b86ce997be75a15c919b7ec579d0ac221e1b6d148b27be67",
+      "security_assessment_multi_account.html": "fd11a83371cb4e5078822a3c782c2f3271cc8132e969eb6fe6d752820b8fafc2",
+      "security_assessment_single_account.html": "cbc21e363cc86dad1cdefc01712aa7f54c3c3c84d4bcfa5fea177d9a62543335"
+    },
+    "meaning": "The primary single-account, multi-account, and changes pages contain anonymized assessment results. They are maintained together with the documented anonymization workflow; this generator records their hashes without rewriting them."
+  },
+  "regenerate": ".venv/bin/python tools/generate_aisf_samples.py",
+  "schema_version": 1,
+  "source_revision": "5df3295024713ac3ce88130c549bbc4fb2cebd53",
+  "summaries": {
+    "multi_account": {
+      "check_results": 35,
+      "distinct_source_checks": 18,
+      "gap_count": 15,
+      "mapped_results": 34,
+      "source_advisories": 3,
+      "source_results": 27,
+      "statuses": {
+        "Failed": 15,
+        "N/A": 11,
+        "Passed": 9
+      },
+      "unavailable_results": 5,
+      "unmapped_results": 1
+    },
+    "single_account": {
+      "check_results": 22,
+      "distinct_source_checks": 18,
+      "gap_count": 7,
+      "mapped_results": 21,
+      "source_advisories": 2,
+      "source_results": 18,
+      "statuses": {
+        "Failed": 13,
+        "N/A": 6,
+        "Passed": 3
+      },
+      "unavailable_results": 2,
+      "unmapped_results": 1
+    }
+  },
+  "synthetic": true
+}

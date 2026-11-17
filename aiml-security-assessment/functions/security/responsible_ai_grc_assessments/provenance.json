@@ -290,18 +290,18 @@
       "source_section": "§1.2.9",
       "source_page": null,
       "derivation_type": "direct-derived",
-      "source_excerpt_summary": "\"Use Amazon Bedrock AgentCore to manage complex tasks and connect securely\". An inbound authorizer gates callers of the runtime endpoint. The section's action-boundary and audit-logging mitigations are **not** implemented by this check.",
+      "source_excerpt_summary": "\"Use Amazon Bedrock AgentCore to manage complex tasks and connect securely\". This check observes inbound authentication mode configuration. The section's action-boundary and audit-logging mitigations are **not** implemented by this check.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `ListAgentRuntimes` (paginated, via the `bedrock-agentcore-control` boto3 client; IAM action `bedrock-agentcore:ListAgentRuntimes`) for the runtime inventory, then `GetAgentRuntime` per runtime (IAM action `bedrock-agentcore:GetAgentRuntime`) to read `authorizerConfiguration` — the list operation does not return that field. Runtimes with an `authorizerConfiguration` are reported Passed; those without are reported Failed; a runtime that cannot be described is reported as COULD NOT ASSESS rather than counted either way.",
+      "inspected_aws_evidence": "Calls `ListAgentRuntimes` (paginated, via the `bedrock-agentcore-control` boto3 client; IAM action `bedrock-agentcore:ListAgentRuntimes`), then `GetAgentRuntime` per runtime (IAM action `bedrock-agentcore:GetAgentRuntime`). A successful detail response that omits `authorizerConfiguration` indicates the documented default IAM SigV4 mode. A configuration containing only `customJWTAuthorizer`, with a nonempty string `discoveryUrl`, indicates configured JWT mode. Both modes produce separate Passed configuration observations. Explicit null, empty, malformed or unknown configurations, failed detail ",
       "unsupported_assertions": [
         "that an AgentCore Policy Engine resource exists",
         "that policies are associated with every relevant tool",
-        "that individual tool calls receive action-level authorization. An inbound authorizer gates *callers of the runtime endpoint*; it is not a tool-level authorization control. Policy semantics require manual review."
+        "that individual tool calls receive action-level authorization. A successful read with no authorizerConfiguration uses the documented IAM SigV4 default; a custom JWT authorizer selects OAuth/JWT authentication. Passed means a supported mode was observed, not that requests, JWT claims workload-specific requirements, or tool authorization were tested."
       ],
       "manual_review_requirements": [
         "that an AgentCore Policy Engine resource exists",
         "that policies are associated with every relevant tool",
-        "that individual tool calls receive action-level authorization. An inbound authorizer gates *callers of the runtime endpoint*; it is not a tool-level authorization control. Policy semantics require manual review."
+        "that individual tool calls receive action-level authorization. A successful read with no authorizerConfiguration uses the documented IAM SigV4 default; a custom JWT authorizer selects OAuth/JWT authentication. Passed means a supported mode was observed, not that requests, JWT claims workload-specific requirements, or tool authorization were tested."
       ],
       "implementing_functions": [
         "check_agentcore_runtime_inbound_authorizer"
@@ -2230,16 +2230,16 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"1. Implement least privilege for identities associated with agents and tool services. 2. Where supported by the tool service ensure that communications to tool services or agents are authorized by the end user. 3. Customers building their own tool services should consider propagating end-user identities separately; ensuring these identities can be validated and are not revealed to unauthorized th",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `ListAgentRuntimes` (paginated, via the `bedrock-agentcore-control` boto3 client; IAM action `bedrock-agentcore:ListAgentRuntimes`), then `GetAgentRuntime` per runtime (IAM action `bedrock-agentcore:GetAgentRuntime`), and checks whether `authorizerConfiguration.customJWTAuthorizer` is present. Its contents (`discoveryUrl`, audiences, clients, scopes) are not evaluated. Flags runtimes with no JWT authorizer (meaning inbound calls carry no verifiable end-user identity), and advises configuring outbound OAuth for downstream tool services. A runtime that cannot be described is reported COULD",
+      "inspected_aws_evidence": "Calls paginated `ListAgentRuntimes`, then `GetAgentRuntime` per runtime. A successful detail response omitting `authorizerConfiguration` establishes the documented default IAM SigV4 mode; a configuration containing only `customJWTAuthorizer` with a nonempty string `discoveryUrl` establishes configured JWT mode. Either mode produces an `N/A`/Informational manual-review row. Missing runtime IDs, failed detail reads, and explicit null, empty, malformed or unknown configurations remain undetermined `N/A`/Low. No runtimes is `N/A`/Informational.",
       "unsupported_assertions": [
         "that the end-user identity is actually forwarded to downstream tool services (an application behavior, not a runtime property)",
         "that tool services validate a propagated identity",
-        "that tokens are not over-shared. Note also that ``authorizerConfiguration`` exposes only ``customJWTAuthorizer``; there is no ``iamAuthorizer`` member, so no IAM-authorizer claim is made."
+        "that tokens are not over-shared. A successful GetAgentRuntime with no authorizerConfiguration uses the documented IAM SigV4 default. JWT configuration and default IAM are both N/A observations: neither proves that end-user identity propagates or that it is absent. Trusted upstream user binding can be application-managed."
       ],
       "manual_review_requirements": [
         "that the end-user identity is actually forwarded to downstream tool services (an application behavior, not a runtime property)",
         "that tool services validate a propagated identity",
-        "that tokens are not over-shared. Note also that ``authorizerConfiguration`` exposes only ``customJWTAuthorizer``; there is no ``iamAuthorizer`` member, so no IAM-authorizer claim is made."
+        "that tokens are not over-shared. A successful GetAgentRuntime with no authorizerConfiguration uses the documented IAM SigV4 default. JWT configuration and default IAM are both N/A observations: neither proves that end-user identity propagates or that it is absent. Trusted upstream user binding can be application-managed."
       ],
       "implementing_functions": [
         "check_agentcore_end_user_identity_propagation"

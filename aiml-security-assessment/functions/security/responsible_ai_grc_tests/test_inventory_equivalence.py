@@ -31,6 +31,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from .support import finserv_app as app
+from .support import generated_findings
 
 
 # ===========================================================================
@@ -565,6 +566,9 @@ def _run_handler_and_extract_tuples(mock_client_side_effect, event):
         patch("finserv_app.boto3.client") as mock_client,
         patch("finserv_app.get_permissions_cache") as mock_cache,
         patch("finserv_app.write_to_s3") as mock_s3,
+        patch(
+            "finserv_app.generate_csv_report", wraps=app.generate_csv_report
+        ) as mock_report,
     ):
         mock_client.side_effect = mock_client_side_effect
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -573,7 +577,7 @@ def _run_handler_and_extract_tuples(mock_client_side_effect, event):
         result = app.lambda_handler(event, None)
 
     tuples = []
-    for finding in result["body"]["findings"]:
+    for finding in generated_findings(mock_report, result):
         for row in finding.get("csv_data", []):
             tuples.append(
                 (
@@ -748,6 +752,9 @@ class TestGoldenEquivalenceBaseline:
             patch("finserv_app.boto3.client") as mock_client,
             patch("finserv_app.get_permissions_cache") as mock_cache,
             patch("finserv_app.write_to_s3") as mock_s3,
+            patch(
+                "finserv_app.generate_csv_report", wraps=app.generate_csv_report
+            ) as mock_report,
         ):
             mock_client.side_effect = account_state_mock
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -756,7 +763,7 @@ class TestGoldenEquivalenceBaseline:
             result = app.lambda_handler(lambda_event, None)
 
         assert result["statusCode"] == 200
-        findings = result["body"]["findings"]
+        findings = generated_findings(mock_report, result)
         assert len(findings) == 65, f"Expected 65 registry entries; got {len(findings)}"
 
     def test_all_findings_have_rows(self, account_state_mock, lambda_event):
@@ -765,6 +772,9 @@ class TestGoldenEquivalenceBaseline:
             patch("finserv_app.boto3.client") as mock_client,
             patch("finserv_app.get_permissions_cache") as mock_cache,
             patch("finserv_app.write_to_s3") as mock_s3,
+            patch(
+                "finserv_app.generate_csv_report", wraps=app.generate_csv_report
+            ) as mock_report,
         ):
             mock_client.side_effect = account_state_mock
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -772,7 +782,7 @@ class TestGoldenEquivalenceBaseline:
 
             result = app.lambda_handler(lambda_event, None)
 
-        for finding in result["body"]["findings"]:
+        for finding in generated_findings(mock_report, result):
             assert finding.get("csv_data"), (
                 f"Finding '{finding.get('check_name')}' produced no CSV rows"
             )
@@ -783,6 +793,9 @@ class TestGoldenEquivalenceBaseline:
             patch("finserv_app.boto3.client") as mock_client,
             patch("finserv_app.get_permissions_cache") as mock_cache,
             patch("finserv_app.write_to_s3") as mock_s3,
+            patch(
+                "finserv_app.generate_csv_report", wraps=app.generate_csv_report
+            ) as mock_report,
         ):
             mock_client.side_effect = account_state_mock
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -791,7 +804,9 @@ class TestGoldenEquivalenceBaseline:
             result = app.lambda_handler(lambda_event, None)
 
         all_rows = [
-            row for f in result["body"]["findings"] for row in f.get("csv_data", [])
+            row
+            for f in generated_findings(mock_report, result)
+            for row in f.get("csv_data", [])
         ]
         passed_ids = {r["Check_ID"] for r in all_rows if r.get("Status") == "Passed"}
 
@@ -808,6 +823,9 @@ class TestGoldenEquivalenceBaseline:
             patch("finserv_app.boto3.client") as mock_client,
             patch("finserv_app.get_permissions_cache") as mock_cache,
             patch("finserv_app.write_to_s3") as mock_s3,
+            patch(
+                "finserv_app.generate_csv_report", wraps=app.generate_csv_report
+            ) as mock_report,
         ):
             mock_client.side_effect = account_state_mock
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -816,7 +834,9 @@ class TestGoldenEquivalenceBaseline:
             result = app.lambda_handler(lambda_event, None)
 
         all_rows = [
-            row for f in result["body"]["findings"] for row in f.get("csv_data", [])
+            row
+            for f in generated_findings(mock_report, result)
+            for row in f.get("csv_data", [])
         ]
         na_ids = {r["Check_ID"] for r in all_rows if r.get("Status") == "N/A"}
 
@@ -844,6 +864,9 @@ class TestGoldenEquivalenceBaseline:
             patch("finserv_app.boto3.client") as mock_client,
             patch("finserv_app.get_permissions_cache") as mock_cache,
             patch("finserv_app.write_to_s3") as mock_s3,
+            patch(
+                "finserv_app.generate_csv_report", wraps=app.generate_csv_report
+            ) as mock_report,
         ):
             mock_client.side_effect = fail_mock
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -852,7 +875,9 @@ class TestGoldenEquivalenceBaseline:
             result = app.lambda_handler(lambda_event, None)
 
         all_rows = [
-            row for f in result["body"]["findings"] for row in f.get("csv_data", [])
+            row
+            for f in generated_findings(mock_report, result)
+            for row in f.get("csv_data", [])
         ]
         failed_ids = {r["Check_ID"] for r in all_rows if r.get("Status") == "Failed"}
         assert "FS-45" in failed_ids, (
@@ -967,13 +992,16 @@ class TestPermittedMultiPageDeltas:
             patch("finserv_app.boto3.client") as mock_client,
             patch("finserv_app.get_permissions_cache") as mock_cache,
             patch("finserv_app.write_to_s3"),
+            patch(
+                "finserv_app.generate_csv_report", wraps=app.generate_csv_report
+            ) as mock_report,
         ):
             mock_client.side_effect = mock_with_two_page_wafv2
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
             result = app.lambda_handler(lambda_event, None)
 
         actual = []
-        for finding in result["body"]["findings"]:
+        for finding in generated_findings(mock_report, result):
             for row in finding.get("csv_data", []):
                 actual.append(
                     (
@@ -1059,13 +1087,16 @@ class TestPermittedMultiPageDeltas:
             patch("finserv_app.boto3.client") as mock_client,
             patch("finserv_app.get_permissions_cache") as mock_cache,
             patch("finserv_app.write_to_s3"),
+            patch(
+                "finserv_app.generate_csv_report", wraps=app.generate_csv_report
+            ) as mock_report,
         ):
             mock_client.side_effect = mock_with_two_page_s3
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
             result = app.lambda_handler(lambda_event, None)
 
         actual = []
-        for finding in result["body"]["findings"]:
+        for finding in generated_findings(mock_report, result):
             for row in finding.get("csv_data", []):
                 actual.append(
                     (

@@ -75,13 +75,25 @@ phases:
           echo "ENABLE_FINSERV set to $ENABLE_RESPONSIBLE_AI_GRC; overriding the effective Responsible AI GRC toggle"
         fi
         unset ENABLE_FINSERV_RAW ENABLE_FINSERV_NORMALIZED
-      - echo "Responsible AI GRC assessment enabled is $ENABLE_RESPONSIBLE_AI_GRC"
       # EnableOWASPAssessment toggle (CodeBuild env var; default false). Threaded
       # into the Step Functions execution input as enableOWASP; the ASL OWASP
       # branch runs only when this is "true". Lower-cased here so the ASL's
       # case-sensitive StringEquals "true" gate matches a "True"/"TRUE" input.
       - export ENABLE_OWASP="$(echo "${ENABLE_OWASP:-false}" | tr '[:upper:]' '[:lower:]')"
-      - echo "OWASP assessment enabled is $ENABLE_OWASP"
+      - |
+        # Resolve the AISF preset after validating the legacy GRC alias contract.
+        export ENABLE_AISF="$(echo "${ENABLE_AISF:-false}" | tr '[:upper:]' '[:lower:]')"
+        case "$ENABLE_AISF" in
+          true|false) ;;
+          *) echo "ERROR: ENABLE_AISF must be true or false"; exit 1 ;;
+        esac
+        if [[ "$ENABLE_AISF" == "true" ]]; then
+          export ENABLE_BEDROCK=true ENABLE_SAGEMAKER=true ENABLE_AGENTCORE=true ENABLE_AGENT_REGISTRY=true
+          export ENABLE_RESPONSIBLE_AI_GRC=true ENABLE_OWASP=true
+        fi
+        echo "AISF assessment preset enabled is $ENABLE_AISF"
+        echo "Responsible AI GRC assessment enabled is $ENABLE_RESPONSIBLE_AI_GRC"
+        echo "OWASP assessment enabled is $ENABLE_OWASP"
       - |
         # Validate required environment variables
         missing_vars=()
@@ -142,6 +154,8 @@ phases:
         SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER="ParameterKey=ApprovedExternalAccountIds,ParameterValue=\"${APPROVED_EXTERNAL_ACCOUNT_IDS:-}\""
         SAM_APPROVED_ORGANIZATION_IDS_PARAMETER="ParameterKey=ApprovedOrganizationIds,ParameterValue=\"${APPROVED_ORGANIZATION_IDS:-}\""
         SAM_ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS_PARAMETER="ParameterKey=EnableSageMakerArtifactObjectReads,ParameterValue=${ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS:-false}"
+        SAM_ENABLE_AISF_PARAMETER="ParameterKey=EnableAISFAssessment,ParameterValue=${ENABLE_AISF:-false}"
+        export SAM_ENABLE_AISF_PARAMETER
         SAM_ENABLE_BEDROCK_PARAMETER="ParameterKey=EnableBedrockAssessment,ParameterValue=${ENABLE_BEDROCK}"
         export SAM_ENABLE_BEDROCK_PARAMETER
         SAM_ENABLE_SAGEMAKER_PARAMETER="ParameterKey=EnableSageMakerAssessment,ParameterValue=${ENABLE_SAGEMAKER}"
@@ -274,7 +288,7 @@ phases:
               record_failure "$accountId" "deployment" "Failed to recover a failed CloudFormation stack"
               unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
               continue
-            elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "aiml-security-$accountId" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_ENABLE_AGENTCORE_ARTIFACT_OBJECT_READS_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER" "$SAM_ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS_PARAMETER"; then
+            elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "aiml-security-$accountId" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_AISF_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_ENABLE_AGENTCORE_ARTIFACT_OBJECT_READS_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER" "$SAM_ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS_PARAMETER"; then
               echo "ERROR: Deploy failed for account $accountId"
               record_failure "$accountId" "deployment" "SAM deployment failed"
               unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
@@ -283,7 +297,7 @@ phases:
 
             STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name aiml-security-$accountId --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
             if [[ $STATE_MACHINE_ARN != "" && $STATE_MACHINE_ARN != "None" ]]; then
-              if EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$accountId\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
+              if EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$accountId\",\"enableAISF\":\"$ENABLE_AISF\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
                 if [[ -n "$EXECUTION_ARN" && "$EXECUTION_ARN" != "None" ]]; then
                   echo "Started execution: $EXECUTION_ARN"
                   echo "$EXECUTION_ARN" > /tmp/execution_arns/$accountId.txt
@@ -307,13 +321,13 @@ phases:
           if ! recover_failed_stack aws-sam-cli-managed-default || ! recover_failed_stack aiml-security-mgmt; then
             echo "ERROR: Failed to recover deployment stack for management account"
             record_failure "$AWS_ACCOUNT_ID" "deployment" "Failed to recover a failed CloudFormation stack"
-          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-mgmt --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_ENABLE_AGENTCORE_ARTIFACT_OBJECT_READS_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER" "$SAM_ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS_PARAMETER"; then
+          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-mgmt --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_AISF_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_ENABLE_AGENTCORE_ARTIFACT_OBJECT_READS_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER" "$SAM_ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS_PARAMETER"; then
             echo "ERROR: Deploy failed for management account"
             record_failure "$AWS_ACCOUNT_ID" "deployment" "SAM deployment failed"
           else
             STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name aiml-security-mgmt --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
             if [[ $STATE_MACHINE_ARN != "" && $STATE_MACHINE_ARN != "None" ]]; then
-              if MGMT_EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
+              if MGMT_EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableAISF\":\"$ENABLE_AISF\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
                 if [[ -n "$MGMT_EXECUTION_ARN" && "$MGMT_EXECUTION_ARN" != "None" ]]; then
                   echo "Started management account execution: $MGMT_EXECUTION_ARN"
                   echo "$MGMT_EXECUTION_ARN" > /tmp/execution_arns/$AWS_ACCOUNT_ID.txt
@@ -341,7 +355,7 @@ phases:
           if ! recover_failed_stack aws-sam-cli-managed-default || ! recover_failed_stack "$STACK_NAME"; then
             echo "ERROR: Failed to recover deployment stack for single account"
             exit 1
-          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "$STACK_NAME" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_ENABLE_AGENTCORE_ARTIFACT_OBJECT_READS_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER" "$SAM_ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS_PARAMETER"; then
+          elif ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "$STACK_NAME" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_ENABLE_AISF_PARAMETER" "$SAM_ENABLE_BEDROCK_PARAMETER" "$SAM_ENABLE_SAGEMAKER_PARAMETER" "$SAM_ENABLE_AGENTCORE_PARAMETER" "$SAM_ENABLE_AGENT_REGISTRY_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_ENABLE_AGENTCORE_ARTIFACT_OBJECT_READS_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER" "$SAM_ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS_PARAMETER"; then
             echo "ERROR: SAM deploy failed for single account"
             exit 1
           fi
@@ -351,7 +365,7 @@ phases:
             exit 1
           fi
           # Capture execution ARN for post-build phase to wait on
-          EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text)
+          EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableAISF\":\"$ENABLE_AISF\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text)
           if [[ -z "$EXECUTION_ARN" || "$EXECUTION_ARN" == "None" ]]; then
             echo "ERROR: Failed to start Step Function execution"
             exit 1
@@ -369,6 +383,11 @@ phases:
         export ENABLE_SAGEMAKER="${ENABLE_SAGEMAKER:-true}"
         export ENABLE_AGENTCORE="${ENABLE_AGENTCORE:-true}"
         export ENABLE_AGENT_REGISTRY="${ENABLE_AGENT_REGISTRY:-true}"
+        export ENABLE_AISF="${ENABLE_AISF:-false}"
+        if [[ "$ENABLE_AISF" == "true" ]]; then
+          export ENABLE_BEDROCK=true ENABLE_SAGEMAKER=true ENABLE_AGENTCORE=true ENABLE_AGENT_REGISTRY=true
+          export ENABLE_RESPONSIBLE_AI_GRC=true ENABLE_OWASP=true
+        fi
       - echo "CODEBUILD_BUILD_SUCCEEDING status is $CODEBUILD_BUILD_SUCCEEDING"
       - |
         if [ $CODEBUILD_BUILD_SUCCEEDING -eq 0 ]; then
@@ -532,6 +551,8 @@ phases:
           echo "Copying files from respective account S3 buckets to CodeBuild environment"
           for accountId in $account_list; do
             echo "Processing account $accountId"
+            mkdir -p "/tmp/account-files/$accountId"
+            EXECUTION_ARN=""
             if [[ $accountId == $AWS_ACCOUNT_ID ]]; then
               # Management account - use mgmt stack name
               STACK_NAME="aiml-security-mgmt"
@@ -610,7 +631,9 @@ phases:
               record_failure "$accountId" "execution" "No execution ARN was saved during deployment"
             fi
 
-            if [[ $execution_succeeded != true ]]; then
+            # Failed executions may still contain useful findings. Collect them
+            # when an execution is known; the manifest preserves the failure.
+            if [[ -z "$EXECUTION_ARN" || "$EXECUTION_ARN" == "None" ]]; then
               if [[ $accountId != $AWS_ACCOUNT_ID ]]; then
                 unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
               fi
@@ -625,10 +648,9 @@ phases:
               mkdir -p /tmp/account-files/$accountId
               execution_id="${EXECUTION_ARN##*:}"
 
-              if ! aws s3 cp "s3://$ACCOUNT_BUCKET/" "/tmp/account-files/$accountId/" --recursive --exclude "*" --include "*_security_report_${execution_id}*.csv" --include "security_assessment_single_account_*.html" --exclude "*/" "${fs_exclude_args[@]}"; then
+              if ! aws s3 cp "s3://$ACCOUNT_BUCKET/" "/tmp/account-files/$accountId/" --recursive --exclude "*" --include "*_security_report_${execution_id}*.csv" --include "security_assessment_single_account_*.html" --exclude "*/"; then
                 echo "ERROR: Failed to copy assessment artifacts for account $accountId"
                 record_failure "$accountId" "artifact-copy" "Failed to copy assessment artifacts from the account bucket"
-                rm -rf "/tmp/account-files/$accountId"
               else
                 required_artifact_prefixes=()
                 if [[ $ENABLE_BEDROCK == "true" ]]; then
@@ -643,7 +665,7 @@ phases:
                 if [[ $ENABLE_AGENT_REGISTRY == "true" ]]; then
                   required_artifact_prefixes+=(agent_registry)
                 fi
-                if [[ $ENABLE_RESPONSIBLE_AI_GRC == "true" ]]; then
+                if [[ $ENABLE_RESPONSIBLE_AI_GRC == "true" || $ENABLE_OWASP == "true" ]]; then
                   required_artifact_prefixes+=(responsible_ai_grc)
                 fi
                 if [[ $ENABLE_OWASP == "true" ]]; then
@@ -668,7 +690,7 @@ phases:
                 fi
 
                 if [[ $artifacts_complete != true ]]; then
-                  rm -rf "/tmp/account-files/$accountId"
+                  echo "Retaining useful CSVs for an incomplete account report: $accountId"
                 fi
               fi
             else
@@ -702,14 +724,18 @@ phases:
             fi
           done
 
-          if [[ -s "$ASSESSMENT_FAILURES_FILE" ]]; then
-            echo "Skipping the consolidated report because one or more accounts have incomplete coverage."
-          else
-            echo "Creating consolidated HTML report..."
-            if ! python3 ../consolidate_html_reports.py; then
-              echo "ERROR: Failed to create consolidated HTML report"
-              record_failure "$AWS_ACCOUNT_ID" "consolidation" "Failed to create or upload the consolidated HTML report"
-            fi
+          export ASSESSMENT_SCOPE_MANIFEST=/tmp/assessment_scope_manifest.json
+          if ! python3 ../consolidate_html_reports.py \
+              --write-scope-manifest "$ASSESSMENT_SCOPE_MANIFEST" \
+              --accounts-file "$EXPECTED_ACCOUNTS_FILE" \
+              --execution-arn-dir /tmp/execution_arns \
+              --failures-file "$ASSESSMENT_FAILURES_FILE"; then
+            record_failure "$AWS_ACCOUNT_ID" "consolidation" "Failed to write expected execution scope"
+          fi
+          echo "Creating consolidated HTML report with any incomplete scopes visible..."
+          if ! python3 ../consolidate_html_reports.py; then
+            echo "ERROR: Assessment remains incomplete; valid evidence is retained in the report when upload succeeds"
+            record_failure "$AWS_ACCOUNT_ID" "consolidation" "Incomplete assessment evidence or report upload failure"
           fi
 
           run_changes_report --accounts "$account_list" --execution-arn-dir /tmp/execution_arns --failures-file "$ASSESSMENT_FAILURES_FILE"

@@ -13,7 +13,7 @@ IDs are in [docs/SECURITY_CHECKS.md](docs/SECURITY_CHECKS.md).
 - [docs/SECURITY_CHECKS.md](docs/SECURITY_CHECKS.md) and the applicable
   `docs/SECURITY_CHECKS_*.md` catalog define each check's claim, evidence, severity, and
   remediation. [docs/SECURITY_CHECKS_AISF.md](docs/SECURITY_CHECKS_AISF.md) defines the
-  derived AISF view and its coverage semantics.
+  native AISF check view and its mapping coverage semantics.
 - [docs/ASSESSMENT_HISTORY.md](docs/ASSESSMENT_HISTORY.md) covers comparison behavior,
   normalization, coverage, and the changes sample.
 - [docs/RESPONSIBLE_AI_GRC_SCOPE.md](docs/RESPONSIBLE_AI_GRC_SCOPE.md) covers scope and the
@@ -56,7 +56,8 @@ a check, lens, standard, or report UI changes.
   `Configure Service Assessments` Step Functions state, CSV requirements, OWASP source reads,
   and report scope.
   Deselected services appear as **Not selected**, never clean or `N/A`. Optional Responsible AI
-  GRC and OWASP remain independent. See the guide's [Service
+  GRC and OWASP remain independent when `EnableAISFAssessment=false`. The AISF preset
+  enables all six source collectors. See the guide's [Service
   Selection](docs/DEVELOPER_GUIDE.md#service-selection) section.
 - When adding an optional Step Functions branch, preserve `OriginalInput`, `Execution`,
   `Region`, `RegionIndex`, and selection flags through success, skipped, and caught-error paths.
@@ -85,12 +86,13 @@ a check, lens, standard, or report UI changes.
   BR-/SM-/AC-/FS- sources plus native checks; its mapping values are lists, and an `N/A` source
   produces an `OW-` row with `Informational` severity. Verify mapped source IDs, allocated AG
   IDs, and catalog entries whenever these mappings change.
-- `AG-24` through `AG-27` and `AG-39` are native gateway checks. AISF is a derived report view:
-  `derive_aisf_findings()` emits `AISF-` rows from existing checks in both consolidators, without
-  a Lambda, CSV, Step Functions branch, or extra S3 prefix. Keep the report registry entry
-  `"derived": True`, and exclude derived rows from the 277-check catalog total. The changes
-  report derives AISF rows from each run's compared findings through `assessment_history/derived.py`;
-  keep successful controls when another mapping fails and name skipped controls in report notes.
+- `AG-24` through `AG-27` and `AG-39` are native gateway checks. AISF customer reports display
+  native source-check observations with canonical mappings. `derive_aisf_findings()` retains
+  legacy `AISF-` aliases for compatibility in both consolidators, without a Lambda, CSV, Step
+  Functions branch, or extra S3 prefix. Keep the report registry entry `"derived": True`, and
+  exclude these aliases from the 277-check catalog total. The changes report derives the legacy
+  aliases from each run's compared findings through `assessment_history/derived.py`; preserve
+  evaluated aliases when another mapping fails and name skipped controls in report notes.
 - For any new CSV, trace the key from writer through each consumer. Grant `s3:PutObject` to the
   writer, and `s3:ListBucket` and `s3:GetObject` to each consumer where it lists or reads, in
   both SAM templates. Missing, unreadable, or header-only *selected* artifacts must be reported

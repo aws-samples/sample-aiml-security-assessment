@@ -1,0 +1,2 @@
+Check_ID,Region,Finding,Status,Severity,Finding_Details,Resolution,Reference,Account_ID,Execution_ID,Resource_ID
+SM-18,us-east-1,Endpoint network,Passed,High,Synthetic endpoint network observation; complete control proof is missing.,,https://docs.aws.amazon.com/sagemaker/latest/dg/host-vpc.html,444455556666,synthetic-two,synthetic-endpoint

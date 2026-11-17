@@ -1,0 +1,2 @@
+Check_ID,Region,Finding,Status,Severity,Finding_Details,Resolution,Reference,Account_ID,Execution_ID,Resource_ID
+SM-18,us-west-2,Endpoint discovery,N/A,Info,Complete synthetic discovery found no resources.,Confirm endpoint applicability for this region.,https://docs.aws.amazon.com/sagemaker/latest/dg/security.html,111122223333,synthetic-one,

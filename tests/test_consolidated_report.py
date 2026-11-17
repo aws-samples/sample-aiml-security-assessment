@@ -285,9 +285,8 @@ class TestOWASPFindingClassification:
             f["_service"] == "owasp" for f in captured["service_findings"]["owasp"]
         )
 
-    def test_ow_row_landing_in_bedrock_csv_still_routes_to_owasp(self, monkeypatch):
-        """Defensive: even if an OW-* row ever lands in a non-OWASP CSV, the
-        Check_ID prefix routing should still send it to the OWASP bucket."""
+    def test_ow_row_landing_in_bedrock_csv_is_isolated(self, monkeypatch):
+        """An OWASP observation cannot borrow another producer's artifact."""
         results = _build_results(
             {
                 "bedrock_security_report_exec-123_us-east-1": [
@@ -301,8 +300,12 @@ class TestOWASPFindingClassification:
             }
         )
         captured = self._run(monkeypatch, results)
-        assert captured["service_stats"]["owasp"]["failed"] == 1
+        assert captured["service_stats"]["owasp"]["failed"] == 0
         assert captured["service_stats"]["bedrock"]["failed"] == 0
+        assert any(
+            issue.get("observation", {}).get("Check_ID") == "OW-06"
+            for issue in captured["aisf_register"]["artifact_issues"]
+        )
 
 
 class TestAgentRegistryFindingClassification:
@@ -358,15 +361,8 @@ class TestAgentRegistryFindingClassification:
             "na": 0,
         }
 
-    def test_ar_row_landing_in_agentcore_csv_still_routes_to_agent_registry(
-        self, monkeypatch
-    ):
-        """Defensive: the Check_ID prefix wins over the source CSV.
-
-        Agent Registry checks used to live in the AgentCore scanner, so a stale
-        deployment could still emit AR-* rows into the AgentCore CSV. They must
-        be routed by prefix rather than by the file they arrived in.
-        """
+    def test_ar_row_landing_in_agentcore_csv_is_isolated(self, monkeypatch):
+        """A stale AgentCore artifact cannot prove an Agent Registry check."""
         results = {
             "execution_id": "exec-123",
             "account_id": "111122223333",
@@ -384,8 +380,12 @@ class TestAgentRegistryFindingClassification:
             },
         }
         captured = self._run(monkeypatch, results)
-        assert captured["service_stats"]["agent-registry"]["failed"] == 1
+        assert captured["service_stats"]["agent-registry"]["failed"] == 0
         assert captured["service_stats"]["agentcore"]["failed"] == 0
+        assert any(
+            issue.get("observation", {}).get("Check_ID") == "AR-08"
+            for issue in captured["aisf_register"]["artifact_issues"]
+        )
 
     def test_ag_rows_from_registry_csv_route_to_the_agentic_lens(self, monkeypatch):
         """AG-33..AG-38 are synthesized by the Registry Lambda but are lens rows.

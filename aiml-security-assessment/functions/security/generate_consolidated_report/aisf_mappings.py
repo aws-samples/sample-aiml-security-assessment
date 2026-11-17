@@ -7,10 +7,9 @@ for it. Every row in this module is a relabelling of a verdict an incumbent
 check already produced, computed at consolidation time by
 `derive_aisf_findings()`.
 
-Why derived rather than a producing module: an incumbent check already asserts
-each of the three AISF controls handled here exactly, so there is nothing new to
-call. A control an incumbent asserts only in part must NOT be added here:
-restating its `Passed` under the AISF control id would publish a false pass.
+These three stable aliases retain historical identity, but their source checks
+prove only partial predicates. A source Passed must never become a control Passed.
+The complete canonical inventory and evidence ledger live in aisf_catalog.
 
 **Ids are allocated once and never renumbered.** `AISF_DERIVED_MAP` is
 append-only: a new control takes the next free `AISF-` number. Reusing or
@@ -21,9 +20,7 @@ An id removed from the map moves to `RETIRED_AISF_IDS` and is never
 reallocated either, so the next control takes the number after the highest id
 in the two together.
 
-The control text (risk, severity, resolution, reference) is baked into the literal
-because the AISF repository is not on the Lambda's filesystem at runtime. A
-change to a control's YAML in that repository has to be copied here by hand.
+The canonical register is authoritative for requirements, scope and remediation.
 """
 
 import logging
@@ -45,8 +42,8 @@ AISF_GLOBAL_REGION = "Global"
 # Severity comes from the AISF control's own `risk` field, NOT from the source
 # check's severity. This deviates from OWASP, which inherits the source row's
 # severity (docs/SECURITY_CHECKS_OWASP.md#severity--status-semantics).
-# The deviation is deliberate: an `AISF-` row is a
-# verdict on an AISF control, and the severity of one incumbent check is not
+# The deviation is deliberate: an `AISF-` source summary carries the canonical
+# control's risk, and the severity of one incumbent check is not
 # that control's risk rating. AISF-08 makes the difference concrete: it derives
 # from three source checks whose own severities differ, so there is no single
 # source severity to inherit.
@@ -120,7 +117,7 @@ AISF_DERIVED_MAP: List[Dict[str, Any]] = [
     {
         "check_id": "AISF-05",
         "control": "AIR-BDR-KB-03",
-        # asserted in full by: BR-20
+        # Partial source evidence: BR-20
         "sources": ["BR-20"],
         "finding": "AISF AIR-BDR-KB-03: Knowledge Base Vector Store Encryption",
         "risk": "high",
@@ -131,7 +128,7 @@ AISF_DERIVED_MAP: List[Dict[str, Any]] = [
     {
         "check_id": "AISF-07",
         "control": "AIR-SGM-EP-08",
-        # asserted in full by: SM-18, SM-42
+        # Partial source evidence: SM-18, SM-42
         "sources": ["SM-18", "SM-42"],
         "finding": "AISF AIR-SGM-EP-08: Batch Inference Network and Encryption Parity",
         "risk": "high",
@@ -142,7 +139,7 @@ AISF_DERIVED_MAP: List[Dict[str, Any]] = [
     {
         "check_id": "AISF-08",
         "control": "AIR-SGM-TRN-05",
-        # asserted in full by: SM-09, SM-01, SM-03
+        # Partial source evidence: SM-09, SM-01, SM-03
         "sources": ["SM-09", "SM-01", "SM-03"],
         "finding": "AISF AIR-SGM-TRN-05: Notebook and Development Environment Access Control",
         "risk": "medium",
@@ -314,12 +311,10 @@ def _legs_txt(present: Dict[str, List[str]], have: List[str]) -> str:
 
 
 def _aggregate_status(statuses: List[str]) -> str:
-    """Failed if any leg failed; Passed only if every leg passed; else N/A."""
+    """Keep source failures visible; partial evidence cannot pass a control."""
     lowered = [s.lower() for s in statuses]
     if any(s == "failed" for s in lowered):
         return "Failed"
-    if lowered and all(s == "passed" for s in lowered):
-        return "Passed"
     return "N/A"
 
 
@@ -364,13 +359,8 @@ def derive_aisf_findings(
 ) -> List[Dict[str, str]]:
     """Restate incumbent verdicts as `AISF-` rows, one per control per join key.
 
-    The join key is `(Account_ID, Region)`. A source check can also emit rows
-    under the `Global` sentinel, from a once-per-account leg on the primary
-    Region. An account-wide verdict holds in every Region, so each `Global` row
-    is folded into every regional key of the same account and aggregated there
-    with the regional rows. The `Global` key itself
-    is emitted only for an account that has no regional key: beside a regional
-    verdict it would repeat the same evidence as a half-populated `N/A`.
+    The join key is `(Account_ID, Region)`. Global is a separate evidence scope;
+    its observations cannot satisfy a missing regional predicate.
 
     A control whose legs are not all present for a key that has at least one leg
     is emitted naming the missing `Check_ID`s, never dropped: `Failed` when a
@@ -380,17 +370,11 @@ def derive_aisf_findings(
     all belong to a service deselected in `selected_services` (the
     `core_service_selection()` dict) gets no row and no AISF-00 mention.
 
-    `separate_global=True` is for the changes report, which pairs each run's
-    rows by `(Region, Check_ID)`. Whether an account has regional keys is not a
-    property of any one control, so with the default a control sourced only
-    from `Global` rows would move between `Global` and every Region from one run
-    to the next, and its two rows would never pair. With `separate_global`, the
-    `Global` key is retained for controls whose sources have no regional row
-    for that account. A control with any regional source row is emitted only
-    under its regional keys (their verdicts still include the folded `Global`
-    rows). The `Global` key's AISF-00 row is emitted only for an account with
-    no regional key, as with the default: beside regional keys, a control
-    with no `Global` leg is reported, or named as absent, by them.
+    `separate_global` remains accepted for changes-report compatibility. Global
+    evidence always keeps its own key, even when the same control has regional
+    sources. Successful partial evidence remains N/A for the whole control.
+    The Global key's AISF-00 row is emitted only for an account with no regional
+    key; otherwise the regional coverage rows name controls without local legs.
 
     Per-row work is isolated with try/except, matching
     `owasp_assessments.build_owasp_mapping_findings`, so one malformed source
@@ -411,6 +395,8 @@ def derive_aisf_findings(
             row = _normalise(raw)
             if row["check_id"].upper() not in relevant:
                 continue
+            if not _source_selected(row["check_id"].upper(), selected_services):
+                continue
             key = (row["account_id"], row["region"])
             legs.setdefault(key, {}).setdefault(row["check_id"].upper(), []).append(
                 row["status"]
@@ -419,48 +405,17 @@ def derive_aisf_findings(
             logger.warning(f"AISF: skipping unreadable source row: {e}")
             continue
 
-    # Kept apart from the regional keys, so a regional Passed cannot publish while
-    # the same check's Global row for that account is Failed.
-    global_legs = {
-        account_id: present
-        for (account_id, region), present in legs.items()
-        if region == AISF_GLOBAL_REGION
-    }
     regional_accounts = {
         account_id for (account_id, region) in legs if region != AISF_GLOBAL_REGION
     }
-    regional_sources: Dict[str, set] = {}
-    for (account_id, region), present in legs.items():
-        if region != AISF_GLOBAL_REGION:
-            regional_sources.setdefault(account_id, set()).update(present)
-    # (account_id, region) -> the source check ids with rows of its own
-    own = {key: set(present) for key, present in legs.items()}
-    # (account_id, region) -> source check ids that carry folded Global rows
-    folded: Dict[tuple, List[str]] = {}
-    for (account_id, region), present in list(legs.items()):
-        if region == AISF_GLOBAL_REGION:
-            if account_id in regional_accounts and not separate_global:
-                del legs[(account_id, region)]
-            continue
-        for cid, statuses in global_legs.get(account_id, {}).items():
-            present.setdefault(cid, []).extend(statuses)
-            folded.setdefault((account_id, region), []).append(cid)
 
     findings: List[Dict[str, str]] = []
     for (account_id, region), present in sorted(legs.items()):
-        folded_here = folded.get((account_id, region), [])
         absent_controls: List[str] = []
         for mapping in AISF_DERIVED_MAP:
             try:
                 sources = mapping["sources"]
                 if not any(_source_selected(c, selected_services) for c in sources):
-                    continue
-                if (
-                    separate_global
-                    and region == AISF_GLOBAL_REGION
-                    and regional_sources.get(account_id, set()).intersection(sources)
-                ):
-                    # Regional rows already include these account-wide legs.
                     continue
                 have = [cid for cid in sources if cid in present]
                 missing = [cid for cid in sources if cid not in present]
@@ -474,23 +429,15 @@ def derive_aisf_findings(
                         f"sources {', '.join(sources)})"
                     )
                     continue
-                if (
-                    separate_global
-                    and region != AISF_GLOBAL_REGION
-                    and not own[(account_id, region)].intersection(sources)
-                ):
-                    # Only folded Global legs here: the row is the Global key's.
-                    continue
                 legs_txt = _legs_txt(present, have)
                 status = _aggregate_status([s for cid in have for s in present[cid]])
                 if missing and status == "Failed":
-                    # A present leg already failed, so the control is
-                    # non-compliant whatever the missing legs would report.
+                    # Preserve the source failure alongside the missing proof.
                     details = (
                         f"AISF control {mapping['control']}. Derived from "
                         f"{legs_txt}. Source checks not found for this account "
                         f"and region: {', '.join(missing)}. A present source "
-                        "check failed, so the control fails regardless of them."
+                        "check failed; its evidence remains visible despite the missing legs."
                     )
                 elif missing:
                     status = "N/A"
@@ -506,13 +453,11 @@ def derive_aisf_findings(
                         f"{legs_txt}. This row restates existing check verdicts "
                         "under an AISF control id; it is not an additional check."
                     )
-                folded_legs = [cid for cid in have if cid in folded_here]
-                if folded_legs:
-                    details = (
-                        f"{details} The findings for {', '.join(folded_legs)} "
-                        "include the account-wide findings reported under "
-                        f"{AISF_GLOBAL_REGION}, which apply in every Region."
-                    )
+                details += (
+                    " Partial evidence only: validate all canonical requirements, resource "
+                    "coverage and application/process proof against the canonical AISF requirements. "
+                    "A Failed alias records a source failure, not an independent whole-control verdict."
+                )
                 note = _collapse_note(mapping["risk"], status)
                 if note:
                     details = f"{details} {note}"

@@ -84,8 +84,8 @@ after the run's results are in the central `AssessmentBucket`:
   and only if the Step Functions execution succeeded. The run record is
   written first, whether the execution succeeded or not.
 - **Multi-account:** once per account, after the multi-account report step
-  (which is skipped when any account failed) and before the build's failure
-  summary. Accounts whose run failed
+  (which now retains failed accounts in an incomplete diagnostic report) and
+  before the build's failure summary. Accounts whose run failed
   get no changes report; the build log names them and gives the reasons from
   the build's failure list.
 
@@ -107,6 +107,14 @@ It can't fail an assessment run:
 It reads only the findings CSVs already in the bucket and, in single-account
 mode, the run records. It does not modify the scanners, the AWS SAM templates,
 the Step Functions workflow, or the IAM roles.
+
+The AISF report projects native check observations at report time and adds no
+findings CSV producer. The bundled 218-control inventory is internal reference
+metadata, separate from the customer report and this source-finding change
+history. Existing check identities and archived samples remain unchanged; the
+new AISF examples have separate fixtures and provenance. A canonical control
+with partial or missing proof must not be read as resolved because a source
+check passed.
 
 ## Which run is "the previous run"
 
@@ -190,29 +198,29 @@ Check IDs that appear in only one run (for example, after upgrading the
 framework) are listed in the report as a note. Only scanner check IDs are
 counted; derived AISF IDs never are, because both runs use the same mapping.
 
-**AWS AI Security Framework (AISF) rows** are absent from findings CSVs. The
-changes report derives them from each run's compared findings with the main
-report's `aisf_mappings.py`: only services selected in both runs and regions
-scanned in both runs contribute. Both runs use the current mapping, so a
-mapping update does not appear as a change in findings. An AISF control changes
-when one of its source checks changes.
+**AWS AI Security Framework (AISF) rows** in the changes report retain three
+legacy partial-evidence aliases (`AISF-05`, `AISF-07`, and `AISF-08`). They are
+derived from each run's compared findings with `aisf_mappings.py`: only services
+selected in both runs and regions scanned in both runs contribute. Both runs use
+the current mapping, so a mapping update does not appear as a findings change.
+The main assessment's AISF view instead presents implemented native AI check
+results and their reviewed mappings; the legacy aliases do not measure its full
+check coverage.
 
-The changes report retains a `Global` AISF row when that control has no
-regional source row in the account, so it can pair across runs even if
-unrelated regional checks appear. When the control has a regional source row,
-its regional AISF rows incorporate any account-wide source findings and its
-separate `Global` row is omitted. The main report folds account-wide findings
-into every regional key and suppresses the entire `Global` key when an account
-has regional keys, so a `Global` AISF row in the changes report can be absent
-from the main report. A regional AISF row in the changes report appears only
-where that control has a regional source row. When SM-18's regional source rows
-disappear between otherwise comparable runs while `Global` SM-42 stays Failed
-in both, the old regional AISF-07 rows are **No longer reported** and the new
-`Global` AISF-07 row is **New**, because their Region keys differ. `AISF-00`
-appears under `Global` only for an account without regional rows; otherwise
-each region's `AISF-00` names controls with no source there. Each mapped
-AISF control currently draws on one service, so a service not selected in
-both runs removes its controls from the comparison and a note names them.
+A failed source remains visible as a failed alias. Successful source checks
+provide partial evidence, so their alias is `N/A` for the whole AISF control.
+Consequently an alias changing from `N/A` to `Failed` is **New**, and `Failed`
+to `N/A` is **No longer assessed**. Those labels do not assert whole-control
+regression or resolution. The underlying native checks retain their original
+statuses and the normal **Regressed** and **Resolved** transitions.
+
+`Global` evidence stays separate from regional evidence, including when both
+scopes contain the same check. A Global change does not change a regional
+alias, and a Global source cannot satisfy a missing regional predicate.
+`AISF-00` appears under `Global` only for an account without regional rows;
+otherwise each region's `AISF-00` names controls with no source there. Each
+legacy mapped control currently draws on one service, so a service not selected
+in both runs removes its aliases from the comparison and a note names them.
 
 If AISF rows cannot be derived, the other assessment areas are still
 compared and the report explains why in its notes. An unreadable derived row
