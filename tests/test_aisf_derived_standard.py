@@ -1567,7 +1567,7 @@ def _listbucket_prefix_patterns():
 
     Loader.add_multi_constructor("!", multi)
     with open(SAM_TEMPLATE, encoding="utf-8") as handle:
-        template = yaml.load(handle, Loader=Loader)
+        template = yaml.load(handle, Loader=Loader)  # nosec B506
     policies = template["Resources"]["GenerateConsolidatedReportFunction"][
         "Properties"
     ]["Policies"]
