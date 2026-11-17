@@ -152,7 +152,7 @@ def test_every_selection_executes_only_selected_lambdas_and_validates_their_arti
     ],
 )
 def test_all_deployment_paths_expose_default_enabled_switches(template):
-    doc = yaml.load((ROOT / template).read_text(), Loader=CfnLoader)
+    doc = yaml.load((ROOT / template).read_text(), Loader=CfnLoader)  # nosec B506
     for parameter, environment, _ in SERVICES.values():
         name = f"Enable{parameter}Assessment"
         assert doc["Parameters"][name]["Default"] == "true"
