@@ -93,9 +93,25 @@ AGENTIC_AI_LENS_URL = (
     "https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/"
     "agentic-ai-lens.html"
 )
-AGENTCORE_STARTER_TOOLKIT_URL = (
+AGENTCORE_OVERVIEW_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
     "what-is-bedrock-agentcore.html"
+)
+AGENTCORE_REGIONS_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "agentcore-regions.html"
+)
+AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "resource-based-policies.html"
+)
+AGENTCORE_RUNTIME_EXECUTE_COMMAND_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "runtime-execute-command.html"
+)
+AGENTCORE_VPC_CONDITION_KEY_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "security-vpc-condition.html"
 )
 AGENTCORE_VPC_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html"
@@ -120,9 +136,16 @@ AGENTCORE_GATEWAY_API_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/"
     "API_GetGateway.html"
 )
+AGENTCORE_GATEWAY_ROLE_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "gateway-prerequisites-permissions.html"
+)
 AGENTCORE_POLICY_ENGINE_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/"
     "API_GatewayPolicyEngineConfiguration.html"
+)
+AGENTCORE_POLICY_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy.html"
 )
 TOKEN_VAULT_KEY_POLICY_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
@@ -132,14 +155,37 @@ AGENTCORE_IDENTITY_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
     "identity-data-encryption.html"
 )
+# Security Hub CSPM controls for AgentCore, each anchored to its own control.
 AGENTCORE_SECURITY_HUB_REFERENCE_URL = (
     "https://docs.aws.amazon.com/securityhub/latest/userguide/"
     "bedrockagentcore-controls.html"
+)
+# BedrockAgentCore.5: custom browsers should not use public network mode.
+AGENTCORE_SECURITY_HUB_BROWSER_NETWORK_REFERENCE_URL = (
+    AGENTCORE_SECURITY_HUB_REFERENCE_URL + "#bedrockagentcore-5"
+)
+# BedrockAgentCore.6: custom browsers should have session recording enabled.
+AGENTCORE_SECURITY_HUB_BROWSER_RECORDING_REFERENCE_URL = (
+    AGENTCORE_SECURITY_HUB_REFERENCE_URL + "#bedrockagentcore-6"
+)
+# BedrockAgentCore.7: custom code interpreters should use a private network.
+AGENTCORE_SECURITY_HUB_CODE_INTERPRETER_NETWORK_REFERENCE_URL = (
+    AGENTCORE_SECURITY_HUB_REFERENCE_URL + "#bedrockagentcore-7"
+)
+# The AWS managed browser has no recording configuration and BedrockAgentCore.6
+# covers custom browsers only, so its AC-06 rows cite the recording guide.
+AGENTCORE_BROWSER_RECORDING_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "browser-session-recording.html"
 )
 AGENTCORE_BROWSER_RECORDING_FINDING_NAME = "AgentCore Browser Session Recording"
 AGENTCORE_ONLINE_EVALUATION_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
     "get-online-evaluations.html"
+)
+AGENTCORE_CREATE_ONLINE_EVALUATION_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "create-online-evaluations.html"
 )
 CLOUDTRAIL_DATA_EVENTS_REFERENCE_URL = (
     "https://docs.aws.amazon.com/awscloudtrail/latest/userguide/"
@@ -158,8 +204,8 @@ OAM_CROSS_ACCOUNT_REFERENCE_URL = (
     "CloudWatch-Unified-Cross-Account.html"
 )
 AGENTCORE_GATEWAY_RATE_LIMIT_REFERENCE_URL = (
-    "https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/"
-    "API_ListGatewayRateLimits.html"
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "gateway-rate-limits.html"
 )
 AGENTCORE_GATEWAY_METRICS_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
@@ -174,7 +220,7 @@ AGENTCORE_GATEWAY_TARGET_REFERENCE_URL = (
 )
 LOGS_RETENTION_REFERENCE_URL = (
     "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/"
-    "Working-with-log-groups-and-streams.html"
+    "Working-with-log-groups-and-streams.html#SttingLogRetention"
 )
 AGENTCORE_GATEWAY_ENCRYPTION_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
@@ -246,6 +292,10 @@ AGENTCORE_POLICY_ENCRYPTION_REFERENCE_URL = (
 )
 AGENTCORE_EVALUATORS_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/evaluators.html"
+)
+AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "evaluations-prerequisites.html"
 )
 IAM_PASS_ROLE_REFERENCE_URL = (
     "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_passrole.html"
@@ -331,8 +381,7 @@ LOGS_DELETION_PROTECTION_REFERENCE_URL = (
     "protecting-log-groups-from-deletion.html"
 )
 LOGS_SUBSCRIPTION_REFERENCE_URL = (
-    "https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/"
-    "API_PutSubscriptionFilter.html"
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/SubscriptionFilters.html"
 )
 AGENTCORE_LOG_ARCHIVE_FINDING = "AgentCore Log Archive Forwarding"
 AGENTCORE_LOG_ARCHIVE_DESTINATION_FINDING = "AgentCore Log Archive Destination"
@@ -394,7 +443,7 @@ def _incomplete_check_findings(
     finding_name: str,
     error: Exception,
     region: str,
-    reference: str = AGENTCORE_STARTER_TOOLKIT_URL,
+    reference: str = AGENTCORE_OVERVIEW_REFERENCE_URL,
 ) -> List[Dict[str, Any]]:
     """Create one visible incomplete row for every control a runner skipped."""
     return [
@@ -636,7 +685,7 @@ def _missing_regional_leg_findings(
                     f"because {reason} in region {region}."
                 ),
                 resolution=resolution,
-                reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                reference=AGENTCORE_OVERVIEW_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
                 region=region,
@@ -2055,7 +2104,7 @@ def build_agentcore_timeout_findings(
                     f"was approaching in region {region}."
                 ),
                 resolution="Re-run the assessment to complete the skipped AgentCore checks.",
-                reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                reference=AGENTCORE_OVERVIEW_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
                 region=region,
@@ -2144,7 +2193,7 @@ def _skipped_global_leg_findings(
                 "assessed because the Lambda timeout was approaching."
             ),
             resolution="Re-run the assessment to complete the skipped AgentCore checks.",
-            reference=AGENTCORE_STARTER_TOOLKIT_URL,
+            reference=AGENTCORE_OVERVIEW_REFERENCE_URL,
             severity=SeverityEnum.INFORMATIONAL,
             status=StatusEnum.NA,
             region=GLOBAL_REGION_LABEL,
@@ -2268,7 +2317,7 @@ def prepare_agentcore_runtime_incomplete_report_findings(
                     f"or authentication error {error_code}."
                 ),
                 resolution=resolution,
-                reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                reference=AGENTCORE_OVERVIEW_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
                 region=region,
@@ -3324,7 +3373,7 @@ def check_agentcore_vpc_configuration(
                 finding_name="AgentCore VPC Configuration Check",
                 finding_details="AgentCore client not available in this region",
                 resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
-                reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                reference=AGENTCORE_REGIONS_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -3834,7 +3883,7 @@ def check_agentcore_vpc_configuration(
                 check_id="AC-01",
                 finding_name="AgentCore VPC Configuration Check",
                 error=e,
-                reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                reference=AGENTCORE_OVERVIEW_REFERENCE_URL,
             )
         )
 
@@ -6515,7 +6564,7 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
                         finding_name="AgentCore Encryption Check",
                         finding_details="All AgentCore resources have proper encryption configuration",
                         resolution="No action required",
-                        reference=AGENTCORE_DATA_ENCRYPTION_REFERENCE_URL,
+                        reference=ECR_ENCRYPTION_REFERENCE_URL,
                         severity=SeverityEnum.HIGH,
                         status=StatusEnum.PASSED,
                     )
@@ -6527,7 +6576,7 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
                         finding_name="AgentCore Encryption Check",
                         finding_details="No AgentCore resources found",
                         resolution="No action required",
-                        reference=AGENTCORE_DATA_ENCRYPTION_REFERENCE_URL,
+                        reference=ECR_ENCRYPTION_REFERENCE_URL,
                         severity=SeverityEnum.INFORMATIONAL,
                         status=StatusEnum.NA,
                     )
@@ -6540,7 +6589,7 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
                 check_id="AC-05",
                 finding_name="AgentCore Encryption Check",
                 error=e,
-                reference=AGENTCORE_DATA_ENCRYPTION_REFERENCE_URL,
+                reference=ECR_ENCRYPTION_REFERENCE_URL,
             )
         )
 
@@ -8598,7 +8647,7 @@ def _managed_browser_recording_findings(
         "AC-06",
         AGENTCORE_BROWSER_RECORDING_FINDING_NAME,
         errors,
-        AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+        AGENTCORE_BROWSER_RECORDING_REFERENCE_URL,
     )
     for tool in tools:
         label = tool["label"]
@@ -8617,7 +8666,7 @@ def _managed_browser_recording_findings(
                         "No action is required on the assessed workload based on "
                         "this result."
                     ),
-                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                    reference=AGENTCORE_BROWSER_RECORDING_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -8645,7 +8694,7 @@ def _managed_browser_recording_findings(
                         "deny it, and give agents a custom browser that records "
                         "its sessions to a protected S3 destination."
                     ),
-                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                    reference=AGENTCORE_BROWSER_RECORDING_REFERENCE_URL,
                     severity=SeverityEnum.MEDIUM,
                     status=StatusEnum.FAILED,
                 )
@@ -8665,7 +8714,7 @@ def _managed_browser_recording_findings(
                         "this result. Produce a complete IAM permission cache and "
                         "rerun the assessment."
                     ),
-                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                    reference=AGENTCORE_BROWSER_RECORDING_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -8684,7 +8733,7 @@ def _managed_browser_recording_findings(
                         "session on it. Session policies are not read."
                     ),
                     resolution="No action required",
-                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                    reference=AGENTCORE_BROWSER_RECORDING_REFERENCE_URL,
                     severity=SeverityEnum.MEDIUM,
                     status=StatusEnum.PASSED,
                 )
@@ -8717,7 +8766,7 @@ def check_browser_tool_recording(
                 finding_name=AGENTCORE_BROWSER_RECORDING_FINDING_NAME,
                 finding_details="AgentCore client not available in this region",
                 resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
-                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                reference=AGENTCORE_SECURITY_HUB_BROWSER_RECORDING_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -8736,7 +8785,7 @@ def check_browser_tool_recording(
                     finding_name=AGENTCORE_BROWSER_RECORDING_FINDING_NAME,
                     finding_details=f"Could not assess custom browser recording: {type(error).__name__}.",
                     resolution="Grant bedrock-agentcore:ListBrowsers and bedrock-agentcore:GetBrowser, then retry.",
-                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                    reference=AGENTCORE_SECURITY_HUB_BROWSER_RECORDING_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -8751,7 +8800,7 @@ def check_browser_tool_recording(
                     finding_name=AGENTCORE_BROWSER_RECORDING_FINDING_NAME,
                     finding_details="No custom AgentCore browsers found",
                     resolution="No action required",
-                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                    reference=AGENTCORE_SECURITY_HUB_BROWSER_RECORDING_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -8806,7 +8855,7 @@ def check_browser_tool_recording(
                             "Enable browser session recording and configure a "
                             "non-empty S3 recording destination."
                         ),
-                        reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                        reference=AGENTCORE_SECURITY_HUB_BROWSER_RECORDING_REFERENCE_URL,
                         severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.FAILED,
                     )
@@ -8969,7 +9018,7 @@ def check_browser_tool_recording(
                             f"{'; '.join(problems)}.{not_read}{reader_note}"
                         ),
                         resolution=" ".join(fixes + retries),
-                        reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                        reference=AGENTCORE_SECURITY_HUB_BROWSER_RECORDING_REFERENCE_URL,
                         severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.FAILED,
                     )
@@ -8985,7 +9034,7 @@ def check_browser_tool_recording(
                             f"protected.{not_read}{reader_note}"
                         ),
                         resolution=" ".join(retries),
-                        reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                        reference=AGENTCORE_SECURITY_HUB_BROWSER_RECORDING_REFERENCE_URL,
                         severity=SeverityEnum.INFORMATIONAL,
                         status=StatusEnum.NA,
                     )
@@ -9008,7 +9057,7 @@ def check_browser_tool_recording(
                             f"{BROWSER_RECORDING_WRITE_CEILING}{v1_note}"
                         ),
                         resolution="No action required",
-                        reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                        reference=AGENTCORE_SECURITY_HUB_BROWSER_RECORDING_REFERENCE_URL,
                         severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.PASSED,
                     )
@@ -9026,7 +9075,7 @@ def check_browser_tool_recording(
                         f"could not be assessed: {type(error).__name__}."
                     ),
                     resolution="Grant bedrock-agentcore:GetBrowser and retry.",
-                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                    reference=AGENTCORE_SECURITY_HUB_BROWSER_RECORDING_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -9040,7 +9089,7 @@ def check_browser_tool_recording(
                 finding_name=AGENTCORE_BROWSER_RECORDING_FINDING_NAME,
                 finding_details=f"Could not assess custom browser recording: {type(e).__name__}.",
                 resolution="Resolve the assessment prerequisite or permission issue and retry.",
-                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                reference=AGENTCORE_SECURITY_HUB_BROWSER_RECORDING_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -10094,7 +10143,7 @@ def check_agentcore_code_interpreter_isolation() -> List[Dict[str, Any]]:
                 finding_name="AgentCore Code Interpreter Network Isolation",
                 finding_details="AgentCore client not available in this region",
                 resolution="No action required unless custom Code Interpreters are expected.",
-                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                reference=AGENTCORE_SECURITY_HUB_CODE_INTERPRETER_NETWORK_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -10112,7 +10161,7 @@ def check_agentcore_code_interpreter_isolation() -> List[Dict[str, Any]]:
                     finding_name="AgentCore Code Interpreter Network Isolation",
                     finding_details="No custom AgentCore Code Interpreters found",
                     resolution="No action required",
-                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                    reference=AGENTCORE_SECURITY_HUB_CODE_INTERPRETER_NETWORK_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -10149,7 +10198,7 @@ def check_agentcore_code_interpreter_isolation() -> List[Dict[str, Any]]:
                             if isolated
                             else "Configure the custom Code Interpreter in VPC mode with non-empty subnets and security groups."
                         ),
-                        reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                        reference=AGENTCORE_SECURITY_HUB_CODE_INTERPRETER_NETWORK_REFERENCE_URL,
                         severity=SeverityEnum.HIGH,
                         status=StatusEnum.PASSED if isolated else StatusEnum.FAILED,
                     )
@@ -10161,7 +10210,7 @@ def check_agentcore_code_interpreter_isolation() -> List[Dict[str, Any]]:
                         finding_name="AgentCore Code Interpreter Network Isolation",
                         finding_details=f"Custom Code Interpreter '{name}' could not be assessed: {type(error).__name__}.",
                         resolution="Grant bedrock-agentcore:GetCodeInterpreter and retry.",
-                        reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                        reference=AGENTCORE_SECURITY_HUB_CODE_INTERPRETER_NETWORK_REFERENCE_URL,
                         severity=SeverityEnum.INFORMATIONAL,
                         status=StatusEnum.NA,
                     )
@@ -10173,7 +10222,7 @@ def check_agentcore_code_interpreter_isolation() -> List[Dict[str, Any]]:
                 finding_name="AgentCore Code Interpreter Network Isolation",
                 finding_details=f"Could not list custom Code Interpreters: {type(error).__name__}.",
                 resolution="Grant bedrock-agentcore:ListCodeInterpreters and retry.",
-                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                reference=AGENTCORE_SECURITY_HUB_CODE_INTERPRETER_NETWORK_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -10192,7 +10241,7 @@ def check_agentcore_browser_network_isolation(
                 finding_name="AgentCore Custom Browser Network Isolation",
                 finding_details="AgentCore client not available in this region",
                 resolution="No action required unless custom browsers are expected.",
-                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                reference=AGENTCORE_SECURITY_HUB_BROWSER_NETWORK_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -10206,7 +10255,7 @@ def check_agentcore_browser_network_isolation(
                 finding_name="AgentCore Custom Browser Network Isolation",
                 finding_details=f"Could not list custom browsers: {type(inventory['list_error']).__name__}.",
                 resolution="Grant bedrock-agentcore:ListBrowsers and retry.",
-                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                reference=AGENTCORE_SECURITY_HUB_BROWSER_NETWORK_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -10218,7 +10267,7 @@ def check_agentcore_browser_network_isolation(
                 finding_name="AgentCore Custom Browser Network Isolation",
                 finding_details="No custom AgentCore browsers found",
                 resolution="No action required",
-                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                reference=AGENTCORE_SECURITY_HUB_BROWSER_NETWORK_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -10251,7 +10300,7 @@ def check_agentcore_browser_network_isolation(
                     if isolated
                     else "Configure the custom browser in VPC mode with non-empty subnets and security groups."
                 ),
-                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                reference=AGENTCORE_SECURITY_HUB_BROWSER_NETWORK_REFERENCE_URL,
                 severity=SeverityEnum.HIGH,
                 status=StatusEnum.PASSED if isolated else StatusEnum.FAILED,
             )
@@ -10264,7 +10313,7 @@ def check_agentcore_browser_network_isolation(
                 finding_name="AgentCore Custom Browser Network Isolation",
                 finding_details=f"Custom browser '{summary.get('name', summary.get('browserId', 'unknown'))}' could not be assessed: {type(item['error']).__name__}.",
                 resolution="Grant bedrock-agentcore:GetBrowser and retry.",
-                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                reference=AGENTCORE_SECURITY_HUB_BROWSER_NETWORK_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -10756,7 +10805,7 @@ def check_agentcore_online_evaluation_coverage() -> List[Dict[str, Any]]:
                     "percentage above zero, attach at least one evaluator and "
                     "write results to a log group."
                 ),
-                reference=AGENTCORE_ONLINE_EVALUATION_REFERENCE_URL,
+                reference=AGENTCORE_CREATE_ONLINE_EVALUATION_REFERENCE_URL,
                 severity=SeverityEnum.MEDIUM,
                 status=StatusEnum.FAILED,
             )
@@ -11027,7 +11076,7 @@ def _memory_resource_policy_finding(
                     "Grant the assessment role bedrock-agentcore:GetResourcePolicy "
                     "on this memory, then rerun the assessment."
                 ),
-                reference=AGENTCORE_MEMORY_REFERENCE_URL,
+                reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -11042,7 +11091,7 @@ def _memory_resource_policy_finding(
                 "caller outside this account is granted access to it by one."
             ),
             resolution="No action required",
-            reference=AGENTCORE_MEMORY_REFERENCE_URL,
+            reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
             severity=SeverityEnum.INFORMATIONAL,
             status=StatusEnum.PASSED,
         )
@@ -11067,7 +11116,7 @@ def _memory_resource_policy_finding(
                 "condition that pins aws:PrincipalAccount or aws:SourceAccount to "
                 "this account or aws:PrincipalOrgID to your organization."
             ),
-            reference=AGENTCORE_MEMORY_REFERENCE_URL,
+            reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
             severity=SeverityEnum.HIGH,
             status=StatusEnum.FAILED,
         )
@@ -11083,7 +11132,7 @@ def _memory_resource_policy_finding(
             "judged."
         ),
         resolution="No action required",
-        reference=AGENTCORE_MEMORY_REFERENCE_URL,
+        reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
         severity=SeverityEnum.INFORMATIONAL,
         status=StatusEnum.PASSED,
     )
@@ -12413,7 +12462,7 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
                 finding_name="AgentCore VPC Endpoints Check",
                 finding_details="AgentCore client not available in this region",
                 resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                reference=AGENTCORE_VPC_INTERFACE_ENDPOINT_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -12446,7 +12495,7 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
                         finding_name="AgentCore VPC Endpoints Check",
                         finding_details="No AgentCore resources found",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                        reference=AGENTCORE_VPC_INTERFACE_ENDPOINT_REFERENCE_URL,
                         severity=SeverityEnum.INFORMATIONAL,
                         status=StatusEnum.NA,
                     )
@@ -12463,7 +12512,7 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
                         "judged below."
                     ),
                     resolution="No action required",
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                    reference=AGENTCORE_VPC_INTERFACE_ENDPOINT_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -12506,7 +12555,7 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
                         "com.amazonaws.<region>.bedrock-agentcore.gateway in it, "
                         "for the surfaces in use."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                    reference=AGENTCORE_VPC_INTERFACE_ENDPOINT_REFERENCE_URL,
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
                 )
@@ -12558,7 +12607,7 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
                     + "2. com.amazonaws.region.bedrock-agentcore-control\n"
                     + "3. com.amazonaws.region.bedrock-agentcore.gateway\n"
                     + "This enables private connectivity via AWS PrivateLink",
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                    reference=AGENTCORE_VPC_INTERFACE_ENDPOINT_REFERENCE_URL,
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
                 )
@@ -12606,7 +12655,7 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
                             )
                             + " in the VPCs whose workloads call it."
                         ),
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                        reference=AGENTCORE_VPC_INTERFACE_ENDPOINT_REFERENCE_URL,
                         severity=SeverityEnum.HIGH,
                         status=StatusEnum.FAILED,
                     )
@@ -12618,7 +12667,7 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
                         finding_name="AgentCore VPC Endpoints Unhealthy",
                         finding_details=f"Found {len(unhealthy_endpoints)} AgentCore VPC endpoints in non-available state",
                         resolution="Investigate and resolve VPC endpoint issues",
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                        reference=AGENTCORE_VPC_INTERFACE_ENDPOINT_REFERENCE_URL,
                         severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.FAILED,
                     )
@@ -12636,7 +12685,7 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
                         finding_name="AgentCore VPC Endpoints Check",
                         finding_details=f"AgentCore VPC endpoints configured: {endpoint_details}",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                        reference=AGENTCORE_VPC_INTERFACE_ENDPOINT_REFERENCE_URL,
                         severity=SeverityEnum.HIGH,
                         status=StatusEnum.PASSED,
                     )
@@ -12725,7 +12774,7 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
                 check_id="AC-08",
                 finding_name="AgentCore VPC Endpoints Check",
                 error=e,
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html",
+                reference=AGENTCORE_VPC_INTERFACE_ENDPOINT_REFERENCE_URL,
             )
         )
 
@@ -12897,7 +12946,7 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                 finding_name="AgentCore Resource-Based Policies Check",
                 finding_details="AgentCore client not available in this region",
                 resolution="Deploy in a region where Amazon Bedrock AgentCore is available",
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -13054,7 +13103,7 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                         "aws:SourceAccount to this account or aws:PrincipalOrgID to "
                         "your organization."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                    reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
                 )
@@ -13074,7 +13123,7 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                         "Grant the assessment role the listed AgentCore list "
                         "permissions and rerun the assessment."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                    reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -13097,7 +13146,7 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                     + "2. Enable cross-account access control\n"
                     + "3. Restrict access based on source VPC or IP\n"
                     + "4. Implement hierarchical authorization for Agent Runtimes",
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                    reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
                 )
@@ -13122,7 +13171,7 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                         "Ensure the assessment role can call "
                         "bedrock-agentcore:GetResourcePolicy for AgentCore resources."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                    reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -13148,7 +13197,7 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                         "Re-run the assessment. If the issue persists, review AgentCore "
                         "service health and the assessment role's control plane permissions."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                    reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
                     severity=SeverityEnum.LOW,
                     status=StatusEnum.NA,
                 )
@@ -13168,7 +13217,7 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                             "account or an organization."
                         ),
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                        reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
                         severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.PASSED,
                     )
@@ -13180,7 +13229,7 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                         finding_name="AgentCore Resource-Based Policies Check",
                         finding_details="No AgentCore resources found to check for resource-based policies",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                        reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
                         severity=SeverityEnum.INFORMATIONAL,
                         status=StatusEnum.NA,
                     )
@@ -13193,7 +13242,7 @@ def check_agentcore_resource_based_policies() -> List[Dict[str, Any]]:
                 check_id="AC-10",
                 finding_name="AgentCore Resource-Based Policies Check",
                 error=e,
-                reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html",
+                reference=AGENTCORE_RESOURCE_BASED_POLICY_REFERENCE_URL,
             )
         )
 
@@ -18573,7 +18622,7 @@ def check_agentcore_gateway_role_scope(
                 finding_name="AgentCore Gateway Role Scope",
                 finding_details="AgentCore client not available in this region.",
                 resolution="No action required unless AgentCore runs in this region.",
-                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -18587,7 +18636,7 @@ def check_agentcore_gateway_role_scope(
                 check_id="AC-25",
                 finding_name="AgentCore Gateway Role Scope",
                 error=error,
-                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
             )
         ]
 
@@ -18598,7 +18647,7 @@ def check_agentcore_gateway_role_scope(
                 finding_name="AgentCore Gateway Role Scope",
                 finding_details="No AgentCore gateways found in this region.",
                 resolution="No action required.",
-                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -18618,7 +18667,7 @@ def check_agentcore_gateway_role_scope(
                     "result. Rerun the assessment once the IAM permission cache is "
                     "produced."
                 ),
-                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -18652,7 +18701,7 @@ def check_agentcore_gateway_role_scope(
                         "was not judged."
                     ),
                     resolution="Grant bedrock-agentcore:GetGateway and retry.",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -18672,7 +18721,7 @@ def check_agentcore_gateway_role_scope(
                         "requires, so its execution role was not judged."
                     ),
                     resolution="Grant bedrock-agentcore:GetGateway and retry.",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -18698,7 +18747,7 @@ def check_agentcore_gateway_role_scope(
                         "this result. Review the role's policies in the account "
                         "that owns it."
                     ),
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -18726,7 +18775,7 @@ def check_agentcore_gateway_role_scope(
                         "this result. Grant the cache producer read access to the "
                         "role's policies and rerun the assessment."
                     ),
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -18748,7 +18797,7 @@ def check_agentcore_gateway_role_scope(
                         "this result. Confirm the role exists in this account and "
                         "rerun the assessment."
                     ),
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -18771,7 +18820,7 @@ def check_agentcore_gateway_role_scope(
                         "this result. Repair the unreadable policy documents in the "
                         "IAM permission cache and rerun the assessment."
                     ),
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -18793,7 +18842,7 @@ def check_agentcore_gateway_role_scope(
                         "endpoints and other ARNs this gateway's targets call, "
                         "and the actions each needs."
                     ),
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
                 )
@@ -18814,7 +18863,7 @@ def check_agentcore_gateway_role_scope(
                         "resources are the ones this gateway's targets need, which "
                         "is a decision this check does not make."
                     ),
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_ROLE_REFERENCE_URL,
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.PASSED,
                 )
@@ -23804,7 +23853,7 @@ def check_agentcore_vpc_placement_scp() -> List[Dict[str, Any]]:
     """
     return _scp_guardrail_findings(
         "AC-01",
-        AGENTCORE_IAM_CONDITION_KEY_REFERENCE_URL,
+        AGENTCORE_VPC_CONDITION_KEY_REFERENCE_URL,
         [
             {
                 "finding_name": "VPC Placement Guardrail",
@@ -34886,7 +34935,7 @@ def check_agentcore_evaluation_judge_model_scope(
                 finding_name="AgentCore Evaluation Judge Model Scope",
                 finding_details="AgentCore client not available in this region.",
                 resolution="No action required unless AgentCore runs in this region.",
-                reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -34900,7 +34949,7 @@ def check_agentcore_evaluation_judge_model_scope(
                 check_id="AC-44",
                 finding_name="AgentCore Evaluation Judge Model Scope",
                 error=error,
-                reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
             )
         ]
 
@@ -34908,7 +34957,7 @@ def check_agentcore_evaluation_judge_model_scope(
         "AC-44",
         "AgentCore Evaluation Judge Model Scope",
         errors,
-        AGENTCORE_EVALUATORS_REFERENCE_URL,
+        AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
     )
 
     role_arns = sorted(
@@ -34928,7 +34977,7 @@ def check_agentcore_evaluation_judge_model_scope(
                     "names an execution role, so no role invokes a judge model."
                 ),
                 resolution="No action required for this check.",
-                reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -34951,7 +35000,7 @@ def check_agentcore_evaluation_judge_model_scope(
                     "result. Resolve the IAM permission cache and rerun the "
                     "assessment."
                 ),
-                reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -34990,7 +35039,7 @@ def check_agentcore_evaluation_judge_model_scope(
                         "this result. Grant the cache producer read access to the "
                         "role's policies and rerun the assessment."
                     ),
-                    reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                    reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -35011,7 +35060,7 @@ def check_agentcore_evaluation_judge_model_scope(
                         "this result. Confirm the role exists in this account and "
                         "rerun the assessment."
                     ),
-                    reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                    reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -35043,7 +35092,7 @@ def check_agentcore_evaluation_judge_model_scope(
                         "action and scoping the log writes to "
                         f"{EVALUATION_RESULTS_LOG_GROUP_PREFIX}*."
                     ),
-                    reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                    reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                     severity=SeverityEnum.MEDIUM,
                     status=StatusEnum.FAILED,
                 )
@@ -35064,7 +35113,7 @@ def check_agentcore_evaluation_judge_model_scope(
                         "this result. Repair the unreadable policy documents in the "
                         "IAM permission cache and rerun the assessment."
                     ),
-                    reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                    reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -35088,7 +35137,7 @@ def check_agentcore_evaluation_judge_model_scope(
                         "workload's judges use, naming each foundation model or "
                         "inference profile."
                     ),
-                    reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                    reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                     severity=SeverityEnum.MEDIUM,
                     status=StatusEnum.FAILED,
                 )
@@ -35120,7 +35169,7 @@ def check_agentcore_evaluation_judge_model_scope(
                             "keep it only for a custom evaluator that names the "
                             "model."
                         ),
-                        reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                        reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                         severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.FAILED,
                     )
@@ -35152,7 +35201,7 @@ def check_agentcore_evaluation_judge_model_scope(
                             "Grant bedrock-agentcore:GetEvaluator on the attached "
                             "evaluators and retry."
                         ),
-                        reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                        reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                         severity=SeverityEnum.INFORMATIONAL,
                         status=StatusEnum.NA,
                     )
@@ -35200,7 +35249,7 @@ def check_agentcore_evaluation_judge_model_scope(
                             "inference profile ARNs of the models the evaluators "
                             "name."
                         ),
-                        reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                        reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                         severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.FAILED,
                     )
@@ -35231,7 +35280,7 @@ def check_agentcore_evaluation_judge_model_scope(
                             "foundation model and inference profile ARNs of the "
                             "models the evaluators name."
                         ),
-                        reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                        reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                         severity=SeverityEnum.MEDIUM,
                         status=StatusEnum.FAILED,
                     )
@@ -35262,7 +35311,7 @@ def check_agentcore_evaluation_judge_model_scope(
                             "Confirm GetOnlineEvaluationConfig returns the "
                             "configuration's evaluators and rerun the assessment."
                         ),
-                        reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                        reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                         severity=SeverityEnum.INFORMATIONAL,
                         status=StatusEnum.NA,
                     )
@@ -35287,7 +35336,7 @@ def check_agentcore_evaluation_judge_model_scope(
                         "are the judges this workload approved, which is a decision "
                         "this check does not make."
                     ),
-                    reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                    reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                     severity=SeverityEnum.MEDIUM,
                     status=StatusEnum.PASSED,
                 )
@@ -35308,7 +35357,7 @@ def check_agentcore_evaluation_judge_model_scope(
                         "with a model needs bedrock:InvokeModel on that model's ARN; "
                         "AC-39 reports whether the evaluation runs."
                     ),
-                    reference=AGENTCORE_EVALUATORS_REFERENCE_URL,
+                    reference=AGENTCORE_EVALUATION_PERMISSIONS_REFERENCE_URL,
                     severity=SeverityEnum.MEDIUM,
                     status=StatusEnum.PASSED,
                 )
@@ -35799,7 +35848,7 @@ def _command_shell_findings(permission_cache: Dict[str, Any]) -> List[Dict[str, 
                     "result. Resolve the IAM permission cache and rerun the "
                     "assessment."
                 ),
-                reference=AGENTCORE_TOOL_EXECUTION_ROLE_REFERENCE_URL,
+                reference=AGENTCORE_RUNTIME_EXECUTE_COMMAND_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
                 region=GLOBAL_REGION_LABEL,
@@ -35810,7 +35859,7 @@ def _command_shell_findings(permission_cache: Dict[str, Any]) -> List[Dict[str, 
         cache,
         "AC-45",
         finding_name,
-        AGENTCORE_TOOL_EXECUTION_ROLE_REFERENCE_URL,
+        AGENTCORE_RUNTIME_EXECUTE_COMMAND_REFERENCE_URL,
         region=GLOBAL_REGION_LABEL,
     )
     role_unbounded, role_named, role_unreadable = _command_shell_holders(
@@ -35838,7 +35887,7 @@ def _command_shell_findings(permission_cache: Dict[str, Any]) -> List[Dict[str, 
                     "result. Repair the unreadable policy documents in the IAM "
                     "permission cache and rerun the assessment."
                 ),
-                reference=AGENTCORE_TOOL_EXECUTION_ROLE_REFERENCE_URL,
+                reference=AGENTCORE_RUNTIME_EXECUTE_COMMAND_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
                 region=GLOBAL_REGION_LABEL,
@@ -35864,7 +35913,7 @@ def _command_shell_findings(permission_cache: Dict[str, Any]) -> List[Dict[str, 
                     "runtime ARNs, to a break-glass or developer role only, and "
                     "deny both where interactive access is not needed."
                 ),
-                reference=AGENTCORE_TOOL_EXECUTION_ROLE_REFERENCE_URL,
+                reference=AGENTCORE_RUNTIME_EXECUTE_COMMAND_REFERENCE_URL,
                 severity=SeverityEnum.HIGH,
                 status=StatusEnum.FAILED,
                 region=GLOBAL_REGION_LABEL,
@@ -35889,7 +35938,7 @@ def _command_shell_findings(permission_cache: Dict[str, Any]) -> List[Dict[str, 
                         "this result. Grant logs:DescribeMetricFilters and "
                         "cloudwatch:DescribeAlarms and rerun the assessment."
                     ),
-                    reference=AGENTCORE_TOOL_EXECUTION_ROLE_REFERENCE_URL,
+                    reference=AGENTCORE_RUNTIME_EXECUTE_COMMAND_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                     region=GLOBAL_REGION_LABEL,
@@ -35916,7 +35965,7 @@ def _command_shell_findings(permission_cache: Dict[str, Any]) -> List[Dict[str, 
                         "alarm with an action on its metric, and treat each "
                         "production shell connection as an incident to review."
                     ),
-                    reference=AGENTCORE_TOOL_EXECUTION_ROLE_REFERENCE_URL,
+                    reference=AGENTCORE_RUNTIME_EXECUTE_COMMAND_REFERENCE_URL,
                     severity=SeverityEnum.MEDIUM,
                     status=StatusEnum.FAILED,
                     region=GLOBAL_REGION_LABEL,
@@ -35946,7 +35995,7 @@ def _command_shell_findings(permission_cache: Dict[str, Any]) -> List[Dict[str, 
                     "principal is a break-glass or developer role, which is a "
                     "decision this check does not make."
                 ),
-                reference=AGENTCORE_TOOL_EXECUTION_ROLE_REFERENCE_URL,
+                reference=AGENTCORE_RUNTIME_EXECUTE_COMMAND_REFERENCE_URL,
                 severity=SeverityEnum.HIGH,
                 status=StatusEnum.PASSED,
                 region=GLOBAL_REGION_LABEL,
@@ -35998,7 +36047,7 @@ def _command_shell_region_alarm_rows(
                     "result. Grant logs:DescribeMetricFilters and "
                     "cloudwatch:DescribeAlarms and rerun the assessment."
                 ),
-                reference=AGENTCORE_TOOL_EXECUTION_ROLE_REFERENCE_URL,
+                reference=AGENTCORE_RUNTIME_EXECUTE_COMMAND_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -36023,7 +36072,7 @@ def _command_shell_region_alarm_rows(
                     "InvokeAgentRuntimeCommandShell CloudTrail event, and an alarm "
                     "with an action on its metric."
                 ),
-                reference=AGENTCORE_TOOL_EXECUTION_ROLE_REFERENCE_URL,
+                reference=AGENTCORE_RUNTIME_EXECUTE_COMMAND_REFERENCE_URL,
                 severity=SeverityEnum.MEDIUM,
                 status=StatusEnum.FAILED,
             )
@@ -36043,7 +36092,7 @@ def _command_shell_region_alarm_rows(
                 "No action required for this check. Treat each production shell "
                 "connection as an incident to review."
             ),
-            reference=AGENTCORE_TOOL_EXECUTION_ROLE_REFERENCE_URL,
+            reference=AGENTCORE_RUNTIME_EXECUTE_COMMAND_REFERENCE_URL,
             severity=SeverityEnum.MEDIUM,
             status=StatusEnum.PASSED,
         )
@@ -42227,7 +42276,7 @@ def _gateway_waf_rule_findings(
         reference = (
             WAF_BODY_INSPECTION_LIMIT_REFERENCE_URL
             if not body_filters and len(failed_missing) == 1
-            else WAF_RULE_ACTION_REFERENCE_URL
+            else AGENTCORE_GATEWAY_WAF_REFERENCE_URL
         )
         return [
             create_finding(
@@ -42289,7 +42338,7 @@ def _gateway_waf_rule_findings(
                     "so the gateway blocks requests when AWS WAF cannot be "
                     "evaluated."
                 ),
-                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
                 severity=SeverityEnum.MEDIUM,
                 status=StatusEnum.FAILED,
             )
@@ -42363,7 +42412,7 @@ def _gateway_waf_rule_findings(
                     "Set the gateway's wafConfiguration failureMode to FAIL_CLOSE "
                     "and rerun the assessment."
                 ),
-                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             )
@@ -42384,7 +42433,7 @@ def _gateway_waf_rule_findings(
                 )
             ),
             resolution="No action required",
-            reference=WAF_RULE_ACTION_REFERENCE_URL,
+            reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
             severity=SeverityEnum.MEDIUM,
             status=StatusEnum.PASSED,
         )
@@ -43792,9 +43841,9 @@ ANOMALY_DETECTION_BAND_PATTERN = re.compile(
     r"^\s*ANOMALY_DETECTION_BAND\s*\(\s*([A-Za-z0-9_]+)"
 )
 AGENTCORE_COORDINATION_ALARM_FINDING = "AgentCore Inter-Agent Anomaly Alarms"
-APPLICATION_SIGNALS_METRICS_REFERENCE_URL = (
+ANOMALY_DETECTION_ALARM_REFERENCE_URL = (
     "https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/"
-    "AppSignals-MetricsCollected.html"
+    "Create_Anomaly_Detection_Alarm.html"
 )
 AGENTCORE_COORDINATION_UNREADABLE_NOTE = (
     " Not assessed, because no AWS API records them: how often each multi-agent "
@@ -43856,8 +43905,7 @@ def _anomaly_band_edge_keys(
 
 AGENTCORE_SCHEDULED_QUERY_FINDING = "AgentCore Agent Log Scheduled Queries"
 LOGS_SCHEDULED_QUERY_REFERENCE_URL = (
-    "https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/"
-    "API_GetScheduledQuery.html"
+    "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/ScheduledQueries.html"
 )
 # A scheduled query whose last run ended in one of these produced no result.
 SCHEDULED_QUERY_FAILED_STATUSES = ("InvalidQuery", "Failed", "Timeout")
@@ -44037,7 +44085,7 @@ def check_agentcore_coordination_anomaly_alarms() -> List[Dict[str, Any]]:
             finding_name=AGENTCORE_COORDINATION_ALARM_FINDING,
             finding_details=details + AGENTCORE_COORDINATION_UNREADABLE_NOTE,
             resolution=resolution,
-            reference=APPLICATION_SIGNALS_METRICS_REFERENCE_URL,
+            reference=ANOMALY_DETECTION_ALARM_REFERENCE_URL,
             severity=severity,
             status=status,
         )
@@ -44436,7 +44484,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                 finding_name="Agentic AI Gateway Inbound Authorization",
                 finding_details="No AgentCore Gateways found",
                 resolution="No action required",
-                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                reference=AGENTCORE_GATEWAY_INBOUND_AUTH_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             ),
@@ -44445,7 +44493,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                 finding_name="Agentic AI Gateway Tool Policy Enforcement",
                 finding_details="No AgentCore Gateways found",
                 resolution="No action required",
-                reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                reference=AGENTCORE_POLICY_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             ),
@@ -44463,7 +44511,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                 finding_name="Agentic AI Gateway WAF Protection",
                 finding_details="No AgentCore Gateways found",
                 resolution="No action required",
-                reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             ),
@@ -44472,7 +44520,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                 finding_name="Agentic AI Gateway WAF Rule Coverage",
                 finding_details="No AgentCore Gateways found",
                 resolution="No action required",
-                reference=WAF_RULE_ACTION_REFERENCE_URL,
+                reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
                 severity=SeverityEnum.INFORMATIONAL,
                 status=StatusEnum.NA,
             ),
@@ -44522,7 +44570,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                     finding_name="Agentic AI Gateway Inbound Authorization",
                     finding_details=f"Gateway '{gateway_name}' ({gateway_id}) uses authorizerType {authorizer_type}.",
                     resolution="No action required",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_INBOUND_AUTH_REFERENCE_URL,
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.PASSED,
                 )
@@ -44542,7 +44590,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                     finding_name="Agentic AI Gateway Authenticate-Only Authorization",
                     finding_details=f"Gateway '{gateway_name}' ({gateway_id}) uses authorizerType AUTHENTICATE_ONLY without an attached policy engine in ENFORCE mode. AgentCore Gateway authenticates the SigV4 caller but does not make an authorization decision for this authorizer type.",
                     resolution="Use AWS_IAM or CUSTOM_JWT for gateway-enforced authorization, or attach an AgentCore policy engine in ENFORCE mode before using AUTHENTICATE_ONLY.",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_INBOUND_AUTH_REFERENCE_URL,
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
                 )
@@ -44554,7 +44602,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                     finding_name="Agentic AI Gateway Inbound Authorization Disabled",
                     finding_details=f"Gateway '{gateway_name}' ({gateway_id}) uses authorizerType {authorizer_type or 'unspecified'}. Agent tool endpoints must use an explicit gateway authorizer.",
                     resolution="Configure the gateway authorizerType as AWS_IAM or CUSTOM_JWT and provide the required authorizer configuration.",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_INBOUND_AUTH_REFERENCE_URL,
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
                 )
@@ -44597,7 +44645,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                     finding_name="Agentic AI Gateway Tool Policy Enforcement Missing",
                     finding_details=f"Gateway '{gateway_name}' ({gateway_id}) does not have a policy engine configuration. Tool calls are not evaluated by AgentCore policy enforcement.",
                     resolution="Attach an AgentCore policy engine to the gateway and use ENFORCE mode for production tool authorization.",
-                    reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                    reference=AGENTCORE_POLICY_REFERENCE_URL,
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
                 )
@@ -44645,7 +44693,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                                 "mode, but it has no ACTIVE policies with ACTIVE enforcement."
                             ),
                             resolution="Create or activate at least one enforcing policy. LOG_ONLY policies do not change caller responses.",
-                            reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                            reference=AGENTCORE_POLICY_REFERENCE_URL,
                             severity=SeverityEnum.HIGH,
                             status=StatusEnum.FAILED,
                         )
@@ -44667,7 +44715,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                                 "the tools, callers and gateway each one authorizes. AC-35 "
                                 "reports the scope of every permit."
                             ),
-                            reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                            reference=AGENTCORE_POLICY_REFERENCE_URL,
                             severity=SeverityEnum.HIGH,
                             status=StatusEnum.FAILED,
                         )
@@ -44688,7 +44736,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                             resolution=(
                                 "Rerun the assessment once policy generation has finished."
                             ),
-                            reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                            reference=AGENTCORE_POLICY_REFERENCE_URL,
                             severity=SeverityEnum.INFORMATIONAL,
                             status=StatusEnum.NA,
                         )
@@ -44716,7 +44764,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                                 if non_enforcing
                                 else "No action required"
                             ),
-                            reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                            reference=AGENTCORE_POLICY_REFERENCE_URL,
                             severity=SeverityEnum.HIGH,
                             status=StatusEnum.PASSED,
                         )
@@ -44728,7 +44776,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                         finding_name="Agentic AI Gateway Tool Policy Enforcement",
                         finding_details=f"Gateway '{gateway_name}' policy enforcement could not be fully assessed: {type(error).__name__}.",
                         resolution="Grant bedrock-agentcore:ListPolicies and retry the assessment.",
-                        reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                        reference=AGENTCORE_POLICY_REFERENCE_URL,
                         severity=SeverityEnum.INFORMATIONAL,
                         status=StatusEnum.NA,
                     )
@@ -44748,7 +44796,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                         finding_name="Agentic AI Gateway Inbound Authorization",
                         finding_details=f"Gateway '{gateway_name}' ({gateway_id}) uses authorizerType AUTHENTICATE_ONLY and delegates authorization to policy engine {policy_engine_arn} in ENFORCE mode, whose enforcing policies AG-25 read and found none that permits every action unconditioned.",
                         resolution="No action required. Continue validating policy coverage for all exposed gateway targets.",
-                        reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                        reference=AGENTCORE_GATEWAY_INBOUND_AUTH_REFERENCE_URL,
                         severity=SeverityEnum.HIGH,
                         status=StatusEnum.PASSED,
                     )
@@ -44760,7 +44808,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                         finding_name="Agentic AI Gateway Authenticate-Only Authorization",
                         finding_details=f"Gateway '{gateway_name}' ({gateway_id}) uses authorizerType AUTHENTICATE_ONLY and delegates authorization to policy engine {policy_engine_arn} in ENFORCE mode, but AG-25 reports '{engine_finding.get('Finding')}': the engine denies no tool call, and AgentCore Gateway makes no authorization decision of its own for this authorizer type.",
                         resolution="Fix the AG-25 finding on the policy engine, or use AWS_IAM or CUSTOM_JWT for gateway-enforced authorization.",
-                        reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                        reference=AGENTCORE_GATEWAY_INBOUND_AUTH_REFERENCE_URL,
                         severity=SeverityEnum.HIGH,
                         status=StatusEnum.FAILED,
                     )
@@ -44772,7 +44820,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                         finding_name="Agentic AI Gateway Inbound Authorization Incomplete",
                         finding_details=f"Gateway '{gateway_name}' ({gateway_id}) uses authorizerType AUTHENTICATE_ONLY and delegates authorization to policy engine {policy_engine_arn} in ENFORCE mode, but AG-25 could not read the engine's policies ('{engine_finding.get('Finding')}'), so whether the engine denies any tool call is unknown.",
                         resolution="Resolve the AG-25 N/A and rerun the assessment.",
-                        reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                        reference=AGENTCORE_GATEWAY_INBOUND_AUTH_REFERENCE_URL,
                         severity=SeverityEnum.INFORMATIONAL,
                         status=StatusEnum.NA,
                     )
@@ -44804,7 +44852,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                             "mode with enforcing policies that permit only the tool "
                             "calls each caller needs."
                         ),
-                        reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                        reference=AGENTCORE_POLICY_REFERENCE_URL,
                         severity=SeverityEnum.HIGH,
                         status=StatusEnum.FAILED,
                     )
@@ -44822,7 +44870,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                             "default-deny engine decides each tool call is unknown."
                         ),
                         resolution="Resolve the AG-25 N/A and rerun the assessment.",
-                        reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                        reference=AGENTCORE_POLICY_REFERENCE_URL,
                         severity=SeverityEnum.INFORMATIONAL,
                         status=StatusEnum.NA,
                     )
@@ -44864,7 +44912,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                     finding_name="Agentic AI Gateway WAF Protection",
                     finding_details=f"Gateway '{gateway_name}' ({gateway_id}) is associated with WAF web ACL {web_acl_arn}, and its wafConfiguration failureMode is FAIL_CLOSE, so a request is blocked when AWS WAF cannot be evaluated.",
                     resolution="No action required",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
                     severity=SeverityEnum.LOW,
                     status=StatusEnum.PASSED,
                 )
@@ -44876,7 +44924,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                     finding_name="Agentic AI Gateway WAF Fails Open",
                     finding_details=f"Gateway '{gateway_name}' ({gateway_id}) is associated with WAF web ACL {web_acl_arn}, but its wafConfiguration failureMode is FAIL_OPEN, so the gateway allows a request unfiltered when AWS WAF cannot be evaluated.",
                     resolution="Set the gateway's wafConfiguration failureMode to FAIL_CLOSE.",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
                     severity=SeverityEnum.LOW,
                     status=StatusEnum.FAILED,
                 )
@@ -44888,7 +44936,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                     finding_name="Agentic AI Gateway WAF Protection",
                     finding_details=f"Gateway '{gateway_name}' ({gateway_id}) is associated with WAF web ACL {web_acl_arn}, but reports wafConfiguration failureMode {waf_failure_mode or 'unset'}. The AgentCore API states no default, so whether the gateway blocks or allows a request when AWS WAF cannot be evaluated was not judged.",
                     resolution="Set the gateway's wafConfiguration failureMode to FAIL_CLOSE and rerun the assessment.",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -44900,7 +44948,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                     finding_name="Agentic AI Gateway WAF Protection Missing",
                     finding_details=f"Gateway '{gateway_name}' ({gateway_id}) is not associated with an AWS WAF web ACL.",
                     resolution="Associate an AWS WAF web ACL with internet-facing AgentCore gateways to add request filtering and abuse protection.",
-                    reference=AGENTCORE_GATEWAY_API_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
                     severity=SeverityEnum.LOW,
                     status=StatusEnum.FAILED,
                 )
@@ -44918,7 +44966,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                         "association."
                     ),
                     resolution="No action required for this check.",
-                    reference=WAF_RULE_ACTION_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -44934,7 +44982,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                         "in this region, so its rules were not read."
                     ),
                     resolution="No action required unless AWS WAF runs in this region.",
-                    reference=WAF_RULE_ACTION_REFERENCE_URL,
+                    reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
@@ -44956,7 +45004,7 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                             f"{_assessment_error_label(error)}."
                         ),
                         resolution="Grant wafv2:GetWebACL on the web ACL and retry.",
-                        reference=WAF_RULE_ACTION_REFERENCE_URL,
+                        reference=AGENTCORE_GATEWAY_WAF_REFERENCE_URL,
                         severity=SeverityEnum.INFORMATIONAL,
                         status=StatusEnum.NA,
                     )
@@ -45436,7 +45484,7 @@ def lambda_handler(event, context):
                         "Verify the assessment credentials, session token, signing "
                         "region, and system clock, then retry."
                     ),
-                    reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                    reference=AGENTCORE_OVERVIEW_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                     region=region,
@@ -45472,7 +45520,7 @@ def lambda_handler(event, context):
                     finding_name="AgentCore Service Availability",
                     finding_details=f"Amazon Bedrock AgentCore is not available in region {region}. No checks performed.",
                     resolution="No action required. AgentCore is not deployed in this region.",
-                    reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                    reference=AGENTCORE_REGIONS_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                     region=region,

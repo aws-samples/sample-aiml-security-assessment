@@ -1632,6 +1632,7 @@ class TestFS39ClarifyBiasPass:
                 {
                     "MonitoringScheduleName": "bias-monitor",
                     "MonitoringType": "ModelBias",
+                    "MonitoringScheduleStatus": "Scheduled",
                 }
             ]
         }
@@ -1674,6 +1675,7 @@ class TestFS41ClarifyExplainabilityPass:
                 {
                     "MonitoringScheduleName": "explain-monitor",
                     "MonitoringType": "ModelExplainability",
+                    "MonitoringScheduleStatus": "Scheduled",
                 }
             ]
         }

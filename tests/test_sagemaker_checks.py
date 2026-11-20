@@ -9,6 +9,8 @@ Each check is tested for:
 - Output schema validity
 """
 
+import csv
+import io
 import sys
 import os
 import importlib.util
@@ -1458,8 +1460,7 @@ class TestSM05MLOps:
         check = sagemaker_app.check_sagemaker_mlops_utilization
         mock_client.side_effect = Exception("MLOps error")
         result = check(empty_permission_cache)
-        # SM-05 returns empty csv_data on outer exception but sets status=ERROR
-        assert result.get("status") == "ERROR" or result.get("csv_data") is not None
+        _assert_outer_error_row(result, "SM-05", "MLOps error")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm05_schema_valid(self, mock_client, empty_permission_cache):
@@ -1509,6 +1510,45 @@ class TestSM05MLOps:
         )
 
 
+def _assert_outer_error_row(result, check_id, message, region=""):
+    """An outer exception leaves one visible N/A row, not an empty CSV."""
+    rows = extract_csv_data(result)
+    assert len(rows) == 1
+    row = rows[0]
+    assert_finding_schema(row)
+    assert row["Check_ID"] == check_id
+    assert (row["Status"], row["Severity"]) == ("N/A", "Informational")
+    assert row["Finding"].endswith("Incomplete")
+    # The detail names the exception type, never its message.
+    assert "Assessment error: Exception" in row["Finding_Details"]
+    assert message not in row["Finding_Details"]
+    assert row["Region"] == region
+    csv_rows = list(
+        csv.DictReader(io.StringIO(sagemaker_app.generate_csv_report([result])))
+    )
+    assert [r["Check_ID"] for r in csv_rows] == [check_id]
+
+
+class TestOuterErrorsStayVisible:
+    """SM-02 checks that catch their own error still emit a row."""
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm02_iam_permissions_outer_error(self, mock_client):
+        cache = MagicMock()
+        cache.get.side_effect = Exception("IAM cache error")
+        cache.__getitem__.side_effect = Exception("IAM cache error")
+        result = sagemaker_app.check_sagemaker_iam_permissions(
+            cache, region="us-east-1"
+        )
+        _assert_outer_error_row(result, "SM-02", "IAM cache error", "us-east-1")
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm02_sso_configuration_outer_error(self, mock_client):
+        mock_client.side_effect = Exception("SSO error")
+        result = sagemaker_app.check_sagemaker_sso_configuration(region="us-east-1")
+        _assert_outer_error_row(result, "SM-02", "SSO error", "us-east-1")
+
+
 # ===================================================================
 # SM-06: check_sagemaker_clarify_usage
 # ===================================================================
@@ -1535,7 +1575,7 @@ class TestSM06Clarify:
         check = sagemaker_app.check_sagemaker_clarify_usage
         mock_client.side_effect = Exception("Clarify error")
         result = check(empty_permission_cache)
-        assert result.get("status") == "ERROR" or result.get("csv_data") is not None
+        _assert_outer_error_row(result, "SM-06", "Clarify error")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm06_schema_valid(self, mock_client, empty_permission_cache):
@@ -1576,7 +1616,7 @@ class TestSM07ModelMonitor:
         check = sagemaker_app.check_sagemaker_model_monitor_usage
         mock_client.side_effect = Exception("Monitor error")
         result = check(empty_permission_cache)
-        assert result.get("status") == "ERROR" or result.get("csv_data") is not None
+        _assert_outer_error_row(result, "SM-07", "Monitor error")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm07_schema_valid(self, mock_client, empty_permission_cache):
@@ -1619,7 +1659,7 @@ class TestSM08ModelRegistry:
         check = sagemaker_app.check_model_registry_usage
         mock_client.side_effect = Exception("Registry error")
         result = check(empty_permission_cache)
-        assert result.get("status") == "ERROR" or result.get("csv_data") is not None
+        _assert_outer_error_row(result, "SM-08", "Registry error")
 
     @patch("sagemaker_app.boto3.client")
     def test_sm08_schema_valid(self, mock_client, empty_permission_cache):
@@ -2526,14 +2566,14 @@ class TestSM20CompilationJobEncryption:
 
 
 # ===================================================================
-# SM-21: check_sagemaker_automl_network_isolation
+# SM-21: check_sagemaker_automl_inter_container_encryption
 # ===================================================================
-class TestSM21AutoMLNetworkIsolation:
-    """SM-21: Check AutoML network isolation."""
+class TestSM21AutoMLInterContainerEncryption:
+    """SM-21: Check AutoML inter-container traffic encryption."""
 
     @patch("sagemaker_app.boto3.client")
     def test_sm21_no_jobs_returns_na(self, mock_client):
-        check = sagemaker_app.check_sagemaker_automl_network_isolation
+        check = sagemaker_app.check_sagemaker_automl_inter_container_encryption
         mock_sm = MagicMock()
         mock_client.return_value = mock_sm
         mock_sm.list_auto_ml_jobs.return_value = {"AutoMLJobSummaries": []}
@@ -2544,7 +2584,7 @@ class TestSM21AutoMLNetworkIsolation:
 
     @patch("sagemaker_app.boto3.client")
     def test_sm21_exception_returns_error_finding(self, mock_client):
-        check = sagemaker_app.check_sagemaker_automl_network_isolation
+        check = sagemaker_app.check_sagemaker_automl_inter_container_encryption
         mock_client.side_effect = Exception("AutoML error")
         result = check()
         findings = extract_csv_data(result)
@@ -2553,7 +2593,7 @@ class TestSM21AutoMLNetworkIsolation:
 
     @patch("sagemaker_app.boto3.client")
     def test_sm21_schema_valid(self, mock_client):
-        check = sagemaker_app.check_sagemaker_automl_network_isolation
+        check = sagemaker_app.check_sagemaker_automl_inter_container_encryption
         mock_sm = MagicMock()
         mock_client.return_value = mock_sm
         mock_sm.list_auto_ml_jobs.return_value = {"AutoMLJobSummaries": []}
@@ -2789,15 +2829,126 @@ class TestSM23NoEndpointToJudge:
         assert [r["Status"] for r in rows] == ["N/A"]
         assert "No InService endpoints" in rows[0]["Finding_Details"]
 
-    def test_an_in_service_endpoint_without_a_schedule_fails(self):
+    def test_an_in_service_endpoint_without_a_schedule_is_advisory(self):
+        # Model Monitor is closed to new customers, so an endpoint without a
+        # schedule is an advisory N/A naming the documented replacement.
         rows = self._rows(
             [
                 {"EndpointName": "a", "EndpointStatus": "Creating"},
                 {"EndpointName": "live", "EndpointStatus": "InService"},
             ]
         )
-        assert [r["Status"] for r in rows] == ["Failed"]
+        assert [(r["Status"], r["Severity"]) for r in rows] == [
+            ("N/A", "Informational")
+        ]
         assert "'live'" in rows[0]["Finding_Details"]
+        assert "no longer open to new customers" in rows[0]["Finding_Details"]
+        assert "open-source SageMaker AI monitoring solutions" in rows[0]["Resolution"]
+        assert rows[0]["Reference"] == (
+            sagemaker_app.MODEL_MONITOR_AVAILABILITY_REFERENCE
+        )
+
+    def test_eleven_unmonitored_endpoints_summary_is_advisory(self):
+        rows = self._rows(
+            [
+                {"EndpointName": f"e{i}", "EndpointStatus": "InService"}
+                for i in range(11)
+            ]
+        )
+        assert len(rows) == 11
+        assert {(r["Status"], r["Severity"]) for r in rows} == {
+            ("N/A", "Informational")
+        }
+        assert rows[-1]["Finding"] == "Model Drift Detection Summary"
+
+
+class TestSM23MonitoredEndpointGapsStillFail:
+    """An endpoint that already uses Model Monitor keeps failing its gaps.
+
+    Only an endpoint with no schedule at all is advisory (Model Monitor is
+    closed to new customers); a missing monitoring type or an inactive
+    schedule on a monitored endpoint is a misconfiguration and stays Failed.
+    """
+
+    @staticmethod
+    def _drift_rows(schedules):
+        sm = _pages_client(
+            {
+                "list_endpoints": [
+                    {
+                        "Endpoints": [
+                            {"EndpointName": "live", "EndpointStatus": "InService"}
+                        ]
+                    }
+                ],
+                "list_monitoring_schedules": [
+                    {
+                        "MonitoringScheduleSummaries": [
+                            {
+                                "MonitoringScheduleName": name,
+                                "EndpointName": "live",
+                                "MonitoringType": monitoring_type,
+                                "MonitoringScheduleStatus": status,
+                            }
+                            for name, monitoring_type, status in schedules
+                        ]
+                    }
+                ],
+            }
+        )
+        # The schedule-detail leg (baseline, report, alarm) is judged by
+        # TestSM23MonitorReportAndAlarm; deny it here so only the drift rows
+        # under test are produced.
+        sm.describe_monitoring_schedule.side_effect = _make_client_error(
+            "AccessDeniedException", "DescribeMonitoringSchedule"
+        )
+        with patch("sagemaker_app.boto3.client", return_value=sm):
+            rows = extract_csv_data(
+                sagemaker_app.check_model_drift_detection(region="us-east-1")
+            )
+        return {
+            r["Finding"]: r
+            for r in rows
+            if r["Finding"].startswith("Model Drift Detection")
+        }
+
+    def _assert_failed(self, row):
+        assert (row["Status"], row["Severity"]) == ("Failed", "Low")
+        assert row["Check_ID"] == "SM-23"
+
+    def test_missing_model_quality_fails(self):
+        rows = self._drift_rows([("dq", "DataQuality", "Scheduled")])
+        self._assert_failed(
+            rows["Model Drift Detection - Missing Model Quality Monitoring"]
+        )
+        assert "Model Drift Detection - Missing Data Quality Monitoring" not in rows
+        assert "Model Drift Detection Not Configured" not in rows
+
+    def test_missing_data_quality_fails(self):
+        rows = self._drift_rows([("mq", "ModelQuality", "Scheduled")])
+        self._assert_failed(
+            rows["Model Drift Detection - Missing Data Quality Monitoring"]
+        )
+        assert "Model Drift Detection - Missing Model Quality Monitoring" not in rows
+
+    def test_stopped_schedule_fails(self):
+        rows = self._drift_rows(
+            [("dq", "DataQuality", "Stopped"), ("mq", "ModelQuality", "Scheduled")]
+        )
+        row = rows["Model Drift Detection - Inactive Monitoring Schedule"]
+        self._assert_failed(row)
+        assert "'dq'" in row["Finding_Details"]
+        assert "Stopped" in row["Finding_Details"]
+
+    def test_no_gap_rows_are_advisory(self):
+        rows = self._drift_rows(
+            [("dq", "DataQuality", "Stopped"), ("other", "ModelBias", "Scheduled")]
+        )
+        gap_rows = [
+            r for name, r in rows.items() if name.startswith("Model Drift Detection - ")
+        ]
+        assert len(gap_rows) == 2
+        assert all(r["Status"] == "Failed" for r in gap_rows)
 
 
 # ===================================================================
@@ -10212,8 +10363,30 @@ class TestSM36SecurityHubAIStandard:
         configuration=None,
         association=None,
         policy=None,
+        effective_policy=None,
+        ai_controls=("AI.1", "AI.2", "AI.3"),
     ):
         client = MagicMock()
+        self.control_list_calls = []
+
+        def control_pages(**kwargs):
+            self.control_list_calls.append(kwargs)
+            if isinstance(ai_controls, Exception):
+                raise ai_controls
+            return [
+                {
+                    "SecurityControlDefinitions": [
+                        {
+                            "SecurityControlId": c if isinstance(c, str) else c[0],
+                            "CurrentRegionAvailability": (
+                                "AVAILABLE" if isinstance(c, str) else c[1]
+                            ),
+                        }
+                        for c in ai_controls
+                    ]
+                }
+            ]
+
         if association is not None:
             client.get_caller_identity.return_value = {"Account": "123456789012"}
             if isinstance(association, Exception):
@@ -10227,7 +10400,12 @@ class TestSM36SecurityHubAIStandard:
         if error is not None:
             client.get_paginator.side_effect = error
         else:
-            client.get_paginator.side_effect = _pager({"get_enabled_standards": pages})
+            client.get_paginator.side_effect = _pager(
+                {
+                    "get_enabled_standards": pages,
+                    "list_security_control_definitions": control_pages,
+                }
+            )
         if isinstance(configuration, Exception):
             client.describe_organization_configuration.side_effect = configuration
         else:
@@ -10235,10 +10413,30 @@ class TestSM36SecurityHubAIStandard:
                 "OrganizationConfiguration": configuration
                 or {"ConfigurationType": "LOCAL", "Status": "ENABLED"}
             }
+        if effective_policy is None:
+            effective_policy = _make_client_error("EffectivePolicyNotFoundException")
+        if isinstance(effective_policy, Exception):
+            client.describe_effective_policy.side_effect = effective_policy
+        else:
+            client.describe_effective_policy.return_value = {
+                "EffectivePolicy": {
+                    "PolicyType": "SECURITYHUB_CSPM_POLICY",
+                    "TargetId": "123456789012",
+                    "PolicyContent": json.dumps(effective_policy),
+                }
+            }
         mock_client.return_value = client
         return _rows(sagemaker_app.check_security_hub_ai_standard(region="us-east-1"))
 
-    def _central(self, mock_client, configuration, association=None, policy=None):
+    def _central(
+        self,
+        mock_client,
+        configuration,
+        association=None,
+        policy=None,
+        effective_policy=None,
+        **kwargs,
+    ):
         rows = self._run(
             mock_client,
             [
@@ -10252,6 +10450,8 @@ class TestSM36SecurityHubAIStandard:
             configuration=configuration,
             association=association,
             policy=policy,
+            effective_policy=effective_policy,
+            **kwargs,
         )
         assert rows[0]["Status"] == "Passed"
         assert len(rows) == 2
@@ -10259,13 +10459,415 @@ class TestSM36SecurityHubAIStandard:
         return rows[1]
 
     @patch("sagemaker_app.boto3.client")
-    def test_local_configuration_fails(self, mock_client):
+    def test_local_configuration_without_a_policy_fails(self, mock_client):
         row = self._central(
             mock_client, {"ConfigurationType": "LOCAL", "Status": "ENABLED"}
         )
         assert row["Finding"] == sagemaker_app.CENTRAL_CONFIGURATION_FINDING
         assert row["Status"] == "Failed"
         assert "ConfigurationType LOCAL" in row["Finding_Details"]
+        assert "no effective Security Hub CSPM policy" in row["Finding_Details"]
+        # The resolution recommends a declarative policy, not the legacy feature.
+        assert "SECURITYHUB_CSPM_POLICY" in row["Resolution"]
+        assert "turn on central configuration" not in row["Resolution"]
+        assert row["Reference"].endswith("accounts-orgs-policies.html")
+        mock_client.return_value.describe_effective_policy.assert_called_once_with(
+            PolicyType="SECURITYHUB_CSPM_POLICY"
+        )
+
+    @staticmethod
+    def _cspm_policy(
+        standards,
+        enable=("ALL_SUPPORTED",),
+        disable=(),
+        overrides=None,
+        operators=True,
+        controls_configuration=None,
+    ):
+        def leaf(value):
+            return {"@@assign": value} if operators else value
+
+        if controls_configuration is None:
+            controls_configuration = {"default_control_association_status": "ENABLED"}
+        controls = {
+            "default": {
+                "enabled_standards": leaf(list(standards)),
+                "controls_configuration": {
+                    key: leaf(value) for key, value in controls_configuration.items()
+                },
+            }
+        }
+        for region, region_standards in (overrides or {}).items():
+            controls[region] = {
+                "enabled_standards": leaf(list(region_standards)),
+                "controls_configuration": {
+                    "default_control_association_status": leaf("ENABLED")
+                },
+            }
+        return {
+            "securityhub_cspm": {
+                "cspm_enablement": {
+                    "enable_in_regions": leaf(list(enable)),
+                    "disable_in_regions": leaf(list(disable)),
+                },
+                "cspm_standards_controls": controls,
+            }
+        }
+
+    POLICY_AI = "ai-security-best-practices/v/1.0.0"
+    POLICY_FSBP = "aws-foundational-security-best-practices/v/1.0.0"
+
+    @pytest.mark.parametrize("operators", [True, False])
+    @patch("sagemaker_app.boto3.client")
+    def test_local_configuration_under_a_policy_with_both_standards_passes(
+        self, mock_client, operators
+    ):
+        row = self._central(
+            mock_client,
+            {"ConfigurationType": "LOCAL", "Status": "ENABLED"},
+            effective_policy=self._cspm_policy(
+                [self.POLICY_FSBP, self.POLICY_AI], operators=operators
+            ),
+        )
+        assert row["Status"] == "Passed"
+        assert row["Finding"] == sagemaker_app.CENTRAL_CONFIGURATION_FINDING
+        assert "SECURITYHUB_CSPM_POLICY" in row["Finding_Details"]
+        assert "default standards configuration" in row["Finding_Details"]
+        assert row["Resolution"] == "No action required"
+
+    def _controls(self, mock_client, controls_configuration, **kwargs):
+        return self._central(
+            mock_client,
+            {"ConfigurationType": "LOCAL", "Status": "ENABLED"},
+            effective_policy=self._cspm_policy(
+                [self.POLICY_FSBP, self.POLICY_AI],
+                controls_configuration=controls_configuration,
+            ),
+            **kwargs,
+        )
+
+    @patch("sagemaker_app.boto3.client")
+    def test_policy_with_every_control_off_fails(self, mock_client):
+        row = self._controls(
+            mock_client, {"default_control_association_status": "DISABLED"}
+        )
+        assert row["Status"] == "Failed"
+        assert "no enabled_controls" in row["Finding_Details"]
+        assert "SECURITYHUB_CSPM_POLICY" in row["Resolution"]
+
+    @pytest.mark.parametrize(
+        ("controls_configuration", "status", "severity", "text"),
+        [
+            # An enabled list: only the listed controls run.
+            (
+                {
+                    "default_control_association_status": "DISABLED",
+                    "enabled_controls": ["AI.1", "AI.2", "AI.3", "IAM.7"],
+                },
+                "Passed",
+                "Medium",
+                "all 3 AI Security Best Practices controls available in this region run",
+            ),
+            (
+                {
+                    "default_control_association_status": "DISABLED",
+                    "enabled_controls": ["IAM.7", "Config.1"],
+                },
+                "Failed",
+                "Medium",
+                "leaves all 3 AI Security Best Practices controls off",
+            ),
+            (
+                {
+                    "default_control_association_status": "DISABLED",
+                    "enabled_controls": ["AI.1"],
+                },
+                "N/A",
+                "Informational",
+                "1 of 3 AI Security Best Practices controls run",
+            ),
+            # A disabled list: every control but the listed ones runs.
+            (
+                {
+                    "default_control_association_status": "ENABLED",
+                    "disabled_controls": ["S3.1"],
+                },
+                "Passed",
+                "Medium",
+                "all 3 AI Security Best Practices controls available in this region run",
+            ),
+            (
+                {
+                    "default_control_association_status": "ENABLED",
+                    "disabled_controls": ["AI.1", "AI.2", "AI.3"],
+                },
+                "Failed",
+                "Medium",
+                "leaves all 3 AI Security Best Practices controls off (AI.1, AI.2, AI.3)",
+            ),
+            (
+                {
+                    "default_control_association_status": "ENABLED",
+                    "disabled_controls": ["AI.2", "S3.1"],
+                },
+                "N/A",
+                "Informational",
+                "leaves 1 off (AI.2)",
+            ),
+        ],
+    )
+    @patch("sagemaker_app.boto3.client")
+    def test_policy_control_lists_are_judged_against_the_ai_standard(
+        self, mock_client, controls_configuration, status, severity, text
+    ):
+        row = self._controls(mock_client, controls_configuration)
+        assert (row["Status"], row["Severity"]) == (status, severity)
+        assert text in row["Finding_Details"]
+        assert self.control_list_calls == [{"StandardsArn": self.AI_ARN}]
+        if status == "Passed":
+            assert row["Resolution"] == "No action required"
+
+    @pytest.mark.parametrize(
+        "ai_controls",
+        [_make_client_error("InvalidAccessException"), ()],
+        ids=["denied", "empty"],
+    )
+    @patch("sagemaker_app.boto3.client")
+    def test_unread_ai_controls_are_incomplete_not_passed(
+        self, mock_client, ai_controls
+    ):
+        row = self._controls(
+            mock_client,
+            {
+                "default_control_association_status": "ENABLED",
+                "disabled_controls": ["S3.1"],
+            },
+            ai_controls=ai_controls,
+        )
+        assert row["Status"] == "N/A"
+        assert row["Finding"].endswith("Incomplete")
+        assert "ListSecurityControlDefinitions" in row["Finding_Details"]
+        assert "S3.1" in row["Finding_Details"]
+
+    UNAVAILABLE_AI3 = ("AI.1", "AI.2", ("AI.3", "UNAVAILABLE"))
+
+    @pytest.mark.parametrize(
+        ("controls_configuration", "status", "text"),
+        [
+            # The enabled list covers every available control; AI.3 cannot run.
+            (
+                {
+                    "default_control_association_status": "DISABLED",
+                    "enabled_controls": ["AI.1", "AI.2"],
+                },
+                "Passed",
+                "all 2 AI Security Best Practices controls available in this "
+                "region run (1 control(s) unavailable in this region are out of "
+                "scope)",
+            ),
+            # Disabling only the unavailable control leaves nothing off.
+            (
+                {
+                    "default_control_association_status": "ENABLED",
+                    "disabled_controls": ["AI.3"],
+                },
+                "Passed",
+                "all 2 AI Security Best Practices controls available in this region run",
+            ),
+            # The unavailable control does not count as running.
+            (
+                {
+                    "default_control_association_status": "ENABLED",
+                    "disabled_controls": ["AI.1"],
+                },
+                "N/A",
+                "1 of 2 AI Security Best Practices controls run (1 control(s) "
+                "unavailable in this region are out of scope); its "
+                "disabled_controls leaves 1 off (AI.1)",
+            ),
+        ],
+    )
+    @patch("sagemaker_app.boto3.client")
+    def test_region_unavailable_ai_controls_are_out_of_scope(
+        self, mock_client, controls_configuration, status, text
+    ):
+        row = self._controls(
+            mock_client, controls_configuration, ai_controls=self.UNAVAILABLE_AI3
+        )
+        assert row["Status"] == status
+        assert text in row["Finding_Details"]
+        assert "AI.3" not in row["Finding_Details"].split("leaves")[-1]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_every_ai_control_unavailable_is_an_availability_row(self, mock_client):
+        row = self._controls(
+            mock_client,
+            {
+                "default_control_association_status": "DISABLED",
+                "enabled_controls": ["IAM.7"],
+            },
+            ai_controls=(("AI.1", "UNAVAILABLE"), ("AI.2", "UNAVAILABLE")),
+        )
+        assert (row["Status"], row["Severity"]) == ("N/A", "Informational")
+        assert not row["Finding"].endswith("Incomplete")
+        assert (
+            "none of the 2 AI Security Best Practices controls is available"
+            in (row["Finding_Details"])
+        )
+
+    @patch("sagemaker_app.boto3.client")
+    def test_policy_with_no_control_exceptions_passes_without_listing_controls(
+        self, mock_client
+    ):
+        row = self._controls(
+            mock_client, {"default_control_association_status": "ENABLED"}
+        )
+        assert row["Status"] == "Passed"
+        assert "no disabled_controls" in row["Finding_Details"]
+        assert self.control_list_calls == []
+
+    @patch("sagemaker_app.boto3.client")
+    def test_policy_without_the_required_association_status_is_incomplete(
+        self, mock_client
+    ):
+        row = self._controls(mock_client, {})
+        assert row["Status"] == "N/A"
+        assert row["Finding"].endswith("Incomplete")
+        assert "not returned" in row["Finding_Details"]
+
+    @pytest.mark.parametrize(
+        ("standards", "missing"),
+        [
+            (["FSBP"], "AI Security Best Practices"),
+            (["AI"], "AWS Foundational Security Best Practices"),
+        ],
+    )
+    @patch("sagemaker_app.boto3.client")
+    def test_policy_missing_a_standard_fails_naming_it(
+        self, mock_client, standards, missing
+    ):
+        ids = {"FSBP": self.POLICY_FSBP, "AI": self.POLICY_AI}
+        row = self._central(
+            mock_client,
+            {"ConfigurationType": "LOCAL", "Status": "ENABLED"},
+            effective_policy=self._cspm_policy([ids[name] for name in standards]),
+        )
+        assert row["Status"] == "Failed"
+        assert f"does not list {missing}" in row["Finding_Details"]
+        assert "turn on central configuration" not in row["Resolution"]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_regional_override_replaces_the_default(self, mock_client):
+        # A regional override fully replaces the default for that region.
+        row = self._central(
+            mock_client,
+            {"ConfigurationType": "LOCAL", "Status": "ENABLED"},
+            effective_policy=self._cspm_policy(
+                [self.POLICY_FSBP, self.POLICY_AI],
+                overrides={"us-east-1": [self.POLICY_FSBP]},
+            ),
+        )
+        assert row["Status"] == "Failed"
+        assert "us-east-1 regional override" in row["Finding_Details"]
+        assert "AI Security Best Practices" in row["Finding_Details"]
+
+    @pytest.mark.parametrize(
+        ("enable", "disable", "text"),
+        [
+            (["ALL_SUPPORTED"], ["us-east-1"], "disables Security Hub CSPM"),
+            (["us-east-1"], ["ALL_SUPPORTED"], "disables Security Hub CSPM"),
+            (["eu-west-1"], [], "ungoverned"),
+        ],
+    )
+    @patch("sagemaker_app.boto3.client")
+    def test_policy_that_does_not_enable_this_region_fails(
+        self, mock_client, enable, disable, text
+    ):
+        row = self._central(
+            mock_client,
+            {"ConfigurationType": "LOCAL", "Status": "ENABLED"},
+            effective_policy=self._cspm_policy(
+                [self.POLICY_FSBP, self.POLICY_AI], enable=enable, disable=disable
+            ),
+        )
+        assert row["Status"] == "Failed"
+        assert text in row["Finding_Details"]
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            _make_client_error("AccessDeniedException"),
+            _make_client_error("TooManyRequestsException"),
+        ],
+    )
+    @patch("sagemaker_app.boto3.client")
+    def test_effective_policy_unread_is_incomplete(self, mock_client, error):
+        row = self._central(
+            mock_client,
+            {"ConfigurationType": "LOCAL", "Status": "ENABLED"},
+            effective_policy=error,
+        )
+        assert row["Status"] == "N/A"
+        assert row["Severity"] == "Informational"
+        assert row["Finding"].endswith("Incomplete")
+        assert "DescribeEffectivePolicy failed" in row["Finding_Details"]
+        assert error.response["Error"]["Code"] in row["Finding_Details"]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_malformed_effective_policy_is_incomplete(self, mock_client):
+
+        row = self._central(
+            mock_client,
+            {"ConfigurationType": "LOCAL", "Status": "ENABLED"},
+            effective_policy=["not", "an", "object"],
+        )
+        assert row["Status"] == "N/A"
+        assert row["Finding"].endswith("Incomplete")
+
+    @patch("sagemaker_app.boto3.client")
+    def test_account_outside_an_organization_is_na(self, mock_client):
+        row = self._central(
+            mock_client,
+            {"ConfigurationType": "LOCAL", "Status": "ENABLED"},
+            effective_policy=_make_client_error("AWSOrganizationsNotInUseException"),
+        )
+        assert row["Status"] == "N/A"
+        assert "not a member of an organization" in row["Finding_Details"]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_member_account_reads_its_effective_policy_when_config_is_denied(
+        self, mock_client
+    ):
+        # DescribeOrganizationConfiguration answers only for the delegated
+        # administrator; a member account still reads its own effective policy.
+        row = self._central(
+            mock_client,
+            _make_client_error("InvalidAccessException"),
+            effective_policy=self._cspm_policy([self.POLICY_FSBP, self.POLICY_AI]),
+        )
+        assert row["Status"] == "Passed"
+        assert "SECURITYHUB_CSPM_POLICY" in row["Finding_Details"]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_member_account_without_a_policy_and_unread_config_is_incomplete(
+        self, mock_client
+    ):
+        row = self._central(mock_client, _make_client_error("InvalidAccessException"))
+        assert row["Status"] == "N/A"
+        assert row["Finding"].endswith("Incomplete")
+        assert "no effective Security Hub CSPM policy" in row["Finding_Details"]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_central_path_does_not_read_the_effective_policy(self, mock_client):
+        self._association(
+            mock_client,
+            {
+                "ConfigurationPolicyId": "SELF_MANAGED_SECURITY_HUB",
+                "AssociationType": "APPLIED",
+                "AssociationStatus": "SUCCESS",
+            },
+        )
+        mock_client.return_value.describe_effective_policy.assert_not_called()
 
     @patch("sagemaker_app.boto3.client")
     def test_central_enabled_is_incomplete_while_the_association_is_unread(
@@ -10282,12 +10884,13 @@ class TestSM36SecurityHubAIStandard:
         assert "GetConfigurationPolicyAssociation" in row["Finding_Details"]
         mock_client.return_value.get_configuration_policy.assert_not_called()
 
-    def _association(self, mock_client, association, policy=None):
+    def _association(self, mock_client, association, policy=None, **kwargs):
         row = self._central(
             mock_client,
             {"ConfigurationType": "CENTRAL", "Status": "ENABLED"},
             association=association,
             policy=policy,
+            **kwargs,
         )
         call = mock_client.return_value.get_configuration_policy_association
         assert call.call_args.kwargs == {"Target": {"AccountId": "123456789012"}}
@@ -10330,17 +10933,53 @@ class TestSM36SecurityHubAIStandard:
         "aws-foundational-security-best-practices/v/1.0.0"
     )
 
-    def _policy(self, standards, enabled=True):
+    def _policy(self, standards, enabled=True, controls=None):
+        hub = {"ServiceEnabled": enabled, "EnabledStandardIdentifiers": standards}
+        if controls is not None:
+            hub["SecurityControlsConfiguration"] = controls
         return {
             "Id": "a1b2",
             "Name": "ai-baseline",
-            "ConfigurationPolicy": {
-                "SecurityHub": {
-                    "ServiceEnabled": enabled,
-                    "EnabledStandardIdentifiers": standards,
-                }
-            },
+            "ConfigurationPolicy": {"SecurityHub": hub},
         }
+
+    @pytest.mark.parametrize(
+        ("controls", "status", "text"),
+        [
+            ({"DisabledSecurityControlIdentifiers": []}, "Passed", "disables no"),
+            (
+                {"DisabledSecurityControlIdentifiers": ["AI.1", "AI.2", "AI.3"]},
+                "Failed",
+                "leaves all 3 AI Security Best Practices controls off",
+            ),
+            (
+                {"EnabledSecurityControlIdentifiers": ["AI.1", "AI.2", "AI.3"]},
+                "Passed",
+                "all 3 AI Security Best Practices controls available in this region run",
+            ),
+            (
+                {"EnabledSecurityControlIdentifiers": []},
+                "Failed",
+                "EnabledSecurityControlIdentifiers list is empty",
+            ),
+            (
+                {"EnabledSecurityControlIdentifiers": ["AI.3", "IAM.7"]},
+                "N/A",
+                "1 of 3 AI Security Best Practices controls run",
+            ),
+        ],
+    )
+    @patch("sagemaker_app.boto3.client")
+    def test_central_policy_control_lists_are_judged(
+        self, mock_client, controls, status, text
+    ):
+        row = self._association(
+            mock_client,
+            self._applied(),
+            policy=self._policy([self.FSBP_ID, self.AI_ID], controls=controls),
+        )
+        assert row["Status"] == status
+        assert text in row["Finding_Details"]
 
     def _applied(self, status="SUCCESS"):
         return {
@@ -31038,3 +31677,445 @@ class TestLongReadsStopAtTheDeadline:
             in stopped["Finding_Details"]
         )
         assert not any(r["Status"] == "Passed" for r in rows)
+
+
+# ===================================================================
+# Remediation reference accuracy and deprecated-feature advisories
+# ===================================================================
+SM_DG = "https://docs.aws.amazon.com/sagemaker/latest/dg/"
+SM_API = "https://docs.aws.amazon.com/sagemaker/latest/APIReference/"
+
+
+class TestRemediationReferences:
+    """References point at the page that documents what each row judges."""
+
+    def test_wrong_topic_references_are_replaced(self):
+        # SM-03 judges ResourceConfig.VolumeKmsKeyId, not inter-container traffic.
+        assert sagemaker_app.TRAINING_VOLUME_ENCRYPTION_REFERENCE == (
+            SM_API + "API_ResourceConfig.html"
+        )
+        # SM-42 judges IAM condition-key guardrails, not batch transform VPCs.
+        assert sagemaker_app.BATCH_CREATION_GUARDRAIL_REFERENCE == (
+            SM_DG + "security_iam_id-based-policy-examples.html"
+            "#sagemaker-condition-examples"
+        )
+        assert sagemaker_app.GUARDDUTY_REVIEW_REFERENCE.endswith(
+            "/findings-workflow-status.html"
+        )
+        assert sagemaker_app.IOT_AUDIT_REFERENCE.endswith(
+            "/audit-chk-device-cert-shared.html"
+        )
+        assert sagemaker_app.ENDPOINT_FLOW_LOG_ALERTING_REFERENCE.endswith(
+            "/logs/MonitoringLogData.html"
+        )
+
+    def test_sm02_full_access_row_links_the_managed_policy(self):
+        source = open(sagemaker_app.__file__).read()
+        assert "sagemaker-unified-studio/latest/adminguide/security-iam.html" not in (
+            source
+        )
+        assert (
+            SM_DG + "security-iam-awsmanpol.html"
+            "#security-iam-awsmanpol-AmazonSageMakerFullAccess"
+        ) in source
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm38_guardduty_gap_links_lambda_protection(self, mock_client):
+        client = MagicMock()
+        client.batch_get_account_status.return_value = {"accounts": []}
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{}]
+        client.get_paginator.return_value = paginator
+        mock_client.return_value = client
+        rows = sagemaker_app._lambda_runtime_tier_findings(
+            "us-east-1", {"Status": "ENABLED", "Features": []}
+        )
+        by_problem = {
+            r["Finding_Details"].split(":", 1)[1].split(".")[0].strip(): r for r in rows
+        }
+        guardduty = by_problem[
+            "GuardDuty Lambda Protection (LAMBDA_NETWORK_LOGS) is not enabled"
+        ]
+        assert guardduty["Reference"] == sagemaker_app.LAMBDA_PROTECTION_REFERENCE
+        inspector = [r for r in rows if "Inspector Lambda" in r["Finding_Details"]]
+        assert inspector
+        assert all(
+            r["Reference"] == sagemaker_app.LAMBDA_RUNTIME_TIER_REFERENCE
+            for r in inspector
+        )
+
+
+class TestSM21InterContainerEncryptionNaming:
+    """SM-21 judges EnableInterContainerTrafficEncryption, not network isolation."""
+
+    @staticmethod
+    def _rows(enabled):
+        sm = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {"AutoMLJobSummaries": [{"AutoMLJobName": "job-1"}]}
+        ]
+        sm.get_paginator.return_value = paginator
+        sm.describe_auto_ml_job.return_value = {
+            "AutoMLJobConfig": {
+                "SecurityConfig": {"EnableInterContainerTrafficEncryption": enabled}
+            }
+        }
+        with patch("sagemaker_app.boto3.client", return_value=sm):
+            return extract_csv_data(
+                sagemaker_app.check_sagemaker_automl_inter_container_encryption(
+                    "us-east-1"
+                )
+            )
+
+    @pytest.mark.parametrize(
+        ("enabled", "status", "name"),
+        [
+            (
+                False,
+                "Failed",
+                "SageMaker AutoML Job Inter-Container Traffic Encryption Disabled",
+            ),
+            (
+                True,
+                "Passed",
+                "SageMaker AutoML Job Inter-Container Traffic Encryption Check",
+            ),
+        ],
+    )
+    def test_finding_names_the_encryption_setting(self, enabled, status, name):
+        rows = self._rows(enabled)
+        assert [(r["Finding"], r["Status"]) for r in rows] == [(name, status)]
+        assert "Network Isolation" not in rows[0]["Finding"]
+
+
+class TestSM21InconclusiveReads:
+    """A failed list or describe must not read as an empty or clean inventory."""
+
+    ENCRYPTED = {
+        "AutoMLJobConfig": {
+            "SecurityConfig": {"EnableInterContainerTrafficEncryption": True}
+        }
+    }
+    UNENCRYPTED = {"AutoMLJobConfig": {"SecurityConfig": {}}}
+
+    @staticmethod
+    def _rows(pages=None, details=None, list_error=None):
+        sm = MagicMock()
+        paginator = MagicMock()
+        if list_error is not None:
+            paginator.paginate.side_effect = list_error
+        else:
+            paginator.paginate.return_value = [
+                {"AutoMLJobSummaries": [{"AutoMLJobName": n} for n in page]}
+                for page in pages
+            ]
+        sm.get_paginator.return_value = paginator
+
+        def describe(AutoMLJobName):
+            value = details[AutoMLJobName]
+            if isinstance(value, Exception):
+                raise value
+            return value
+
+        sm.describe_auto_ml_job.side_effect = describe
+        with patch("sagemaker_app.boto3.client", return_value=sm):
+            return extract_csv_data(
+                sagemaker_app.check_sagemaker_automl_inter_container_encryption(
+                    "us-east-1"
+                )
+            )
+
+    @pytest.mark.parametrize("code", ["AccessDeniedException", "ThrottlingException"])
+    def test_list_failure_is_could_not_assess_not_empty(self, code):
+        rows = self._rows(list_error=_make_client_error(code))
+        assert len(rows) == 1
+        assert rows[0]["Check_ID"] == "SM-21"
+        assert (rows[0]["Status"], rows[0]["Severity"]) == ("N/A", "Informational")
+        assert "No AutoML jobs found" not in rows[0]["Finding_Details"]
+        assert code in rows[0]["Finding_Details"]
+        assert rows[0]["Resolution"] == sagemaker_app.COULD_NOT_ASSESS_RESOLUTION
+
+    def test_successful_empty_list_is_na_no_jobs(self):
+        rows = self._rows(pages=[[]], details={})
+        assert [(r["Status"], r["Finding_Details"]) for r in rows] == [
+            ("N/A", "No AutoML jobs found")
+        ]
+
+    def test_unread_job_blocks_the_pass(self):
+        rows = self._rows(
+            pages=[["job-ok"], ["job-denied"]],
+            details={
+                "job-ok": self.ENCRYPTED,
+                "job-denied": _make_client_error("AccessDeniedException"),
+            },
+        )
+        assert [(r["Finding"], r["Status"]) for r in rows] == [
+            (
+                "SageMaker AutoML Inter-Container Traffic Encryption Check Incomplete",
+                "N/A",
+            )
+        ]
+        assert "job-denied" in rows[0]["Finding_Details"]
+        assert "AccessDeniedException" in rows[0]["Finding_Details"]
+
+    def test_unread_job_keeps_failures_and_adds_incomplete(self):
+        rows = self._rows(
+            pages=[["job-bad", "job-denied"]],
+            details={
+                "job-bad": self.UNENCRYPTED,
+                "job-denied": _make_client_error("ThrottlingException"),
+            },
+        )
+        assert [r["Status"] for r in rows] == ["N/A", "Failed"]
+        assert "job-bad" in rows[1]["Finding_Details"]
+        assert rows[0]["Finding"].endswith("Incomplete")
+
+
+class _RaisingDict(dict):
+    """A details map whose Exception values are raised on lookup."""
+
+    def __getitem__(self, key):
+        value = super().__getitem__(key)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+
+class TestClosedServiceAdvisories:
+    """Clarify and Model Monitor are closed to new customers; Experiments is
+    Studio Classic only. Not using them is advisory, never Failed."""
+
+    @staticmethod
+    def _clarify(jobs, details=None, error=None):
+        sm = MagicMock()
+        paginator = MagicMock()
+        if error is not None:
+            paginator.paginate.side_effect = error
+        else:
+            paginator.paginate.return_value = [{"ProcessingJobSummaries": jobs}]
+        sm.get_paginator.return_value = paginator
+        sm.describe_processing_job.side_effect = lambda **kw: details[
+            kw["ProcessingJobName"]
+        ]
+        with patch("sagemaker_app.boto3.client", return_value=sm):
+            return extract_csv_data(
+                sagemaker_app.check_sagemaker_clarify_usage({}, region="us-east-1")
+            )
+
+    def test_sm06_no_clarify_jobs_is_advisory_naming_the_replacement(self):
+        rows = self._clarify([])
+        assert len(rows) == 1
+        row = rows[0]
+        assert (row["Status"], row["Severity"]) == ("N/A", "Informational")
+        assert "no longer open to new customers" in row["Finding_Details"]
+        assert "existing customers can continue" in row["Finding_Details"]
+        assert "Amazon Bedrock Evaluations" in row["Resolution"]
+        assert not row["Resolution"].startswith("Implement")
+        assert row["Reference"] == sagemaker_app.CLARIFY_AVAILABILITY_REFERENCE
+
+    def test_sm06_failed_clarify_job_keeps_its_status(self):
+        rows = self._clarify(
+            [{"ProcessingJobName": "bias-1"}],
+            {
+                "bias-1": {
+                    "AppSpecification": {"ImageUri": "x/sagemaker-clarify-processing"},
+                    "ProcessingJobStatus": "Failed",
+                }
+            },
+        )
+        assert [(r["Status"], r["Severity"]) for r in rows] == [("Failed", "High")]
+        assert "FailureReason" in rows[0]["Resolution"]
+        assert rows[0]["Reference"] == sagemaker_app.CLARIFY_REFERENCE
+
+    def test_sm06_list_error_is_could_not_assess(self):
+        rows = self._clarify([], error=_make_client_error("AccessDeniedException"))
+        assert len(rows) == 1
+        assert_could_not_assess_finding(rows[0])
+
+    CLARIFY_FAILED = {
+        "AppSpecification": {"ImageUri": "x/sagemaker-clarify-processing"},
+        "ProcessingJobStatus": "Failed",
+    }
+
+    def test_sm06_failed_describe_keeps_later_failed_jobs(self):
+        rows = self._clarify(
+            [{"ProcessingJobName": "denied"}, {"ProcessingJobName": "bias-1"}],
+            _RaisingDict(
+                {
+                    "denied": _make_client_error("AccessDeniedException"),
+                    "bias-1": self.CLARIFY_FAILED,
+                }
+            ),
+        )
+        assert [(r["Finding"], r["Status"]) for r in rows] == [
+            ("SageMaker Clarify Failed Clarify Job", "Failed"),
+            ("SageMaker Clarify Usage Check Incomplete", "N/A"),
+        ]
+        assert (
+            "DescribeProcessingJob denied (AccessDeniedException)"
+            in (rows[1]["Finding_Details"])
+        )
+
+    def test_sm06_failed_describe_does_not_claim_no_clarify_usage(self):
+        rows = self._clarify(
+            [{"ProcessingJobName": "denied"}],
+            _RaisingDict({"denied": _make_client_error("ThrottlingException")}),
+        )
+        assert [(r["Finding"], r["Status"]) for r in rows] == [
+            ("SageMaker Clarify Usage Check Incomplete", "N/A")
+        ]
+        assert rows[0]["Resolution"] == sagemaker_app.COULD_NOT_ASSESS_RESOLUTION
+
+    def test_sm06_deadline_stop_is_incomplete(self):
+        with patch("sagemaker_app._deadline_reached", return_value=True):
+            rows = self._clarify([{"ProcessingJobName": "job-1"}], {})
+        assert [(r["Finding"], r["Status"]) for r in rows] == [
+            ("SageMaker Clarify Usage Check Incomplete", "N/A")
+        ]
+        assert "run deadline" in rows[0]["Finding_Details"]
+
+    def test_sm23_issues_beyond_ten_are_summarized(self):
+        sm = MagicMock()
+        endpoints = [f"ep-{i}" for i in range(5)]
+        pages = {
+            "list_endpoints": [
+                {
+                    "Endpoints": [
+                        {"EndpointName": e, "EndpointStatus": "InService"}
+                        for e in endpoints
+                    ]
+                }
+            ],
+            # One stopped bias schedule per endpoint: 3 issues each, 15 total.
+            "list_monitoring_schedules": [
+                {
+                    "MonitoringScheduleSummaries": [
+                        {
+                            "MonitoringScheduleName": f"sched-{e}",
+                            "EndpointName": e,
+                            "MonitoringType": "ModelBias",
+                            "MonitoringScheduleStatus": "Stopped",
+                        }
+                        for e in endpoints
+                    ]
+                }
+            ],
+        }
+
+        def get_paginator(name):
+            paginator = MagicMock()
+            paginator.paginate.return_value = pages[name]
+            return paginator
+
+        sm.get_paginator.side_effect = get_paginator
+        with patch("sagemaker_app.boto3.client", return_value=sm):
+            rows = extract_csv_data(
+                sagemaker_app.check_model_drift_detection(region="us-east-1")
+            )
+        failed = [r for r in rows if r["Status"] == "Failed"]
+        assert len(failed) == 11
+        summary = failed[-1]
+        assert summary["Finding"] == (
+            "Model Drift Detection - Monitoring Issues Summary"
+        )
+        assert "Found 15 monitoring issues" in summary["Finding_Details"]
+        assert "The other 5 affect" in summary["Finding_Details"]
+
+    @staticmethod
+    def _monitor(schedules, status="Scheduled", error=None):
+        sm = MagicMock()
+        paginator = MagicMock()
+        if error is not None:
+            paginator.paginate.side_effect = error
+        else:
+            paginator.paginate.return_value = [
+                {"MonitoringScheduleSummaries": schedules}
+            ]
+        sm.get_paginator.return_value = paginator
+        sm.describe_monitoring_schedule.return_value = {
+            "MonitoringScheduleStatus": status
+        }
+        with patch("sagemaker_app.boto3.client", return_value=sm):
+            return extract_csv_data(
+                sagemaker_app.check_sagemaker_model_monitor_usage(
+                    {}, region="us-east-1"
+                )
+            )
+
+    def test_sm07_no_schedules_is_advisory_naming_the_replacement(self):
+        rows = self._monitor([])
+        assert len(rows) == 1
+        row = rows[0]
+        assert (row["Status"], row["Severity"]) == ("N/A", "Informational")
+        assert "no longer open to new customers" in row["Finding_Details"]
+        assert "Amazon CloudWatch" in row["Resolution"]
+        assert row["Reference"] == sagemaker_app.MODEL_MONITOR_AVAILABILITY_REFERENCE
+
+    def test_sm07_inactive_schedule_keeps_failed(self):
+        rows = self._monitor([{"MonitoringScheduleName": "dq-1"}], status="Stopped")
+        assert [(r["Status"], r["Severity"]) for r in rows] == [("Failed", "Medium")]
+        assert "Start the monitoring schedule" in rows[0]["Resolution"]
+
+    def test_sm07_list_error_is_could_not_assess(self):
+        rows = self._monitor([], error=_make_client_error("AccessDeniedException"))
+        assert len(rows) == 1
+        assert_could_not_assess_finding(rows[0])
+
+    @staticmethod
+    def _lineage(experiments=None, trials=None, experiments_error=None):
+        sm = MagicMock()
+        if experiments_error is not None:
+            sm.list_experiments.side_effect = experiments_error
+        else:
+            sm.list_experiments.return_value = {"ExperimentSummaries": experiments}
+        if isinstance(trials, Exception):
+            sm.list_trials.side_effect = trials
+        else:
+            sm.list_trials.return_value = {"TrialSummaries": trials or []}
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"ModelPackageGroupSummaryList": []}]
+        sm.get_paginator.return_value = paginator
+        with patch("sagemaker_app.boto3.client", return_value=sm):
+            return extract_csv_data(
+                sagemaker_app.check_ml_lineage_tracking(region="us-east-1")
+            )
+
+    def test_sm25_no_experiments_points_to_mlflow(self):
+        rows = self._lineage(experiments=[])
+        assert len(rows) == 1
+        row = rows[0]
+        assert (row["Status"], row["Severity"]) == ("N/A", "Informational")
+        assert "Studio Classic" in row["Finding_Details"]
+        assert "MLflow" in row["Resolution"]
+        assert row["Reference"] == sagemaker_app.MLFLOW_REFERENCE
+
+    def test_sm25_experiments_without_trials_is_advisory_not_failed(self):
+        rows = self._lineage(experiments=[{"ExperimentName": "exp-1"}], trials=[])
+        assert [(r["Finding"], r["Status"], r["Severity"]) for r in rows] == [
+            ("ML Lineage Tracking - No Active Trials", "N/A", "Informational")
+        ]
+        assert "MLflow" in rows[0]["Resolution"]
+
+    def test_sm25_unread_trials_are_named(self):
+        rows = self._lineage(
+            experiments=[{"ExperimentName": "exp-1"}],
+            trials=_make_client_error("ThrottlingException"),
+        )
+        # An unread experiment may hold trials, so the row must not claim
+        # that none exist.
+        assert [(r["Finding"], r["Status"], r["Severity"]) for r in rows] == [
+            ("ML Lineage Tracking - Trials Assessment", "N/A", "Informational")
+        ]
+        assert "ListTrials failed for 1" in rows[0]["Finding_Details"]
+        assert "ThrottlingException" in rows[0]["Finding_Details"]
+        assert "no trials were found" not in rows[0]["Finding_Details"]
+        assert rows[0]["Resolution"] == sagemaker_app.COULD_NOT_ASSESS_RESOLUTION
+
+    def test_sm25_experiments_list_failure_does_not_claim_none_exist(self):
+        rows = self._lineage(
+            experiments_error=_make_client_error("AccessDeniedException")
+        )
+        assert len(rows) == 1
+        assert_could_not_assess_finding(rows[0])
+        assert rows[0]["Finding"] == "ML Lineage Tracking - Experiments Assessment"

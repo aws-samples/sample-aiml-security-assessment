@@ -168,7 +168,7 @@ Maps from:
 | SM-26 | GuardDuty AI Protection feature enabled |
 | FS-51 | PROMPT_ATTACK filter at Standard tier |
 | FS-52 | Bedrock-calling Lambda runtimes not deprecated |
-| FS-53 | WAF SQLi + KnownBadInputs managed rule groups |
+| FS-53 | WAF SQLi + Common Rule Set managed rule groups |
 | FS-54 | Adversarial testing evidence via tagging |
 | FS-69 | Prompt-input validation Lambda present |
 
@@ -210,7 +210,7 @@ Maps from:
 | SM-11 | SageMaker model containers use network isolation |
 | SM-14 | SageMaker models pull containers through controlled repository access |
 | SM-21 | SageMaker AutoML jobs use inter-container traffic encryption |
-| SM-25 | SageMaker Experiments and lineage associations track model provenance |
+| SM-25 | SageMaker AI with MLflow (or Experiments) and lineage associations track model provenance |
 | SM-28 | HyperPod instance groups use controlled VPC network boundaries |
 | SM-30 | Model Registry resource policies restrict public and unapproved cross-account access |
 

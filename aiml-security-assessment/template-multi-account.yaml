@@ -1427,6 +1427,9 @@ Resources:
               - ec2:DescribeNetworkInterfaces # SM-39
               - bedrock-agentcore:ListAgentRuntimeEndpoints # SM-37
               - cloudtrail:ListEventDataStores # SM-38
+              # SM-36 lists the AI Security Best Practices standard's
+              # controls to judge a policy's enabled or disabled control list.
+              - securityhub:ListSecurityControlDefinitions # SM-36
               # SM-39 lists active Bedrock model customization and batch
               # inference jobs for their vpcConfig.
               - bedrock:ListModelCustomizationJobs # SM-39
@@ -1513,6 +1516,18 @@ Resources:
             Action:
               - securityhub:GetConfigurationPolicy # SM-36
             Resource: !Sub 'arn:${AWS::Partition}:securityhub:*:${AWS::AccountId}:configuration-policy/*'
+          - Sid: SecurityHubCspmEffectivePolicyRead
+            # SM-36 reads this account's effective Security Hub CSPM
+            # declarative policy, which replaces central configuration. Any
+            # account can read its own. The account ARN carries the management
+            # account's ID, so only that segment is left open.
+            Effect: Allow
+            Action:
+              - organizations:DescribeEffectivePolicy # SM-36
+            Resource: !Sub 'arn:${AWS::Partition}:organizations::*:account/o-*/${AWS::AccountId}'
+            Condition:
+              StringEquals:
+                organizations:PolicyType: SECURITYHUB_CSPM_POLICY
           - Sid: RegionalSecurityAdminReadsOnWildcard
             # SM-35 reads this account's Macie administrator and Detective
             # behavior graph memberships in each Region, and whether it is

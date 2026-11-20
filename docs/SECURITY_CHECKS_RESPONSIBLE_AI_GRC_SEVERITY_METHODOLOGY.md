@@ -174,7 +174,7 @@ a default band. Per-control I×L may refine within ±1 with a documented reason.
 | --- | --- | --- | --- |
 | **Safety-guardrail / content safety** | harmful output, guardrail bypass, PII leak | **High** | FS-36 content, FS-45 PII, FS-47 grounding threshold, FS-51 prompt-attack, FS-53 injection, FS-27 contextual grounding; FS-56 XSS is refined to **Medium** because request-side WAF rules cannot inspect model output (output encoding, FS-57, is the root control) |
 | **Sensitive-data exposure / integrity** | PII exposure or training-data, image, or knowledge-base tampering | **High** | FS-16 image scanning, FS-21 training-data versioning, FS-25 KB encryption, FS-33/FS-65 deleted data-source bucket, FS-43 log data-protection, FS-44 Macie |
-| **Excessive agency / access control / isolation** | unauthorized action, over-broad permissions, regulated-decision breach | **High** | FS-07, FS-08, FS-10, FS-12, FS-22, FS-26, FS-39 bias, FS-41 explainability, FS-66, FS-67 |
+| **Excessive agency / access control / isolation** | unauthorized action, over-broad permissions, regulated-decision breach | **High** | FS-07, FS-08, FS-10, FS-12, FS-22, FS-26, FS-39 bias, FS-41 explainability (a stopped schedule; no schedule at all is advisory because Clarify is closed to new customers), FS-66, FS-67 |
 | **Regulated-output controls** | non-compliant / off-regulatory output | **High** (denied topics) / **Medium** (softer: word filters, topic allowlist, relevance) | FS-28 (High), FS-38/FS-59/FS-50 (Medium) |
 | **Unbounded consumption / cost / rate-limiting** | cost exhaustion, DoS — compensating controls exist, no breach | **Medium** | FS-01 WAF, FS-02, FS-03, FS-05, FS-06, FS-09, FS-11, FS-68 |
 | **Governance / model-risk / monitoring / currency** | weakened oversight/assurance, not a breach | **Medium** | FS-04, FS-13, FS-14, FS-15, FS-20, FS-31, FS-33 versioning, FS-34, FS-42, FS-46, FS-48, FS-52, FS-55, FS-61, FS-63, FS-65 notifications, FS-69 |
@@ -489,11 +489,11 @@ rule (§3.4).
 
 | Check | Finding name | Disposition | I | L | Severity | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| FS-39 | No SageMaker Clarify Bias Monitoring | FAIL | 3 | 2 | **High** |  |
+| FS-39 | No SageMaker Clarify Bias Monitoring | NA-Advisory | – | – | **Informational** | SageMaker Clarify is no longer open to new customers, so an account with no schedule is advisory rather than a failure |
 | FS-39 | SageMaker Clarify Bias Monitoring Schedules Not Running | FAIL | 3 | 2 | **High** | A bias schedule exists but is not in the Scheduled state, a distinct failure from having no schedule |
 | FS-39 | SageMaker Clarify Bias Monitoring Schedules Found | PASS | 3 | 2 | **High** | Observes schedule existence; running state is reported by the row above |
 | FS-40 | ADVISORY: Bias Dataset Coverage — Manual Review Required | NA-Advisory | – | – | **Informational** | Dataset content cannot be inspected through any API |
-| FS-41 | No SageMaker Clarify Explainability Monitoring | FAIL | 3 | 2 | **High** |  |
+| FS-41 | No SageMaker Clarify Explainability Monitoring | NA-Advisory | – | – | **Informational** | SageMaker Clarify is no longer open to new customers, so an account with no schedule is advisory rather than a failure |
 | FS-41 | SageMaker Clarify Explainability Schedules Not Running | FAIL | 3 | 2 | **High** | An explainability schedule exists but is not in the Scheduled state |
 | FS-41 | SageMaker Clarify Explainability Monitoring Schedules Found | PASS | 3 | 2 | **High** | Observes schedule existence; running state is reported by the row above |
 | FS-42 | No SageMaker Model Cards Found | NA-NotApplicable | – | – | **Informational** | A Bedrock-only estate legitimately has no SageMaker model cards, so absence is not a finding |

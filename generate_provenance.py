@@ -68,7 +68,8 @@ PRIMARY_SOURCE = {
     "source_shorthand": "the AWS GRC User Guide",
     "source_version_or_date": "updated 2026-05-13",
     "source_url": (
-        "https://d1.awsstatic.com/whitepapers/compliance/"
+        "https://d1.awsstatic.com/onedam/marketing-channels/website/aws/en_US/"
+        "whitepapers/compliance/"
         "AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-"
         "Financial-Services.pdf"
     ),

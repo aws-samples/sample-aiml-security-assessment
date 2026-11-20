@@ -2052,6 +2052,17 @@ def test_ar10_eventbridge_unavailable_in_region_is_indeterminate():
     assert "not available in this region" in findings[0]["Finding_Details"]
 
 
+def test_ar10_cites_registry_eventbridge_integration_page():
+    expected = (
+        "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+        "registry-eventbridge.html"
+    )
+    assert agent_registry_app.EVENT_ROUTING_REFERENCE_URL == expected
+    findings, _ = _routing_findings([])
+    assert findings
+    assert {f["Reference"] for f in findings} == {expected}
+
+
 def test_ar10_missing_events_client_is_indeterminate():
     with patch.object(agent_registry_app, "events_client", None):
         rule_inventory = agent_registry_app.get_registry_event_rule_inventory()
